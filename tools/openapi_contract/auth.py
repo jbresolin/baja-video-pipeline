@@ -3,7 +3,7 @@
 Four kinds of caller (docs/api.md, "Authentication"):
     workerBearer   per-worker token from /enroll (master, worker, studio)
     adminBearer    one static admin token from the orchestrator's config
-    reviewerBasic  HTTP Basic, reviewer username/password from config
+    reviewerBasic  HTTP Basic, checked against BVP_REVIEWERS_FILE (bcrypt)
     webhookSecret  shared secret header configured in Evolution's webhook
 """
 
@@ -28,7 +28,10 @@ admin_bearer = HTTPBearer(
 )
 reviewer_basic = HTTPBasic(
     scheme_name="reviewerBasic",
-    description="Reviewer username and password (configured on the orchestrator).",
+    description=(
+        "Reviewer username and password, checked against the bcrypt hashes in "
+        "BVP_REVIEWERS_FILE (the same file Caddy imports). See docs/api.md."
+    ),
     auto_error=False,
 )
 webhook_secret = APIKeyHeader(
@@ -47,8 +50,8 @@ _ERROR_DESCRIPTIONS = {
     404: "No such job / worker / team (not_found)",
     409: "Conflicts with the current state (see error.code)",
     413: "Body too large (upload_too_large, inbox_full)",
-    416: "Range Not Satisfiable",
     422: "Well-formed but wrong (hash_mismatch, missing_review_fields, ...)",
+    429: "Too many requests from this source IP (rate_limited); see Retry-After",
     503: "Temporarily unavailable (dev_mode_disabled, upstream_error)",
 }
 
@@ -71,15 +74,6 @@ def octet_stream_body(description: str) -> dict[str, Any]:
                 "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
             },
         }
-    }
-
-
-def binary_file_responses(media_type: str) -> dict[int | str, dict[str, Any]]:
-    """`responses=` for a downloadable file that supports HTTP Range."""
-    binary = {media_type: {"schema": {"type": "string", "format": "binary"}}}
-    return {
-        200: {"description": "The whole file", "content": binary},
-        206: {"description": "The requested byte range (see Content-Range)", "content": binary},
     }
 
 

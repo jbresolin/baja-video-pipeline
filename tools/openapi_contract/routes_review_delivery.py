@@ -1,8 +1,12 @@
-"""Contract: review UI endpoints, delivery (manifest, outbox) and fleet view."""
+"""Contract: review UI endpoints, delivery (manifest, outbox ACK) and fleet view.
+
+Outbox *bytes* are served by Caddy (/outbox/* on the tailnet listener,
+guarded by GET /auth/file), not by the orchestrator (design §15).
+"""
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Header, Query, Response
+from fastapi import APIRouter, Depends, Query
 
 from shared.models import (
     FleetResponse,
@@ -18,7 +22,6 @@ from shared.models import (
 )
 from tools.openapi_contract.auth import (
     admin_bearer,
-    binary_file_responses,
     error_responses,
     not_implemented,
     reviewer_basic,
@@ -79,6 +82,11 @@ def update_review(job_id: str, body: ReviewUpdate) -> Job:
     * `action: ready` from awaiting_review → ready.
     * `action: reprocess` from claimed/uploaded/delivered/done → ready; any
       process lease is revoked (the worker sees `lost` on its next heartbeat).
+    * `action: discard` from awaiting_review/ready/failed → discarded (final):
+      leases revoked, the VPS inbox copy deleted, and holders get the job in
+      `deletable_job_ids` on their next heartbeat. Fields are not required.
+    * `action: retry` from failed → ready; clears `Job.failure`. Fields and
+      cuts may be corrected in the same request.
     * Other state/action combinations → 409 `illegal_transition`.
     * ready/reprocess with prova, car_number, passagem or a cut missing → 422
       `missing_review_fields` (details.missing lists them).
@@ -131,19 +139,6 @@ def manifest(
     prova: str | None = Query(None, description="Only this prova (slug or name)"),
 ) -> ManifestResponse:
     """Newest first. Only the latest delivery per (prova, car, passagem)."""
-    not_implemented()
-
-
-@router.get(
-    "/outbox/{job_id}",
-    tags=["delivery"],
-    summary="Studio pulls a clip from the VPS outbox (supports Range)",
-    response_class=Response,
-    dependencies=[Depends(worker_bearer)],
-    responses={**binary_file_responses("video/mp4"), **error_responses(401, 403, 404, 416)},
-)
-def outbox_download(job_id: str, range_header: str | None = Header(None, alias="Range")) -> None:
-    """Studio role only."""
     not_implemented()
 
 

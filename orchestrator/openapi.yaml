@@ -33,15 +33,19 @@ paths:
     post:
       tags:
       - intake
-      summary: Evolution messages.upsert webhook → job
-      description: "Turn a WhatsApp video into a job.\n\n* Only `event == \"messages.upsert\"` with `data.key.fromMe\
+      summary: Evolution instance webhook (messages.upsert) → background download → job
+      description: "Exact route Caddy forwards: `POST /intake/evolution-webhook`, with the\n`X-Webhook-Secret`\
+        \ header (wrong or missing → 401).\n\n* Only `event == \"messages.upsert\"` with `data.key.fromMe\
         \ == false` is\n  considered; anything else gets 200 with `ignored: true`.\n* A `documentMessage`\
-        \ with a `video/*` mimetype → normal job. A\n  `videoMessage` → job with `low_res: true` (and\
-        \ the bot asks for a\n  resend as document). Other messages → `ignored: true`.\n* The raw is downloaded\
-        \ from `data.message.mediaUrl` (Evolution S3/MinIO\n  media storage) into the inbox, SHA-256 computed,\
-        \ job created in\n  state `received`.\n* Duplicate `data.key.id` → 200 with `duplicate: true`\
-        \ and the existing\n  `job_id` (Evolution retries webhooks).\n* Inbox above its hard cap → 413\
-        \ `inbox_full` (the bot tells the sender\n  to hold)."
+        \ (also inside `documentWithCaptionMessage`) with a\n  `video/*` mimetype → normal job. A `videoMessage`\
+        \ → `low_res: true`\n  (the bot asks for a resend as document). Other messages → 200 ignored.\n\
+        * Answer fast: 202 `accepted: true`, then download the encrypted file\n  from the WhatsApp CDN\
+        \ and decrypt it while streaming\n  (`shared.whatsapp_media.download_incoming_media`) into the\
+        \ inbox. The\n  job is created in state `received` only after every check passed;\n  on failure\
+        \ no job is created and the bot asks the sender to resend.\n* Duplicate `data.key.id` (in progress\
+        \ or done) → 200 `duplicate: true`\n  with the existing `job_id` if there is one.\n* Inbox above\
+        \ BVP_INBOX_CAP_GB → 413 `inbox_full`. Above\n  BVP_INBOX_HOLD_GB the media is still accepted\
+        \ but the bot asks the\n  sender to hold further videos."
       operationId: evolution_webhook_intake_evolution_webhook_post
       requestBody:
         content:
@@ -50,8 +54,14 @@ paths:
               $ref: '#/components/schemas/EvolutionWebhook'
         required: true
       responses:
-        '200':
+        '202':
           description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntakeResponse'
+        '200':
+          description: Ignored or duplicate message
           content:
             application/json:
               schema:
@@ -70,12 +80,6 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '413':
           description: Body too large (upload_too_large, inbox_full)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          description: Temporarily unavailable (dev_mode_disabled, upstream_error)
           content:
             application/json:
               schema:
@@ -192,6 +196,21 @@ paths:
       summary: Exchange a one-time token for worker id, bearer token and Tailscale key
       description: 'No auth header: the enrollment token in the body is the credential.
 
+        The one API route Caddy exposes publicly (design §8, §15).
+
+
+        **Rate limit (enforced by the orchestrator, not Caddy):** at most
+
+        10 requests per source IP per 600 s (BVP_ENROLL_RATE_LIMIT_REQUESTS,
+
+        BVP_ENROLL_RATE_LIMIT_WINDOW_S), counting every request, successful or
+
+        not. Over the limit → 429 `rate_limited` with a `Retry-After` header
+
+        (seconds). The source IP is the last `X-Forwarded-For` entry when the
+
+        request comes from Caddy, else the TCP peer address.
+
 
         The token is marked used on success, so a second call with it gets 401
 
@@ -230,6 +249,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Too many requests from this source IP (rate_limited); see Retry-After
+          headers:
+            Retry-After:
+              description: Seconds until this source IP may try again
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '503':
           description: Temporarily unavailable (dev_mode_disabled, upstream_error)
           content:
@@ -247,7 +277,9 @@ paths:
       tags:
       - worker loop
       summary: 'Every 15 s: disk, measurements, and renew listed leases'
-      description: '`worker_id` must be the caller''s own id (else 403).'
+      description: '`worker_id` must be the caller''s own id (else 403). The answer''s
+
+        `deletable_job_ids` lists held raws of discarded jobs.'
       operationId: heartbeat_workers__worker_id__heartbeat_post
       security:
       - workerBearer: []
@@ -307,7 +339,15 @@ paths:
 
         accepting new raws; never offers `make_proxy`/`process` to a worker
 
-        that is not a confirmed holder; only offers `deliver` to studios.'
+        that is not a confirmed holder; only offers `deliver` to studios.
+
+        Offers that move bytes carry an absolute `download_url`: Caddy''s
+
+        tailnet listener (`http://<vps tailscale ip>:8080/inbox/<name>` or
+
+        `/outbox/<name>`, send your bearer token) or a peer''s file server
+
+        (`http://<peer tailscale ip>:8710/raw/<job_id>`, no token).'
       operationId: next_task_workers__worker_id__next_post
       security:
       - workerBearer: []
@@ -492,15 +532,74 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /jobs/{job_id}/raw:
+  /auth/file:
     get:
       tags:
       - worker loop
-      summary: Download the raw from the VPS inbox (supports Range)
-      description: '404 once two holders confirmed and the VPS deleted its copy; fetch
-
-        from a peer then (download_raw task `sources`).'
-      operationId: download_raw_jobs__job_id__raw_get
+      summary: Caddy forward_auth target for /inbox/* and /outbox/* on the tailnet listener
+      description: "Caddy calls this (forward_auth) before serving a file, copying the\nworker's `Authorization:\
+        \ Bearer` header. 2xx allows; anything else is\npassed back to the worker as the answer.\n\n*\
+        \ `/inbox/<job_id>.<ext>` → allowed while the caller holds a\n  download_raw lease for that job\
+        \ (or is the master backfilling).\n* `/outbox/<job_id>.mp4` → allowed for studio workers only.\n\
+        * Missing/unknown bearer → 401. Other paths, dot-files, `..`, other\n  workers' jobs, methods\
+        \ other than GET/HEAD → 403."
+      operationId: authorize_file_auth_file_get
+      security:
+      - workerBearer: []
+      parameters:
+      - name: X-Forwarded-Uri
+        in: header
+        required: true
+        schema:
+          type: string
+          description: Path Caddy is about to serve, e.g. /inbox/x.mp4
+          title: X-Forwarded-Uri
+        description: Path Caddy is about to serve, e.g. /inbox/x.mp4
+      - name: X-Forwarded-Method
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Forwarded-Method
+      responses:
+        '204':
+          description: 'Allowed: Caddy serves the file'
+          headers:
+            X-Worker-Id:
+              description: Id of the authenticated worker (for Caddy's access log)
+              schema:
+                type: string
+        '401':
+          description: Missing or wrong credentials (unauthenticated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated but not allowed (forbidden)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /jobs/{job_id}/failed:
+    post:
+      tags:
+      - worker loop
+      summary: Report an unrecoverable task error (a reviewer decides retry or discard)
+      description: "Ends the lease named in the body (409 `lease_lost` if it is gone).\n\n* Under a `process`\
+        \ lease: job claimed → failed, `Job.failure` set; the\n  review UI shows the message and offers\
+        \ retry or discard.\n* Under a `download_raw`/`make_proxy` lease: the job keeps its state\n  (design\
+        \ §4 allows `failed` only from `claimed`), `Job.failure` and\n  `waiting_reason` are set, and\
+        \ that task is not offered to the same\n  worker for that job again."
+      operationId: report_failure_jobs__job_id__failed_post
       security:
       - workerBearer: []
       parameters:
@@ -510,29 +609,25 @@ paths:
         schema:
           type: string
           title: Job Id
-      - name: Range
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Range
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FailedRequest'
       responses:
         '200':
-          description: The whole file
+          description: Successful Response
           content:
-            application/octet-stream:
+            application/json:
               schema:
-                type: string
-                format: binary
-        '206':
-          description: The requested byte range (see Content-Range)
+                $ref: '#/components/schemas/JobStateResponse'
+        '400':
+          description: Malformed request (validation_error)
           content:
-            application/octet-stream:
+            application/json:
               schema:
-                type: string
-                format: binary
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or wrong credentials (unauthenticated)
           content:
@@ -545,8 +640,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '416':
-          description: Range Not Satisfiable
+        '409':
+          description: Conflicts with the current state (see error.code)
           content:
             application/json:
               schema:
@@ -1044,10 +1139,13 @@ paths:
       description: "* `expected_version` ≠ current → 409 `version_conflict` (reload and retry).\n* `action:\
         \ ready` from awaiting_review → ready.\n* `action: reprocess` from claimed/uploaded/delivered/done\
         \ → ready; any\n  process lease is revoked (the worker sees `lost` on its next heartbeat).\n*\
-        \ Other state/action combinations → 409 `illegal_transition`.\n* ready/reprocess with prova, car_number,\
-        \ passagem or a cut missing → 422\n  `missing_review_fields` (details.missing lists them).\n*\
-        \ `team_name` is resolved from car_number when it changes.\n* cut_out_s beyond the known duration\
-        \ → 422 `validation_error`."
+        \ `action: discard` from awaiting_review/ready/failed → discarded (final):\n  leases revoked,\
+        \ the VPS inbox copy deleted, and holders get the job in\n  `deletable_job_ids` on their next\
+        \ heartbeat. Fields are not required.\n* `action: retry` from failed → ready; clears `Job.failure`.\
+        \ Fields and\n  cuts may be corrected in the same request.\n* Other state/action combinations\
+        \ → 409 `illegal_transition`.\n* ready/reprocess with prova, car_number, passagem or a cut missing\
+        \ → 422\n  `missing_review_fields` (details.missing lists them).\n* `team_name` is resolved from\
+        \ car_number when it changes.\n* cut_out_s beyond the known duration → 422 `validation_error`."
       operationId: update_review_jobs__job_id__review_patch
       security:
       - reviewerBasic: []
@@ -1231,75 +1329,6 @@ paths:
                 $ref: '#/components/schemas/ManifestResponse'
         '401':
           description: Missing or wrong credentials (unauthenticated)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /outbox/{job_id}:
-    get:
-      tags:
-      - delivery
-      summary: Studio pulls a clip from the VPS outbox (supports Range)
-      description: Studio role only.
-      operationId: outbox_download_outbox__job_id__get
-      security:
-      - workerBearer: []
-      parameters:
-      - name: job_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Job Id
-      - name: Range
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Range
-      responses:
-        '200':
-          description: The whole file
-          content:
-            video/mp4:
-              schema:
-                type: string
-                format: binary
-        '206':
-          description: The requested byte range (see Content-Range)
-          content:
-            video/mp4:
-              schema:
-                type: string
-                format: binary
-        '401':
-          description: Missing or wrong credentials (unauthenticated)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: Authenticated but not allowed (forbidden)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: No such job / worker / team (not_found)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '416':
-          description: Range Not Satisfiable
           content:
             application/json:
               schema:
@@ -1535,9 +1564,9 @@ components:
         job_id:
           type: string
           title: Job Id
-        outbox_url:
+        download_url:
           type: string
-          title: Outbox Url
+          title: Download Url
         sha256:
           type: string
           pattern: ^[0-9a-f]{64}$
@@ -1553,7 +1582,7 @@ components:
       type: object
       required:
       - job_id
-      - outbox_url
+      - download_url
       - sha256
       - size_bytes
       - clip_relative_path
@@ -1604,20 +1633,30 @@ components:
           type: integer
           minimum: 0.0
           title: Size Bytes
-        sources:
+        download_url:
+          type: string
+          title: Download Url
+        fallback_download_urls:
           items:
-            $ref: '#/components/schemas/RawSource'
+            type: string
           type: array
-          minItems: 1
-          title: Sources
+          title: Fallback Download Urls
       additionalProperties: false
       type: object
       required:
       - job_id
       - sha256
       - size_bytes
-      - sources
+      - download_url
       title: DownloadRawTask
+      description: 'Fetch a raw and become one of its holders.
+
+
+        Every URL is absolute and ready to GET with Range. The VPS inbox is
+
+        "http://<vps tailscale ip>:8080/inbox/<name>" (Caddy, send your bearer
+
+        token); a peer is "http://<peer tailscale ip>:8710/raw/<job_id>".'
     EnrollRequest:
       properties:
         enrollment_token:
@@ -1742,6 +1781,7 @@ components:
       - version_conflict
       - no_holder_online
       - inbox_full
+      - rate_limited
       - upstream_error
       - dev_mode_disabled
       title: ErrorCode
@@ -1773,6 +1813,34 @@ components:
           - type: string
           - type: 'null'
           title: Url
+        directPath:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Directpath
+        mediaKey:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Mediakey
+        fileEncSha256:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Fileencsha256
+        fileSha256:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Filesha256
+        fileLength:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Filelength
         mimetype:
           anyOf:
           - type: string
@@ -1783,11 +1851,6 @@ components:
           - type: string
           - type: 'null'
           title: Filename
-        fileLength:
-          anyOf:
-          - type: integer
-          - type: 'null'
-          title: Filelength
         caption:
           anyOf:
           - type: string
@@ -1811,11 +1874,6 @@ components:
           anyOf:
           - $ref: '#/components/schemas/EvolutionDocumentWithCaption'
           - type: 'null'
-        mediaUrl:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Mediaurl
       additionalProperties: true
       type: object
       title: EvolutionMessage
@@ -1887,6 +1945,35 @@ components:
       - data
       title: EvolutionWebhook
       description: Body of POST /intake/evolution-webhook.
+    FailedRequest:
+      properties:
+        lease_id:
+          type: string
+          title: Lease Id
+        message:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Message
+        exit_code:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Exit Code
+      additionalProperties: false
+      type: object
+      required:
+      - lease_id
+      - message
+      title: FailedRequest
+      description: 'POST /jobs/{id}/failed: "this task cannot succeed, a human must decide".
+
+
+        Only for errors that retrying on the same input will not fix (corrupt
+
+        raw, ffmpeg exits with an error). Network trouble is not a failure:
+
+        retry it, or let the lease expire.'
     FleetResponse:
       properties:
         workers:
@@ -1972,6 +2059,13 @@ components:
             minimum: 1.0
           - type: 'null'
           title: File Server Port
+        receiver_port:
+          anyOf:
+          - type: integer
+            maximum: 65535.0
+            minimum: 1.0
+          - type: 'null'
+          title: Receiver Port
         current_lease_ids:
           items:
             type: string
@@ -2007,6 +2101,11 @@ components:
         accepting_new_raws:
           type: boolean
           title: Accepting New Raws
+        deletable_job_ids:
+          items:
+            type: string
+          type: array
+          title: Deletable Job Ids
       additionalProperties: false
       type: object
       required:
@@ -2097,6 +2196,15 @@ components:
           - type: string
           - type: 'null'
           title: Job Id
+        message_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message Id
+        accepted:
+          type: boolean
+          title: Accepted
+          default: false
         ignored:
           type: boolean
           title: Ignored
@@ -2122,9 +2230,15 @@ components:
       description: 'Answer to the Evolution webhook and to the dev test upload.
 
 
-        Always 200 for messages we understood, even when ignored, so Evolution
+        The webhook answers fast and downloads in the background (design §15):
 
-        does not retry them forever.'
+        202 with accepted=true and job_id=None; the job appears once the media
+
+        is downloaded, decrypted and verified. Ignored and duplicate messages
+
+        get 200, so Evolution does not retry them. The test upload is
+
+        synchronous and returns the new job_id straight away.'
     IntakeSource:
       properties:
         message_id:
@@ -2287,6 +2401,10 @@ components:
           anyOf:
           - $ref: '#/components/schemas/ClipInfo'
           - type: 'null'
+        failure:
+          anyOf:
+          - $ref: '#/components/schemas/JobFailure'
+          - type: 'null'
         waiting_reason:
           anyOf:
           - type: string
@@ -2302,6 +2420,34 @@ components:
       - size_bytes
       title: Job
       description: Full job record, as returned by GET /jobs/{id}.
+    JobFailure:
+      properties:
+        worker_id:
+          type: string
+          title: Worker Id
+        task_kind:
+          $ref: '#/components/schemas/TaskKind'
+        message:
+          type: string
+          title: Message
+        exit_code:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Exit Code
+        failed_at:
+          type: string
+          format: date-time
+          title: Failed At
+      additionalProperties: false
+      type: object
+      required:
+      - worker_id
+      - task_kind
+      - message
+      - failed_at
+      title: JobFailure
+      description: The last unrecoverable error a worker reported (POST /jobs/{id}/failed).
     JobState:
       type: string
       enum:
@@ -2313,6 +2459,8 @@ components:
       - uploaded
       - delivered
       - done
+      - discarded
+      - failed
       title: JobState
       description: 'Where a job is in its life (design §4). Order of the happy path:
 
@@ -2403,6 +2551,11 @@ components:
           - type: string
           - type: 'null'
           title: Waiting Reason
+        failure_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failure Message
       additionalProperties: false
       type: object
       required:
@@ -2421,6 +2574,7 @@ components:
       - car_number
       - passagem
       - waiting_reason
+      - failure_message
       title: JobSummary
       description: The slice of a Job shown in lists (review queue, fleet view).
     Lease:
@@ -2700,6 +2854,11 @@ components:
           - type: integer
           - type: 'null'
           title: File Server Port
+        receiver_port:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Receiver Port
         online:
           type: boolean
           title: Online
@@ -2717,6 +2876,7 @@ components:
       - role
       - tailnet_address
       - file_server_port
+      - receiver_port
       - online
       - last_heartbeat
       title: Peer
@@ -2805,31 +2965,6 @@ components:
       - clip_relative_path
       - outbox_upload_url
       title: ProcessTask
-    RawSource:
-      properties:
-        kind:
-          $ref: '#/components/schemas/RawSourceKind'
-        url:
-          type: string
-          title: Url
-        worker_id:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Worker Id
-      additionalProperties: false
-      type: object
-      required:
-      - kind
-      - url
-      title: RawSource
-      description: One place the raw can be downloaded from, in order of preference.
-    RawSourceKind:
-      type: string
-      enum:
-      - vps
-      - peer
-      title: RawSourceKind
     ReceivedAs:
       type: string
       enum:
@@ -2863,6 +2998,8 @@ components:
       - save
       - ready
       - reprocess
+      - discard
+      - retry
       title: ReviewAction
       description: What a PATCH /jobs/{id}/review should do besides storing the fields.
     ReviewQueueResponse:
@@ -2944,6 +3081,10 @@ components:
           type: integer
           minimum: 0.0
           title: Inbox Bytes
+        inbox_hold_bytes:
+          type: integer
+          minimum: 0.0
+          title: Inbox Hold Bytes
         inbox_cap_bytes:
           type: integer
           minimum: 0.0
@@ -2964,6 +3105,7 @@ components:
       type: object
       required:
       - inbox_bytes
+      - inbox_hold_bytes
       - inbox_cap_bytes
       - proxy_bytes
       - outbox_bytes
@@ -3063,6 +3205,13 @@ components:
             minimum: 1.0
           - type: 'null'
           title: File Server Port
+        receiver_port:
+          anyOf:
+          - type: integer
+            maximum: 65535.0
+            minimum: 1.0
+          - type: 'null'
+          title: Receiver Port
         enrolled_at:
           type: string
           format: date-time
@@ -3171,5 +3320,6 @@ components:
       scheme: bearer
     reviewerBasic:
       type: http
-      description: Reviewer username and password (configured on the orchestrator).
+      description: Reviewer username and password, checked against the bcrypt hashes in BVP_REVIEWERS_FILE
+        (the same file Caddy imports). See docs/api.md.
       scheme: basic

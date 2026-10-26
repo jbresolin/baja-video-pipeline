@@ -7,6 +7,7 @@ from shared.models import (
     ClaimRequest,
     ClaimResponse,
     DeliveredRequest,
+    FailedRequest,
     HeartbeatRequest,
     HeartbeatResponse,
     HolderConfirmRequest,
@@ -19,7 +20,6 @@ from shared.models import (
     PeersResponse,
 )
 from tools.openapi_contract.auth import (
-    binary_file_responses,
     error_responses,
     not_implemented,
     octet_stream_body,
@@ -41,7 +41,8 @@ _CHUNK_BODY = octet_stream_body(
     responses=error_responses(400, 401, 403),
 )
 def heartbeat(worker_id: str, body: HeartbeatRequest) -> HeartbeatResponse:
-    """`worker_id` must be the caller's own id (else 403)."""
+    """`worker_id` must be the caller's own id (else 403). The answer's
+    `deletable_job_ids` lists held raws of discarded jobs."""
     not_implemented()
 
 
@@ -58,6 +59,10 @@ def next_task(worker_id: str, body: NextTaskRequest) -> NextTaskResponse:
     Never offers `download_raw` to a studio or to a worker that is not
     accepting new raws; never offers `make_proxy`/`process` to a worker
     that is not a confirmed holder; only offers `deliver` to studios.
+    Offers that move bytes carry an absolute `download_url`: Caddy's
+    tailnet listener (`http://<vps tailscale ip>:8080/inbox/<name>` or
+    `/outbox/<name>`, send your bearer token) or a peer's file server
+    (`http://<peer tailscale ip>:8710/raw/<job_id>`, no token).
     """
     not_implemented()
 
@@ -100,18 +105,60 @@ def renew_lease(job_id: str, body: LeaseRenewRequest) -> LeaseRenewResponse:
 
 
 @router.get(
-    "/jobs/{job_id}/raw",
+    "/auth/file",
     tags=["worker loop"],
-    summary="Download the raw from the VPS inbox (supports Range)",
+    summary="Caddy forward_auth target for /inbox/* and /outbox/* on the tailnet listener",
+    status_code=204,
     response_class=Response,
     responses={
-        **binary_file_responses("application/octet-stream"),
-        **error_responses(401, 404, 416),
+        204: {
+            "description": "Allowed: Caddy serves the file",
+            "headers": {
+                "X-Worker-Id": {
+                    "description": "Id of the authenticated worker (for Caddy's access log)",
+                    "schema": {"type": "string"},
+                }
+            },
+        },
+        **error_responses(401, 403),
     },
 )
-def download_raw(job_id: str, range_header: str | None = Header(None, alias="Range")) -> Response:
-    """404 once two holders confirmed and the VPS deleted its copy; fetch
-    from a peer then (download_raw task `sources`)."""
+def authorize_file(
+    forwarded_uri: str = Header(
+        ..., alias="X-Forwarded-Uri", description="Path Caddy is about to serve, e.g. /inbox/x.mp4"
+    ),
+    forwarded_method: str | None = Header(None, alias="X-Forwarded-Method"),
+) -> Response:
+    """Caddy calls this (forward_auth) before serving a file, copying the
+    worker's `Authorization: Bearer` header. 2xx allows; anything else is
+    passed back to the worker as the answer.
+
+    * `/inbox/<job_id>.<ext>` → allowed while the caller holds a
+      download_raw lease for that job (or is the master backfilling).
+    * `/outbox/<job_id>.mp4` → allowed for studio workers only.
+    * Missing/unknown bearer → 401. Other paths, dot-files, `..`, other
+      workers' jobs, methods other than GET/HEAD → 403.
+    """
+    not_implemented()
+
+
+@router.post(
+    "/jobs/{job_id}/failed",
+    tags=["worker loop"],
+    summary="Report an unrecoverable task error (a reviewer decides retry or discard)",
+    response_model=JobStateResponse,
+    responses=error_responses(400, 401, 404, 409),
+)
+def report_failure(job_id: str, body: FailedRequest) -> JobStateResponse:
+    """Ends the lease named in the body (409 `lease_lost` if it is gone).
+
+    * Under a `process` lease: job claimed → failed, `Job.failure` set; the
+      review UI shows the message and offers retry or discard.
+    * Under a `download_raw`/`make_proxy` lease: the job keeps its state
+      (design §4 allows `failed` only from `claimed`), `Job.failure` and
+      `waiting_reason` are set, and that task is not offered to the same
+      worker for that job again.
+    """
     not_implemented()
 
 

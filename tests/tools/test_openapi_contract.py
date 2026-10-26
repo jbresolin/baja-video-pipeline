@@ -27,7 +27,8 @@ REQUIRED_ENDPOINTS = {
     ("get", "/workers"),
     ("post", "/jobs/{job_id}/claim"),
     ("post", "/jobs/{job_id}/lease/renew"),
-    ("get", "/jobs/{job_id}/raw"),
+    ("post", "/jobs/{job_id}/failed"),
+    ("get", "/auth/file"),
     ("post", "/jobs/{job_id}/holder-confirm"),
     ("post", "/jobs/{job_id}/proxy"),
     ("put", "/jobs/{job_id}/thumbnail"),
@@ -41,7 +42,6 @@ REQUIRED_ENDPOINTS = {
     ("get", "/teams/{car_number}"),
     # Delivery
     ("get", "/manifest"),
-    ("get", "/outbox/{job_id}"),
     ("post", "/outbox/{job_id}/ack"),
     # Fleet
     ("get", "/fleet"),
@@ -109,3 +109,43 @@ def test_error_responses_use_the_standard_error_shape():
     claim = load_committed_contract()["paths"]["/jobs/{job_id}/claim"]["post"]
     schema_ref = claim["responses"]["409"]["content"]["application/json"]["schema"]["$ref"]
     assert schema_ref.endswith("/ErrorResponse")
+
+
+def test_orchestrator_serves_no_raw_or_outbox_bytes():
+    # Design §15: Caddy serves /inbox/* and /outbox/* itself; the
+    # orchestrator only answers Caddy's "may this worker have it?" question.
+    paths = load_committed_contract()["paths"]
+    assert "/jobs/{job_id}/raw" not in paths
+    assert "get" not in paths.get("/outbox/{job_id}", {})
+    forward_auth = paths["/auth/file"]["get"]
+    header_names = {p["name"] for p in forward_auth["parameters"] if p["in"] == "header"}
+    assert "X-Forwarded-Uri" in header_names
+    # 2xx allows, 401/403 deny: Caddy relies on exactly these answers.
+    assert {"204", "401", "403"} <= set(forward_auth["responses"])
+    assert forward_auth["security"] == [{"workerBearer": []}]
+
+
+def test_enroll_documents_its_rate_limit():
+    # /enroll is public, so the contract must say it can answer 429 with
+    # a Retry-After header telling the worker how long to wait.
+    enroll = load_committed_contract()["paths"]["/enroll"]["post"]
+    too_many = enroll["responses"]["429"]
+    assert "Retry-After" in too_many["headers"]
+    assert "10 requests per source IP per 600 s" in enroll["description"]
+
+
+def test_webhook_route_and_secret_header_are_exactly_what_caddy_routes():
+    # The VPS Caddyfile forwards exactly this path; it must not drift.
+    webhook = load_committed_contract()["paths"]["/intake/evolution-webhook"]["post"]
+    assert webhook["security"] == [{"webhookSecret": []}]
+    scheme = load_committed_contract()["components"]["securitySchemes"]["webhookSecret"]
+    assert (scheme["in"], scheme["name"]) == ("header", "X-Webhook-Secret")
+    # 202 = accepted for background download; 200 = ignored or duplicate.
+    assert {"200", "202"} <= set(webhook["responses"])
+
+
+def test_failed_endpoint_takes_a_message_and_needs_a_worker():
+    failed = load_committed_contract()["paths"]["/jobs/{job_id}/failed"]["post"]
+    assert failed["security"] == [{"workerBearer": []}]
+    body_ref = failed["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+    assert body_ref.endswith("/FailedRequest")
