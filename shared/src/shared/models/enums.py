@@ -33,6 +33,12 @@ class JobState(StrEnum):
     DELIVERED = "delivered"
     # Cleanup after delivery finished (outbox copy deleted). Nothing left to do.
     DONE = "done"
+    # A reviewer dropped a junk or accidental video. Final: nothing more
+    # happens, and holders may delete their copy of the raw.
+    DISCARDED = "discarded"
+    # A worker reported an unrecoverable error while processing (corrupt
+    # file, ffmpeg exit). Waits for a reviewer to choose retry or discard.
+    FAILED = "failed"
 
 
 class WorkerRole(StrEnum):
@@ -84,6 +90,10 @@ class ReviewAction(StrEnum):
     READY = "ready"
     # Store and send an already processed job back to ready (cut changed).
     REPROCESS = "reprocess"
+    # Drop the job (awaiting_review, ready or failed → discarded).
+    DISCARD = "discard"
+    # Try again after a worker failure (failed → ready).
+    RETRY = "retry"
 
 
 class DeliveryRoute(StrEnum):
@@ -107,10 +117,3 @@ class LeaseHeartbeatStatus(StrEnum):
     # The lease no longer exists (expired, or a reviewer changed the job).
     # The worker must stop that task and throw away its partial output.
     LOST = "lost"
-
-
-class RawSourceKind(StrEnum):
-    # The VPS inbox (GET /jobs/{id}/raw).
-    VPS = "vps"
-    # Another worker's file server over the tailnet (GET /raw/{id}).
-    PEER = "peer"

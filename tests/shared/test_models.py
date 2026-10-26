@@ -12,17 +12,20 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from shared.models import (
+    DeliverTask,
     DownloadRawTask,
     ErrorResponse,
+    FailedRequest,
     HeartbeatRequest,
+    HeartbeatResponse,
     IntakeSource,
     Job,
+    JobFailure,
     JobState,
     JobSummary,
     Lease,
     NextTaskResponse,
     ProcessTask,
-    RawSource,
     ReceivedAs,
     ReviewAction,
     ReviewUpdate,
@@ -122,11 +125,13 @@ def test_task_union_picks_the_model_from_the_kind_field():
         "job_id": "job-1",
         "sha256": GOOD_SHA,
         "size_bytes": 10,
-        "sources": [{"kind": "vps", "url": "http://vps/jobs/job-1/raw"}],
+        "download_url": "http://100.64.0.1:8080/inbox/job-1.mp4",
     }
     task = TypeAdapter(Task).validate_python(data)
     assert isinstance(task, DownloadRawTask)
-    assert task.sources[0].url.endswith("/raw")
+    assert task.download_url.endswith("/inbox/job-1.mp4")
+    # No peers listed → an empty fallback list, not None.
+    assert task.fallback_download_urls == []
 
 
 def test_next_task_response_can_be_empty_or_hold_a_task():
@@ -156,10 +161,57 @@ def test_next_task_response_can_be_empty_or_hold_a_task():
     assert round_tripped.task.kind == TaskKind.PROCESS
 
 
-def test_download_task_needs_at_least_one_source():
+def test_tasks_that_fetch_bytes_must_carry_a_download_url():
+    # Design §15: offers carry the absolute URL to fetch (Caddy's tailnet
+    # listener for the inbox/outbox, or a peer's file server). Leaving it
+    # out must be a validation error, not a task the worker cannot do.
     with pytest.raises(ValidationError):
-        DownloadRawTask(job_id="j", sha256=GOOD_SHA, size_bytes=1, sources=[])
-    assert RawSource(kind="peer", url="http://peer:8770/raw/j", worker_id="w2").worker_id == "w2"
+        DownloadRawTask(job_id="j", sha256=GOOD_SHA, size_bytes=1)
+    with pytest.raises(ValidationError):
+        DeliverTask(job_id="j", sha256=GOOD_SHA, size_bytes=1, clip_relative_path="a/1/1.mp4")
+    task = DownloadRawTask(
+        job_id="j",
+        sha256=GOOD_SHA,
+        size_bytes=1,
+        download_url="http://100.64.0.1:8080/inbox/j.mp4",
+        fallback_download_urls=["http://100.64.0.7:8710/raw/j"],
+    )
+    assert task.fallback_download_urls[0].endswith(":8710/raw/j")
+
+
+def test_failed_job_carries_the_workers_message_into_the_summary():
+    # The review queue shows why a job failed; the message travels from
+    # Job.failure into the summary the UI lists.
+    failure = JobFailure(
+        worker_id="w1",
+        task_kind=TaskKind.PROCESS,
+        message="ffmpeg: moov atom not found",
+        exit_code=1,
+        failed_at=utc_now(),
+    )
+    job = make_job(state=JobState.FAILED, failure=failure)
+    assert JobSummary.from_job(job).failure_message == "ffmpeg: moov atom not found"
+    # A healthy job has no message.
+    assert JobSummary.from_job(make_job()).failure_message is None
+
+
+def test_failed_request_needs_a_message():
+    # An empty message would leave the reviewer guessing; refuse it.
+    with pytest.raises(ValidationError):
+        FailedRequest(lease_id="l1", message="")
+    assert FailedRequest(lease_id="l1", message="corrupt file").exit_code is None
+
+
+def test_review_actions_include_discard_and_retry():
+    assert ReviewUpdate(expected_version=3, action="discard").action == ReviewAction.DISCARD
+    assert ReviewUpdate(expected_version=3, action="retry").action == ReviewAction.RETRY
+
+
+def test_heartbeat_answer_lists_raws_the_worker_may_delete():
+    # After a discard, holders learn through their heartbeat which held
+    # raws they may delete. By default the list is empty.
+    answer = HeartbeatResponse(heartbeat_interval_s=15, accepting_new_raws=True)
+    assert answer.deletable_job_ids == []
 
 
 def test_heartbeat_defaults_to_empty_lists():

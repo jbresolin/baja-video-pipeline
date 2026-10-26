@@ -24,6 +24,8 @@ class HeartbeatRequest(ApiModel):
     storage_cap_bytes: ByteCount
     tailnet_address: str | None = None
     file_server_port: int | None = Field(default=None, ge=1, le=65535)
+    # Studio only: port of the clip receiver (POST /receive/{job_id}).
+    receiver_port: int | None = Field(default=None, ge=1, le=65535)
     # Leases the worker is still working under. Listing one here renews it.
     current_lease_ids: list[str] = Field(default_factory=list)
     # Jobs whose raw is on this worker's disk, so the orchestrator can
@@ -40,6 +42,9 @@ class HeartbeatResponse(ApiModel):
     # False when the worker is near its storage cap: it will not be offered
     # new download_raw tasks but keeps processing what it holds (design §9).
     accepting_new_raws: bool
+    # Jobs from held_job_ids that were discarded: the worker may delete
+    # its copy of their raw (design §4). Never lists a job still in use.
+    deletable_job_ids: list[str] = Field(default_factory=list)
 
 
 class LeaseRenewRequest(ApiModel):
@@ -76,6 +81,21 @@ class ChunkAccepted(ApiModel):
     complete: bool
 
 
+class FailedRequest(ApiModel):
+    """POST /jobs/{id}/failed: "this task cannot succeed, a human must decide".
+
+    Only for errors that retrying on the same input will not fix (corrupt
+    raw, ffmpeg exits with an error). Network trouble is not a failure:
+    retry it, or let the lease expire.
+    """
+
+    lease_id: str
+    # Shown to the reviewer as-is: say what failed, e.g. ffmpeg's last lines.
+    message: str = Field(min_length=1, max_length=4000)
+    # The failing program's exit code, when there is one.
+    exit_code: int | None = None
+
+
 class DeliveredRequest(ApiModel):
     """POST /jobs/{id}/delivered: studio ACK after a direct push from a worker."""
 
@@ -107,6 +127,8 @@ class Peer(ApiModel):
     role: WorkerRole
     tailnet_address: str | None
     file_server_port: int | None
+    # Set for studios only: where workers push finished clips.
+    receiver_port: int | None
     online: bool
     last_heartbeat: datetime | None
 

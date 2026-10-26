@@ -34,6 +34,7 @@ from shared.models.api_review import (
 from shared.models.api_worker_loop import (
     ChunkAccepted,
     DeliveredRequest,
+    FailedRequest,
     HeartbeatRequest,
     HeartbeatResponse,
     HolderConfirmRequest,
@@ -53,14 +54,21 @@ from shared.models.enums import (
     JobState,
     LeaseHeartbeatStatus,
     MeasurementKind,
-    RawSourceKind,
     ReceivedAs,
     ReviewAction,
     TaskKind,
     WorkerRole,
 )
 from shared.models.evolution import EvolutionWebhook, IncomingMedia, find_incoming_video
-from shared.models.job import ClipInfo, Holder, IntakeSource, Job, JobSummary, Lease
+from shared.models.job import (
+    ClipInfo,
+    Holder,
+    IntakeSource,
+    Job,
+    JobFailure,
+    JobSummary,
+    Lease,
+)
 from shared.models.tasks import (
     ClaimRequest,
     ClaimResponse,
@@ -70,7 +78,6 @@ from shared.models.tasks import (
     NextTaskRequest,
     NextTaskResponse,
     ProcessTask,
-    RawSource,
     Task,
 )
 from shared.models.worker import EnrollmentToken, Worker, WorkerCapabilities, WorkerStats
@@ -83,6 +90,8 @@ __all__ = [
     "CreateEnrollmentTokenRequest",
     "DeliverTask",
     "DeliveredRequest",
+    "FailedRequest",
+    "JobFailure",
     "DeliveryRoute",
     "DownloadRawTask",
     "EnrollRequest",
@@ -123,8 +132,6 @@ __all__ = [
     "Peer",
     "PeersResponse",
     "ProcessTask",
-    "RawSource",
-    "RawSourceKind",
     "ReceivedAs",
     "RegenerateProxyResponse",
     "ReviewAction",

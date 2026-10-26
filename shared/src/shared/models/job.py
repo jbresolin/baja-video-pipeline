@@ -79,6 +79,17 @@ class ClipInfo(ApiModel):
     delivered_at: datetime | None = None
 
 
+class JobFailure(ApiModel):
+    """The last unrecoverable error a worker reported (POST /jobs/{id}/failed)."""
+
+    worker_id: str
+    task_kind: TaskKind
+    # The worker's own words, e.g. the last lines of ffmpeg's error output.
+    message: str
+    exit_code: int | None = None
+    failed_at: datetime
+
+
 class Job(ApiModel):
     """Full job record, as returned by GET /jobs/{id}."""
 
@@ -100,7 +111,8 @@ class Job(ApiModel):
     # Filled in by the first holder (ffprobe) when it confirms the download.
     duration_s: Seconds | None = None
     has_audio: bool | None = None
-    # True while the VPS inbox still has a copy (until two holders confirm).
+    # True while the VPS inbox still has a copy (until two holders confirm,
+    # or the job is discarded).
     raw_on_vps: bool = True
     holders: list[Holder] = Field(default_factory=list)
     # Active leases on this job (several download_raw leases can coexist).
@@ -126,6 +138,9 @@ class Job(ApiModel):
 
     # --- Output ---
     clip: ClipInfo | None = None
+    # Set when a worker reported a failure; shown to the reviewer, who then
+    # chooses retry or discard. Cleared by "retry".
+    failure: JobFailure | None = None
     # Human-readable reason the job is stuck, shown in the review UI,
     # e.g. "waiting for a holder to come back online". None when not stuck.
     waiting_reason: str | None = None
@@ -154,6 +169,8 @@ class JobSummary(ApiModel):
     car_number: CarNumber | None
     passagem: PassNumber | None
     waiting_reason: str | None
+    # The worker's error message when state is "failed", else None.
+    failure_message: str | None
 
     @classmethod
     def from_job(cls, job: Job) -> "JobSummary":
@@ -173,4 +190,5 @@ class JobSummary(ApiModel):
             car_number=job.car_number,
             passagem=job.passagem,
             waiting_reason=job.waiting_reason,
+            failure_message=job.failure.message if job.failure else None,
         )

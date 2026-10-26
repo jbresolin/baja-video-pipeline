@@ -13,10 +13,22 @@ ALLOWED_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
     JobState.RECEIVED: frozenset({JobState.PROXY_READY}),
     # The orchestrator puts the job in the review queue.
     JobState.PROXY_READY: frozenset({JobState.AWAITING_REVIEW}),
-    # A reviewer saved the cut and fields with action "ready".
-    JobState.AWAITING_REVIEW: frozenset({JobState.READY}),
-    # A holder claimed processing under a lease.
-    JobState.READY: frozenset({JobState.CLAIMED}),
+    JobState.AWAITING_REVIEW: frozenset(
+        {
+            # A reviewer saved the cut and fields with action "ready".
+            JobState.READY,
+            # A reviewer dropped a junk or accidental video.
+            JobState.DISCARDED,
+        }
+    ),
+    JobState.READY: frozenset(
+        {
+            # A holder claimed processing under a lease.
+            JobState.CLAIMED,
+            # A reviewer dropped it before anyone processed it.
+            JobState.DISCARDED,
+        }
+    ),
     JobState.CLAIMED: frozenset(
         {
             # The clip was uploaded to the outbox, or pushed to the studio.
@@ -24,8 +36,20 @@ ALLOWED_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
             # The lease expired or was revoked, or a reviewer changed the cut:
             # the job goes back to the queue to be (re)processed.
             JobState.READY,
+            # The worker reported an unrecoverable error (POST /jobs/{id}/failed).
+            JobState.FAILED,
         }
     ),
+    JobState.FAILED: frozenset(
+        {
+            # A reviewer chose "retry".
+            JobState.READY,
+            # A reviewer chose "discard".
+            JobState.DISCARDED,
+        }
+    ),
+    # Final: a discarded job never comes back.
+    JobState.DISCARDED: frozenset(),
     JobState.UPLOADED: frozenset(
         {
             # The studio acknowledged a verified copy.
@@ -51,6 +75,14 @@ REPROCESSABLE_STATES: frozenset[JobState] = frozenset(
     {JobState.CLAIMED, JobState.UPLOADED, JobState.DELIVERED, JobState.DONE}
 )
 
+# States from which a reviewer's "discard" action is accepted (design §4).
+DISCARDABLE_STATES: frozenset[JobState] = frozenset(
+    {JobState.AWAITING_REVIEW, JobState.READY, JobState.FAILED}
+)
+
+# States from which a reviewer's "retry" action is accepted.
+RETRYABLE_STATES: frozenset[JobState] = frozenset({JobState.FAILED})
+
 
 class IllegalTransitionError(ValueError):
     """Raised when code tries to move a job to a state it may not reach."""
@@ -59,9 +91,10 @@ class IllegalTransitionError(ValueError):
         self.current = current
         self.requested = requested
         allowed = sorted(state.value for state in ALLOWED_TRANSITIONS[current])
+        allowed_text = ", ".join(allowed) if allowed else "nothing (it is a final state)"
         super().__init__(
             f"job cannot go from '{current.value}' to '{requested.value}'; "
-            f"from '{current.value}' it may only go to: {', '.join(allowed)}"
+            f"from '{current.value}' it may only go to: {allowed_text}"
         )
 
 

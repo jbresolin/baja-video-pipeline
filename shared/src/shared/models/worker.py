@@ -48,7 +48,10 @@ class Worker(ApiModel):
     stats: WorkerStats = Field(default_factory=WorkerStats)
     # Tailscale IP or MagicDNS name, for peer raw fetches and studio pushes.
     tailnet_address: str | None = None
+    # Worker-hosted file server for peer raw fetches (default 8710).
     file_server_port: int | None = Field(default=None, ge=1, le=65535)
+    # Studio only: the clip receiver for direct pushes (default 8720).
+    receiver_port: int | None = Field(default=None, ge=1, le=65535)
     enrolled_at: datetime
     last_heartbeat: datetime | None = None
 

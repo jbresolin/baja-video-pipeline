@@ -58,6 +58,8 @@ class ErrorCode(StrEnum):
     NO_HOLDER_ONLINE = "no_holder_online"
     # 413 / 507
     INBOX_FULL = "inbox_full"
+    # 429 (POST /enroll, per source IP)
+    RATE_LIMITED = "rate_limited"
     # 502 / 503
     UPSTREAM_ERROR = "upstream_error"
     DEV_MODE_DISABLED = "dev_mode_disabled"

@@ -15,12 +15,19 @@ from shared.models.worker import Worker, WorkerCapabilities
 class IntakeResponse(ApiModel):
     """Answer to the Evolution webhook and to the dev test upload.
 
-    Always 200 for messages we understood, even when ignored, so Evolution
-    does not retry them forever.
+    The webhook answers fast and downloads in the background (design §15):
+    202 with accepted=true and job_id=None; the job appears once the media
+    is downloaded, decrypted and verified. Ignored and duplicate messages
+    get 200, so Evolution does not retry them. The test upload is
+    synchronous and returns the new job_id straight away.
     """
 
-    # None when the message was ignored (not a video, or a duplicate).
+    # The new job (test upload) or the existing one (duplicate); else None.
     job_id: str | None
+    # WhatsApp message id (data.key.id); None for test uploads.
+    message_id: str | None = None
+    # True when a background download of the media was started.
+    accepted: bool = False
     ignored: bool = False
     # Why it was ignored, e.g. "not a video document" or "duplicate message".
     reason: str | None = None
@@ -75,6 +82,9 @@ class ServerDisk(ApiModel):
     """Disk use on the VPS (design §10)."""
 
     inbox_bytes: ByteCount
+    # Soft limit (BVP_INBOX_HOLD_GB): above it the bot asks senders to hold.
+    inbox_hold_bytes: ByteCount
+    # Hard limit (BVP_INBOX_CAP_GB): above it intake refuses new media.
     inbox_cap_bytes: ByteCount
     proxy_bytes: ByteCount
     outbox_bytes: ByteCount

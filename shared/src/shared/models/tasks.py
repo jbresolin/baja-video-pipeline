@@ -1,7 +1,8 @@
 """Tasks handed to workers by POST /workers/{id}/next and POST /jobs/{id}/claim.
 
 The worker loop is: ask /next what to do → claim it (gets a lease) → do it
-→ report the result (holder-confirm, proxy upload, clip upload or ACK).
+→ report the result (holder-confirm, proxy upload, clip upload or ACK),
+or POST /jobs/{id}/failed if it cannot succeed.
 Each task kind is its own model; the `kind` field tells them apart.
 """
 
@@ -17,27 +18,26 @@ from shared.models.common import (
     Seconds,
     Sha256Hex,
 )
-from shared.models.enums import RawSourceKind, TaskKind
+from shared.models.enums import TaskKind
 from shared.models.job import Lease
 
 
-class RawSource(ApiModel):
-    """One place the raw can be downloaded from, in order of preference."""
-
-    kind: RawSourceKind
-    # Full URL. VPS: ".../jobs/{id}/raw". Peer: "http://<tailnet>:<port>/raw/{id}".
-    url: str
-    # Set when kind is "peer": which worker serves it.
-    worker_id: str | None = None
-
-
 class DownloadRawTask(ApiModel):
+    """Fetch a raw and become one of its holders.
+
+    Every URL is absolute and ready to GET with Range. The VPS inbox is
+    "http://<vps tailscale ip>:8080/inbox/<name>" (Caddy, send your bearer
+    token); a peer is "http://<peer tailscale ip>:8710/raw/<job_id>".
+    """
+
     kind: Literal[TaskKind.DOWNLOAD_RAW] = TaskKind.DOWNLOAD_RAW
     job_id: str
     sha256: Sha256Hex
     size_bytes: ByteCount
-    # Try these in order; move to the next one when a source fails.
-    sources: list[RawSource] = Field(min_length=1)
+    # Where to download from first (the VPS inbox while it still has the raw).
+    download_url: str
+    # Other holders' file servers, to try in order if download_url fails.
+    fallback_download_urls: list[str] = Field(default_factory=list)
 
 
 class MakeProxyTask(ApiModel):
@@ -73,7 +73,8 @@ class DeliverTask(ApiModel):
 
     kind: Literal[TaskKind.DELIVER] = TaskKind.DELIVER
     job_id: str
-    outbox_url: str
+    # "http://<vps tailscale ip>:8080/outbox/<job_id>.mp4" (Caddy; send your token).
+    download_url: str
     sha256: Sha256Hex
     size_bytes: ByteCount
     clip_relative_path: str

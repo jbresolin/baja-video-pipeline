@@ -11,7 +11,9 @@ import pytest
 from shared.models import JobState
 from shared.state_machine import (
     ALLOWED_TRANSITIONS,
+    DISCARDABLE_STATES,
     REPROCESSABLE_STATES,
+    RETRYABLE_STATES,
     IllegalTransitionError,
     is_transition_allowed,
     validate_transition,
@@ -35,6 +37,14 @@ LEGAL_TRANSITIONS = [
     (JobState.UPLOADED, JobState.READY),
     (JobState.DELIVERED, JobState.READY),
     (JobState.DONE, JobState.READY),
+    # A reviewer discards a junk video, before or after marking it ready.
+    (JobState.AWAITING_REVIEW, JobState.DISCARDED),
+    (JobState.READY, JobState.DISCARDED),
+    # A worker reports an unrecoverable processing error...
+    (JobState.CLAIMED, JobState.FAILED),
+    # ...and the reviewer then retries it or discards it.
+    (JobState.FAILED, JobState.READY),
+    (JobState.FAILED, JobState.DISCARDED),
 ]
 
 
@@ -82,6 +92,25 @@ ILLEGAL_TRANSITIONS = [
     (JobState.CLAIMED, JobState.DONE),
     # "Moving" to the state the job is already in.
     (JobState.READY, JobState.READY),
+    # Discarded is final: no retry, no review, nothing.
+    (JobState.DISCARDED, JobState.READY),
+    (JobState.DISCARDED, JobState.AWAITING_REVIEW),
+    (JobState.DISCARDED, JobState.FAILED),
+    # Discard is only for jobs a reviewer can see (awaiting_review, ready,
+    # failed); a job still without a proxy, or already processing or
+    # delivered, cannot be discarded.
+    (JobState.RECEIVED, JobState.DISCARDED),
+    (JobState.PROXY_READY, JobState.DISCARDED),
+    (JobState.CLAIMED, JobState.DISCARDED),
+    (JobState.DONE, JobState.DISCARDED),
+    # Only processing (claimed) can fail; a delivered clip cannot.
+    (JobState.RECEIVED, JobState.FAILED),
+    (JobState.READY, JobState.FAILED),
+    (JobState.UPLOADED, JobState.FAILED),
+    (JobState.DELIVERED, JobState.FAILED),
+    # A failed job goes back through "ready"; it is never claimed directly.
+    (JobState.FAILED, JobState.CLAIMED),
+    (JobState.FAILED, JobState.DONE),
 ]
 
 
@@ -121,3 +150,22 @@ def test_reprocessable_states_can_all_go_back_to_ready():
     # and then crash on the state change.
     for state in REPROCESSABLE_STATES:
         assert is_transition_allowed(state, JobState.READY), state
+
+
+def test_discardable_and_retryable_states_match_the_table():
+    # Same idea for the "discard" and "retry" review actions: the review
+    # endpoint checks these sets first, so every state in them must have
+    # the matching legal move, and no other state may have it.
+    discard_sources = {s for s in JobState if is_transition_allowed(s, JobState.DISCARDED)}
+    assert discard_sources == DISCARDABLE_STATES
+    assert {JobState.FAILED} == RETRYABLE_STATES
+    assert is_transition_allowed(JobState.FAILED, JobState.READY)
+
+
+def test_discarded_is_a_final_state_and_the_error_says_so():
+    # No move at all is allowed out of "discarded", and the error message
+    # explains that instead of ending with an empty list.
+    assert ALLOWED_TRANSITIONS[JobState.DISCARDED] == frozenset()
+    with pytest.raises(IllegalTransitionError) as caught:
+        validate_transition(JobState.DISCARDED, JobState.READY)
+    assert "final state" in str(caught.value)
