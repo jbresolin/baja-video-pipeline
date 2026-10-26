@@ -32,8 +32,9 @@ All of the above except TrueNAS are on a **Baja tailnet** (§8).
   which WhatsApp recompresses) by DM to the **Baja Bot** number. No group.
   Document limit ~2 GB.
 * The Baja Bot Evolution instance migrates from TrueNAS to the VPS
-  (LIVESTACK-30), Manager UI reachable behind Caddy auth or the tailnet;
-  BajaBot's n8n is repointed.
+  (LIVESTACK-30), Manager UI reachable behind Caddy auth or the tailnet.
+  BajaBot/n8n is dormant (all workflows disabled) and is not a consumer of
+  this instance; this pipeline is the only webhook consumer.
 * Evolution webhook → orchestrator saves the file to the inbox, computes
   SHA-256, creates the job.
 * A file that arrives as a recompressed *video* (not a document) is
@@ -221,8 +222,8 @@ PRs. Where a PR disagrees with this section, this section wins.
   implementation: Baileys `downloadContentFromMessage`.
 * **Evolution webhooks.** Instance webhook → orchestrator
   (`POST /intake/evolution-webhook`, header `X-Webhook-Secret`, reply 2xx
-  fast, download asynchronously); global webhook → n8n (BajaBot). Bot
-  replies via Evolution `sendText`. Image pinned `evoapicloud/evolution-api:v2.3.7`.
+  fast, download asynchronously). No global webhook; nothing else consumes
+  this instance. Bot replies via Evolution `sendText`. Image pinned `evoapicloud/evolution-api:v2.3.7`.
 * **File serving.** Caddy serves `/inbox/*` and `/outbox/*` on the tailnet
   listener with `forward_auth` to `GET /auth/file` on the orchestrator
   (bearer in `Authorization`, path in `X-Forwarded-Uri`; 2xx allows).
