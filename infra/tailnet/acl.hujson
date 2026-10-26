@@ -4,9 +4,10 @@
 // See infra/tailnet/README.md for the full runbook and the port table.
 //
 // Ports (the contract every component adopts):
-//   443   Caddy on the VPS (reverse-proxies the orchestrator on 8000, serves
-//         proxies/raws/outbox as static files)
-//   8000  orchestrator API on the VPS, bound to 127.0.0.1 (Caddy only; no grant)
+//   443   Caddy on the VPS, PUBLIC side: review UI, proxies, /enroll, Evolution
+//   8080  Caddy on the VPS, TAILNET side (published on the Tailscale IP only):
+//         worker/studio API + inbox/outbox static files, plain HTTP
+//   8000  orchestrator, inside the compose network only (Caddy talks to it)
 //   8710  worker file server (peer raw fetches between workers)
 //   8720  studio receiver (finished clips pushed to the streaming PC)
 //
@@ -36,12 +37,12 @@
 
 	// Grant syntax: https://tailscale.com/kb/1538/grants-syntax
 	"grants": [
-		// Workers → VPS: orchestrator API and static files, all through
-		// Caddy on 443.
+		// Workers → VPS: orchestrator API and inbox/outbox files, through
+		// Caddy's tailnet-side listener on 8080.
 		{
 			"src": ["tag:worker"],
 			"dst": ["tag:server"],
-			"ip":  ["tcp:443"],
+			"ip":  ["tcp:8080"],
 		},
 
 		// Workers ↔ workers: peer raw fetches from each other's file server.
@@ -59,11 +60,11 @@
 		},
 
 		// Studio → VPS: orchestrator API (heartbeats, clip manifest, ACKs)
-		// and the outbox fallback pull through Caddy.
+		// and the outbox fallback pull, through Caddy on 8080.
 		{
 			"src": ["tag:studio"],
 			"dst": ["tag:server"],
-			"ip":  ["tcp:443"],
+			"ip":  ["tcp:8080"],
 		},
 
 		// Admins' own (untagged) devices → VPS: SSH and the web UIs, for
@@ -71,7 +72,7 @@
 		{
 			"src": ["autogroup:admin"],
 			"dst": ["tag:server"],
-			"ip":  ["tcp:22", "tcp:443"],
+			"ip":  ["tcp:22", "tcp:443", "tcp:8080"],
 		},
 
 		// Intentionally absent: any grant with src tag:server. The VPS never
@@ -87,18 +88,18 @@
 		{
 			"src":    "tag:worker",
 			"proto":  "tcp",
-			"accept": ["tag:server:443", "tag:worker:8710", "tag:studio:8720"],
+			"accept": ["tag:server:8080", "tag:worker:8710", "tag:studio:8720"],
 			// ...and nothing else: no SSH to the VPS, no studio-only port on
 			// peers, no file-server port on the studio.
-			"deny":   ["tag:server:22", "tag:server:8000", "tag:worker:8720", "tag:studio:8710", "tag:worker:22"],
+			"deny":   ["tag:server:22", "tag:server:8000", "tag:server:443", "tag:worker:8720", "tag:studio:8710", "tag:worker:22"],
 		},
 
 		// The studio talks only to the VPS; it never reaches into workers.
 		{
 			"src":    "tag:studio",
 			"proto":  "tcp",
-			"accept": ["tag:server:443"],
-			"deny":   ["tag:server:8000", "tag:worker:8710", "tag:worker:8720", "tag:server:22"],
+			"accept": ["tag:server:8080"],
+			"deny":   ["tag:server:8000", "tag:server:443", "tag:worker:8710", "tag:worker:8720", "tag:server:22"],
 		},
 
 		// The VPS initiates nothing: no worker, studio or SSH access.

@@ -19,8 +19,9 @@ flows and nothing else (Tailscale denies everything by default).
 
 | Port | Host (tag) | Service | Who may connect |
 | --- | --- | --- | --- |
-| 443/tcp | VPS (`tag:server`) | Caddy: reverse proxy to the orchestrator, static proxies/raws/outbox | `tag:worker`, `tag:studio`, admins |
-| 8000/tcp | VPS, `127.0.0.1` only | Orchestrator API (FastAPI). Bound to localhost; only Caddy talks to it, so it needs no grant | — |
+| 443/tcp | VPS (`tag:server`) | Caddy, public side: review UI, proxies, `/enroll`, Evolution webhook. Reached over the internet, not the tailnet | admins (tailnet); public otherwise |
+| 8080/tcp | VPS (`tag:server`), Tailscale IP only | Caddy, tailnet side: worker/studio API + inbox/outbox static files (plain HTTP; WireGuard encrypts) | `tag:worker`, `tag:studio`, admins |
+| 8000/tcp | VPS, compose network only | Orchestrator (FastAPI). Not published on the host; only Caddy reaches it, so no grant | — |
 | 22/tcp | VPS (`tag:server`) | SSH over the tailnet | admins only |
 | 8710/tcp | each worker (`tag:worker`) | Worker file server (peer raw fetches) | `tag:worker` |
 | 8720/tcp | streaming PC (`tag:studio`) | Studio receiver (clip push) | `tag:worker` |
