@@ -12,14 +12,13 @@ import pytest
 
 from shared.ffmpeg import (
     NVENC_ENCODER,
+    TONE_MAP_HDR_TO_SDR,
     X264_ENCODER,
     ProxySettings,
     build_final_render_command,
-    build_probe_command,
     build_proxy_command,
     build_test_clip_command,
     build_thumbnail_command,
-    parse_probe_output,
 )
 
 RAW = Path("raw.mov")
@@ -170,26 +169,55 @@ def test_test_clip_uses_builtin_generators():
     assert value_after(args, "-t") == "2.000"
 
 
-def test_probe_command_asks_for_json():
-    args = build_probe_command(RAW)
-    assert args[0] == "ffprobe"
-    assert value_after(args, "-print_format") == "json"
+# --- HDR tone mapping ----------------------------------------------------
+#
+# Phones often record HDR. Shown as normal (SDR) video without conversion it
+# looks grey and washed out, so for HDR raws the builders add a
+# tone-mapping stage. It must come BEFORE "format=yuv420p": that step throws
+# away the extra colour precision tone mapping needs.
 
 
-def test_parse_probe_output_reads_duration_audio_and_size():
-    # A trimmed example of what ffprobe prints.
-    probe_json = """
-    {"streams": [{"codec_type": "video", "width": 1920, "height": 1080},
-                 {"codec_type": "audio"}],
-     "format": {"duration": "12.345000"}}
-    """
-    info = parse_probe_output(probe_json)
-    assert info.duration_s == pytest.approx(12.345)
-    assert info.has_audio is True
-    assert (info.width, info.height) == (1920, 1080)
+def test_sdr_proxy_has_no_tone_mapping():
+    args = build_proxy_command(RAW, OUT, X264_ENCODER, tone_map_hdr=False)
+    assert "tonemap" not in value_after(args, "-vf")
 
 
-def test_parse_probe_output_without_audio_or_duration():
-    info = parse_probe_output('{"streams": [{"codec_type": "video"}], "format": {}}')
-    assert info.has_audio is False
-    assert info.duration_s is None
+def test_hdr_proxy_tone_maps_before_the_yuv420p_conversion():
+    chain = value_after(build_proxy_command(RAW, OUT, X264_ENCODER, tone_map_hdr=True), "-vf")
+    # The exact expected chain: scale, constant fps, tone map, then yuv420p.
+    assert chain == f"scale=-2:480,fps=30,{TONE_MAP_HDR_TO_SDR},format=yuv420p"
+    # The tone-map stage itself: linearise, float RGB, BT.709 colours,
+    # Hable curve, back to the BT.709 transfer in TV range.
+    assert TONE_MAP_HDR_TO_SDR == (
+        "zscale=transfer=linear:npl=100,format=gbrpf32le,zscale=primaries=bt709,"
+        "tonemap=tonemap=hable:desat=0,zscale=transfer=bt709:matrix=bt709:range=tv"
+    )
+
+
+def test_hdr_final_render_tone_maps_before_overlay_and_yuv420p():
+    args = build_final_render_command(
+        RAW, OUT, 0.0, 10.0, X264_ENCODER, overlay_image=Path("o.png"), tone_map_hdr=True
+    )
+    graph = value_after(args, "-filter_complex")
+    # Tone mapping sits right after the scale, inside the [base] branch, so
+    # the SDR overlay is drawn onto an already-SDR picture...
+    assert graph.startswith(f"[0:v]scale=-2:1080,{TONE_MAP_HDR_TO_SDR}[base];")
+    # ...and the yuv420p conversion still comes after it.
+    assert graph.index("tonemap") < graph.index("format=yuv420p")
+
+
+def test_hdr_final_render_without_overlay():
+    args = build_final_render_command(RAW, OUT, 0.0, 10.0, X264_ENCODER, tone_map_hdr=True)
+    graph = value_after(args, "-filter_complex")
+    assert graph.startswith(f"[0:v]scale=-2:1080,{TONE_MAP_HDR_TO_SDR},format=yuv420p[video]")
+
+
+def test_sdr_final_render_has_no_tone_mapping():
+    args = build_final_render_command(RAW, OUT, 0.0, 10.0, X264_ENCODER)
+    assert "tonemap" not in value_after(args, "-filter_complex")
+
+
+def test_test_clip_can_be_labelled_hdr():
+    args = build_test_clip_command(OUT, tag_as_hdr=True)
+    assert value_after(args, "-color_trc") == "smpte2084"
+    assert "-color_trc" not in build_test_clip_command(OUT)

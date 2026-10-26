@@ -1,11 +1,11 @@
-"""Build ffmpeg/ffprobe command lines, and pick the H.264 encoder to use.
+"""Build ffmpeg command lines, and pick the H.264 encoder to use.
 
 The builders only return argument lists (["ffmpeg", "-i", ...]); running
 them is the caller's job (subprocess.run(args, check=True)). That keeps
 them easy to test and easy to print when something goes wrong.
+Probing a file (duration, audio, HDR) lives in shared.media_probe.
 """
 
-import json
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -17,6 +17,27 @@ X264_ENCODER = "libx264"
 # Arguments every ffmpeg call starts with: no banner noise, never wait for
 # keyboard input (the worker runs as a service), overwrite outputs.
 COMMON_FFMPEG_ARGS = ["-hide_banner", "-nostdin", "-y"]
+
+# HDR → SDR (BT.709) tone mapping, inserted before the yuv420p conversion
+# when shared.media_probe says the raw is HDR (design §15). Step by step:
+#   zscale=transfer=linear:npl=100  undo the PQ/HLG curve into linear light
+#                                   (npl = nominal peak luminance, nits)
+#   format=gbrpf32le                float RGB, which tonemap needs
+#   zscale=primaries=bt709          BT.2020 colours → BT.709 colours
+#   tonemap=tonemap=hable:desat=0   squeeze highlights into SDR range
+#   zscale=transfer=bt709:...       back to the normal SDR video curve
+TONE_MAP_HDR_TO_SDR = (
+    "zscale=transfer=linear:npl=100,"
+    "format=gbrpf32le,"
+    "zscale=primaries=bt709,"
+    "tonemap=tonemap=hable:desat=0,"
+    "zscale=transfer=bt709:matrix=bt709:range=tv"
+)
+
+
+def _with_optional_tone_map(filters: list[str], tone_map_hdr: bool) -> list[str]:
+    """Append the tone-mapping stage to a filter list when the raw is HDR."""
+    return [*filters, TONE_MAP_HDR_TO_SDR] if tone_map_hdr else filters
 
 
 class FfmpegNotFoundError(RuntimeError):
@@ -79,11 +100,17 @@ def build_proxy_command(
     encoder: str,
     settings: ProxySettings = DEFAULT_PROXY_SETTINGS,
     ffmpeg_binary: str = "ffmpeg",
+    tone_map_hdr: bool = False,
 ) -> list[str]:
-    """Command that renders the review proxy from a raw."""
+    """Command that renders the review proxy from a raw.
+
+    Pass tone_map_hdr=MediaInfo.is_hdr so HDR phone footage is not washed out.
+    """
     # scale=-2:480 keeps the aspect ratio and an even width (H.264 needs it);
     # fps=30 makes the frame rate constant; yuv420p plays in every browser.
-    video_filter = f"scale=-2:{settings.height},fps={settings.frame_rate},format=yuv420p"
+    # Tone mapping runs after the scale, so it works on the small frame.
+    steps = [f"scale=-2:{settings.height}", f"fps={settings.frame_rate}"]
+    video_filter = ",".join([*_with_optional_tone_map(steps, tone_map_hdr), "format=yuv420p"])
     return [
         ffmpeg_binary, *COMMON_FFMPEG_ARGS,
         "-i", str(raw_path),
@@ -127,19 +154,23 @@ def build_final_render_command(
     has_audio: bool = True,
     settings: FinalRenderSettings = DEFAULT_FINAL_RENDER_SETTINGS,
     ffmpeg_binary: str = "ffmpeg",
+    tone_map_hdr: bool = False,
 ) -> list[str]:
     """Command that trims the raw, draws the overlay and normalises loudness.
 
     `overlay_image` is a transparent PNG (team, car, pass) drawn in the
     bottom-left corner; the worker renders it. Without it, no overlay.
     `has_audio=False` (from ffprobe) skips the audio chain entirely.
+    `tone_map_hdr=True` (MediaInfo.is_hdr) converts HDR footage to SDR
+    first, so the SDR overlay is drawn onto an SDR picture.
     """
     if cut_out_s <= cut_in_s:
         raise ValueError("cut_out_s must be greater than cut_in_s")
     duration_s = cut_out_s - cut_in_s
 
     inputs = ["-ss", f"{cut_in_s:.3f}", "-i", str(raw_path)]
-    scale = f"[0:v]scale=-2:{settings.height}"
+    video_steps = _with_optional_tone_map([f"scale=-2:{settings.height}"], tone_map_hdr)
+    scale = "[0:v]" + ",".join(video_steps)
     if overlay_image is None:
         filters = [f"{scale},format=yuv420p[video]"]
     else:
@@ -181,53 +212,31 @@ def build_test_clip_command(
     height: int = 720,
     frame_rate: int = 30,
     ffmpeg_binary: str = "ffmpeg",
+    tag_as_hdr: bool = False,
 ) -> list[str]:
     """Command that makes a small synthetic MP4 (test pattern + 440 Hz tone).
 
     Uses ffmpeg's built-in generators, so no input file is needed.
+    `tag_as_hdr=True` labels the clip as HDR10 (PQ, BT.2020). The pixels
+    are not real HDR, but ffprobe reports smpte2084, which is enough to
+    exercise detection and the tone-mapping filters.
     """
+    hdr_tags = (
+        ["-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc"]
+        if tag_as_hdr
+        else []
+    )
     return [
         ffmpeg_binary, *COMMON_FFMPEG_ARGS,
         "-f", "lavfi", "-i", f"testsrc2=size={width}x{height}:rate={frame_rate}",
         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
         "-t", f"{duration_s:.3f}",
         "-c:v", X264_ENCODER, "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        *hdr_tags,
         "-c:a", "aac",
         "-shortest",
         str(output_path),
     ]  # fmt: skip
-
-
-def build_probe_command(media_path: Path, ffprobe_binary: str = "ffprobe") -> list[str]:
-    """ffprobe command printing format and stream info as JSON."""
-    return [
-        ffprobe_binary, "-v", "error",
-        "-print_format", "json",
-        "-show_format", "-show_streams",
-        str(media_path),
-    ]  # fmt: skip
-
-
-@dataclass(frozen=True)
-class MediaInfo:
-    duration_s: float | None
-    has_audio: bool
-    width: int | None
-    height: int | None
-
-
-def parse_probe_output(probe_json: str) -> MediaInfo:
-    """Read the facts we need from build_probe_command's output."""
-    probe = json.loads(probe_json)
-    streams = probe.get("streams", [])
-    video = next((s for s in streams if s.get("codec_type") == "video"), {})
-    duration_text = probe.get("format", {}).get("duration")
-    return MediaInfo(
-        duration_s=float(duration_text) if duration_text is not None else None,
-        has_audio=any(s.get("codec_type") == "audio" for s in streams),
-        width=video.get("width"),
-        height=video.get("height"),
-    )
 
 
 # A function that runs a command and returns the finished process. Tests
