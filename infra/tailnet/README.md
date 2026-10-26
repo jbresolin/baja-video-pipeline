@@ -20,7 +20,7 @@ flows and nothing else (Tailscale denies everything by default).
 | Port | Host (tag) | Service | Who may connect |
 | --- | --- | --- | --- |
 | 443/tcp | VPS (`tag:server`) | Caddy: reverse proxy to the orchestrator, static proxies/raws/outbox | `tag:worker`, `tag:studio`, admins |
-| 8000/tcp | VPS (`tag:server`) | Orchestrator API (FastAPI). Normally reached through Caddy on 443 | `tag:worker`, `tag:studio`, admins |
+| 8000/tcp | VPS, `127.0.0.1` only | Orchestrator API (FastAPI). Bound to localhost; only Caddy talks to it, so it needs no grant | — |
 | 22/tcp | VPS (`tag:server`) | SSH over the tailnet | admins only |
 | 8710/tcp | each worker (`tag:worker`) | Worker file server (peer raw fetches) | `tag:worker` |
 | 8720/tcp | streaming PC (`tag:studio`) | Studio receiver (clip push) | `tag:worker` |
