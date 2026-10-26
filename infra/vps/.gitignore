@@ -1,0 +1,3 @@
+# Real secrets live only on the VPS.
+.env
+orchestrator.env
