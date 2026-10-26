@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from shared.hashing import sha256_of_file
+from shared.http_transfer import partial_path_for
 from shared.models.api_worker_loop import ChunkAccepted
 from shared.protocol import UPLOAD_LENGTH_HEADER, UPLOAD_OFFSET_HEADER, UPLOAD_SHA256_HEADER
 
@@ -73,16 +74,18 @@ def read_upload_headers(headers: Mapping[str, str]) -> UploadHeaders:
 class ChunkedUploadReceiver:
     """Assembles one file from chunks, next to its final location.
 
-    While the upload is in progress the bytes live in "<final>.part" and a
-    small "<final>.part.json" remembers which file (length + SHA-256) they
-    belong to. If a chunk for a *different* file arrives, the old partial
-    data is thrown away and the new upload must start at offset 0.
+    While the upload is in progress the bytes live in the hidden
+    ".<final name>.part" and a small ".<final name>.part.json" remembers
+    which file (length + SHA-256) they belong to. Both start with a dot, so
+    Caddy never serves a half-uploaded outbox file (design §15). If a chunk
+    for a *different* file arrives, the old partial data is thrown away and
+    the new upload must start at offset 0.
     """
 
     def __init__(self, final_path: Path, max_bytes: int | None = None) -> None:
         self.final_path = final_path
-        self.partial_path = final_path.with_name(final_path.name + ".part")
-        self.metadata_path = final_path.with_name(final_path.name + ".part.json")
+        self.partial_path = partial_path_for(final_path)
+        self.metadata_path = final_path.with_name(f".{final_path.name}.part.json")
         self.max_bytes = max_bytes
 
     def accept_chunk(self, upload: UploadHeaders, chunk: bytes) -> ChunkAccepted:

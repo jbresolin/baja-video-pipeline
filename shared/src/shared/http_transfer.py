@@ -3,11 +3,12 @@
 Both take an `httpx.Client`, so callers decide base URL, auth and timeouts,
 and tests can pass an in-process client (no real network).
 
-Download: bytes go to "<destination>.part". If that file already exists
-(a previous attempt was cut off), we ask the server only for the missing
-bytes with a `Range: bytes=<size>-` header. At the end the SHA-256 is
-checked and only then is the file renamed to its final name, so a file
-without ".part" is always complete and verified.
+Download: bytes go to a hidden ".<name>.part" file next to the destination.
+If that file already exists (a previous attempt was cut off), we ask the
+server only for the missing bytes with a `Range: bytes=<size>-` header. At
+the end the SHA-256 is checked and only then is the file renamed to its
+final name, so a visible file is always complete and verified. (Hidden =
+starts with a dot; Caddy never serves dot-files, design §15.)
 
 Upload: the file is sent in chunks, each a separate POST carrying the
 Upload-Offset / Upload-Length / Upload-SHA256 headers (docs/api.md,
@@ -82,8 +83,13 @@ class UploadResult:
 
 
 def partial_path_for(destination: Path) -> Path:
-    """Where an unfinished download of `destination` is kept."""
-    return destination.with_name(destination.name + ".part")
+    """Where an unfinished `destination` is written: same folder, hidden name.
+
+    Example: inbox/abc.mp4 → inbox/.abc.mp4.part. Every writer in the
+    project (downloads, uploads, media decryption) uses this, so a file
+    without the leading dot is always complete.
+    """
+    return destination.with_name(f".{destination.name}.part")
 
 
 def download_file(

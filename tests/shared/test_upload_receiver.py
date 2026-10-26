@@ -130,3 +130,12 @@ def test_read_upload_headers_rejects_bad_headers(bad_headers):
     # them must become a clear InvalidUploadHeadersError (→ HTTP 400).
     with pytest.raises(InvalidUploadHeadersError):
         read_upload_headers(bad_headers)
+
+
+def test_in_progress_files_are_hidden_dot_files(receiver):
+    # A half-uploaded outbox clip must not be downloadable through Caddy,
+    # which hides every file whose name starts with a dot (design §15).
+    receiver.accept_chunk(headers_at(0), CONTENT[:40])
+    assert receiver.partial_path.name == ".clip.mp4.part"
+    assert receiver.metadata_path.name == ".clip.mp4.part.json"
+    assert receiver.partial_path.exists()

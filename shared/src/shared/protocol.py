@@ -28,9 +28,21 @@ WEBHOOK_SECRET_HEADER = "X-Webhook-Secret"
 
 DEFAULT_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 
-# --- Worker-hosted HTTP server (peer raw fetches and studio receive) ---
+# --- Ports (design §8, "Ports (contract)") ---
 
-DEFAULT_WORKER_FILE_SERVER_PORT = 8770
+# Caddy's tailnet-side listener (plain HTTP on the VPS Tailscale IP): the
+# worker/studio API plus the /inbox/* and /outbox/* files.
+CADDY_TAILNET_PORT = 8080
+# Worker-hosted file server: peers fetch held raws from GET /raw/{job_id}.
+DEFAULT_WORKER_FILE_SERVER_PORT = 8710
+# Studio-hosted receiver: workers push finished clips to POST /receive/{job_id}.
+DEFAULT_STUDIO_RECEIVER_PORT = 8720
+
+# --- Rate limit on the one public API route (design §15) ---
+
+# POST /enroll: at most this many requests per source IP per window.
+ENROLL_RATE_LIMIT_REQUESTS = 10
+ENROLL_RATE_LIMIT_WINDOW_SECONDS = 600
 
 # --- Holders (design §4) ---
 

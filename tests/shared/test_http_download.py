@@ -210,3 +210,11 @@ def test_range_answer_starting_at_the_wrong_byte_is_not_appended(sample_bytes, t
 
     assert calls == ["bytes=50000-", None]
     assert destination.read_bytes() == sample_bytes
+
+
+def test_partial_download_is_a_hidden_dot_file(tmp_path):
+    # Design §15: writers use dot-files until a file is complete, and Caddy
+    # never serves dot-files. So a half-downloaded inbox file is invisible.
+    partial = partial_path_for(tmp_path / "inbox" / "job1.mp4")
+    assert partial.name == ".job1.mp4.part"
+    assert partial.parent == tmp_path / "inbox"
