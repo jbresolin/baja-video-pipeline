@@ -2,13 +2,16 @@
 #
 # Three sites:
 #   1. {$EVO_DOMAIN}       public, TLS. Evolution API + Manager UI.
-#   2. {$PIPELINE_DOMAIN}  public, TLS. Review UI + static proxies.
-#   3. http://:8080        tailnet ONLY. Worker API + inbox/outbox bytes.
+#   2. {$PIPELINE_DOMAIN}  public, TLS. Review UI, proxies, thumbs, /enroll.
+#   3. http://:8080        tailnet ONLY. Worker/studio API + inbox/outbox bytes.
 #                          Docker publishes it on ${TAILSCALE_IP}:8080 only.
+# The orchestrator itself listens on orchestrator:8000 inside the compose
+# network and is never published (design §8 "Ports").
 #
 # {$VAR} placeholders come from the container environment (docker-compose.yml)
 # and are substituted when Caddy loads this file.
-# Reload after editing: docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+# Reload after editing this file or the reviewers file:
+#   docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
 
 # -----------------------------------------------------------------------------
 # Global options
@@ -28,12 +31,25 @@
 	}
 }
 
+# Reusable snippet: static files from /srv/pipeline (BVP_DATA_DIR).
+# file_server answers HTTP Range requests (206), so players and downloaders
+# can seek/resume with no app process in the byte path.
+# Writers drop in-progress files as dot-files and rename them when complete
+# (design §15). Caddy pretends dot-files don't exist. `*.part` /
+# `*.part.json` (upload staging, docs/api.md §8.2) are hidden too.
+(pipeline_files) {
+	root * /srv/pipeline
+	file_server {
+		hide .* *.part *.part.json
+	}
+}
+
 # -----------------------------------------------------------------------------
 # 1. Evolution API — public.
-#    n8n/BajaBot (at home) calls the REST API here with an `apikey` header.
+#    Used by the owner (Manager UI, curl). The orchestrator talks to
+#    Evolution internally (http://evolution:8080), and Evolution's webhook
+#    goes internally to orchestrator:8000, so neither needs this site.
 #    The Manager UI is the API's own bundled UI at /manager (+ /assets/*).
-#    Note: with the Baileys channel, Evolution does not RECEIVE webhooks. It
-#    only sends them, so nothing public is needed for webhook delivery.
 # -----------------------------------------------------------------------------
 {$EVO_DOMAIN} {
 	import access_log
@@ -64,7 +80,7 @@
 }
 
 # -----------------------------------------------------------------------------
-# 2. Pipeline — public review UI + proxies.
+# 2. Pipeline — public: review UI, proxies, thumbnails, enrollment.
 #    Reviewers use a browser on any network, so this is public behind basic
 #    auth. Caddy's Caddyfile basic_auth caches bcrypt results, so the many
 #    Range requests from the video player do not each pay a bcrypt hash.
@@ -72,31 +88,51 @@
 {$PIPELINE_DOMAIN} {
 	import access_log
 
-	# One shared reviewer login for both the UI and the proxy files.
-	@reviewer_area path /review /review/* /proxies/*
+	# Named reviewers, one `username bcrypt-hash` pair per line. Same file
+	# the orchestrator reads via BVP_REVIEWERS_FILE (design §15). Adding a
+	# reviewer: README §2.6. Caddy reads it at (re)load time.
+	@reviewer_area path /review /review/* /proxies/* /thumbs/*
 	basic_auth @reviewer_area {
-		{$REVIEW_BASIC_AUTH_USER} {$REVIEW_BASIC_AUTH_HASH}
+		import /srv/pipeline/reviewers.htpasswd
 	}
 
-	# Proxies (480p review copies, design §6): served straight from disk.
-	# file_server handles HTTP Range requests, so the player can seek
-	# without any app process in the byte path.
-	# /proxies/<job>.mp4 -> /srv/pipeline/proxies/<job>.mp4
+	# Proxies (480p review copies, design §6): /proxies/<job_id>.mp4
 	handle /proxies/* {
-		root * /srv/pipeline
 		header Cache-Control "private, max-age=3600"
-		# Dot-files are in-progress writes (README §11). Pretend they don't exist.
-		file_server {
-			hide .*
-		}
+		import pipeline_files
+	}
+
+	# Thumbnails (worker-made): /thumbs/<job_id>.jpg
+	handle /thumbs/* {
+		header Cache-Control "private, max-age=3600"
+		import pipeline_files
 	}
 
 	# Review UI: served by the orchestrator under /review (design §13).
-	# X-Reviewer tells the app which basic-auth user is reviewing.
+	# reverse_proxy forwards the client's `Authorization: Basic …` header
+	# unchanged, because the orchestrator checks reviewerBasic itself
+	# (docs/api.md §2). X-Reviewer is a convenience copy of the user name
+	# Caddy authenticated.
 	handle /review* {
 		reverse_proxy orchestrator:8000 {
 			header_up X-Reviewer {http.auth.user.id}
 		}
+	}
+
+	# Enrollment (design §8): a new PC is not on the tailnet yet, so this one
+	# orchestrator route is public. There's no basic auth, because the
+	# one-time token in the body is the credential. The orchestrator
+	# rate-limits per source IP itself, using X-Forwarded-For, which Caddy
+	# sets. POST only, small body. Anything else falls through to the 404.
+	@enroll {
+		path /enroll
+		method POST
+	}
+	handle @enroll {
+		request_body {
+			max_size 16KB
+		}
+		reverse_proxy orchestrator:8000
 	}
 
 	# Bare domain -> review UI.
@@ -111,7 +147,7 @@
 }
 
 # -----------------------------------------------------------------------------
-# 3. Tailnet-only worker API.
+# 3. Tailnet-only worker/studio API.
 #    Plain HTTP (design §13: the tailnet is the network boundary, WireGuard
 #    already encrypts). Docker publishes container port 8080 ONLY on the
 #    host's Tailscale IP, so this site cannot be reached from the internet.
@@ -121,25 +157,22 @@ http://:8080 {
 	import access_log
 
 	# Raw files waiting for holders (inbox) and fallback clips (outbox).
-	# Caddy serves the bytes (Range + resume, design §13). Before each
-	# request, forward_auth asks the orchestrator whether this bearer token
-	# may read this path. A 2xx lets the request through, anything else is
-	# returned to the client as-is. Contract: README §11.
+	# Caddy serves the bytes. Before each request, forward_auth sends a GET
+	# to the orchestrator's /auth/file, with the worker's original
+	# `Authorization: Bearer …` plus X-Forwarded-Method / X-Forwarded-Uri
+	# (the path being fetched). A 2xx lets the request through, anything
+	# else is returned to the client as-is (design §15).
 	@files path /inbox/* /outbox/*
 	handle @files {
 		forward_auth orchestrator:8000 {
-			uri /api/v1/auth/file
+			uri /auth/file
 			copy_headers X-Worker-Id
 		}
-		root * /srv/pipeline
-		# Dot-files are in-progress writes (README §11). Pretend they don't exist.
-		file_server {
-			hide .*
-		}
+		import pipeline_files
 	}
 
-	# Everything else on the tailnet = orchestrator API (registration,
-	# heartbeats, claims, uploads, clip manifest). The app checks the token.
+	# Everything else on the tailnet = orchestrator API (worker loop,
+	# uploads, clip manifest, /health). The app checks the token.
 	handle {
 		reverse_proxy orchestrator:8000
 	}

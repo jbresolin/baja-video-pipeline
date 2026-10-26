@@ -85,47 +85,18 @@ services:
       CONFIG_SESSION_PHONE_NAME: ${EVOLUTION_PHONE_NAME:-Chrome}
       QRCODE_LIMIT: "30"
 
-      # --- webhooks (topology in README §6) ---
-      # Global webhook = n8n/BajaBot (phase B). The instance webhook (stored in
-      # Postgres, set via API) = orchestrator.
-      WEBHOOK_GLOBAL_ENABLED: ${N8N_GLOBAL_WEBHOOK_ENABLED:-false}
-      WEBHOOK_GLOBAL_URL: ${N8N_WEBHOOK_URL:-}
-      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: ${N8N_WEBHOOK_BY_EVENTS:-false}
-      # Bound retries so a dead consumer delays the next one by at most
-      # ~2 min (5+10+20+40+60 s) instead of the default ~20 min.
+      # --- webhooks (README §6) ---
+      # The only consumer is the orchestrator, through the INSTANCE webhook
+      # (stored in Postgres, set via POST /webhook/set). No global webhook.
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      # Upstream retry defaults (10 attempts, backoff up to 300 s, ~20 min
+      # in total). A failed delivery is a lost video, so ride out an
+      # orchestrator restart rather than give up early.
       WEBHOOK_REQUEST_TIMEOUT_MS: "30000"
-      WEBHOOK_RETRY_MAX_ATTEMPTS: "6"
+      WEBHOOK_RETRY_MAX_ATTEMPTS: "10"
       WEBHOOK_RETRY_INITIAL_DELAY_SECONDS: "5"
       WEBHOOK_RETRY_USE_EXPONENTIAL_BACKOFF: "true"
-      WEBHOOK_RETRY_MAX_DELAY_SECONDS: "60"
-      # Events sent to the GLOBAL webhook (n8n). Copy the list BajaBot uses
-      # today (README §1.4). These do not affect the instance webhook.
-      WEBHOOK_EVENTS_APPLICATION_STARTUP: ${WEBHOOK_EVENTS_APPLICATION_STARTUP:-false}
-      WEBHOOK_EVENTS_QRCODE_UPDATED: ${WEBHOOK_EVENTS_QRCODE_UPDATED:-false}
-      WEBHOOK_EVENTS_CONNECTION_UPDATE: ${WEBHOOK_EVENTS_CONNECTION_UPDATE:-false}
-      WEBHOOK_EVENTS_MESSAGES_SET: ${WEBHOOK_EVENTS_MESSAGES_SET:-false}
-      WEBHOOK_EVENTS_MESSAGES_UPSERT: ${WEBHOOK_EVENTS_MESSAGES_UPSERT:-false}
-      WEBHOOK_EVENTS_MESSAGES_EDITED: ${WEBHOOK_EVENTS_MESSAGES_EDITED:-false}
-      WEBHOOK_EVENTS_MESSAGES_UPDATE: ${WEBHOOK_EVENTS_MESSAGES_UPDATE:-false}
-      WEBHOOK_EVENTS_MESSAGES_DELETE: ${WEBHOOK_EVENTS_MESSAGES_DELETE:-false}
-      WEBHOOK_EVENTS_SEND_MESSAGE: ${WEBHOOK_EVENTS_SEND_MESSAGE:-false}
-      WEBHOOK_EVENTS_SEND_MESSAGE_UPDATE: ${WEBHOOK_EVENTS_SEND_MESSAGE_UPDATE:-false}
-      WEBHOOK_EVENTS_CONTACTS_SET: ${WEBHOOK_EVENTS_CONTACTS_SET:-false}
-      WEBHOOK_EVENTS_CONTACTS_UPSERT: ${WEBHOOK_EVENTS_CONTACTS_UPSERT:-false}
-      WEBHOOK_EVENTS_CONTACTS_UPDATE: ${WEBHOOK_EVENTS_CONTACTS_UPDATE:-false}
-      WEBHOOK_EVENTS_PRESENCE_UPDATE: ${WEBHOOK_EVENTS_PRESENCE_UPDATE:-false}
-      WEBHOOK_EVENTS_CHATS_SET: ${WEBHOOK_EVENTS_CHATS_SET:-false}
-      WEBHOOK_EVENTS_CHATS_UPSERT: ${WEBHOOK_EVENTS_CHATS_UPSERT:-false}
-      WEBHOOK_EVENTS_CHATS_UPDATE: ${WEBHOOK_EVENTS_CHATS_UPDATE:-false}
-      WEBHOOK_EVENTS_CHATS_DELETE: ${WEBHOOK_EVENTS_CHATS_DELETE:-false}
-      WEBHOOK_EVENTS_GROUPS_UPSERT: ${WEBHOOK_EVENTS_GROUPS_UPSERT:-false}
-      WEBHOOK_EVENTS_GROUPS_UPDATE: ${WEBHOOK_EVENTS_GROUPS_UPDATE:-false}
-      WEBHOOK_EVENTS_GROUP_PARTICIPANTS_UPDATE: ${WEBHOOK_EVENTS_GROUP_PARTICIPANTS_UPDATE:-false}
-      WEBHOOK_EVENTS_LABELS_EDIT: ${WEBHOOK_EVENTS_LABELS_EDIT:-false}
-      WEBHOOK_EVENTS_LABELS_ASSOCIATION: ${WEBHOOK_EVENTS_LABELS_ASSOCIATION:-false}
-      WEBHOOK_EVENTS_CALL: ${WEBHOOK_EVENTS_CALL:-false}
-      WEBHOOK_EVENTS_REMOVE_INSTANCE: ${WEBHOOK_EVENTS_REMOVE_INSTANCE:-false}
-      WEBHOOK_EVENTS_LOGOUT_INSTANCE: ${WEBHOOK_EVENTS_LOGOUT_INSTANCE:-false}
+      WEBHOOK_RETRY_MAX_DELAY_SECONDS: "300"
 
       # Media goes NOT to S3 and NOT base64 into webhooks. 2 GB documents
       # would be buffered in this container's RAM (README §6.3).
@@ -240,17 +211,19 @@ services:
       PIPELINE_DOMAIN: ${PIPELINE_DOMAIN}
       MANAGER_BASIC_AUTH_USER: ${MANAGER_BASIC_AUTH_USER}
       MANAGER_BASIC_AUTH_HASH: ${MANAGER_BASIC_AUTH_HASH}
-      REVIEW_BASIC_AUTH_USER: ${REVIEW_BASIC_AUTH_USER}
-      REVIEW_BASIC_AUTH_HASH: ${REVIEW_BASIC_AUTH_HASH}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-      # Static byte path (no app process): proxies publicly behind auth,
-      # inbox/outbox only on the tailnet vhost. Read-only for Caddy.
-      - /srv/pipeline/proxies:/srv/pipeline/proxies:ro
-      - /srv/pipeline/inbox:/srv/pipeline/inbox:ro
-      - /srv/pipeline/outbox:/srv/pipeline/outbox:ro
+      # BVP_DATA_DIR, read-only. Caddy serves proxies/ and thumbs/ publicly
+      # (behind reviewer auth), and inbox/ and outbox/ only on the tailnet
+      # vhost. It also reads reviewers.htpasswd from here. The directory is
+      # mounted, not the single file, so editors that replace the file
+      # (new inode) are still picked up on `caddy reload`. db/ is never
+      # routed. Docker bind mounts are recursive, so the inbox loop
+      # filesystem is included (it must be mounted before Docker starts,
+      # README §2.3).
+      - /srv/pipeline:/srv/pipeline:ro
     networks:
       - edge
     mem_limit: 192m
@@ -258,11 +231,11 @@ services:
     logging: *default-logging
 
   # ---------------------------------------------------------------------------
-  # Orchestrator STUB (LIVESTACK-24). The orchestrator PR fills in the image
-  # and its settings. Behind the `orchestrator` profile, so the Evolution
-  # migration can run before any orchestrator image exists:
+  # Orchestrator (LIVESTACK-24). The orchestrator PR provides the image.
+  # Behind the `orchestrator` profile, so the Evolution migration can run
+  # before any orchestrator image exists:
   #   docker compose --profile orchestrator up -d
-  # Contract with this stack: README §11.
+  # Settings are BVP_* (design §15). The API is defined in docs/api.md.
   # ---------------------------------------------------------------------------
   orchestrator:
     profiles: ["orchestrator"]
@@ -271,36 +244,37 @@ services:
     depends_on:
       evolution:
         condition: service_healthy
-    # App-specific settings the orchestrator PR adds go in orchestrator.env.
-    # Optional, so the stack still parses before that file exists.
+    # Extra BVP_* settings beyond those below (e.g. BVP_DEV_MODE) go in
+    # orchestrator.env. It's optional, so the stack parses without it.
     env_file:
       - path: ./orchestrator.env
         required: false
     environment:
-      PUBLIC_BASE_URL: https://${PIPELINE_DOMAIN}
-      TAILNET_BASE_URL: http://${TAILSCALE_IP}:8080
-      DATA_DIR: /var/lib/orchestrator
-      INBOX_DIR: /srv/pipeline/inbox
-      OUTBOX_DIR: /srv/pipeline/outbox
-      PROXIES_DIR: /srv/pipeline/proxies
-      INBOX_CAP_GB: ${INBOX_CAP_GB:-25}
-      INBOX_HOLD_GB: ${INBOX_HOLD_GB:-22}
-      PROXY_EVICT_MIN_FREE_GB: ${PROXY_EVICT_MIN_FREE_GB:-10}
-      EVOLUTION_BASE_URL: http://evolution:8080
-      EVOLUTION_INSTANCE_NAME: ${EVOLUTION_INSTANCE_NAME}
-      EVOLUTION_INSTANCE_TOKEN: ${EVOLUTION_INSTANCE_TOKEN}
-      EVOLUTION_WEBHOOK_SECRET: ${EVOLUTION_WEBHOOK_SECRET}
+      # inbox/ proxies/ thumbs/ outbox/ db/bvp.sqlite3 all live under here.
+      BVP_DATA_DIR: /srv/pipeline
+      BVP_INBOX_HOLD_GB: ${BVP_INBOX_HOLD_GB:-22}
+      BVP_INBOX_CAP_GB: ${BVP_INBOX_CAP_GB:-25}
+      BVP_PROXY_EVICT_MIN_FREE_GB: ${BVP_PROXY_EVICT_MIN_FREE_GB:-10}
+      BVP_WEBHOOK_SECRET: ${BVP_WEBHOOK_SECRET}
+      BVP_ADMIN_TOKEN: ${BVP_ADMIN_TOKEN}
+      # Same file Caddy imports for reviewer basic auth.
+      BVP_REVIEWERS_FILE: /srv/pipeline/reviewers.htpasswd
+      BVP_EVOLUTION_URL: http://evolution:8080
+      BVP_EVOLUTION_INSTANCE: ${BVP_EVOLUTION_INSTANCE}
+      BVP_EVOLUTION_INSTANCE_TOKEN: ${BVP_EVOLUTION_INSTANCE_TOKEN}
+      BVP_PUBLIC_BASE_URL: https://${PIPELINE_DOMAIN}
+      # Workers' inbox/outbox download URLs are built from this (Caddy's
+      # tailnet listener, not the orchestrator's own port).
+      BVP_TAILNET_BASE_URL: http://${TAILSCALE_IP}:8080
+      # Enrollment key minting (infra/tailnet/mint_auth_key.md).
       TAILSCALE_OAUTH_CLIENT_ID: ${TAILSCALE_OAUTH_CLIENT_ID:-}
       TAILSCALE_OAUTH_CLIENT_SECRET: ${TAILSCALE_OAUTH_CLIENT_SECRET:-}
-      TAILSCALE_TAILNET: ${TAILSCALE_TAILNET:-}
+      TAILSCALE_TAILNET: ${TAILSCALE_TAILNET:--}
+      TAILSCALE_API_BASE: ${TAILSCALE_API_BASE:-https://api.tailscale.com}
     volumes:
-      # SQLite (WAL) jobs DB and other orchestrator state.
-      - orchestrator_data:/var/lib/orchestrator
-      # Same paths inside and outside, so logs and DB rows mean the same
-      # path on the host and in the container.
-      - /srv/pipeline/inbox:/srv/pipeline/inbox
-      - /srv/pipeline/outbox:/srv/pipeline/outbox
-      - /srv/pipeline/proxies:/srv/pipeline/proxies
+      # The whole data dir, same path inside and outside, so paths in logs
+      # and DB rows mean the same thing on the host.
+      - /srv/pipeline:/srv/pipeline
     networks:
       - edge
     # Listens on 8000 inside `edge`. No published ports, Caddy fronts it.
@@ -314,7 +288,6 @@ volumes:
   redis_data:
   caddy_data:
   caddy_config:
-  orchestrator_data:
 
 networks:
   # Caddy <-> Evolution <-> orchestrator. Needs internet egress (WhatsApp).
