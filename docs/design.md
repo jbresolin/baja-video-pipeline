@@ -109,6 +109,23 @@ received → proxy_ready → awaiting_review → ready → claimed (lease) → u
   is attributable.
 * The same exchange also returns a **per-worker bearer token** used on
   every orchestrator call (§13).
+* **Tags:** `tag:server`, `tag:worker`, `tag:studio`, plus `tag:enroller`,
+  which is never applied to a device: it is the tag of the orchestrator's
+  OAuth client and owns `tag:worker` and `tag:studio`, so one client can
+  mint keys for either role (Tailscale requires a client-minted key to
+  carry the client's tags or tags they own).
+* **Exception to "never public":** `POST /enroll` must be reachable before
+  the new PC is on the tailnet, so Caddy exposes that one route publicly,
+  rate-limited; the token is one-time and high-entropy. Everything else is
+  tailnet-only.
+* **Ports (contract):** 443 Caddy on the VPS (only entry point to the
+  orchestrator, static proxies/raws/outbox); 8000 orchestrator, bound to
+  `127.0.0.1`, Caddy only; 8710 worker file server; 8720 studio receiver.
+  Full table and ACL in `infra/tailnet/`.
+* **Minting spec:** `infra/tailnet/mint_auth_key.md` (unused key expires
+  after 1 h, fallback 86400 s if rejected). Env vars
+  `TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`,
+  `TAILSCALE_TAILNET`, `TAILSCALE_API_BASE` (tests point it at a fake).
 
 ## 9. Worker packaging
 
