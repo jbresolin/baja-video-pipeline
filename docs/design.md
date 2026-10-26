@@ -44,7 +44,14 @@ All of the above except TrueNAS are on a **Baja tailnet** (§8).
 
 ```
 received → proxy_ready → awaiting_review → ready → claimed (lease) → uploaded → delivered (box ACK) → done
+                              │               │        │
+                              └── discarded ◄─┘        └── failed ──► ready (retry) | discarded
 ```
+
+* `discarded`: a reviewer drops a junk or accidental video (from
+  `awaiting_review` or `ready`); held raws may be deleted by workers.
+* `failed`: a worker reports an unrecoverable error (corrupt file, ffmpeg
+  exit); the reviewer sees the message and chooses retry or discard.
 
 * **Holders.** Two workers download each raw and verify the hash. The
   **master is always one holder** (downloads everything, even what it never
@@ -118,10 +125,11 @@ received → proxy_ready → awaiting_review → ready → claimed (lease) → u
   the new PC is on the tailnet, so Caddy exposes that one route publicly,
   rate-limited; the token is one-time and high-entropy. Everything else is
   tailnet-only.
-* **Ports (contract):** 443 Caddy on the VPS (only entry point to the
-  orchestrator, static proxies/raws/outbox); 8000 orchestrator, bound to
-  `127.0.0.1`, Caddy only; 8710 worker file server; 8720 studio receiver.
-  Full table and ACL in `infra/tailnet/`.
+* **Ports (contract):** 443 Caddy public side (review UI, proxies, thumbs,
+  `/enroll`, Evolution webhook); 8080 Caddy tailnet side, published on the
+  Tailscale IP only, plain HTTP (worker/studio API, inbox/outbox files);
+  8000 orchestrator, reachable only inside the compose network; 8710 worker
+  file server; 8720 studio receiver. Full table and ACL in `infra/tailnet/`.
 * **Minting spec:** `infra/tailnet/mint_auth_key.md` (unused key expires
   after 1 h, fallback 86400 s if rejected). Env vars
   `TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`,
@@ -198,3 +206,51 @@ tests. Therefore:
   say what the test sets up, what it does, and why the assertion proves
   the behaviour.
 * No cleverness that saves lines at the cost of readability.
+
+## 15. Wave-1 reconciliation (2026-10-25, PRs #1–#3)
+
+Decisions that resolve differences between the contract, tailnet and VPS
+PRs. Where a PR disagrees with this section, this section wins.
+
+* **Media retrieval.** No MinIO/S3 and no base64 in the webhook. The
+  orchestrator streams the encrypted document from the WhatsApp CDN
+  (`documentMessage.url` / `directPath`) and decrypts while streaming
+  (AES-256-CBC; keys from HKDF-SHA256 over `mediaKey` with info
+  `WhatsApp Document Keys`), verifying `fileEncSha256` on the ciphertext
+  and `fileSha256` on the plaintext. `mediaUrl` is not used. Reference
+  implementation: Baileys `downloadContentFromMessage`.
+* **Evolution webhooks.** Instance webhook → orchestrator
+  (`POST /intake/evolution-webhook`, header `X-Webhook-Secret`, reply 2xx
+  fast, download asynchronously); global webhook → n8n (BajaBot). Bot
+  replies via Evolution `sendText`. Image pinned `evoapicloud/evolution-api:v2.3.7`.
+* **File serving.** Caddy serves `/inbox/*` and `/outbox/*` on the tailnet
+  listener with `forward_auth` to `GET /auth/file` on the orchestrator
+  (bearer in `Authorization`, path in `X-Forwarded-Uri`; 2xx allows).
+  Task offers from `/workers/{id}/next` carry the absolute download URL;
+  there is no `/jobs/{id}/raw` or `/outbox/{id}` byte endpoint on the
+  orchestrator. Writers drop files as dot-files and rename when complete;
+  Caddy hides dot-files.
+* **Reviewer auth.** Review UI is public behind Caddy Basic auth. One
+  htpasswd-style file of named reviewers (`BVP_REVIEWERS_FILE`) is read by
+  both Caddy (for `/review*`, `/proxies/*`, `/thumbs/*`) and the
+  orchestrator (`reviewerBasic`); Caddy forwards `Authorization`.
+* **`/enroll`** is routed publicly on the 443 site; the orchestrator
+  rate-limits it per source IP itself (Caddy has no built-in limiter).
+* **Peer and studio file servers** (8710, 8720) stay unauthenticated in v1;
+  the tailnet ACL is the boundary. Short-lived fetch tokens are a later
+  hardening item.
+* **Env and paths.** All orchestrator settings are `BVP_*`.
+  `BVP_DATA_DIR=/srv/pipeline` holds `inbox/ proxies/ thumbs/ outbox/
+  db/bvp.sqlite3`. Caps: `BVP_INBOX_HOLD_GB=22` (soft: bot asks senders to
+  hold), `BVP_INBOX_CAP_GB=25` (hard), `BVP_PROXY_EVICT_MIN_FREE_GB=10`.
+* **Contract decisions accepted as-is** from PR #3: `/next` offers,
+  `/claim` reserves; 45 s lease TTL with 15 s heartbeats; chunked resumable
+  uploads with `Upload-Offset/Length/SHA256`; studio ACKs direct pushes;
+  `PUT /jobs/{id}/thumbnail` (worker-made) and `GET /health`; optimistic
+  `expected_version` on review updates; generated OpenAPI checked in CI;
+  `tests/<package>/` layout; ffmpeg settings in PR #3 §29–31.
+* **HDR footage.** The worker probes `color_transfer`; for `smpte2084` or
+  `arib-std-b67` it tone-maps to BT.709 (zscale + tonemap) before the
+  yuv420p conversion, for proxy and final render alike.
+* **Port correction.** Worker file server is **8710** (PR #3 said 8770).
+
