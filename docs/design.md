@@ -127,7 +127,8 @@ received → proxy_ready → awaiting_review → ready → claimed (lease) → u
   rate-limited; the token is one-time and high-entropy. Everything else is
   tailnet-only.
 * **Ports (contract):** 443 Caddy public side (review UI, proxies, thumbs,
-  `/enroll`, Evolution webhook); 8080 Caddy tailnet side, published on the
+  `/enroll`, Evolution's own API/Manager UI; the Evolution→orchestrator
+  webhook stays inside the compose network); 8080 Caddy tailnet side, published on the
   Tailscale IP only, plain HTTP (worker/studio API, inbox/outbox files);
   8000 orchestrator, reachable only inside the compose network; 8710 worker
   file server; 8720 studio receiver. Full table and ACL in `infra/tailnet/`.
@@ -229,12 +230,16 @@ PRs. Where a PR disagrees with this section, this section wins.
   (bearer in `Authorization`, path in `X-Forwarded-Uri`; 2xx allows).
   Task offers from `/workers/{id}/next` carry the absolute download URL;
   there is no `/jobs/{id}/raw` or `/outbox/{id}` byte endpoint on the
-  orchestrator. Writers drop files as dot-files and rename when complete;
-  Caddy hides dot-files.
-* **Reviewer auth.** Review UI is public behind Caddy Basic auth. One
-  htpasswd-style file of named reviewers (`BVP_REVIEWERS_FILE`) is read by
-  both Caddy (for `/review*`, `/proxies/*`, `/thumbs/*`) and the
-  orchestrator (`reviewerBasic`); Caddy forwards `Authorization`.
+  orchestrator. Writers drop in-progress files as `<name>.part` (plus
+  `<name>.part.json` for resume state) and rename when complete; Caddy hides
+  `*.part`, `*.part.json` and dot-files.
+* **Reviewer auth.** Review UI is public behind Caddy Basic auth. One file
+  of named reviewers at `/srv/pipeline/reviewers.txt` (`BVP_REVIEWERS_FILE`)
+  is read by both Caddy (for `/review*`, `/proxies/*`, `/thumbs/*`) and the
+  orchestrator (`reviewerBasic`); Caddy forwards `Authorization` and adds
+  `X-Reviewer`. **Format:** one `username bcrypt-hash` pair per line,
+  separated by a space, `#` starts a comment (Caddy cannot import real
+  htpasswd `user:hash` lines).
 * **`/enroll`** is routed publicly on the 443 site; the orchestrator
   rate-limits it per source IP itself (Caddy has no built-in limiter).
 * **Peer and studio file servers** (8710, 8720) stay unauthenticated in v1;
