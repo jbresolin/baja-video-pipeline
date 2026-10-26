@@ -52,7 +52,9 @@ received → proxy_ready → awaiting_review → ready → claimed (lease) → u
 * `discarded`: a reviewer drops a junk or accidental video (from
   `awaiting_review` or `ready`); held raws may be deleted by workers.
 * `failed`: a worker reports an unrecoverable error (corrupt file, ffmpeg
-  exit); the reviewer sees the message and chooses retry or discard.
+  exit) from `received`, `proxy_ready` or `claimed`; the job records
+  `failed_from`, the reviewer sees the message and chooses retry (back to
+  `failed_from`) or discard.
 
 * **Holders.** Two workers download each raw and verify the hash. The
   **master is always one holder** (downloads everything, even what it never
@@ -259,4 +261,28 @@ PRs. Where a PR disagrees with this section, this section wins.
   `arib-std-b67` it tone-maps to BT.709 (zscale + tonemap) before the
   yuv420p conversion, for proxy and final render alike.
 * **Port correction.** Worker file server is **8710** (PR #3 said 8770).
+
+## 16. Contract PR #3 final decisions (2026-10-26)
+
+* Media keys follow Baileys: `WhatsApp Document Keys` for documents,
+  `WhatsApp Video Keys` for the `low_res` video case; `fileEncSha256`
+  covers ciphertext plus the 10-byte MAC. Webhook `url` is honoured only
+  under `BVP_WHATSAPP_MEDIA_BASE_URL`, else rebuilt from `directPath`.
+* Webhook answers 202 immediately; the job exists only after every check
+  passed, otherwise the bot asks for a resend.
+* `/enroll`: 10 requests per source IP per 600 s → 429 `rate_limited` with
+  `Retry-After`. Source IP from the last `X-Forwarded-For` hop, trusted
+  only from `BVP_TRUSTED_PROXY_CIDRS`.
+* Offers: `download_raw` carries `download_url` + `fallback_download_urls`
+  (peers on 8710); `deliver` carries `download_url`. `/auth/file` allows
+  `/inbox/<job>.<ext>` only to a worker with a `download_raw` lease on that
+  job, `/outbox/<job>.mp4` to the studio only.
+* Heartbeat answers carry `deletable_job_ids` so holders purge raws of
+  discarded jobs.
+* `TAILSCALE_*` env names are the one exception to the `BVP_*` rule.
+* Studio receiver is its own server on 8720; peer file server on 8710.
+* Review UI runs as its own service (`review_ui/` package, port 8001 on the
+  compose network, Caddy routes `/review*` to it) and talks to the
+  orchestrator over the HTTP API as a reviewer. This keeps it independent
+  of the orchestrator's internals and testable against a fake orchestrator.
 
