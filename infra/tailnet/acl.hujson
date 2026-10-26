@@ -1,0 +1,111 @@
+// Baja tailnet policy file (LIVESTACK-29).
+//
+// Upload: admin console → Access controls → JSON editor → paste → Save.
+// See infra/tailnet/README.md for the full runbook and the port table.
+//
+// Ports (the contract every component adopts):
+//   443   Caddy on the VPS (reverse-proxies the orchestrator on 8000, serves
+//         proxies/raws/outbox as static files)
+//   8000  orchestrator API on the VPS (normally reached through Caddy)
+//   8710  worker file server (peer raw fetches between workers)
+//   8720  studio receiver (finished clips pushed to the streaming PC)
+//
+// Tailscale is deny-by-default: anything not granted below is blocked.
+// https://tailscale.com/kb/1337/policy-syntax
+{
+	// Who may apply each tag to a device.
+	// https://tailscale.com/kb/1068/tags
+	"tagOwners": {
+		// The VPS. Enrolled by hand by an admin.
+		"tag:server": ["autogroup:admin"],
+
+		// Volunteers' PCs and the master desktop. Keys are minted by the
+		// orchestrator's OAuth client, which carries tag:enroller.
+		"tag:worker": ["autogroup:admin", "tag:enroller"],
+
+		// The streaming PC (worker app in studio role).
+		"tag:studio": ["autogroup:admin", "tag:enroller"],
+
+		// Never applied to a device. It exists only so the orchestrator's
+		// OAuth client can mint keys for tag:worker OR tag:studio: an auth key
+		// minted by an OAuth client must carry exactly the client's tags, or
+		// tags owned by the client's tags.
+		// https://tailscale.com/kb/1623/trust-credentials
+		"tag:enroller": ["autogroup:admin"],
+	},
+
+	// Grant syntax: https://tailscale.com/kb/1538/grants-syntax
+	"grants": [
+		// Workers → VPS: orchestrator API (via Caddy on 443, or direct on
+		// 8000) and Caddy static files (raw downloads, proxy uploads).
+		{
+			"src": ["tag:worker"],
+			"dst": ["tag:server"],
+			"ip":  ["tcp:443", "tcp:8000"],
+		},
+
+		// Workers ↔ workers: peer raw fetches from each other's file server.
+		{
+			"src": ["tag:worker"],
+			"dst": ["tag:worker"],
+			"ip":  ["tcp:8710"],
+		},
+
+		// Workers → studio: push finished clips to the streaming PC.
+		{
+			"src": ["tag:worker"],
+			"dst": ["tag:studio"],
+			"ip":  ["tcp:8720"],
+		},
+
+		// Studio → VPS: orchestrator API (heartbeats, clip manifest, ACKs)
+		// and the outbox fallback pull through Caddy.
+		{
+			"src": ["tag:studio"],
+			"dst": ["tag:server"],
+			"ip":  ["tcp:443", "tcp:8000"],
+		},
+
+		// Admins' own (untagged) devices → VPS: SSH and the web UIs, for
+		// maintenance over the tailnet.
+		{
+			"src": ["autogroup:admin"],
+			"dst": ["tag:server"],
+			"ip":  ["tcp:22", "tcp:443", "tcp:8000"],
+		},
+
+		// Intentionally absent: any grant with src tag:server. The VPS never
+		// opens connections to workers or to the studio; everything it
+		// serves is pulled from it.
+	],
+
+	// Assertions checked every time the policy is saved or validated.
+	// The admin console refuses to save a policy whose tests fail.
+	// https://tailscale.com/kb/1337/policy-syntax (section "tests")
+	"tests": [
+		// A worker reaches what it needs...
+		{
+			"src":    "tag:worker",
+			"proto":  "tcp",
+			"accept": ["tag:server:443", "tag:server:8000", "tag:worker:8710", "tag:studio:8720"],
+			// ...and nothing else: no SSH to the VPS, no studio-only port on
+			// peers, no file-server port on the studio.
+			"deny":   ["tag:server:22", "tag:worker:8720", "tag:studio:8710", "tag:worker:22"],
+		},
+
+		// The studio talks only to the VPS; it never reaches into workers.
+		{
+			"src":    "tag:studio",
+			"proto":  "tcp",
+			"accept": ["tag:server:443", "tag:server:8000"],
+			"deny":   ["tag:worker:8710", "tag:worker:8720", "tag:server:22"],
+		},
+
+		// The VPS initiates nothing: no worker, studio or SSH access.
+		{
+			"src":    "tag:server",
+			"proto":  "tcp",
+			"deny":   ["tag:worker:8710", "tag:studio:8720", "tag:worker:22", "tag:studio:22"],
+		},
+	],
+}
