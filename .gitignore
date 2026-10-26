@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local scratch notes, PR bodies, generated files
+.scratch/
+
+# Media produced by dev tools and tests
+*.mp4
+*.mov
+*.part
+*.part.json
+
+# Local data folders used when running services by hand
+data/
+.env
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,18 @@
+[project]
+name = "orchestrator"
+version = "0.1.0"
+description = "VPS service: intake, jobs DB, scheduling, review UI and delivery manifest"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "shared",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
+]
+
+[tool.uv.sources]
+shared = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
