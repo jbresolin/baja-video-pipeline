@@ -1,0 +1,146 @@
+# Caddy config for the Baja staging VPS (LIVESTACK-30).
+#
+# Three sites:
+#   1. {$EVO_DOMAIN}       public, TLS. Evolution API + Manager UI.
+#   2. {$PIPELINE_DOMAIN}  public, TLS. Review UI + static proxies.
+#   3. http://:8080        tailnet ONLY. Worker API + inbox/outbox bytes.
+#                          Docker publishes it on ${TAILSCALE_IP}:8080 only.
+#
+# {$VAR} placeholders come from the container environment (docker-compose.yml)
+# and are substituted when Caddy loads this file.
+# Reload after editing: docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+
+# -----------------------------------------------------------------------------
+# Global options
+# -----------------------------------------------------------------------------
+{
+	# Let's Encrypt account e-mail (expiry notices).
+	email {$ACME_EMAIL}
+	# The admin API stays on localhost:2019 INSIDE the container (default).
+	# It is not published, and `caddy reload` above uses it.
+}
+
+# Reusable snippet: request log to stdout (rotated by the Docker json-file driver).
+(access_log) {
+	log {
+		output stdout
+		format console
+	}
+}
+
+# -----------------------------------------------------------------------------
+# 1. Evolution API — public.
+#    n8n/BajaBot (at home) calls the REST API here with an `apikey` header.
+#    The Manager UI is the API's own bundled UI at /manager (+ /assets/*).
+#    Note: with the Baileys channel, Evolution does not RECEIVE webhooks. It
+#    only sends them, so nothing public is needed for webhook delivery.
+# -----------------------------------------------------------------------------
+{$EVO_DOMAIN} {
+	import access_log
+
+	# Manager UI and its static assets: behind HTTP basic auth, in front of
+	# Evolution's own API-key login. The browser then sends the API key on
+	# its XHR calls, which go through the API block below.
+	@manager path /manager /manager/* /assets/*
+	handle @manager {
+		basic_auth {
+			{$MANAGER_BASIC_AUTH_USER} {$MANAGER_BASIC_AUTH_HASH}
+		}
+		reverse_proxy evolution:8080
+	}
+
+	# API: reject any request without an `apikey` header at the edge.
+	# Evolution still validates the key's value. This only stops anonymous
+	# scanners before they reach Node. (`!Field` = header absent.)
+	@no_apikey header !apikey
+	handle @no_apikey {
+		respond "Missing apikey header" 401
+	}
+
+	# Everything else (with an apikey header) goes to the API.
+	handle {
+		reverse_proxy evolution:8080
+	}
+}
+
+# -----------------------------------------------------------------------------
+# 2. Pipeline — public review UI + proxies.
+#    Reviewers use a browser on any network, so this is public behind basic
+#    auth. Caddy's Caddyfile basic_auth caches bcrypt results, so the many
+#    Range requests from the video player do not each pay a bcrypt hash.
+# -----------------------------------------------------------------------------
+{$PIPELINE_DOMAIN} {
+	import access_log
+
+	# One shared reviewer login for both the UI and the proxy files.
+	@reviewer_area path /review /review/* /proxies/*
+	basic_auth @reviewer_area {
+		{$REVIEW_BASIC_AUTH_USER} {$REVIEW_BASIC_AUTH_HASH}
+	}
+
+	# Proxies (480p review copies, design §6): served straight from disk.
+	# file_server handles HTTP Range requests, so the player can seek
+	# without any app process in the byte path.
+	# /proxies/<job>.mp4 -> /srv/pipeline/proxies/<job>.mp4
+	handle /proxies/* {
+		root * /srv/pipeline
+		header Cache-Control "private, max-age=3600"
+		# Dot-files are in-progress writes (README §11). Pretend they don't exist.
+		file_server {
+			hide .*
+		}
+	}
+
+	# Review UI: served by the orchestrator under /review (design §13).
+	# X-Reviewer tells the app which basic-auth user is reviewing.
+	handle /review* {
+		reverse_proxy orchestrator:8000 {
+			header_up X-Reviewer {http.auth.user.id}
+		}
+	}
+
+	# Bare domain -> review UI.
+	handle / {
+		redir /review/ 302
+	}
+
+	# Nothing else is public.
+	handle {
+		respond "Not found" 404
+	}
+}
+
+# -----------------------------------------------------------------------------
+# 3. Tailnet-only worker API.
+#    Plain HTTP (design §13: the tailnet is the network boundary, WireGuard
+#    already encrypts). Docker publishes container port 8080 ONLY on the
+#    host's Tailscale IP, so this site cannot be reached from the internet.
+#    Identity = per-worker bearer token, checked by the orchestrator.
+# -----------------------------------------------------------------------------
+http://:8080 {
+	import access_log
+
+	# Raw files waiting for holders (inbox) and fallback clips (outbox).
+	# Caddy serves the bytes (Range + resume, design §13). Before each
+	# request, forward_auth asks the orchestrator whether this bearer token
+	# may read this path. A 2xx lets the request through, anything else is
+	# returned to the client as-is. Contract: README §11.
+	@files path /inbox/* /outbox/*
+	handle @files {
+		forward_auth orchestrator:8000 {
+			uri /api/v1/auth/file
+			copy_headers X-Worker-Id
+		}
+		root * /srv/pipeline
+		# Dot-files are in-progress writes (README §11). Pretend they don't exist.
+		file_server {
+			hide .*
+		}
+	}
+
+	# Everything else on the tailnet = orchestrator API (registration,
+	# heartbeats, claims, uploads, clip manifest). The app checks the token.
+	handle {
+		reverse_proxy orchestrator:8000
+	}
+}
