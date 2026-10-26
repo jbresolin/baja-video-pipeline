@@ -1,18 +1,35 @@
 """Realistic Evolution API v2 webhook bodies, for tests and the fake poster.
 
 Shaped like a real "messages.upsert" event for a WhatsApp document,
-trimmed of fields we never read (thumbnails, media keys, contextInfo...).
+trimmed of fields we never read (thumbnails, contextInfo...). The media
+fields describe an encrypted file on the WhatsApp CDN (design §15); build
+one with shared.testing.whatsapp_media_encrypt.
 """
 
 import time
 import uuid
 from typing import Any
 
+from shared.testing.whatsapp_media_encrypt import EncryptedMedia
+
+# Shaped like real CDN paths; tests that never download can use these.
+EXAMPLE_DIRECT_PATH = "/v/t62.7119-24/30958033_123456789_n.enc?ccb=11-4&oh=01_Q5AaI&oe=67A1B2C3"
+EXAMPLE_URL = "https://mmg.whatsapp.net" + EXAMPLE_DIRECT_PATH + "&mms3=true"
+
+# Placeholder keys/hashes for tests that only parse payloads (32 bytes each).
+PLACEHOLDER_MEDIA = EncryptedMedia(
+    media_key=bytes(range(32)),
+    file_sha256=bytes(32),
+    file_enc_sha256=bytes(32),
+    file_length=1_000_000,
+)
+
 
 def document_message_payload(
-    media_url: str,
+    encrypted: EncryptedMedia = PLACEHOLDER_MEDIA,
+    url: str | None = EXAMPLE_URL,
+    direct_path: str | None = EXAMPLE_DIRECT_PATH,
     file_name: str = "VID_20261025_101500.mp4",
-    file_length: int = 1_000_000,
     mimetype: str = "video/mp4",
     sender_phone: str = "5511999999999",
     sender_name: str = "Voluntário Teste",
@@ -21,16 +38,15 @@ def document_message_payload(
 ) -> dict[str, Any]:
     """A WhatsApp *document* message (the good case: original quality)."""
     media = {
-        # The real URL is WhatsApp's encrypted CDN; we never download it.
-        "url": "https://mmg.whatsapp.net/v/t62.7119-24/fake.enc",
+        "url": url,
+        "directPath": direct_path,
         "mimetype": mimetype,
         "title": file_name,
         "fileName": file_name,
-        # WhatsApp sends the size as a string of digits.
-        "fileLength": str(file_length),
+        **encrypted.as_webhook_fields(),
     }
     return _upsert_event(
-        message={"documentMessage": media, "mediaUrl": media_url},
+        message={"documentMessage": media},
         message_type="documentMessage",
         sender_phone=sender_phone,
         sender_name=sender_name,
@@ -40,22 +56,27 @@ def document_message_payload(
 
 
 def video_message_payload(
-    media_url: str,
-    file_length: int = 1_000_000,
+    encrypted: EncryptedMedia = PLACEHOLDER_MEDIA,
+    url: str | None = EXAMPLE_URL,
+    direct_path: str | None = EXAMPLE_DIRECT_PATH,
     sender_phone: str = "5511999999999",
     sender_name: str = "Voluntário Teste",
     message_id: str | None = None,
     instance: str = "baja-bot",
 ) -> dict[str, Any]:
-    """A WhatsApp *video* message (recompressed by WhatsApp → low_res job)."""
+    """A WhatsApp *video* message (recompressed by WhatsApp → low_res job).
+
+    Its keys come from "WhatsApp Video Keys", so encrypt with media_type="video".
+    """
     media = {
-        "url": "https://mmg.whatsapp.net/v/t62.7161-24/fake.enc",
+        "url": url,
+        "directPath": direct_path,
         "mimetype": "video/mp4",
-        "fileLength": str(file_length),
         "seconds": 12,
+        **encrypted.as_webhook_fields(),
     }
     return _upsert_event(
-        message={"videoMessage": media, "mediaUrl": media_url},
+        message={"videoMessage": media},
         message_type="videoMessage",
         sender_phone=sender_phone,
         sender_name=sender_name,

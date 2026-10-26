@@ -1,16 +1,19 @@
 """Dev tool: pretend a volunteer sent a video to the Baja Bot.
 
-Serves a local file over HTTP (standing in for Evolution's media storage)
-and posts a realistic Evolution "messages.upsert" webhook pointing at it to
-a running orchestrator. Keeps serving for a while so the orchestrator can
-download the file.
+Encrypts a local file exactly as WhatsApp does, serves the encrypted blob
+over HTTP (standing in for the WhatsApp CDN), and posts a realistic
+Evolution "messages.upsert" webhook describing it to a running
+orchestrator. Keeps serving for a while so the orchestrator can download.
 
     uv run python orchestrator/fakes/fake_evolution_webhook.py clip.mp4
     uv run python orchestrator/fakes/fake_evolution_webhook.py clip.mp4 --as-video \\
         --orchestrator http://127.0.0.1:8000 --secret dev-secret
 
-If the orchestrator runs in Docker, pass --media-host with an address the
-container can reach (e.g. host.docker.internal).
+The orchestrator only trusts media URLs under BVP_WHATSAPP_MEDIA_BASE_URL
+(default https://mmg.whatsapp.net), so run it with
+BVP_WHATSAPP_MEDIA_BASE_URL=http://127.0.0.1:8790 (this tool prints the
+exact value). If the orchestrator runs in Docker, pass --media-host with an
+address the container can reach (e.g. host.docker.internal).
 """
 
 import argparse
@@ -18,25 +21,37 @@ import contextlib
 import functools
 import json
 import sys
+import tempfile
 import threading
 import time
+import uuid
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote
 
 import httpx
 
 from shared.protocol import WEBHOOK_SECRET_HEADER
 from shared.testing.evolution_payloads import document_message_payload, video_message_payload
+from shared.testing.whatsapp_media_encrypt import EncryptedMedia, encrypt_file
+
+DEFAULT_FAKE_CDN_PORT = 8790
 
 
-def build_payload(video: Path, media_url: str, as_video: bool, sender_name: str) -> dict:
-    """The webhook body for `video`, as a WhatsApp document (default) or video."""
-    size = video.stat().st_size
+def build_payload(
+    video: Path,
+    encrypted: EncryptedMedia,
+    media_base_url: str,
+    blob_name: str,
+    as_video: bool,
+    sender_name: str,
+) -> dict:
+    """The webhook body for an encrypted `video`, as a WhatsApp document or video."""
+    direct_path = f"/{blob_name}"
+    url = media_base_url.rstrip("/") + direct_path
     if as_video:
-        return video_message_payload(media_url, file_length=size, sender_name=sender_name)
+        return video_message_payload(encrypted, url, direct_path, sender_name=sender_name)
     return document_message_payload(
-        media_url, file_name=video.name, file_length=size, sender_name=sender_name
+        encrypted, url, direct_path, file_name=video.name, sender_name=sender_name
     )
 
 
@@ -55,9 +70,9 @@ def main() -> int:
     parser.add_argument("--secret", default="dev-secret", help=f"value of {WEBHOOK_SECRET_HEADER}")
     parser.add_argument("--as-video", action="store_true", help="send as WhatsApp video (low_res)")
     parser.add_argument("--sender-name", default="Voluntário Teste")
-    parser.add_argument("--bind", default="127.0.0.1", help="address the file server listens on")
-    parser.add_argument("--media-host", default="127.0.0.1", help="host written in mediaUrl")
-    parser.add_argument("--port", type=int, default=0, help="file server port (0 = any free)")
+    parser.add_argument("--bind", default="127.0.0.1", help="address the fake CDN listens on")
+    parser.add_argument("--media-host", default="127.0.0.1", help="host written in the webhook")
+    parser.add_argument("--port", type=int, default=DEFAULT_FAKE_CDN_PORT, help="fake CDN port")
     parser.add_argument("--serve-seconds", type=int, default=120)
     arguments = parser.parse_args()
 
@@ -66,28 +81,35 @@ def main() -> int:
         print(f"no such file: {video}", file=sys.stderr)
         return 2
 
-    server = start_file_server(video.parent, arguments.bind, arguments.port)
-    port = server.server_address[1]
-    media_url = f"http://{arguments.media_host}:{port}/{quote(video.name)}"
-    payload = build_payload(video, media_url, arguments.as_video, arguments.sender_name)
+    with tempfile.TemporaryDirectory(prefix="fake-whatsapp-cdn-") as cdn_folder:
+        blob_name = f"{uuid.uuid4().hex}.enc"
+        media_type = "video" if arguments.as_video else "document"
+        encrypted = encrypt_file(video, Path(cdn_folder) / blob_name, media_type)
 
-    response = httpx.post(
-        f"{arguments.orchestrator}/intake/evolution-webhook",
-        json=payload,
-        headers={WEBHOOK_SECRET_HEADER: arguments.secret},
-        timeout=60,
-    )
-    print(f"HTTP {response.status_code}")
-    try:
-        print(json.dumps(response.json(), indent=2, ensure_ascii=False))
-    except ValueError:
-        print(response.text)
+        server = start_file_server(Path(cdn_folder), arguments.bind, arguments.port)
+        media_base_url = f"http://{arguments.media_host}:{server.server_address[1]}"
+        print(f"orchestrator needs BVP_WHATSAPP_MEDIA_BASE_URL={media_base_url}")
+        payload = build_payload(
+            video, encrypted, media_base_url, blob_name, arguments.as_video, arguments.sender_name
+        )
 
-    print(f"serving {media_url} for {arguments.serve_seconds}s (Ctrl+C to stop)")
-    # Ctrl+C just ends the wait early; it is not an error.
-    with contextlib.suppress(KeyboardInterrupt):
-        time.sleep(arguments.serve_seconds)
-    server.shutdown()
+        response = httpx.post(
+            f"{arguments.orchestrator}/intake/evolution-webhook",
+            json=payload,
+            headers={WEBHOOK_SECRET_HEADER: arguments.secret},
+            timeout=60,
+        )
+        print(f"HTTP {response.status_code}")
+        try:
+            print(json.dumps(response.json(), indent=2, ensure_ascii=False))
+        except ValueError:
+            print(response.text)
+
+        print(f"serving {media_base_url}/{blob_name} for {arguments.serve_seconds}s (Ctrl+C stops)")
+        # Ctrl+C just ends the wait early; it is not an error.
+        with contextlib.suppress(KeyboardInterrupt):
+            time.sleep(arguments.serve_seconds)
+        server.shutdown()
     return 0 if response.is_success else 1
 
 
