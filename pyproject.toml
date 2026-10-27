@@ -1,5 +1,5 @@
 # Root of the uv workspace. This root project is not a package itself; it
-# only ties the three member packages together and holds shared tool config
+# only ties the four member packages together and holds shared tool config
 # (ruff, pytest) and the dev dependencies used by the whole repo.
 
 [project]
@@ -8,19 +8,20 @@ version = "0.1.0"
 description = "Baja video pipeline v2: intake, distributed editing and delivery of pass videos"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-dependencies = ["shared", "orchestrator", "worker"]
+dependencies = ["shared", "orchestrator", "worker", "review-ui"]
 
 [tool.uv]
 # The root is a "virtual" project: install its dependencies, don't build it.
 package = false
 
 [tool.uv.workspace]
-members = ["shared", "orchestrator", "worker"]
+members = ["shared", "orchestrator", "worker", "review_ui"]
 
 [tool.uv.sources]
 shared = { workspace = true }
 orchestrator = { workspace = true }
 worker = { workspace = true }
+review-ui = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -48,11 +49,11 @@ extend-immutable-calls = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["shared", "orchestrator", "worker", "tools"]
+known-first-party = ["shared", "orchestrator", "worker", "review_ui", "tools"]
 
 [tool.pytest.ini_options]
 # One folder per package: tests/shared, tests/orchestrator, tests/worker,
-# tests/tools. They live outside the package folders on purpose: a folder
+# tests/review_ui, tests/tools. They live outside the package folders on purpose: a folder
 # named shared/tests would make pytest invent a module called "shared"
 # that hides the real package.
 testpaths = ["tests"]

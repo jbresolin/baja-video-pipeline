@@ -282,6 +282,32 @@ services:
     memswap_limit: 768m
     logging: *default-logging
 
+  # ---------------------------------------------------------------------------
+  # Review UI (LIVESTACK-27, -26). Its own service (design §16): it talks to
+  # the orchestrator only over the HTTP API, as the reviewer (it forwards the
+  # browser's Authorization header). No database, no volumes. Same profile
+  # as the orchestrator, since it is useless without it.
+  # Image: docker build -f review_ui/Dockerfile . (from the repo root).
+  # ---------------------------------------------------------------------------
+  review-ui:
+    profiles: ["orchestrator"]
+    image: ${REVIEW_UI_IMAGE:-ghcr.io/jbresolin/baja-review-ui:CHANGE-ME}
+    restart: unless-stopped
+    depends_on:
+      - orchestrator
+    environment:
+      BVP_ORCHESTRATOR_URL: http://orchestrator:8000
+      # Proxy and thumbnail links are built on the public site.
+      BVP_PUBLIC_BASE_URL: https://${PIPELINE_DOMAIN}
+    networks:
+      - edge
+    # Listens on 8001 inside `edge`. No published ports, Caddy fronts it.
+    expose:
+      - "8001"
+    mem_limit: 160m
+    memswap_limit: 160m
+    logging: *default-logging
+
 volumes:
   evolution_instances:
   postgres_data:

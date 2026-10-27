@@ -1,0 +1,13 @@
+# Used by BuildKit for review_ui/Dockerfile only (the build context is the
+# repo root). Send only what the Dockerfile copies.
+*
+!pyproject.toml
+!uv.lock
+!.python-version
+!shared/pyproject.toml
+!shared/src
+!orchestrator/pyproject.toml
+!worker/pyproject.toml
+!review_ui/pyproject.toml
+!review_ui/src
+**/__pycache__

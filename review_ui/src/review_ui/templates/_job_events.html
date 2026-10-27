@@ -1,0 +1,10 @@
+{% import "macros.html" as m %}
+<section id="event-log" class="event-log">
+  <h2>Event log</h2>
+  <ol>
+    {% for event in timeline %}
+    <li>{{ m.time(event.at) }} <span>{{ event.text }}</span></li>
+    {% endfor %}
+  </ol>
+  <p class="hint">Rebuilt from the job record, so only the latest of each kind of event is shown.</p>
+</section>

@@ -108,13 +108,13 @@
 		import pipeline_files
 	}
 
-	# Review UI: served by the orchestrator under /review (design §13).
-	# reverse_proxy forwards the client's `Authorization: Basic …` header
-	# unchanged, because the orchestrator checks reviewerBasic itself
+	# Review UI: its own service, review-ui:8001 (design §16). reverse_proxy
+	# forwards the client's `Authorization: Basic …` header unchanged; the
+	# UI passes it on to the orchestrator, which checks reviewerBasic itself
 	# (docs/api.md §2). X-Reviewer is a convenience copy of the user name
-	# Caddy authenticated.
+	# Caddy authenticated (header_up replaces any client-sent value).
 	handle /review* {
-		reverse_proxy orchestrator:8000 {
+		reverse_proxy review-ui:8001 {
 			header_up X-Reviewer {http.auth.user.id}
 		}
 	}

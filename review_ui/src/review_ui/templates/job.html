@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}Job {{ job.id|short_id }}{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+<div class="page-head">
+  <a class="back" href="/review/">← Queue</a>
+  <h1>Job <code>{{ job.id|short_id }}</code> {{ m.state_badge(job.state) }}
+    {% if job.low_res %}<span class="badge flag">low-res</span>{% endif %}</h1>
+  <p class="hint">
+    {{ job.source.sender_name or "unknown sender" }} · received {{ m.time(job.created_at) }}
+    · {{ job.size_bytes|bytes }} · {{ job.duration_s|duration }} · v{{ job.version }}
+  </p>
+</div>
+
+<div id="stale-banner" class="banner warning" hidden>
+  Someone changed this job since you opened it.
+  <button type="button" data-reload>Reload</button>
+</div>
+
+<div class="job-layout" id="job" data-job-id="{{ job.id }}" data-version="{{ job.version }}"
+     data-duration="{{ job.duration_s if job.duration_s is not none else '' }}">
+  <section class="player-pane" aria-label="Proxy player">
+    {% if job.proxy_available %}
+    <video id="player" src="{{ media_url(job.proxy_url or '/proxies/' ~ job.id ~ '.mp4') }}"
+           {% if job.thumbnail_url %}poster="{{ media_url(job.thumbnail_url) }}"{% endif %}
+           preload="auto" controls playsinline></video>
+    {% else %}
+    <div class="player-empty">
+      <p>The proxy is not available.</p>
+      <button type="button" data-regenerate-proxy>Request proxy</button>
+    </div>
+    {% endif %}
+    <div class="transport">
+      <span class="timecode" id="current-time">0:00.000</span>
+      <div class="cut-bar" id="cut-bar" title="Click to seek">
+        <span class="cut-range" id="cut-range"></span>
+        <span class="playhead" id="playhead"></span>
+      </div>
+    </div>
+    <details class="shortcuts" id="shortcuts">
+      <summary>Keyboard shortcuts <kbd>?</kbd></summary>
+      <dl>
+        <dt><kbd>Space</kbd> / <kbd>k</kbd></dt><dd>play / pause</dd>
+        <dt><kbd>i</kbd> / <kbd>o</kbd></dt><dd>set cut in / out at the playhead</dd>
+        <dt><kbd>Shift</kbd>+<kbd>i</kbd> / <kbd>o</kbd></dt><dd>jump to cut in / out</dd>
+        <dt><kbd>←</kbd> / <kbd>→</kbd></dt><dd>one frame back / forward</dd>
+        <dt><kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd></dt><dd>one second back / forward</dd>
+        <dt><kbd>-</kbd> / <kbd>=</kbd></dt><dd>nudge the last mark one frame earlier / later</dd>
+        <dt><kbd>p</kbd></dt><dd>play the cut from in to out</dd>
+        <dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>save</dd>
+        <dt><kbd>Ctrl</kbd>+<kbd>Enter</kbd></dt><dd>ready / reprocess / retry</dd>
+        <dt><kbd>Esc</kbd></dt><dd>leave a text field (shortcuts work again)</dd>
+      </dl>
+    </details>
+  </section>
+
+  <section class="form-pane" aria-label="Review">
+    {% include "_job_status.html" %}
+
+    <form id="review-form" class="review-form" autocomplete="off">
+      <div class="cuts">
+        <div class="cut" data-mark-box="in">
+          <label for="cut_in_s">Cut in <span class="unit">s</span></label>
+          <input id="cut_in_s" name="cut_in_s" type="number" step="0.001" min="0" inputmode="decimal"
+                 value="{{ '%.3f'|format(job.cut_in_s) if job.cut_in_s is not none else '' }}">
+          <button type="button" data-set-mark="in" title="Set at playhead (i)">Set <kbd>i</kbd></button>
+        </div>
+        <div class="cut" data-mark-box="out">
+          <label for="cut_out_s">Cut out <span class="unit">s</span></label>
+          <input id="cut_out_s" name="cut_out_s" type="number" step="0.001" min="0" inputmode="decimal"
+                 value="{{ '%.3f'|format(job.cut_out_s) if job.cut_out_s is not none else '' }}">
+          <button type="button" data-set-mark="out" title="Set at playhead (o)">Set <kbd>o</kbd></button>
+        </div>
+        <p class="cut-length">Length <span id="cut-length">—</span></p>
+      </div>
+
+      <label for="prova">Prova</label>
+      <input id="prova" name="prova" list="prova-suggestions" maxlength="64" value="{{ job.prova or '' }}">
+      <datalist id="prova-suggestions">
+        {% for prova in prova_suggestions %}<option value="{{ prova }}">{% endfor %}
+      </datalist>
+
+      <div class="pair">
+        <div>
+          <label for="car_number">Car number</label>
+          <input id="car_number" name="car_number" type="number" min="0" max="9999" inputmode="numeric"
+                 value="{{ job.car_number if job.car_number is not none else '' }}">
+        </div>
+        <div>
+          <label for="passagem">Passagem</label>
+          <input id="passagem" name="passagem" type="number" min="1" max="999" inputmode="numeric"
+                 value="{{ job.passagem if job.passagem is not none else '' }}">
+        </div>
+      </div>
+      <p class="team" id="team-name" aria-live="polite">{% if job.team_name %}Team: <strong>{{ job.team_name }}</strong>{% endif %}</p>
+
+      <label class="check"><input type="checkbox" name="show_pass" {% if job.show_pass %}checked{% endif %}>
+        Show the pass number on the overlay</label>
+
+      <div class="actions">
+        {% for value, label in actions %}
+        <button type="button" class="action action-{{ value }}" data-action="{{ value }}">{{ label }}</button>
+        {% else %}
+        <p class="hint">No review actions in this state.</p>
+        {% endfor %}
+        {% if job.proxy_available and job.state != "discarded" %}
+        <button type="button" class="action subtle" data-regenerate-proxy title="Ask a holder to render the proxy again">Re-render proxy</button>
+        {% endif %}
+      </div>
+    </form>
+
+    {% include "_job_events.html" %}
+  </section>
+</div>
+
+{# Polled every few seconds; js/job.js swaps the status strip and event log. #}
+<div id="job-panel" hidden data-poll-url="/review/jobs/{{ job.id }}/panel" data-poll-seconds="{{ poll_seconds }}"></div>
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ static('js/job.js') }}"></script>{% endblock %}
