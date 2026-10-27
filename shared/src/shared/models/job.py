@@ -141,6 +141,10 @@ class Job(ApiModel):
     # Set when a worker reported a failure; shown to the reviewer, who then
     # chooses retry or discard. Cleared by "retry".
     failure: JobFailure | None = None
+    # While state is "failed": the state the job failed from (received,
+    # proxy_ready or claimed). "retry" returns it there (claimed → ready).
+    # None in every other state.
+    failed_from: JobState | None = None
     # Human-readable reason the job is stuck, shown in the review UI,
     # e.g. "waiting for a holder to come back online". None when not stuck.
     waiting_reason: str | None = None

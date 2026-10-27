@@ -36,8 +36,9 @@ class JobState(StrEnum):
     # A reviewer dropped a junk or accidental video. Final: nothing more
     # happens, and holders may delete their copy of the raw.
     DISCARDED = "discarded"
-    # A worker reported an unrecoverable error while processing (corrupt
-    # file, ffmpeg exit). Waits for a reviewer to choose retry or discard.
+    # A worker reported an unrecoverable error (corrupt file, ffmpeg exit)
+    # from received, proxy_ready or claimed; Job.failed_from says which.
+    # Waits for a reviewer to choose retry (back there) or discard.
     FAILED = "failed"
 
 
@@ -92,7 +93,7 @@ class ReviewAction(StrEnum):
     REPROCESS = "reprocess"
     # Drop the job (awaiting_review, ready or failed → discarded).
     DISCARD = "discard"
-    # Try again after a worker failure (failed → ready).
+    # Try again after a worker failure (failed → Job.failed_from; claimed → ready).
     RETRY = "retry"
 
 

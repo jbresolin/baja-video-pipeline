@@ -152,10 +152,13 @@ def authorize_file(
 def report_failure(job_id: str, body: FailedRequest) -> JobStateResponse:
     """Ends the lease named in the body (409 `lease_lost` if it is gone).
 
-    * Under a `process` lease: job claimed → failed, `Job.failure` set; the
-      review UI shows the message and offers retry or discard.
-    * Under a `download_raw`/`make_proxy` lease: the job keeps its state
-      (design §4 allows `failed` only from `claimed`), `Job.failure` and
+    * From `received`, `proxy_ready` (any task) or `claimed` (the `process`
+      lease): job → failed, `Job.failure` set and `Job.failed_from` records
+      the state it failed from; other leases on the job are revoked. The
+      review UI shows the message and offers retry (back to `failed_from`,
+      `claimed` → `ready`) or discard.
+    * Any other state (e.g. a second holder's download, or a proxy
+      re-render after review): the job keeps its state, `Job.failure` and
       `waiting_reason` are set, and that task is not offered to the same
       worker for that job again.
     """

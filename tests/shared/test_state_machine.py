@@ -12,10 +12,12 @@ from shared.models import JobState
 from shared.state_machine import (
     ALLOWED_TRANSITIONS,
     DISCARDABLE_STATES,
+    FAILABLE_STATES,
     REPROCESSABLE_STATES,
     RETRYABLE_STATES,
     IllegalTransitionError,
     is_transition_allowed,
+    retry_target_for,
     validate_transition,
 )
 
@@ -40,9 +42,16 @@ LEGAL_TRANSITIONS = [
     # A reviewer discards a junk video, before or after marking it ready.
     (JobState.AWAITING_REVIEW, JobState.DISCARDED),
     (JobState.READY, JobState.DISCARDED),
-    # A worker reports an unrecoverable processing error...
+    # A worker reports an unrecoverable error: while the raw is being
+    # downloaded or the proxy rendered (received, proxy_ready), or while
+    # processing (claimed)...
+    (JobState.RECEIVED, JobState.FAILED),
+    (JobState.PROXY_READY, JobState.FAILED),
     (JobState.CLAIMED, JobState.FAILED),
-    # ...and the reviewer then retries it or discards it.
+    # ...and the reviewer then retries it (back to where it failed; a job
+    # that failed while claimed goes back to ready) or discards it.
+    (JobState.FAILED, JobState.RECEIVED),
+    (JobState.FAILED, JobState.PROXY_READY),
     (JobState.FAILED, JobState.READY),
     (JobState.FAILED, JobState.DISCARDED),
 ]
@@ -103,14 +112,17 @@ ILLEGAL_TRANSITIONS = [
     (JobState.PROXY_READY, JobState.DISCARDED),
     (JobState.CLAIMED, JobState.DISCARDED),
     (JobState.DONE, JobState.DISCARDED),
-    # Only processing (claimed) can fail; a delivered clip cannot.
-    (JobState.RECEIVED, JobState.FAILED),
+    # Only received, proxy_ready and claimed can fail; a job waiting for a
+    # human, or a delivered clip, cannot.
+    (JobState.AWAITING_REVIEW, JobState.FAILED),
     (JobState.READY, JobState.FAILED),
     (JobState.UPLOADED, JobState.FAILED),
     (JobState.DELIVERED, JobState.FAILED),
     # A failed job goes back through "ready"; it is never claimed directly.
     (JobState.FAILED, JobState.CLAIMED),
     (JobState.FAILED, JobState.DONE),
+    # Retry never skips the review: a failed job cannot jump into the queue.
+    (JobState.FAILED, JobState.AWAITING_REVIEW),
 ]
 
 
@@ -169,3 +181,39 @@ def test_discarded_is_a_final_state_and_the_error_says_so():
     with pytest.raises(IllegalTransitionError) as caught:
         validate_transition(JobState.DISCARDED, JobState.READY)
     assert "final state" in str(caught.value)
+
+
+def test_failable_states_are_exactly_the_states_with_a_move_to_failed():
+    # FAILABLE_STATES is the list the orchestrator checks before recording
+    # Job.failed_from. It must agree with the transition table, or the
+    # orchestrator could record a failure the table then refuses.
+    sources_of_failed = {s for s in JobState if is_transition_allowed(s, JobState.FAILED)}
+    assert sources_of_failed == FAILABLE_STATES
+    assert {JobState.RECEIVED, JobState.PROXY_READY, JobState.CLAIMED} == FAILABLE_STATES
+
+
+@pytest.mark.parametrize(
+    ("failed_from", "expected_target"),
+    [
+        # A raw that could not be downloaded or turned into a proxy goes
+        # back to the same step, so the holders are offered it again.
+        (JobState.RECEIVED, JobState.RECEIVED),
+        (JobState.PROXY_READY, JobState.PROXY_READY),
+        # A job that failed while being processed goes back to the queue
+        # ("ready"), not to "claimed", because nobody holds a lease on it.
+        (JobState.CLAIMED, JobState.READY),
+    ],
+)
+def test_retry_returns_the_job_to_where_it_failed(failed_from, expected_target):
+    target = retry_target_for(failed_from)
+    assert target == expected_target
+    # And the table must allow that move, or the review endpoint would
+    # accept "retry" and then crash on the state change.
+    assert is_transition_allowed(JobState.FAILED, target)
+
+
+def test_retry_target_refuses_a_state_a_job_cannot_fail_from():
+    # A job never fails from "done", so asking where to retry it to is a
+    # bug in the caller. A ValueError makes that bug loud.
+    with pytest.raises(ValueError):
+        retry_target_for(JobState.DONE)
