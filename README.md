@@ -11,11 +11,14 @@ OBS. Design: [`docs/design.md`](docs/design.md). API contract:
 | Path | What |
 | --- | --- |
 | `shared/` | Package used by every service: pydantic models, job state machine, hashing, resumable downloads, chunked uploads, ffmpeg command builders, studio folder layout |
-| `orchestrator/` | VPS service: intake, jobs DB, scheduling, review UI (`/review`), manifest. `openapi.yaml` is its contract; `fakes/` has dev tools |
+| `orchestrator/` | VPS service: intake, jobs DB, scheduling, review API, event log, manifest. `openapi.yaml` is its contract; `fakes/` has dev tools |
+| `review_ui/` | VPS service: the reviewers' web UI (`/review`) and fleet view, its own package and image, talking to the orchestrator over its HTTP API (design §16) |
 | `worker/` | Worker app, one codebase for the `master`, `worker` and `studio` roles |
 | `tools/` | Repo tooling. `openapi_contract/` declares the API as FastAPI stubs; `generate_openapi.py` writes the YAML |
 | `tests/<package>/` | Tests per package (kept outside the package folders, see `pyproject.toml`) |
+| `tests/e2e/` | Whole-system test: real orchestrator, review UI and worker code (master, worker, studio) with a stub ffmpeg |
 | `infra/` | Compose, Caddy, Tailscale ACLs, runbooks |
+| `.github/workflows/` | `ci.yml` (lint, contract check, tests); `images.yml` (push `ghcr.io/jbresolin/baja-orchestrator` and `baja-review-ui`) |
 | `docs/` | Design and API docs |
 
 ## Getting started

@@ -1,0 +1,63 @@
+name: Images
+
+# Builds and pushes the two VPS images (design §17):
+#   ghcr.io/jbresolin/baja-orchestrator
+#   ghcr.io/jbresolin/baja-review-ui
+# Tags: `main` and the short commit SHA on pushes to main; the tag name
+# (e.g. v1.2.0) on v* tags. infra/vps/.env.example points at `main`.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ghcr.io/jbresolin/baja-orchestrator
+            dockerfile: orchestrator/Dockerfile
+          - image: ghcr.io/jbresolin/baja-review-ui
+            dockerfile: review_ui/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Works out the tags: `main` plus the short SHA (e.g. 1a2b3c4) for
+      # main, the git tag name for v* tags.
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ matrix.image }}
+          tags: |
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=,format=short,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=tag
+
+      # Both Dockerfiles need shared/ too, so the build context is the repo root.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
