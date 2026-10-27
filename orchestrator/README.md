@@ -47,6 +47,30 @@ curl -s -H 'Content-Type: application/json' http://127.0.0.1:8000/enroll -d '{
   "storage_cap_bytes": 100000000000}'
 ```
 
+### Dev mode (`BVP_DEV_MODE=1`)
+
+The dev server turns it on. It does two things that must never happen on
+the VPS, so the orchestrator **refuses to start** with `BVP_DEV_MODE=1`
+unless `BVP_PUBLIC_BASE_URL` is `http://localhost…`, `http://127.0.0.1…`
+or `http://[::1]…`:
+
+* `POST /intake/test-upload` (below) creates jobs without WhatsApp.
+* The orchestrator serves Caddy's static paths itself (`api/routes_dev_files.py`,
+  design §18), so workers work with no Caddy in front:
+
+  | Path | Who may read it (same as production) |
+  | --- | --- |
+  | `/inbox/<job>.<ext>` | the worker holding that job's `download_raw` lease (`/auth/file` rules) |
+  | `/outbox/<job>.mp4` | the studio (`/auth/file` rules) |
+  | `/proxies/<job>.mp4`, `/thumbs/<job>.jpg` | a reviewer (basic auth, like Caddy) |
+
+  GET and HEAD, with `Range` (206) like Caddy's `file_server`; dot-files
+  and `*.part` are never served. The routes are left out of `/openapi.json`.
+
+**Whole pipeline on one PC** (orchestrator + fake webhook poster + master
++ worker + studio, ending with a clip in a local box folder): the
+five-terminal recipe is in [`worker/README.md`](../worker/README.md#locally-the-whole-pipeline-on-one-pc-five-terminals).
+
 `POST /intake/test-upload` (dev mode only) is the shortcut without the CDN:
 
 ```sh

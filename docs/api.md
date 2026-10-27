@@ -499,7 +499,7 @@ variables keep the names fixed in design §8.
 | `BVP_REVIEWERS_FILE` | `/srv/pipeline/reviewers.txt` | Reviewer credentials (§9) |
 | `BVP_ADMIN_TOKEN` | — (required) | `adminBearer` token |
 | `BVP_WEBHOOK_SECRET` | — (required) | Expected `X-Webhook-Secret` value |
-| `BVP_DEV_MODE` | `0` | `1` enables `/intake/test-upload` |
+| `BVP_DEV_MODE` | `0` | `1` enables `/intake/test-upload` and serves `/inbox/*`, `/outbox/*`, `/proxies/*`, `/thumbs/*` from the orchestrator (Caddy's rules, Range; not in the OpenAPI document). Refused at startup unless `BVP_PUBLIC_BASE_URL` is localhost |
 | `BVP_PORT` | `8000` | Port uvicorn listens on inside the compose network |
 | `BVP_PUBLIC_BASE_URL` | — (required) | Public 443 site, e.g. `https://baja.example.org` (proxy/thumbnail links) |
 | `BVP_TAILNET_BASE_URL` | — (required) | Caddy tailnet listener, e.g. `http://100.101.102.103:8080`; base of every absolute URL in task offers |
@@ -522,6 +522,10 @@ variables keep the names fixed in design §8.
 
 * `uv run python orchestrator/fakes/make_test_clip.py .scratch/clip.mp4`
   — synthetic MP4 with ffmpeg.
+* `uv run python orchestrator/fakes/make_local_workers.py` — mints master,
+  worker and studio enrollment tokens from a dev-mode orchestrator and
+  writes `.scratch/local/<role>/worker.json` for each (five-terminal local
+  run: `worker/README.md`).
 * `uv run python orchestrator/fakes/fake_evolution_webhook.py .scratch/clip.mp4`
   — encrypts the file like WhatsApp, serves the blob as a fake CDN on
   `:8790`, and posts a document-message webhook to `http://127.0.0.1:8000`
