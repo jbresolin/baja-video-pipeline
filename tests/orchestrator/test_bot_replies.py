@@ -8,6 +8,8 @@ nothing else. "Exactly" matters: a volunteer who gets two contradictory
 answers for one video will not know what to do.
 """
 
+from pathlib import Path
+
 from orchestrator.domain import bot_messages
 from orchestrator.testing.harness import build_harness
 from orchestrator.testing.scenarios import SAMPLE_VIDEO_BYTES, receive_job, send_video
@@ -15,6 +17,7 @@ from shared.testing.evolution_payloads import document_message_payload
 from shared.testing.whatsapp_media_encrypt import encrypt_bytes
 
 VOLUNTEER_PHONE = "5511977776666"
+VOLUNTEER_GUIDE = Path(__file__).resolve().parents[2] / "docs" / "volunteers-pt-BR.md"
 
 
 def test_a_good_document_gets_one_received_confirmation(harness):
@@ -78,3 +81,13 @@ def test_every_reply_is_short_distinct_and_asks_for_a_document_when_resending():
         bot_messages.DOWNLOAD_FAILED_PLEASE_RESEND,
     ):
         assert "*documento*" in text
+
+
+def test_the_volunteer_guide_quotes_every_reply_word_for_word():
+    # docs/volunteers-pt-BR.md explains each reply to the volunteers. If
+    # someone rewords a reply in bot_messages.py, this fails until the
+    # guide is updated too, so volunteers never read about a message the
+    # bot no longer sends.
+    guide = VOLUNTEER_GUIDE.read_text(encoding="utf-8")
+    missing = [text for text in bot_messages.ALL_REPLIES if text not in guide]
+    assert missing == []
