@@ -189,7 +189,7 @@ def test_failable_states_are_exactly_the_states_with_a_move_to_failed():
     # orchestrator could record a failure the table then refuses.
     sources_of_failed = {s for s in JobState if is_transition_allowed(s, JobState.FAILED)}
     assert sources_of_failed == FAILABLE_STATES
-    assert FAILABLE_STATES == {JobState.RECEIVED, JobState.PROXY_READY, JobState.CLAIMED}
+    assert {JobState.RECEIVED, JobState.PROXY_READY, JobState.CLAIMED} == FAILABLE_STATES
 
 
 @pytest.mark.parametrize(

@@ -4,6 +4,8 @@ The orchestrator must refuse to start when a required variable is missing,
 and say *which* one, instead of crashing later on the first request.
 """
 
+import os
+
 import pytest
 
 from orchestrator.config import ConfigError, load_settings
@@ -26,8 +28,6 @@ def clean_environment(monkeypatch):
     # monkeypatch undoes every change after the test. Here we remove any
     # BVP_*/TAILSCALE_* variables from the developer's own shell, so the
     # tests see only what they set themselves.
-    import os
-
     for name in list(os.environ):
         if name.startswith(("BVP_", "TAILSCALE_")):
             monkeypatch.delenv(name)
