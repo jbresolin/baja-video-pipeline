@@ -140,3 +140,47 @@ def test_fetch_all_refuses_a_lock_missing_a_payload(tmp_path):
 
     with pytest.raises(fetch_vendor.VendorError, match="nssm, tailscale"):
         fetch_vendor.fetch_all(lock, tmp_path / "vendor", say=lambda line: None)
+
+
+def test_when_the_main_url_fails_a_mirror_with_the_same_hash_is_used(tmp_path):
+    # Set up: the main URL points at a file that does not exist (like
+    # nssm.cc answering 503); the mirror has the right bytes.
+    good_url, digest = make_source_file(tmp_path / "mirror", "tool.msi", b"msi bytes")
+    payload = fetch_vendor.Payload(
+        name="tool",
+        url=(tmp_path / "gone" / "tool.msi").as_uri(),
+        sha256=digest,
+        mirrors=(good_url,),
+    )
+    messages = []
+
+    used = fetch_vendor.fetch_payload(
+        payload,
+        tmp_path / "vendor",
+        say=messages.append,
+        sleep=lambda seconds: None,  # don't really wait between retries
+    )
+
+    # The file came from the mirror, under the main URL's file name.
+    assert used.read_bytes() == b"msi bytes"
+    # The main URL was retried before giving up on it.
+    assert sum("retrying" in line for line in messages) == fetch_vendor.ATTEMPTS_PER_SOURCE - 1
+
+
+def test_a_mirror_with_the_wrong_bytes_is_never_kept(tmp_path):
+    # Both sources answer, but neither has the pinned hash: nothing is kept
+    # and the error lists both.
+    first, _ = make_source_file(tmp_path / "a", "tool.msi", b"one")
+    second, _ = make_source_file(tmp_path / "b", "tool.msi", b"two")
+    payload = fetch_vendor.Payload(name="tool", url=first, sha256="0" * 64, mirrors=(second,))
+
+    with pytest.raises(fetch_vendor.VendorError) as failure:
+        fetch_vendor.fetch_payload(payload, tmp_path / "vendor", say=lambda line: None)
+
+    assert str(failure.value).count("SHA-256 mismatch") == 2
+    assert list((tmp_path / "vendor" / "downloads").iterdir()) == []
+
+
+def test_every_mirror_in_the_lock_is_https():
+    for payload in fetch_vendor.read_lock().values():
+        assert all(mirror.startswith("https://") for mirror in payload.mirrors), payload.name

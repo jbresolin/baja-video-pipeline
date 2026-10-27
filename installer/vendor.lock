@@ -20,6 +20,9 @@ path_in_archive = "ffmpeg-n9.0.2-36-g6882969ce9-win64-gpl-shared-9.0"
 # NSSM 2.24 (2014-08-31), the last release; we use win64/nssm.exe.
 url = "https://nssm.cc/release/nssm-2.24.zip"
 sha256 = "727d1e42275c605e0f04aba98095c38a8e1e46def453cdffce42869428aa6743"
+# nssm.cc often answers 503 to CI runners. The Internet Archive copy has the
+# same SHA-256 (checked 2026-10-27); the pinned hash guards any mirror.
+mirrors = ["https://web.archive.org/web/2024id_/https://nssm.cc/release/nssm-2.24.zip"]
 path_in_archive = "nssm-2.24/win64/nssm.exe"
 
 [tailscale]

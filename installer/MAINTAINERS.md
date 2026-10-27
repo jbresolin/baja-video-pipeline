@@ -97,9 +97,14 @@ a known-good build, upload the zip to a release of this repo and point
 `url` there (same hash).
 
 **NSSM.** 2.24 (2014) is the last release; there is nothing to bump.
-`nssm.cc` is sometimes down; CI caches the download
-(`installer/vendor/downloads`, keyed on `vendor.lock`). If it is gone for
-good, mirror `nssm-2.24.zip` to a release of this repo with the same hash.
+`nssm.cc` often answers 503 to CI runners, so the lock lists an
+Internet Archive copy under `mirrors` (same SHA-256), and CI caches the
+download (`installer/vendor/downloads`, keyed on `vendor.lock`).
+
+**Mirrors.** Any entry may have `mirrors = ["https://…"]`. `fetch_vendor.py`
+tries `url` three times, then each mirror, and keeps only bytes with the
+pinned hash, so a mirror can never change what ships. Add one whenever an
+upstream is unreliable or deletes old files (BtbN).
 
 **Tailscale.** `curl -s 'https://pkgs.tailscale.com/stable/?mode=json' | jq .MSIs.amd64`
 gives the current MSI name. Tailscale publishes the hash next to it:
