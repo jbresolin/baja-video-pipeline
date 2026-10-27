@@ -286,3 +286,66 @@ PRs. Where a PR disagrees with this section, this section wins.
   orchestrator over the HTTP API as a reviewer. This keeps it independent
   of the orchestrator's internals and testable against a fake orchestrator.
 
+
+## 17. Wave-2 integration decisions (2026-10-27, PRs #4–#6)
+
+Rulings on the open questions raised by the orchestrator, worker and
+review-UI PRs. Contract amendments here are implemented by the integration
+pass and regenerated into `orchestrator/openapi.yaml`.
+
+### Contract amendments
+* `GET /jobs/{job_id}/events` and `GET /events?worker_id=&since=&limit=`
+  (reviewer or admin): the orchestrator's event log, oldest first.
+* `Job.frame_rate` (float, nullable): set by the first holder from ffprobe
+  when it uploads the proxy (`PUT /jobs/{id}/proxy` gains a `frame_rate`
+  field). The review UI steps frames with it; falls back to 30.
+* `ProcessTask` offers carry `delivery: {mode: "direct"|"outbox",
+  studio_url: str|null}`. The orchestrator decides (direct when a studio is
+  online); the worker never infers it from `GET /workers`.
+* `/enroll` response gains `tailnet_base_url`. The worker sends its bearer
+  token to exactly two origins: `orchestrator_url` and `tailnet_base_url`.
+* Master backfill needs no new query: the orchestrator keeps offering
+  `download_raw` to the master for every job it does not hold — any state
+  except `discarded`, including `done` and `failed` — lowest priority after
+  live work. The worker's manifest-based workaround is removed.
+* `POST /jobs/{id}/failed` gains `scope: "job"|"worker"`. `worker` means
+  "this worker could not do it" (disk, local ffmpeg, network): the worker
+  is excluded from that task on that job and the task is re-offered; the
+  job itself fails only after two different workers report `worker` scope
+  for the same task. `job` means the input is bad (hash mismatch at the
+  source, undecodable file): the job fails at once. Default `worker`.
+
+### Behaviour confirmed as built
+* A heartbeat whose `held_job_ids` omits a raw drops that holder (and logs
+  an event). Reprocessing of a job whose holders are offline waits and
+  says so; a non-holder fetching from a returning holder is not built.
+* In-memory `/enroll` rate limiter is fine (single process).
+* Worker-detected bugs are reported as `failed` (scope `worker`).
+* Worker keeps a `.part` for 24 h after a lost lease and resumes if the
+  same job is offered again.
+* Studio persists pending ACKs to a small JSON file and replays them.
+* Bearer token in `worker.json` is plaintext; the installer restricts the
+  working folder's ACL to SYSTEM + Administrators. DPAPI is a later item.
+* Port 8700: worker setup/status page, localhost only (listed in the port
+  table as not-on-tailnet). 2 GiB free-disk reserve under the cap.
+* "Re-render proxy" button is always available.
+
+### Team lookup
+The Baja app has no documented teams API yet. `shared`/orchestrator get a
+small adapter with two sources, both optional and neither required at
+startup: `BVP_TEAMS_FILE` (CSV `car_number,team_name,school`, reloaded on
+change) and `BVP_BAJA_APP_URL` (`GET /api/teams/{car}` as implemented,
+lenient fields). File first, then API, then "unknown". The real API path is
+confirmed later by João.
+
+### Infra and naming
+* Reviewers file is **`/srv/pipeline/reviewers.txt`** everywhere (it is not
+  htpasswd format, so the `.htpasswd` name goes).
+* Compose: `REVIEW_UI_IMAGE`, `BVP_TEAMS_FILE`, `BVP_BAJA_APP_URL`
+  (optional) added; `BVP_EVOLUTION_API_KEY` is the canonical name
+  (`_INSTANCE_TOKEN` accepted as alias); runbook creates
+  `/srv/pipeline/{inbox,proxies,thumbs,outbox,db}` owned by uid 10001.
+* CI builds and pushes `ghcr.io/jbresolin/baja-orchestrator` and
+  `ghcr.io/jbresolin/baja-review-ui` on pushes to `main` (tag `main` and
+  the short SHA) and on `v*` tags.
+* Root README folder map and §13 updated: review UI is its own package.
