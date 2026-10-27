@@ -128,6 +128,7 @@ class OrchestratorHarness:
 
 
 def build_harness(data_dir: Path, **setting_overrides) -> OrchestratorHarness:
+    data_dir.mkdir(parents=True, exist_ok=True)
     reviewers_file = write_reviewers_file(
         data_dir / "reviewers.txt", {REVIEWER_NAME: REVIEWER_PASSWORD}
     )

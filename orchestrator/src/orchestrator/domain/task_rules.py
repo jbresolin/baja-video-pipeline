@@ -196,8 +196,7 @@ def _evaluate_download(
             if any(h.status == HolderStatus.ASSIGNED for h in others):
                 return refuse(ErrorCode.ALREADY_CLAIMED, "another worker is downloading it")
             return refuse(ErrorCode.NOT_CLAIMABLE, "this raw has enough holders")
-        preferred = _preferred_second_holder(connection, snapshot, job_row, holders)
-        if preferred is not None and preferred != worker_id:
+        if _faster_idle_worker_exists(connection, snapshot, job_row, holders, worker_id):
             return refuse(ErrorCode.NOT_CLAIMABLE, "a faster downloader is preferred for now")
 
     urls = _raw_sources(layout, snapshot, job_row, holders, worker_id)
@@ -214,37 +213,43 @@ def _evaluate_download(
     )
 
 
-def _preferred_second_holder(
-    connection: sqlite3.Connection, snapshot: FleetSnapshot, job_row: sqlite3.Row, holders
-) -> str | None:
-    """The fastest idle eligible non-master worker, while the preference window lasts."""
+def _faster_idle_worker_exists(
+    connection: sqlite3.Connection,
+    snapshot: FleetSnapshot,
+    job_row: sqlite3.Row,
+    holders,
+    asking_worker_id: str,
+) -> bool:
+    """True while the preference window lasts and an idle eligible volunteer
+    has a *measured* download speed above the asking worker's.
+
+    Unmeasured workers count as slowest; between equals nobody is held
+    back, so a fleet without stats yet simply takes turns.
+    """
     created_at = from_db_time(job_row["created_at"])
     if snapshot.now - created_at >= FASTEST_DOWNLOADER_PREFERENCE:
-        return None
-    holder_ids = {h.worker_id for h in holders}
-    candidates = [
-        row
-        for worker_id, row in snapshot.workers_by_id.items()
-        if row["role"] == WorkerRole.WORKER
-        and snapshot.is_online(worker_id)
-        and accepts_new_raws(row)
-        and worker_id not in holder_ids
-        and worker_id not in snapshot.downloading_worker_ids
-        and not leases_repo.is_task_excluded(
-            connection, job_row["id"], worker_id, TaskKind.DOWNLOAD_RAW
-        )
-    ]
-    if not candidates:
-        return None
+        return False
 
-    # Unmeasured workers rank last. max() keeps the first of equal speeds,
-    # so sorting by enrollment first sends ties to the earliest enrolled.
-    def speed(row) -> float:
-        measured = snapshot.download_mbps_by_worker.get(row["id"])
+    def speed(worker_id: str) -> float:
+        measured = snapshot.download_mbps_by_worker.get(worker_id)
         return -1.0 if measured is None else measured
 
-    candidates.sort(key=lambda row: (row["enrolled_at"], row["id"]))
-    return max(candidates, key=speed)["id"]
+    holder_ids = {h.worker_id for h in holders}
+    for worker_id, row in snapshot.workers_by_id.items():
+        idle_and_eligible = (
+            worker_id != asking_worker_id
+            and row["role"] == WorkerRole.WORKER
+            and snapshot.is_online(worker_id)
+            and accepts_new_raws(row)
+            and worker_id not in holder_ids
+            and worker_id not in snapshot.downloading_worker_ids
+            and not leases_repo.is_task_excluded(
+                connection, job_row["id"], worker_id, TaskKind.DOWNLOAD_RAW
+            )
+        )
+        if idle_and_eligible and speed(worker_id) > speed(asking_worker_id):
+            return True
+    return False
 
 
 def _raw_sources(
