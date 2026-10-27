@@ -46,11 +46,31 @@ class HashMismatchError(TransferError):
 
 
 class DownloadFailedError(TransferError):
-    pass
+    """The download cannot succeed from this URL.
+
+    `status_code` is the HTTP status when the server refused (e.g. 403 from
+    Caddy, 404 from a peer that no longer holds the raw), else None.
+    """
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        self.status_code = status_code
+        super().__init__(message)
 
 
 class UploadFailedError(TransferError):
-    pass
+    """The upload cannot succeed.
+
+    When the receiver refused with our standard error shape, `status_code`
+    and `error_code` (e.g. "lease_lost") say why, so callers can branch on
+    the code instead of parsing the message (docs/api.md §3).
+    """
+
+    def __init__(
+        self, message: str, status_code: int | None = None, error_code: str | None = None
+    ) -> None:
+        self.status_code = status_code
+        self.error_code = error_code
+        super().__init__(message)
 
 
 class _RetryableHttpError(TransferError):
@@ -171,7 +191,9 @@ def _fetch_missing_bytes(
         elif response.status_code == 200:
             write_mode = "wb"  # server ignored Range and sent everything: start over
         else:
-            raise DownloadFailedError(f"GET {url} answered HTTP {response.status_code}")
+            raise DownloadFailedError(
+                f"GET {url} answered HTTP {response.status_code}", status_code=response.status_code
+            )
 
         # Without a chunk size, iter_bytes() hands over bytes as soon as they
         # arrive (no buffering), so if the connection drops, everything
@@ -276,7 +298,11 @@ def _interpret_chunk_response(response: httpx.Response, file_sha256: str) -> int
         raise HashMismatchError(file_sha256, None)
     if response.status_code >= 500:
         raise _RetryableHttpError(f"server answered HTTP {response.status_code}")
-    raise UploadFailedError(f"upload answered HTTP {response.status_code}: {response.text}")
+    raise UploadFailedError(
+        f"upload answered HTTP {response.status_code}: {response.text}",
+        status_code=response.status_code,
+        error_code=error.get("code"),
+    )
 
 
 def _error_body(response: httpx.Response) -> dict:

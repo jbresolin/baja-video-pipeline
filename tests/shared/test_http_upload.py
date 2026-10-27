@@ -127,3 +127,20 @@ def test_empty_file_is_uploaded_with_a_single_empty_request(fake_server_factory,
     result = upload_file_in_chunks(server.client, "/upload", empty)
     assert result.requests_sent == 1
     assert (tmp_path / "server" / "uploaded.bin").read_bytes() == b""
+
+
+def test_refusal_carries_status_and_error_code(source_file):
+    # Setup: the receiver refuses with our standard error shape, as the
+    # orchestrator does when the worker's lease has expired.
+    body = {"error": {"code": "lease_lost", "message": "lease expired", "details": {}}}
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(409, json=body)),
+        base_url="http://vps",
+    )
+    with pytest.raises(UploadFailedError) as raised:
+        upload_file_in_chunks(client, "/upload", source_file)
+
+    # The caller can branch on the machine-readable code (docs/api.md §3)
+    # instead of searching the message text for "lease_lost".
+    assert raised.value.status_code == 409
+    assert raised.value.error_code == "lease_lost"
