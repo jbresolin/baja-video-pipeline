@@ -100,18 +100,74 @@ def test_prova_suggestions_come_from_recent_clips_and_jobs(ui):
     assert datalist.count('value="Suspensão"') == 1
 
 
-def test_event_log_lists_what_happened_newest_first(ui):
+def test_event_log_comes_from_the_orchestrators_log_newest_first(ui, fake_orchestrator):
     html = ui.get("/review/jobs/job-done-1").text
     log = html[html.index('id="event-log"') :]
 
-    # Each line is built from a timestamp in the job record.
-    delivered = log.index("Delivered to the studio (direct route) as suspensao/7/1.mp4")
-    reviewed = log.index("Reviewed by ana")
-    confirmed = log.index("joao-desktop confirmed its copy")
-    received = log.index("Received from Bruno as a WhatsApp document (VID_0042.mp4)")
-    # Newest first: delivery (T0+20 min) before review (T0+10) before the
-    # holder's confirmation (T0+2) before intake (T0).
-    assert delivered < reviewed < confirmed < received
+    # The page asked the orchestrator for this job's log.
+    assert fake_orchestrator.requests_to("GET", "/jobs/job-done-1/events")
+    # Each line is one Event from sample_events.make_events(), in words.
+    done = log.index("delivered → done")  # T0+21 min, by the system
+    reviewed = log.index('<strong class="actor">ana</strong> awaiting review → ready')  # T0+10
+    confirmed = log.index("joao-desktop</strong> confirmed its copy of the raw")  # T0+2
+    created = log.index("WhatsApp</strong> created as received")  # T0
+    # Newest first.
+    assert done < reviewed < confirmed < created
+    # The orchestrator's reason is shown with the line.
+    assert "WhatsApp document from Bruno" in log
+
+
+def test_event_log_shows_worker_names_and_failure_reasons(ui):
+    html = ui.get("/review/jobs/job-failed-1").text
+    log = html[html.index('id="event-log"') :]
+
+    # "worker:w-volunteer-0002" is shown as the name from the fleet.
+    assert "maria-notebook</strong> task failed" in log
+    assert "ffmpeg exited: moov atom not found" in log
+    # Only this job's events: the volunteer's lease on another job is not here.
+    assert "timed out" not in log
+
+
+def test_event_log_failure_does_not_break_the_page(ui, fake_orchestrator):
+    # Setup: the event endpoints answer 500.
+    fake_orchestrator.events_fail = True
+
+    page = ui.get("/review/jobs/job-awaiting-1")
+    panel = ui.get("/review/jobs/job-awaiting-1/panel")
+
+    # The page and its refresh still load (200, not a 502 error page): the
+    # player and the form are what the reviewer needs, the log is extra.
+    assert page.status_code == 200
+    assert 'id="review-form"' in page.text
+    assert "Event log unavailable" in page.text
+    # The refresh says so too, and the status strip is still fresh.
+    assert panel.status_code == 200
+    assert "Event log unavailable" in panel.text
+    assert 'id="status-strip"' in panel.text
+
+
+def test_page_head_says_who_sent_the_raw_and_how(ui):
+    html = ui.get("/review/jobs/job-awaiting-1").text
+
+    assert "From Bruno as a WhatsApp document (VID_0042.mp4)" in html
+
+
+def test_frame_step_uses_the_jobs_frame_rate(ui, fake_orchestrator):
+    # Setup: a holder measured this job's proxy at 29.97 fps.
+    fake_orchestrator.add_job(make_job("job-ntsc", frame_rate=29.97))
+
+    html = ui.get("/review/jobs/job-ntsc").text
+
+    # The player script reads this attribute: one frame = 1/29.97 s.
+    assert 'data-frame-rate="29.97"' in html
+
+
+def test_frame_step_falls_back_to_30_fps(ui):
+    # The sample job has no frame_rate (None), like a job from before the
+    # proxy upload reported one.
+    html = ui.get("/review/jobs/job-awaiting-1").text
+
+    assert 'data-frame-rate="30.0"' in html
 
 
 def test_page_still_works_when_the_fleet_cannot_be_read(ui, fake_orchestrator):

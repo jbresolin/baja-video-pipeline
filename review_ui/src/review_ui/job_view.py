@@ -1,14 +1,13 @@
-"""What the job page says about a job: actions, status strip, event log.
+"""What the job page says about a job: actions, status strip, intake, frame rate.
 
 Everything here is computed from the Job record alone (plus worker names
 from the fleet, when available), so it is plain functions that are easy to
-test without a server.
+test without a server. The event log lines live in event_log_view.py.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
 
-from review_ui.formatting import short_id
+from review_ui.event_log_view import worker_label
 from shared.models import Job, JobState, ReceivedAs, ReviewAction, TaskKind
 from shared.state_machine import DISCARDABLE_STATES, REPROCESSABLE_STATES, RETRYABLE_STATES
 
@@ -40,6 +39,9 @@ RECEIVED_AS_LABELS: dict[ReceivedAs, str] = {
     ReceivedAs.TEST_UPLOAD: "a test upload",
 }
 
+# Phone footage is about 30 fps; used when the job has no frame rate yet.
+DEFAULT_FRAME_RATE = 30.0
+
 # Button text for each action, in the order the buttons appear.
 ACTION_LABELS: dict[ReviewAction, str] = {
     ReviewAction.SAVE: "Save",
@@ -57,12 +59,6 @@ class StatusNote:
     text: str
 
 
-@dataclass(frozen=True)
-class TimelineEvent:
-    at: datetime
-    text: str
-
-
 def available_actions(state: JobState) -> list[ReviewAction]:
     """The review actions the orchestrator accepts in this state (docs/api.md §7.1)."""
     actions = []
@@ -77,11 +73,6 @@ def available_actions(state: JobState) -> list[ReviewAction]:
     if state in DISCARDABLE_STATES:
         actions.append(ReviewAction.DISCARD)
     return actions
-
-
-def worker_label(worker_id: str, worker_names: dict[str, str]) -> str:
-    """The worker's name when the fleet told us, else a short id."""
-    return worker_names.get(worker_id) or f"worker {short_id(worker_id)}"
 
 
 def _state_level(state: JobState) -> str:
@@ -139,42 +130,19 @@ def explain_status(job: Job, worker_names: dict[str, str]) -> list[StatusNote]:
     return notes
 
 
-def build_timeline(job: Job, worker_names: dict[str, str]) -> list[TimelineEvent]:
-    """The job's history, newest first, rebuilt from the timestamps in the record.
-
-    The API has no event log, so only the latest of each kind of event is
-    known (e.g. the last review, the last failure).
-    """
+def intake_text(job: Job) -> str:
+    """Who sent the raw and how: "Bruno as a WhatsApp document (VID_0042.mp4)"."""
     sender = job.source.sender_name or "an unknown sender"
     received_as = RECEIVED_AS_LABELS[job.source.received_as]
     filename = f" ({job.source.original_filename})" if job.source.original_filename else ""
-    events = [TimelineEvent(job.created_at, f"Received from {sender} as {received_as}{filename}")]
+    return f"{sender} as {received_as}{filename}"
 
-    for holder in job.holders:
-        who = worker_label(holder.worker_id, worker_names)
-        events.append(TimelineEvent(holder.assigned_at, f"{who} chosen as a holder"))
-        if holder.confirmed_at:
-            events.append(TimelineEvent(holder.confirmed_at, f"{who} confirmed its copy"))
 
-    for lease in job.leases:
-        who = worker_label(lease.worker_id, worker_names)
-        events.append(TimelineEvent(lease.acquired_at, f"{who} started {lease.task_kind.value}"))
+def frame_rate_for_stepping(job: Job) -> float:
+    """Frames per second the player steps by (one frame = 1 / this).
 
-    if job.failure:
-        who = worker_label(job.failure.worker_id, worker_names)
-        task = job.failure.task_kind.value
-        events.append(TimelineEvent(job.failure.failed_at, f"{who} reported a failure in {task}"))
-
-    if job.reviewed_at:
-        reviewer = job.reviewed_by or "a reviewer"
-        events.append(TimelineEvent(job.reviewed_at, f"Reviewed by {reviewer}"))
-
-    if job.clip and job.clip.delivered_at:
-        route = job.clip.route.value
-        text = f"Delivered to the studio ({route} route) as {job.clip.relative_path}"
-        events.append(TimelineEvent(job.clip.delivered_at, text))
-
-    events.append(
-        TimelineEvent(job.updated_at, f"Last change: now {job.state.value}, v{job.version}")
-    )
-    return sorted(events, key=lambda event: event.at, reverse=True)
+    Job.frame_rate is the proxy's rate, set when a holder uploads it. Older
+    jobs, and jobs whose proxy is not uploaded yet, have none; phone footage
+    is about 30 fps, so that is the fallback (design §17).
+    """
+    return job.frame_rate or DEFAULT_FRAME_RATE

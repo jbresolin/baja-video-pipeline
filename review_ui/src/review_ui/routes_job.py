@@ -3,11 +3,13 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
+from review_ui.event_log_view import EventLine, event_lines_newest_first
 from review_ui.job_view import (
     ACTION_LABELS,
     available_actions,
-    build_timeline,
     explain_status,
+    frame_rate_for_stepping,
+    intake_text,
 )
 from review_ui.orchestrator_client import (
     OrchestratorClient,
@@ -58,11 +60,29 @@ def recent_provas_or_empty(orchestrator: OrchestratorClient) -> list[str]:
     return distinct_provas(provas)[:MAX_PROVA_SUGGESTIONS]
 
 
-def panel_context(job: Job, worker_names: dict[str, str]) -> dict:
+def event_lines_or_none(
+    orchestrator: OrchestratorClient, job_id: str, worker_names: dict[str, str]
+) -> list[EventLine] | None:
+    """The job's event log, newest first; None when it cannot be read.
+
+    The log is secondary to reviewing: if the call fails, the page still
+    renders (with an "event log unavailable" note) so the reviewer can work.
+    """
+    try:
+        events = orchestrator.job_events(job_id)
+    except (OrchestratorError, OrchestratorUnavailableError):
+        return None
+    return event_lines_newest_first(events, worker_names)
+
+
+def panel_context(job: Job, orchestrator: OrchestratorClient) -> dict:
+    """What the status strip and event log need (the page and its refresh share it)."""
+    worker_names = worker_names_or_empty(orchestrator)
     return {
         "job": job,
         "notes": explain_status(job, worker_names),
-        "timeline": build_timeline(job, worker_names),
+        # None means "could not load"; an empty list means "no events yet".
+        "event_lines": event_lines_or_none(orchestrator, job.id, worker_names),
     }
 
 
@@ -71,9 +91,11 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
     orchestrator = orchestrator_for(request)
     # The job itself must load; a 404 or 401 here becomes the error page.
     job = orchestrator.get_job(job_id)
-    context = panel_context(job, worker_names_or_empty(orchestrator))
+    context = panel_context(job, orchestrator)
     context.update(
         active_nav="queue",
+        intake=intake_text(job),
+        frame_rate=frame_rate_for_stepping(job),
         actions=[(action.value, ACTION_LABELS[action]) for action in available_actions(job.state)],
         prova_suggestions=recent_provas_or_empty(orchestrator),
         poll_seconds=JOB_PANEL_POLL_SECONDS,
@@ -86,5 +108,4 @@ def job_panel_partial(request: Request, job_id: str) -> HTMLResponse:
     """Status strip and event log only, refreshed by the page every few seconds."""
     orchestrator = orchestrator_for(request)
     job = orchestrator.get_job(job_id)
-    context = panel_context(job, worker_names_or_empty(orchestrator))
-    return render_page(request, "_job_panel.html", context)
+    return render_page(request, "_job_panel.html", panel_context(job, orchestrator))

@@ -4,6 +4,8 @@ These use httpx.MockTransport: a tiny function plays the orchestrator and
 returns whatever the test wants, including broken answers.
 """
 
+from datetime import timedelta
+
 import httpx
 import pytest
 
@@ -14,8 +16,16 @@ from review_ui.orchestrator_client import (
     OrchestratorUnavailableError,
 )
 from review_ui.settings import ReviewUiSettings
+from shared.models import EventsResponse
 from shared.testing.asgi_transport import SyncAsgiTransport
-from tests.review_ui.sample_data import REVIEWER_AUTHORIZATION, make_job
+from tests.review_ui.fake_orchestrator import FakeOrchestrator
+from tests.review_ui.sample_data import (
+    MASTER_ID,
+    REVIEWER_AUTHORIZATION,
+    T0,
+    make_job,
+)
+from tests.review_ui.sample_events import make_events
 
 
 def client_answering(handler) -> OrchestratorClient:
@@ -88,6 +98,73 @@ def test_unreachable_orchestrator_shows_a_502_page():
     assert "Orchestrator unreachable" in page.text
     assert api.status_code == 502
     assert api.json()["error"]["code"] == "upstream_error"
+
+
+# --- Event log calls ---
+
+
+def test_job_events_calls_the_jobs_event_log_as_the_reviewer():
+    # Setup: an orchestrator that answers with the sample log and notes
+    # each request's path and Authorization header.
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.raw_path, request.headers.get("authorization")))
+        body = EventsResponse(events=make_events()[:3])
+        return httpx.Response(200, json=body.model_dump(mode="json"))
+
+    events = client_answering(handler).job_events("a/b")
+
+    # The id is escaped like every other id, and the reviewer's header is sent.
+    assert seen == [(b"/jobs/a%2Fb/events", REVIEWER_AUTHORIZATION)]
+    # The answer is parsed into Event objects, in the order sent.
+    assert [event.id for event in events] == [1, 2, 3]
+
+
+def test_events_sends_only_the_filters_given():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(dict(request.url.params))
+        return httpx.Response(200, json={"events": []})
+
+    client = client_answering(handler)
+    client.events()
+    client.events(worker_id="w-1", since=T0, limit=5)
+
+    # No filters: no query parameters, so the orchestrator's defaults apply.
+    assert seen[0] == {}
+    # With filters: the time is sent as ISO 8601, the limit as a number.
+    assert seen[1] == {"worker_id": "w-1", "since": "2026-10-25T14:00:00+00:00", "limit": "5"}
+
+
+def test_events_that_break_the_contract_are_reported():
+    # An event without its required fields (id, at, actor, kind).
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"events": [{"kind": "x"}]})
+
+    with pytest.raises(OrchestratorUnavailableError, match="EventsResponse"):
+        client_answering(handler).events()
+
+
+def test_fake_orchestrator_events_follow_the_api_semantics():
+    # The tests above trust the fake to behave like the real GET /events
+    # (docs/api.md §7.1); this pins that behaviour down.
+    fake = FakeOrchestrator()
+    client = OrchestratorClient(fake.http_client(), REVIEWER_AUTHORIZATION)
+    master_events = [e for e in make_events() if e.worker_id == MASTER_ID]
+
+    # Without `since`: the NEWEST `limit` events, still oldest first.
+    newest = client.events(worker_id=MASTER_ID, limit=2)
+    assert [e.id for e in newest] == [e.id for e in master_events[-2:]]
+    # With `since`: the first `limit` events STRICTLY after it. The master's
+    # first job event is at T0+10 s, so `since` = that moment skips it.
+    after = client.events(worker_id=MASTER_ID, since=T0 + timedelta(seconds=10), limit=2)
+    assert [e.id for e in after] == [e.id for e in master_events[2:4]]
+    # An unknown job is a 404, as for GET /jobs/{id}.
+    with pytest.raises(OrchestratorError) as raised:
+        client.job_events("no-such-job")
+    assert raised.value.status_code == 404
 
 
 def test_health_endpoint_needs_no_orchestrator():

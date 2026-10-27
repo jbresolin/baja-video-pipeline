@@ -5,10 +5,19 @@ context the routes build, so a typo in a template or a renamed field fails
 here with a clear message instead of only when someone opens the page.
 """
 
+from dataclasses import replace
+
 import pytest
 
 from review_ui.clips_and_fleet_view import build_worker_rows, jobs_by_state_in_order, online_count
-from review_ui.job_view import ACTION_LABELS, available_actions, build_timeline, explain_status
+from review_ui.event_log_view import event_lines_newest_first
+from review_ui.job_view import (
+    ACTION_LABELS,
+    available_actions,
+    explain_status,
+    frame_rate_for_stepping,
+    intake_text,
+)
 from review_ui.queue_view import STATES_IN_PIPELINE_ORDER, QueueFilter
 from review_ui.settings import ReviewUiSettings
 from review_ui.templating import TEMPLATES_DIR, build_templates
@@ -21,6 +30,7 @@ from tests.review_ui.sample_data import (
     make_job,
     make_manifest,
 )
+from tests.review_ui.sample_events import make_events
 
 SETTINGS = ReviewUiSettings(public_base_url="https://baja.example.org")
 NAMES = {"w-master-0001": "joao-desktop"}
@@ -32,10 +42,13 @@ def common_context() -> dict:
 
 
 def job_context(job) -> dict:
+    job_events = [event for event in make_events() if event.job_id == job.id]
     return {
         "job": job,
         "notes": explain_status(job, NAMES),
-        "timeline": build_timeline(job, NAMES),
+        "event_lines": event_lines_newest_first(job_events, NAMES),
+        "intake": intake_text(job),
+        "frame_rate": frame_rate_for_stepping(job),
         "actions": [
             (action.value, ACTION_LABELS[action]) for action in available_actions(job.state)
         ],
@@ -68,9 +81,14 @@ def clips_context() -> dict:
 
 def fleet_context() -> dict:
     fleet = make_fleet()
+    events = make_events()
+    by_worker = {
+        entry.worker.id: [event for event in events if event.worker_id == entry.worker.id]
+        for entry in fleet.workers
+    }
     return {
         "fleet": fleet,
-        "worker_rows": build_worker_rows(fleet),
+        "worker_rows": build_worker_rows(fleet, by_worker),
         "online_count": online_count(fleet),
         "job_counts": jobs_by_state_in_order(fleet),
         "poll_seconds": 10,
@@ -156,3 +174,81 @@ def test_car_number_zero_is_shown_not_treated_as_missing():
     html = render("_queue_rows.html", {**queue_context(), "items": [JobSummary.from_job(job)]})
 
     assert "car 0 · pass 1" in html
+
+
+# --- Event log and frame rate ---
+
+
+def test_job_event_log_shows_actor_change_and_reason():
+    html = render("_job_events.html", job_context(delivered_job()))
+
+    # One line per event: who (bold), what, and the orchestrator's reason.
+    assert '<strong class="actor">ana</strong> awaiting review → ready' in html
+    assert "joao-desktop</strong> received → proxy ready" in html
+    assert '<span class="reason">proxy uploaded</span>' in html
+
+
+def test_job_event_log_says_when_it_could_not_be_loaded():
+    # event_lines is None when GET /jobs/{id}/events failed.
+    html = render("_job_events.html", {**job_context(make_job()), "event_lines": None})
+
+    assert "Event log unavailable" in html
+    assert "<ol>" not in html
+
+
+def test_job_event_log_says_when_there_are_no_events_yet():
+    # An empty list (the call worked, nothing happened yet) is not a failure.
+    html = render("_job_events.html", {**job_context(make_job()), "event_lines": []})
+
+    assert "No events recorded for this job yet." in html
+    assert "unavailable" not in html
+
+
+def test_event_reasons_are_escaped():
+    # A reason can carry a worker's error text; it must stay text, not HTML.
+    context = job_context(failed_job())
+    # replace() copies the first line with only its reason changed.
+    context["event_lines"] = [replace(context["event_lines"][0], reason="<b>x</b>")]
+
+    html = render("_job_events.html", context)
+
+    assert "<b>x</b>" not in html
+    assert "&lt;b&gt;x&lt;/b&gt;" in html
+
+
+def test_job_page_carries_the_frame_rate_for_the_player():
+    # The player script reads data-frame-rate and steps by 1/29.97 s.
+    html = render("job.html", job_context(make_job(frame_rate=29.97)))
+
+    assert 'data-frame-rate="29.97"' in html
+    # The shortcut list says which rate a frame step uses.
+    assert "one frame back / forward (29.97 fps)" in html
+
+
+def test_job_page_frame_rate_falls_back_to_30():
+    # No frame rate on the job (proxy not measured): 30 fps is used.
+    html = render("job.html", job_context(make_job()))
+
+    assert 'data-frame-rate="30.0"' in html
+    assert "one frame back / forward (30 fps)" in html
+
+
+def test_fleet_rows_show_recent_events_or_that_they_are_unavailable():
+    context = fleet_context()
+    master_row, volunteer_row = context["worker_rows"]
+    # Setup: pretend loading the volunteer's events failed.
+    context["worker_rows"] = [master_row, replace(volunteer_row, recent_events=None)]
+
+    html = render("_fleet_body.html", context)
+
+    # The master's own events do not repeat its name as the actor, but an
+    # event by someone else (the admin who enrolled it) names them...
+    master_events = html[html.index(f'data-worker-id="{master_row.entry.worker.id}"') :]
+    master_events = master_events[: master_events.index("</tr>")]
+    assert "claimed → uploaded" in master_events
+    assert '<strong class="actor">joao-desktop</strong>' not in master_events
+    assert '<strong class="actor">admin</strong>' in master_events
+    # ...and each event links to its job.
+    assert '<a href="/review/jobs/job-done-1"><code>job-done</code></a>' in master_events
+    # The volunteer's row says its events could not be loaded.
+    assert "Recent events unavailable." in html

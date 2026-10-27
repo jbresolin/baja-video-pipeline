@@ -4,8 +4,17 @@
 // a constant frame rate, so a time in the proxy is the same time in the raw
 // (docs/api.md §1) and the marks can be sent to the orchestrator as-is.
 
-// The API does not tell us the frame rate yet; phone footage is ~30 fps.
-export const FRAME_SECONDS = 1 / 30;
+// Used when the page carries no frame rate; phone footage is ~30 fps.
+// The server already falls back to 30 (job_view.frame_rate_for_stepping),
+// this is only a guard against a missing or broken attribute.
+const DEFAULT_FRAME_RATE = 30;
+
+// Length of one frame in seconds, from the proxy's fps that the server put
+// in data-frame-rate (Job.frame_rate, e.g. 29.97).
+function frameSecondsOf(jobElement) {
+  const rate = Number(jobElement.dataset.frameRate);
+  return 1 / (rate > 0 ? rate : DEFAULT_FRAME_RATE);
+}
 
 function formatTimecode(seconds) {
   if (!Number.isFinite(seconds)) return "—";
@@ -23,6 +32,8 @@ export function setupPlayer({ video, form, jobElement }) {
   const cutRange = document.getElementById("cut-range");
   const playhead = document.getElementById("playhead");
   const lengthText = document.getElementById("cut-length");
+  // ←/→ step and -/= nudge by exactly this much.
+  const frameSeconds = frameSecondsOf(jobElement);
   // The mark that "-" and "=" nudge: the one set or focused most recently.
   let activeMark = "in";
   // When playing the cut, where to stop.
@@ -85,13 +96,13 @@ export function setupPlayer({ video, form, jobElement }) {
   function stepFrames(frames) {
     if (!video) return;
     video.pause();
-    seek(video.currentTime + frames * FRAME_SECONDS);
+    seek(video.currentTime + frames * frameSeconds);
   }
 
   function nudgeActiveMark(frames) {
     const current = readMark(activeMark);
     if (current === null) return;
-    writeMark(activeMark, current + frames * FRAME_SECONDS);
+    writeMark(activeMark, current + frames * frameSeconds);
     seek(readMark(activeMark));
   }
 

@@ -1,7 +1,9 @@
 """Tests for the plain functions behind the pages (no web requests involved).
 
-job_view: which actions a state allows, the status strip, the event log.
-queue_view / clips_and_fleet_view: filters, studio paths, fleet ordering.
+job_view: which actions a state allows, the status strip, intake, frame rate.
+queue_view / clips_and_fleet_view: filters, studio paths, fleet ordering
+and each worker's recent events.
+(The event log's own wording is tested in test_event_log_view.py.)
 formatting: the small text helpers used by the templates.
 """
 
@@ -15,18 +17,25 @@ from review_ui.clips_and_fleet_view import (
     jobs_by_state_in_order,
     studio_path,
 )
-from review_ui.job_view import available_actions, build_timeline, explain_status
+from review_ui.job_view import (
+    available_actions,
+    explain_status,
+    frame_rate_for_stepping,
+    intake_text,
+)
 from review_ui.queue_view import DEFAULT_QUEUE_STATES, distinct_provas, parse_queue_filter
 from shared.models import JobState, ReviewAction, TaskKind
 from shared.models.job import Lease
 from tests.review_ui.sample_data import (
     MASTER_ID,
     T0,
+    VOLUNTEER_ID,
     delivered_job,
     failed_job,
     make_fleet,
     make_job,
 )
+from tests.review_ui.sample_events import make_events
 
 # --- Actions per state (docs/api.md §7.1 "Review update") ---
 
@@ -106,15 +115,32 @@ def test_delivered_job_shows_where_the_clip_is():
     assert notes[-1].text == "On the studio box at suspensao/7/1.mp4."
 
 
-# --- Event log ---
+# --- Intake and frame rate ---
 
 
-def test_timeline_is_newest_first_and_starts_with_the_last_change():
-    timeline = build_timeline(delivered_job(), {})
+def test_intake_text_says_who_sent_the_raw_and_how():
+    # The sample job came from "Bruno" as a WhatsApp document named VID_0042.mp4.
+    assert intake_text(make_job()) == "Bruno as a WhatsApp document (VID_0042.mp4)"
 
-    moments = [event.at for event in timeline]
-    assert moments == sorted(moments, reverse=True)
-    assert timeline[0].text == "Last change: now done, v3"
+
+def test_intake_text_without_sender_or_filename():
+    job = make_job()
+    source = job.source.model_copy(update={"sender_name": None, "original_filename": None})
+
+    assert intake_text(job.model_copy(update={"source": source})) == (
+        "an unknown sender as a WhatsApp document"
+    )
+
+
+def test_frame_rate_comes_from_the_job():
+    # A holder measured the proxy at 29.97 fps: the player steps by 1/29.97 s.
+    assert frame_rate_for_stepping(make_job(frame_rate=29.97)) == 29.97
+
+
+def test_frame_rate_falls_back_to_30_when_unknown():
+    # No proxy measured yet (frame_rate is None): phone footage is ~30 fps.
+    assert make_job().frame_rate is None
+    assert frame_rate_for_stepping(make_job()) == 30.0
 
 
 # --- Queue filter ---
@@ -155,6 +181,37 @@ def test_worker_rows_compute_storage_use():
     # 500 GB cap with 300 GB free → 200 GB used, 40 %.
     assert master.used_bytes == 200 * 1_000_000_000
     assert master.used_percent == 40
+
+
+def test_worker_rows_carry_their_recent_events_newest_first():
+    # Setup: hand each worker the events that mention it, the way the fleet
+    # route does after calling GET /events?worker_id=… once per worker.
+    events = make_events()
+    by_worker = {
+        worker_id: [event for event in events if event.worker_id == worker_id]
+        for worker_id in (MASTER_ID, VOLUNTEER_ID)
+    }
+
+    rows = build_worker_rows(make_fleet(), by_worker)
+
+    master, volunteer = rows
+    # Newest first: the volunteer's last event is the system expiring its
+    # lease (T0+35 min); its first is its enrollment by the admin.
+    assert volunteer.recent_events[0].what == "task timed out (no heartbeat)"
+    assert volunteer.recent_events[0].actor == "system"
+    assert volunteer.recent_events[-1].what == "worker enrolled"
+    # Actors that are workers are shown by name, from the fleet itself.
+    assert master.recent_events[0].actor == "joao-desktop"
+
+
+def test_worker_rows_mark_events_that_could_not_be_loaded():
+    # The volunteer's events failed to load (None); the master's were empty.
+    rows = build_worker_rows(make_fleet(), {MASTER_ID: [], VOLUNTEER_ID: None})
+
+    master, volunteer = rows
+    # [] = "no events yet"; None = "unavailable". The template words them apart.
+    assert master.recent_events == []
+    assert volunteer.recent_events is None
 
 
 def test_job_counts_include_zero_states_and_keep_unknown_ones():
