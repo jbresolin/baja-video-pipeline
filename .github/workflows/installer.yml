@@ -2,11 +2,17 @@ name: Windows installer
 
 # Builds BajaWorker-Setup-<version>.exe (installer/README.md, MAINTAINERS.md).
 # Releases: push a tag v<installer/VERSION>; the installer is attached to the
-# GitHub Release of that tag. Test builds: run it by hand (workflow_dispatch).
+# GitHub Release of that tag. Test builds: run it by hand (workflow_dispatch),
+# and every PR that touches the installer gets one too.
 
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - "installer/**"
+      - "tests/installer/**"
+      - ".github/workflows/installer.yml"
   workflow_dispatch:
     inputs:
       enroll_url:
