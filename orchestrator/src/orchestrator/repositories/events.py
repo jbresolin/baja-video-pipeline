@@ -19,6 +19,7 @@ def reviewer_actor(username: str) -> str:
 
 @dataclass(frozen=True)
 class Event:
+    id: int
     at: datetime
     job_id: str | None
     worker_id: str | None
@@ -62,8 +63,42 @@ def list_events_for_worker(connection: sqlite3.Connection, worker_id: str) -> li
     return [_event_from_row(row) for row in rows]
 
 
+def list_events(
+    connection: sqlite3.Connection,
+    *,
+    worker_id: str | None,
+    since: datetime | None,
+    limit: int,
+) -> list[Event]:
+    """The log for GET /events, always oldest first.
+
+    With `since`: the first `limit` events strictly after it (paging forward).
+    Without: the newest `limit` events. A worker filter matches events about
+    the worker (worker_id) and events it caused (actor "worker:<id>").
+    """
+    conditions = []
+    parameters: list = []
+    if worker_id is not None:
+        conditions.append("(worker_id = ? OR actor = ?)")
+        parameters += [worker_id, worker_actor(worker_id)]
+    if since is not None:
+        conditions.append("at > ?")
+        parameters.append(to_db_time(since))
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    # Oldest-after-since reads forward; "newest" reads backward and is flipped below.
+    direction = "ASC" if since is not None else "DESC"
+    rows = connection.execute(
+        f"SELECT * FROM events {where} ORDER BY id {direction} LIMIT ?", [*parameters, limit]
+    ).fetchall()
+    events = [_event_from_row(row) for row in rows]
+    if since is None:
+        events.reverse()
+    return events
+
+
 def _event_from_row(row: sqlite3.Row) -> Event:
     return Event(
+        id=row["id"],
         at=from_db_time(row["at"]),
         job_id=row["job_id"],
         worker_id=row["worker_id"],

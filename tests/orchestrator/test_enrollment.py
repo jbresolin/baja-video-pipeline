@@ -39,6 +39,9 @@ def test_enroll_exchanges_a_token_for_worker_id_bearer_and_tailscale_key(harness
     assert body["tailscale_tags"] == ["tag:studio"]
     assert body["tailscale_auth_key"].startswith("tskey-auth-")
     assert (body["heartbeat_interval_s"], body["lease_ttl_s"]) == (15, 45)
+    # Caddy's tailnet listener: the one origin besides orchestrator_url the
+    # worker may send its bearer token to (design §17).
+    assert body["tailnet_base_url"] == "http://100.64.0.1:8080"
     # The fake Tailscale API found nothing wrong with the minting request.
     assert harness.tailscale.problems == []
     # The bearer token works on worker endpoints.

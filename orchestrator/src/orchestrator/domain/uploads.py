@@ -114,7 +114,9 @@ def accept_proxy_chunk(
     lease_id: str,
     headers: Mapping[str, str],
     chunk: bytes,
+    frame_rate: float | None = None,
 ) -> ChunkAccepted:
+    """`frame_rate` (Frame-Rate header) is stored on the job when the upload completes."""
     upload = parse_upload_headers(headers)
     _check_lease(context, worker_row, job_id, lease_id, TaskKind.MAKE_PROXY)
     accepted = _receive_chunk(
@@ -127,6 +129,8 @@ def accept_proxy_chunk(
         now = context.clock.now()
         actor = events_repo.worker_actor(worker_row["id"])
         changes = {"proxy_available": 1, "proxy_requested": 0}
+        if frame_rate is not None:
+            changes["frame_rate"] = frame_rate
         if job_row["state"] != JobState.RECEIVED:
             # A re-rendered proxy (regenerate-proxy): no state change.
             jobs_repo.update_job(connection, job_id, now, changes)

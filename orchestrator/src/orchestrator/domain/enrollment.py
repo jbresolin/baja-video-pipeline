@@ -118,6 +118,7 @@ def enroll_worker(context: OrchestratorContext, request: EnrollRequest) -> Enrol
         bearer_token=bearer_token,
         tailscale_auth_key=minted.key,
         tailscale_tags=minted.tags,
+        tailnet_base_url=context.settings.tailnet_base_url,
         heartbeat_interval_s=HEARTBEAT_INTERVAL_SECONDS,
         lease_ttl_s=LEASE_TTL_SECONDS,
     )

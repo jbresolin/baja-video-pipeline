@@ -13,8 +13,9 @@ from orchestrator.api.auth import (
     require_worker,
 )
 from orchestrator.context import OrchestratorContext
-from orchestrator.domain import delivery, fleet, review, review_queue
+from orchestrator.domain import delivery, event_log, fleet, review, review_queue
 from shared.models import (
+    EventsResponse,
     FleetResponse,
     Job,
     JobState,
@@ -110,6 +111,31 @@ def outbox_ack(
     context: OrchestratorContext = Depends(get_context),
 ) -> JobStateResponse:
     return delivery.acknowledge_outbox_pull(context, worker_row, job_id, body)
+
+
+@router.get(
+    "/jobs/{job_id}/events",
+    tags=["events"],
+    response_model=EventsResponse,
+    dependencies=[Depends(require_reviewer_or_admin)],
+)
+def job_events(job_id: str, context: OrchestratorContext = Depends(get_context)) -> EventsResponse:
+    return event_log.job_events(context, job_id)
+
+
+@router.get(
+    "/events",
+    tags=["events"],
+    response_model=EventsResponse,
+    dependencies=[Depends(require_reviewer_or_admin)],
+)
+def events(
+    worker_id: str | None = Query(None),
+    since: datetime | None = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    context: OrchestratorContext = Depends(get_context),
+) -> EventsResponse:
+    return event_log.recent_events(context, worker_id, since, limit)
 
 
 @router.get(
