@@ -17,6 +17,7 @@ import hashlib
 import importlib.util
 from pathlib import Path
 
+from orchestrator.domain import bot_messages
 from orchestrator.repositories.events import list_events_for_job
 from orchestrator.testing import scenarios
 from orchestrator.testing.scenarios import (
@@ -198,5 +199,6 @@ def test_a_pass_video_goes_from_whatsapp_to_the_studio(harness, tmp_path):
         "delivered",
         "done",
     ]
-    # No bot reply was needed: the video arrived as a document.
-    assert harness.evolution.sent == []
+    # The video arrived as a document, so the bot's only message to the
+    # volunteer was the "received" confirmation.
+    assert [message.text for message in harness.evolution.sent] == [bot_messages.RECEIVED_OK]

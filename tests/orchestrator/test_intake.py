@@ -7,6 +7,7 @@ duplicates, flag low_res videos, and protect the VPS inbox (design §10).
 
 import hashlib
 
+from orchestrator.domain import bot_messages
 from orchestrator.testing.harness import build_harness
 from orchestrator.testing.scenarios import (
     SAMPLE_VIDEO_BYTES,
@@ -46,8 +47,9 @@ def test_a_document_video_becomes_a_received_job_with_the_raw_in_the_inbox(harne
     # The original extension is kept, lowercased (docs/api.md §8.2).
     inbox_file = harness.context.layout.inbox_path(job_id, ".mov")
     assert inbox_file.read_bytes() == SAMPLE_VIDEO_BYTES
-    # No bot reply for a good document.
-    assert harness.evolution.sent == []
+    # Exactly one bot reply for a good document: the "received" confirmation,
+    # sent only after the file was verified and the job created.
+    assert harness.evolution.texts_to("5511999999999") == [bot_messages.RECEIVED_OK]
 
 
 def test_a_repeated_webhook_is_a_duplicate_pointing_at_the_same_job(harness):

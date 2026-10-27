@@ -56,6 +56,10 @@ class PendingMediaDownload:
     sender_jid: str
     sender_name: str | None
     raw_extension: str
+    # Send bot_messages.RECEIVED_OK once the job exists. False when the
+    # webhook already answered (low_res resend request, inbox hold notice),
+    # so each video gets one "received" message, not two.
+    confirm_when_stored: bool = True
 
 
 @dataclass
@@ -153,6 +157,7 @@ def _accept_incoming_video(
         sender_jid=key.remote_jid,
         sender_name=webhook.data.push_name,
         raw_extension=raw_extension_for(incoming.media.file_name, incoming.media.mimetype),
+        confirm_when_stored=not replies,
     )
     response = IntakeResponse(job_id=None, message_id=key.id, accepted=True, low_res=low_res)
     return WebhookOutcome(status_code=202, response=response, download=download, replies=replies)
@@ -203,6 +208,9 @@ def run_media_download(context: OrchestratorContext, pending: PendingMediaDownlo
             raw_extension=pending.raw_extension,
             actor=EVOLUTION_ACTOR,
         )
+    # Confirm only now that the file is verified and the job exists.
+    if pending.confirm_when_stored:
+        context.evolution.send_text(pending.sender_jid, bot_messages.RECEIVED_OK)
     return pending.job_id
 
 
