@@ -273,6 +273,6 @@ begin
     SuppressibleMsgBox('O Baja Worker foi removido.' + #13#10#13#10 +
       'A pasta ' + DataDir + ' foi mantida: ela guarda os vídeos brutos, os logs e a ' +
       'configuração. Se você escolheu outra pasta de trabalho na configuração, ela também ' +
-      'foi mantida. Apague-as à mão quando a equipe Baja disser que os vídeos já foram copiados.' +
-      #13#10#13#10 + 'O Tailscale continua instalado.', mbInformation, MB_OK, IDOK);
+      'foi mantida. Apague-as à mão quando a equipe Baja disser que os vídeos já foram copiados.' + #13#10#13#10 +
+      'O Tailscale continua instalado.', mbInformation, MB_OK, IDOK);
 end;

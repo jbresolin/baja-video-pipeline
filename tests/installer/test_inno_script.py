@@ -121,3 +121,16 @@ def test_first_run_starts_after_the_wizard_but_not_in_silent_installs():
         if line.startswith('Filename: "{app}\\BajaWorker.exe"; Parameters: "--first-run')
     )
     assert "postinstall" in run_line and "skipifsilent" in run_line
+
+
+def test_no_code_line_starts_with_a_hash_character_literal():
+    # Inno's preprocessor reads every line that starts with "#" as one of
+    # its own directives (#define, #error…). A Pascal character literal such
+    # as #13#10 at the start of a line therefore stops the compile with
+    # "Unknown preprocessor directive". Keep them at the end of a line.
+    offending = [
+        number
+        for number, line in enumerate(ISS.splitlines(), start=1)
+        if line.lstrip().startswith("#") and line.lstrip()[1:2].isdigit()
+    ]
+    assert offending == []
