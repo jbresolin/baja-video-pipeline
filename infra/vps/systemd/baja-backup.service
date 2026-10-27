@@ -1,0 +1,18 @@
+# Nightly backup of the Baja VPS (infra/vps/README.md §13, restore.md).
+# Install: see README §13. Started by baja-backup.timer; run by hand with
+#   sudo systemctl start baja-backup.service
+[Unit]
+Description=Baja pipeline backup (SQLite jobs DB, reviewers/teams, Evolution Postgres/Redis)
+Requires=docker.service
+After=docker.service
+# The jobs DB lives under /srv/pipeline; the inbox loop mount is not needed.
+RequiresMountsFor=/srv/pipeline
+
+[Service]
+Type=oneshot
+ExecStart=/opt/baja/infra/vps/backup.sh
+# Lowest CPU/IO priority: never slow down intake or proxy serving.
+Nice=19
+IOSchedulingClass=idle
+# Backups hold WhatsApp session keys: nothing else may read them.
+UMask=0077

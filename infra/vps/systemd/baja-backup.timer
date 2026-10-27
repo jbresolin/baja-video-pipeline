@@ -1,0 +1,14 @@
+# Runs baja-backup.service every night (infra/vps/README.md §13).
+[Unit]
+Description=Nightly Baja pipeline backup
+
+[Timer]
+# 04:30 server time: after the day's last passes, before the next day starts.
+OnCalendar=*-*-* 04:30:00
+# Spread a little so it never lands exactly on another nightly job.
+RandomizedDelaySec=10min
+# If the VPS was off at 04:30, run once at the next boot.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
