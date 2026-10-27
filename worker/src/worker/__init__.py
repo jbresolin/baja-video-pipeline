@@ -9,12 +9,14 @@ Modules, roughly in the order work flows through them:
     heartbeat       15 s heartbeat: leases, held raws, free space
     dispatcher      /next + /claim, hands tasks to the stages
     stages          one thread per task kind; turns outcomes into reports
+    failures        task errors and the one table that picks the failure scope
     tasks/          download_raw, make_proxy, process (+ clip_delivery), deliver
     storage         working folder layout and the storage cap
     media_tools     runs ffprobe/ffmpeg, stoppable mid-render
     overlay         the overlay PNG (Pillow)
     servers         peer file server (:8710) and the uvicorn thread runner
     studio/         clip folder + latest.m3u, receiver (:8720), delivered ACKs
-    backfill        master: copy raws missed while offline from peers
+                    (persisted in pending_acks.json)
+    token_origins   which URLs may see the bearer token
     leases, cancellable_transport, api_client, logging_setup, status: plumbing
 """

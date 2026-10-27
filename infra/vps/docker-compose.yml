@@ -217,7 +217,7 @@ services:
       - caddy_config:/config
       # BVP_DATA_DIR, read-only. Caddy serves proxies/ and thumbs/ publicly
       # (behind reviewer auth), and inbox/ and outbox/ only on the tailnet
-      # vhost. It also reads reviewers.htpasswd from here. The directory is
+      # vhost. It also reads reviewers.txt from here. The directory is
       # mounted, not the single file, so editors that replace the file
       # (new inode) are still picked up on `caddy reload`. db/ is never
       # routed. Docker bind mounts are recursive, so the inbox loop
@@ -257,11 +257,17 @@ services:
       BVP_PROXY_EVICT_MIN_FREE_GB: ${BVP_PROXY_EVICT_MIN_FREE_GB:-10}
       BVP_WEBHOOK_SECRET: ${BVP_WEBHOOK_SECRET}
       BVP_ADMIN_TOKEN: ${BVP_ADMIN_TOKEN}
-      # Same file Caddy imports for reviewer basic auth.
-      BVP_REVIEWERS_FILE: /srv/pipeline/reviewers.htpasswd
+      # Same file Caddy imports for reviewer basic auth (design §17: .txt,
+      # it is not htpasswd format).
+      BVP_REVIEWERS_FILE: /srv/pipeline/reviewers.txt
       BVP_EVOLUTION_URL: http://evolution:8080
       BVP_EVOLUTION_INSTANCE: ${BVP_EVOLUTION_INSTANCE}
-      BVP_EVOLUTION_INSTANCE_TOKEN: ${BVP_EVOLUTION_INSTANCE_TOKEN}
+      # Canonical name (design §17); the orchestrator also accepts the old
+      # BVP_EVOLUTION_INSTANCE_TOKEN.
+      BVP_EVOLUTION_API_KEY: ${BVP_EVOLUTION_API_KEY}
+      # Team names (design §17): CSV first, then the Baja app; both optional.
+      BVP_TEAMS_FILE: ${BVP_TEAMS_FILE:-}
+      BVP_BAJA_APP_URL: ${BVP_BAJA_APP_URL:-}
       BVP_PUBLIC_BASE_URL: https://${PIPELINE_DOMAIN}
       # Workers' inbox/outbox download URLs are built from this (Caddy's
       # tailnet listener, not the orchestrator's own port).

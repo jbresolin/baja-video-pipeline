@@ -104,6 +104,18 @@ class DeliveryRoute(StrEnum):
     OUTBOX = "outbox"
 
 
+class FailureScope(StrEnum):
+    """Who a POST /jobs/{id}/failed blames (design §17)."""
+
+    # "This worker could not do it" (full disk, local ffmpeg crash, network):
+    # the task is offered to someone else; the job fails only after two
+    # different workers said so for the same task.
+    WORKER = "worker"
+    # "The input is bad" (hash mismatch at the source, undecodable file):
+    # the job fails at once and waits for a reviewer.
+    JOB = "job"
+
+
 class MeasurementKind(StrEnum):
     """What a worker timed, to feed the rolling stats (design §5)."""
 

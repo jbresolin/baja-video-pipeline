@@ -22,6 +22,8 @@ from orchestrator.storage import VpsLayout
 from shared.layout import clip_relative_path
 from shared.models import (
     DeliverTask,
+    DeliveryPlan,
+    DeliveryRoute,
     DownloadRawTask,
     ErrorCode,
     HolderStatus,
@@ -38,6 +40,9 @@ from shared.protocol import REQUIRED_HOLDER_COUNT
 # worker may take it, so a slow fleet never leaves a raw on the VPS alone.
 FASTEST_DOWNLOADER_PREFERENCE = timedelta(seconds=30)
 NO_DOWNLOAD_STATES = frozenset({JobState.DISCARDED, JobState.FAILED})
+# The master backfills every raw that was not discarded (design §17), so a
+# failed job is still worth downloading for it; for everyone else it is not.
+NO_MASTER_DOWNLOAD_STATES = frozenset({JobState.DISCARDED})
 
 
 @dataclass(frozen=True)
@@ -81,7 +86,7 @@ def evaluate_task(
         return refuse(ErrorCode.ALREADY_CLAIMED, f"worker {blocking} holds the {kind} lease")
     if kind == TaskKind.MAKE_PROXY:
         return _evaluate_make_proxy(layout, job_row)
-    return _evaluate_process(connection, layout, job_row, worker_row)
+    return _evaluate_process(connection, layout, snapshot, job_row)
 
 
 def _lease_held_by_someone_else(
@@ -111,8 +116,19 @@ def _evaluate_make_proxy(layout: VpsLayout, job_row: sqlite3.Row) -> TaskDecisio
     )
 
 
+def delivery_plan(snapshot: FleetSnapshot, job_id: str) -> DeliveryPlan:
+    """Direct push when a studio is online (heartbeat within 45 s), else the outbox."""
+    studio_url = snapshot.studio_receive_url(job_id)
+    if studio_url is None:
+        return DeliveryPlan(mode=DeliveryRoute.OUTBOX, studio_url=None)
+    return DeliveryPlan(mode=DeliveryRoute.DIRECT, studio_url=studio_url)
+
+
 def _evaluate_process(
-    connection: sqlite3.Connection, layout: VpsLayout, job_row: sqlite3.Row, worker_row: sqlite3.Row
+    connection: sqlite3.Connection,
+    layout: VpsLayout,
+    snapshot: FleetSnapshot,
+    job_row: sqlite3.Row,
 ) -> TaskDecision:
     state = JobState(job_row["state"])
     if state == JobState.CLAIMED:
@@ -140,6 +156,7 @@ def _evaluate_process(
                 job_row["prova"], job_row["car_number"], job_row["passagem"]
             ),
             outbox_upload_url=layout.api_url(f"/jobs/{job_id}/clip"),
+            delivery=delivery_plan(snapshot, job_id),
         )
     )
 
@@ -175,7 +192,10 @@ def _evaluate_download(
 ) -> TaskDecision:
     job_id = job_row["id"]
     worker_id = worker_row["id"]
-    if JobState(job_row["state"]) in NO_DOWNLOAD_STATES:
+    closed_states = (
+        NO_MASTER_DOWNLOAD_STATES if snapshot.is_master(worker_id) else NO_DOWNLOAD_STATES
+    )
+    if JobState(job_row["state"]) in closed_states:
         return refuse(ErrorCode.NOT_CLAIMABLE, f"job is '{job_row['state']}'")
     if not accepts_new_raws(worker_row):
         return refuse(ErrorCode.NOT_CLAIMABLE, "worker is near its storage cap")

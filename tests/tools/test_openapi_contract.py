@@ -45,6 +45,9 @@ REQUIRED_ENDPOINTS = {
     ("post", "/outbox/{job_id}/ack"),
     # Fleet
     ("get", "/fleet"),
+    # Event log (design §17)
+    ("get", "/jobs/{job_id}/events"),
+    ("get", "/events"),
 }
 
 # Routes that must work without an auth header: the health check, and
@@ -149,3 +152,47 @@ def test_failed_endpoint_takes_a_message_and_needs_a_worker():
     assert failed["security"] == [{"workerBearer": []}]
     body_ref = failed["requestBody"]["content"]["application/json"]["schema"]["$ref"]
     assert body_ref.endswith("/FailedRequest")
+
+
+def test_failed_request_has_a_scope_that_defaults_to_worker():
+    # Design §17: "worker" means "this worker could not do it", "job" means
+    # "the input is bad". Leaving the field out must mean "worker", so an
+    # older worker that never sends it cannot fail a job by itself.
+    schemas = load_committed_contract()["components"]["schemas"]
+    scope = schemas["FailedRequest"]["properties"]["scope"]
+    assert scope["default"] == "worker"
+    assert set(schemas["FailureScope"]["enum"]) == {"job", "worker"}
+
+
+def test_event_log_routes_accept_a_reviewer_or_the_admin_only():
+    # The event log is for humans (review UI, fleet page) and João's
+    # scripts; workers have no business reading it.
+    paths = load_committed_contract()["paths"]
+    for path in ("/jobs/{job_id}/events", "/events"):
+        security = paths[path]["get"]["security"]
+        assert security == [{"reviewerBasic": []}, {"adminBearer": []}]
+    query_names = {p["name"] for p in paths["/events"]["get"]["parameters"]}
+    assert query_names == {"worker_id", "since", "limit"}
+
+
+def test_job_has_a_frame_rate_and_the_proxy_upload_can_send_it():
+    # The first holder reports the proxy's frame rate with the proxy upload
+    # (header Frame-Rate); the job stores it so the review UI can step frames.
+    document = load_committed_contract()
+    assert "frame_rate" in document["components"]["schemas"]["Job"]["properties"]
+    proxy_upload = document["paths"]["/jobs/{job_id}/proxy"]["post"]
+    header_names = {p["name"] for p in proxy_upload["parameters"] if p["in"] == "header"}
+    assert "Frame-Rate" in header_names
+
+
+def test_process_task_carries_the_delivery_decision():
+    # The orchestrator decides direct push vs outbox; the worker just obeys.
+    schemas = load_committed_contract()["components"]["schemas"]
+    assert "delivery" in schemas["ProcessTask"]["required"]
+    assert set(schemas["DeliveryPlan"]["properties"]) == {"mode", "studio_url"}
+
+
+def test_enroll_answer_names_the_tailnet_base_url():
+    # The second origin (besides orchestrator_url) a worker may send its token to.
+    schemas = load_committed_contract()["components"]["schemas"]
+    assert "tailnet_base_url" in schemas["EnrollResponse"]["required"]

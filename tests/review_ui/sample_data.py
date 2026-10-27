@@ -2,6 +2,7 @@
 
 They are built with the real pydantic models from shared.models, so if a
 test's sample data does not match the API contract, building it fails.
+The event log for these jobs and workers is in sample_events.py.
 """
 
 import base64

@@ -17,11 +17,11 @@ import time
 from pathlib import Path
 
 from shared.models import MeasurementKind, ProcessTask
+from worker.failures import TaskFailedError, probe_input
 from worker.leases import ActiveLease, CancelToken, TaskCancelledError
-from worker.media_tools import MediaToolError
 from worker.overlay import OverlayText, final_frame_width, render_overlay_png
 from worker.tasks.clip_delivery import deliver_clip
-from worker.tasks.environment import TaskAbandonedError, TaskEnvironment, TaskFailedError
+from worker.tasks.environment import TaskEnvironment
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,8 @@ def run_process(
 ) -> None:
     raw_path = env.storage.find_raw(task.job_id)
     if raw_path is None:
-        raise TaskAbandonedError("raw is not on this worker's disk")
+        # Our problem, not the job's: failure scope "worker" (worker.failures).
+        raise TaskFailedError("the raw is not on this worker's disk")
 
     with env.storage.pin(task.job_id):
         try:
@@ -79,7 +80,9 @@ def _reuse_or_render(
     overlay_path = env.storage.tmp_path(f"{task.job_id}.overlay.png")
     started_at = time.monotonic()
     try:
-        info = env.media.probe(raw_path)
+        # Unreadable raw → scope "job"; a failing ffmpeg render
+        # (MediaToolError) → scope "worker" (worker.failures).
+        info = probe_input(env.media, raw_path)
         overlay = OverlayText(
             prova=task.prova,
             car_number=task.car_number,
@@ -102,8 +105,6 @@ def _reuse_or_render(
         # sidecar, which is simply rendered again next time.
         render_path.replace(clip_path)
         sidecar_path.write_text(json.dumps(render_inputs(task)), encoding="utf-8")
-    except MediaToolError as error:
-        raise TaskFailedError(error.message, error.exit_code) from error
     finally:
         render_path.unlink(missing_ok=True)
         overlay_path.unlink(missing_ok=True)

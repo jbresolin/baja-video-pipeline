@@ -6,6 +6,7 @@ Authorization header, so the orchestrator sees (and checks, and records in
 Job.reviewed_by) the actual reviewer.
 """
 
+from datetime import datetime
 from urllib.parse import quote
 
 import httpx
@@ -13,6 +14,8 @@ from pydantic import ValidationError
 
 from shared.models import (
     ErrorResponse,
+    Event,
+    EventsResponse,
     FleetResponse,
     Job,
     JobState,
@@ -122,3 +125,31 @@ class OrchestratorClient:
 
     def fleet(self) -> FleetResponse:
         return self._parse(FleetResponse, self._request("GET", "/fleet"))
+
+    def job_events(self, job_id: str) -> list[Event]:
+        """The job's whole event log, oldest first (404 for an unknown job)."""
+        response = self._request("GET", f"/jobs/{_path_segment(job_id)}/events")
+        return self._parse(EventsResponse, response).events
+
+    def events(
+        self,
+        worker_id: str | None = None,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[Event]:
+        """The event log across jobs, oldest first.
+
+        Without `since` the orchestrator returns the newest `limit` events;
+        with it, the first `limit` events strictly after that moment.
+        Parameters left as None are not sent, so the orchestrator's
+        defaults apply (limit 100).
+        """
+        params: dict[str, str | int] = {}
+        if worker_id is not None:
+            params["worker_id"] = worker_id
+        if since is not None:
+            params["since"] = since.isoformat()
+        if limit is not None:
+            params["limit"] = limit
+        response = self._request("GET", "/events", params=params)
+        return self._parse(EventsResponse, response).events

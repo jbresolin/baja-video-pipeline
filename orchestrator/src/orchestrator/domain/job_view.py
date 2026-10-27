@@ -63,6 +63,7 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Job:
         size_bytes=row["size_bytes"],
         duration_s=row["duration_s"],
         has_audio=_optional_bool(row["has_audio"]),
+        frame_rate=row["frame_rate"],
         raw_on_vps=bool(row["raw_on_vps"]),
         holders=leases_repo.list_holders(connection, row["id"]),
         leases=leases_repo.list_leases_for_job(connection, row["id"]),

@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from orchestrator.clients.baja_app import BajaAppClient
 from orchestrator.clients.evolution import EvolutionClient
 from orchestrator.clients.tailscale import TailscaleClient
+from orchestrator.clients.teams import TeamDirectory
 from orchestrator.clock import Clock
 from orchestrator.config import Settings
 from orchestrator.db.database import Database
@@ -44,6 +44,7 @@ class OrchestratorContext:
     media_http_client: httpx.Client
     evolution: EvolutionClient
     tailscale: TailscaleClient
-    baja_app: BajaAppClient
+    # Team names: BVP_TEAMS_FILE, then the Baja app (design §17).
+    teams: TeamDirectory
     enroll_rate_limiter: SlidingWindowRateLimiter
     upload_locks: KeyedLocks = field(default_factory=KeyedLocks)

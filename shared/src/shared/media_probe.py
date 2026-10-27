@@ -35,11 +35,26 @@ class MediaInfo:
     # Transfer characteristic of the first video stream, e.g. "bt709",
     # "smpte2084"; None when ffprobe does not report one.
     color_transfer: str | None = None
+    # Frames per second of the first video stream (e.g. 29.97), from
+    # avg_frame_rate, else r_frame_rate; None when neither is usable.
+    frame_rate: float | None = None
 
     @property
     def is_hdr(self) -> bool:
         """True when the video must be tone-mapped before it can be shown as SDR."""
         return self.color_transfer in HDR_COLOR_TRANSFERS
+
+
+def parse_frame_rate(rate_text: str | None) -> float | None:
+    """ffprobe writes rates as fractions ("30000/1001", "30/1"); "0/0" means unknown."""
+    if not rate_text:
+        return None
+    numerator, _, denominator = rate_text.partition("/")
+    try:
+        value = float(numerator) / float(denominator or "1")
+    except (ValueError, ZeroDivisionError):
+        return None
+    return value if value > 0 else None
 
 
 def parse_probe_output(probe_json: str) -> MediaInfo:
@@ -54,4 +69,8 @@ def parse_probe_output(probe_json: str) -> MediaInfo:
         width=video.get("width"),
         height=video.get("height"),
         color_transfer=video.get("color_transfer"),
+        frame_rate=(
+            parse_frame_rate(video.get("avg_frame_rate"))
+            or parse_frame_rate(video.get("r_frame_rate"))
+        ),
     )

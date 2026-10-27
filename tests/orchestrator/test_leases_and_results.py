@@ -98,10 +98,11 @@ def test_heartbeat_forgets_a_holder_whose_raw_disappeared(harness):
     assert harness.job(job_id)["holders"] == []
 
 
-def report_failure(harness, worker, job_id, lease_id, message="ffmpeg exited with 1"):
+def report_failure(harness, worker, job_id, lease_id, message="ffmpeg exited with 1", scope="job"):
+    """POST /failed. scope "job" (bad input) unless a test says "worker"."""
     return harness.client.post(
         f"/jobs/{job_id}/failed",
-        json={"lease_id": lease_id, "message": message, "exit_code": 1},
+        json={"lease_id": lease_id, "message": message, "exit_code": 1, "scope": scope},
         headers=worker.headers,
     )
 
@@ -140,7 +141,7 @@ def test_a_late_download_failure_keeps_the_state_and_excludes_only_that_worker(h
     hold_raw(harness, master, job_id)
     make_proxy(harness, master, job_id)  # job is now awaiting_review
     lease_id, _ = claim_ok(harness, other, job_id, TaskKind.DOWNLOAD_RAW)
-    response = report_failure(harness, other, job_id, lease_id, "disk full")
+    response = report_failure(harness, other, job_id, lease_id, "disk full", scope="worker")
     # awaiting_review cannot fail (design §4): the job carries on...
     assert response.json()["state"] == "awaiting_review"
     job = harness.job(job_id)

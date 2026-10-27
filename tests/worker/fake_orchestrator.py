@@ -2,7 +2,10 @@
 
 It implements only the endpoints the worker calls (docs/api.md §7.1),
 plus Caddy's /inbox/* and /outbox/* file serving, and remembers every
-request so tests can check what the worker sent. Tests drive it directly:
+request so tests can check what the worker sent. The harness routes both
+BASE_URL (the worker's orchestrator_url) and TAILNET_URL (the
+tailnet_base_url from /enroll) to this one app, as on the VPS where both
+are Caddy in front of the orchestrator. Tests drive it directly:
 
     orchestrator.add_job(raw_bytes)          a job whose raw sits in the inbox
     orchestrator.offer(task)                 what /next will hand out
@@ -36,19 +39,19 @@ from shared.models import (
     HolderConfirmResponse,
     Lease,
     LeaseHeartbeatStatus,
-    ManifestEntry,
-    ManifestResponse,
     NextTaskRequest,
     NextTaskResponse,
     OutboxAckRequest,
-    Peer,
-    PeersResponse,
     WorkerRole,
     utc_now,
 )
+from shared.protocol import FRAME_RATE_HEADER
 from tests.worker.fake_orchestrator_parts import FakeJob, error, range_response, receive_chunk
 
 BASE_URL = "http://orchestrator.test:8080"
+# Caddy's tailnet listener as /enroll reports it; a second origin that may
+# see the bearer token (design §17).
+TAILNET_URL = "http://tailnet.test:8080"
 WORKER_ID = "worker-1"
 BEARER_TOKEN = "secret-worker-token"
 GOOD_ENROLLMENT_TOKEN = "good-enrollment-token"
@@ -64,13 +67,13 @@ class FakeOrchestrator:
         self.revoked_lease_ids: set[str] = set()
         self.inbox: dict[str, bytes] = {}
         self.outbox: dict[str, bytes] = {}
-        self.peers: list[Peer] = []
-        self.manifest_entries: list[ManifestEntry] = []
         # Knobs tests turn:
         self.accepting_new_raws = True
         self.deletable_job_ids: list[str] = []
         self.heartbeats_to_fail = 0
         self.delivered_calls_to_fail = 0
+        # (status, code) to refuse every /delivered with, e.g. (409, "illegal_transition").
+        self.delivered_refusal: tuple[int, str] | None = None
         self.refuse_claims_with: str | None = None
         # Called as (kind, received_bytes) after every accepted upload chunk.
         self.after_chunk_accepted = None
@@ -81,6 +84,8 @@ class FakeOrchestrator:
         self.failures: list[tuple[str, FailedRequest]] = []
         self.thumbnails: dict[str, bytes] = {}
         self.upload_log: list[tuple[str, int, int]] = []  # (endpoint, status, offset)
+        # The Frame-Rate header of every proxy chunk, None where it was absent.
+        self.proxy_frame_rate_headers: list[str | None] = []
         self.delivered: list[tuple[str, DeliveredRequest]] = []
         self.outbox_acks: list[tuple[str, OutboxAckRequest]] = []
         self.file_requests: list[tuple[str, dict[str, str]]] = []  # (path, headers)
@@ -116,7 +121,6 @@ class FakeOrchestrator:
     def _build_app(self) -> Starlette:
         routes = [
             Route("/enroll", self._enroll, methods=["POST"]),
-            Route("/workers", self._workers, methods=["GET"]),
             Route("/workers/{worker_id}/heartbeat", self._heartbeat, methods=["POST"]),
             Route("/workers/{worker_id}/next", self._next, methods=["POST"]),
             Route("/jobs/{job_id}", self._get_job, methods=["GET"]),
@@ -128,7 +132,6 @@ class FakeOrchestrator:
             Route("/jobs/{job_id}/failed", self._failed, methods=["POST"]),
             Route("/jobs/{job_id}/delivered", self._delivered, methods=["POST"]),
             Route("/outbox/{job_id}/ack", self._outbox_ack, methods=["POST"]),
-            Route("/manifest", self._manifest, methods=["GET"]),
             Route("/inbox/{name}", self._file_endpoint(self.inbox), methods=["GET"]),
             Route("/outbox/{name}", self._file_endpoint(self.outbox), methods=["GET"]),
         ]
@@ -155,15 +158,11 @@ class FakeOrchestrator:
             bearer_token=BEARER_TOKEN,
             tailscale_auth_key="tskey-auth-test",
             tailscale_tags=[f"tag:{'studio' if self.role == WorkerRole.STUDIO else 'worker'}"],
+            tailnet_base_url=TAILNET_URL,
             heartbeat_interval_s=15,
             lease_ttl_s=45,
         )
         return JSONResponse(answer.model_dump(mode="json"), status_code=201)
-
-    async def _workers(self, request: Request) -> Response:
-        if not self._authorized(request):
-            return error(401, "unauthenticated")
-        return JSONResponse(PeersResponse(workers=self.peers).model_dump(mode="json"))
 
     async def _heartbeat(self, request: Request) -> Response:
         if not self._authorized(request):
@@ -240,6 +239,8 @@ class FakeOrchestrator:
             job_id = request.path_params["job_id"]
             lease_id = request.headers.get("lease-id", "")
             offset = int(request.headers.get("upload-offset", "-1"))
+            if kind == "proxies":
+                self.proxy_frame_rate_headers.append(request.headers.get(FRAME_RATE_HEADER))
             if not self._authorized(request):
                 response = error(401, "unauthenticated")
             elif not self._lease_is_alive(lease_id):
@@ -273,6 +274,8 @@ class FakeOrchestrator:
         if self.delivered_calls_to_fail > 0:
             self.delivered_calls_to_fail -= 1
             return error(503, "upstream_error")
+        if self.delivered_refusal is not None:
+            return error(*self.delivered_refusal)
         job_id = request.path_params["job_id"]
         self.delivered.append((job_id, DeliveredRequest.model_validate(await request.json())))
         # The studio's ACK ends the pushing worker's process lease.
@@ -292,10 +295,6 @@ class FakeOrchestrator:
         if job is None:
             return error(404, "not_found")
         return JSONResponse(job.as_job().model_dump(mode="json"))
-
-    async def _manifest(self, request: Request) -> Response:
-        answer = ManifestResponse(clips=self.manifest_entries, generated_at=utc_now())
-        return JSONResponse(answer.model_dump(mode="json"))
 
     def _file_endpoint(self, files: dict[str, bytes]):
         """Caddy-like static files: bearer required, Range supported."""

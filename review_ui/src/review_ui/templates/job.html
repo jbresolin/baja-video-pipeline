@@ -8,7 +8,7 @@
   <h1>Job <code>{{ job.id|short_id }}</code> {{ m.state_badge(job.state) }}
     {% if job.low_res %}<span class="badge flag">low-res</span>{% endif %}</h1>
   <p class="hint">
-    {{ job.source.sender_name or "unknown sender" }} · received {{ m.time(job.created_at) }}
+    From {{ intake }} · received {{ m.time(job.created_at) }}
     · {{ job.size_bytes|bytes }} · {{ job.duration_s|duration }} · v{{ job.version }}
   </p>
 </div>
@@ -18,8 +18,10 @@
   <button type="button" data-reload>Reload</button>
 </div>
 
+{# data-frame-rate: the proxy's fps (30 when unknown); ←/→ and -/= step by one frame of it. #}
 <div class="job-layout" id="job" data-job-id="{{ job.id }}" data-version="{{ job.version }}"
-     data-duration="{{ job.duration_s if job.duration_s is not none else '' }}">
+     data-duration="{{ job.duration_s if job.duration_s is not none else '' }}"
+     data-frame-rate="{{ frame_rate }}">
   <section class="player-pane" aria-label="Proxy player">
     {% if job.proxy_available %}
     <video id="player" src="{{ media_url(job.proxy_url or '/proxies/' ~ job.id ~ '.mp4') }}"
@@ -44,7 +46,7 @@
         <dt><kbd>Space</kbd> / <kbd>k</kbd></dt><dd>play / pause</dd>
         <dt><kbd>i</kbd> / <kbd>o</kbd></dt><dd>set cut in / out at the playhead</dd>
         <dt><kbd>Shift</kbd>+<kbd>i</kbd> / <kbd>o</kbd></dt><dd>jump to cut in / out</dd>
-        <dt><kbd>←</kbd> / <kbd>→</kbd></dt><dd>one frame back / forward</dd>
+        <dt><kbd>←</kbd> / <kbd>→</kbd></dt><dd>one frame back / forward ({{ '%g'|format(frame_rate) }} fps)</dd>
         <dt><kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd></dt><dd>one second back / forward</dd>
         <dt><kbd>-</kbd> / <kbd>=</kbd></dt><dd>nudge the last mark one frame earlier / later</dd>
         <dt><kbd>p</kbd></dt><dd>play the cut from in to out</dd>

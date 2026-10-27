@@ -175,11 +175,12 @@ received → proxy_ready → awaiting_review → ready → claimed (lease) → u
 ## 13. Implementation decisions (2026-10-25)
 
 * **Monorepo** `jbresolin/baja-video-pipeline`:
-  `orchestrator/`, `worker/`, `shared/` (schemas, API client, hashing,
-  ffmpeg helpers), `infra/` (compose, Caddy, Tailscale ACLs, runbooks),
-  `docs/`. The review UI lives inside `orchestrator/` (same process, served
-  under `/review`). The old `baja-video-processor` repo is reference only;
-  nothing is ported verbatim.
+  `orchestrator/`, `review_ui/`, `worker/`, `shared/` (schemas, API
+  client, hashing, ffmpeg helpers), `infra/` (compose, Caddy, Tailscale
+  ACLs, runbooks), `docs/`. The review UI is its own package and service
+  (`review_ui/`, served under `/review` by Caddy, §16), talking to the
+  orchestrator over its HTTP API. The old `baja-video-processor` repo is
+  reference only; nothing is ported verbatim.
 * **One worker codebase, three roles:** `master`, `worker`, `studio`.
   `studio` never volunteers as a holder and exposes the receive endpoint.
 * **Stack:** Python 3.12, FastAPI, SQLite (WAL mode), `httpx`, `pydantic`,

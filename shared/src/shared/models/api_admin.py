@@ -71,6 +71,10 @@ class EnrollResponse(ApiModel):
     # with "tailscale up --authkey=..."; it is useless afterwards.
     tailscale_auth_key: str
     tailscale_tags: list[str]
+    # Caddy's tailnet listener, e.g. "http://100.101.102.103:8080": the base
+    # of every inbox/outbox URL in task offers. The worker sends its bearer
+    # token only to this origin and to its own orchestrator_url (design §17).
+    tailnet_base_url: str
     heartbeat_interval_s: int
     lease_ttl_s: int
 

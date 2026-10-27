@@ -146,6 +146,9 @@ def test_a_pass_video_goes_from_whatsapp_to_the_studio(harness, tmp_path):
     assert ask_next(harness, slow_worker, [TaskKind.PROCESS]) is None
     process_offer = ask_next(harness, fast_worker, [TaskKind.PROCESS])
     assert process_offer["clip_relative_path"] == "enduro/42/3.mp4"
+    # The studio sent no tailnet address in its heartbeat, so it cannot be
+    # pushed to: the orchestrator tells the worker to use the outbox.
+    assert process_offer["delivery"] == {"mode": "outbox", "studio_url": None}
     lease_id, _ = claim_ok(harness, fast_worker, job_id, TaskKind.PROCESS)
     assert harness.job(job_id)["state"] == "claimed"
     # Direct push failed (say), so the worker uploads to the VPS outbox.

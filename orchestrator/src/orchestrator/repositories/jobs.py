@@ -16,7 +16,7 @@ from shared.models import JobState
 # into the SQL text (values never are; they are always "?" parameters).
 UPDATABLE_JOB_COLUMNS = frozenset(
     {
-        "state", "finished_at", "duration_s", "has_audio", "raw_on_vps",
+        "state", "finished_at", "duration_s", "has_audio", "frame_rate", "raw_on_vps",
         "proxy_available", "thumbnail_available", "proxy_requested",
         "prova", "car_number", "team_name", "passagem", "show_pass",
         "cut_in_s", "cut_out_s", "reviewed_by", "reviewed_at",
@@ -160,16 +160,38 @@ def save_intake_message(
 def list_download_candidates(
     connection: sqlite3.Connection, worker_id: str, max_holders: int | None
 ) -> list[sqlite3.Row]:
-    """Live jobs the worker does not hold, with fewer than `max_holders` holders (None: any)."""
+    """Live jobs the worker does not hold, with fewer than `max_holders` holders (None: any).
+
+    "Live" means still moving through the pipeline: not done, failed or
+    discarded. The master's backfill of finished jobs is a separate, lower
+    priority list (list_backfill_candidates).
+    """
     return connection.execute(
         """
         SELECT * FROM jobs
-        WHERE state NOT IN ('discarded', 'failed')
+        WHERE state NOT IN ('discarded', 'failed', 'done')
           AND NOT EXISTS (SELECT 1 FROM holders h WHERE h.job_id = jobs.id AND h.worker_id = ?)
           AND (? IS NULL OR (SELECT COUNT(*) FROM holders h WHERE h.job_id = jobs.id) < ?)
         ORDER BY created_at, id
         """,
         (worker_id, max_holders, max_holders),
+    ).fetchall()
+
+
+def list_backfill_candidates(connection: sqlite3.Connection, worker_id: str) -> list[sqlite3.Row]:
+    """Finished jobs (done or failed) whose raw this worker does not hold, oldest first.
+
+    Design §17: the master must end up holding every raw that was not
+    discarded, including jobs that finished while it was offline.
+    """
+    return connection.execute(
+        """
+        SELECT * FROM jobs
+        WHERE state IN ('done', 'failed')
+          AND NOT EXISTS (SELECT 1 FROM holders h WHERE h.job_id = jobs.id AND h.worker_id = ?)
+        ORDER BY created_at, id
+        """,
+        (worker_id,),
     ).fetchall()
 
 

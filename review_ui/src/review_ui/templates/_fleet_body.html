@@ -69,6 +69,27 @@
           <td class="num">{{ worker.stats.upload_mbps|rate("Mbps") }}</td>
           <td>{% for text in row.lease_texts %}<div class="small"><code>{{ text }}</code></div>{% else %}<span class="small muted">idle</span>{% endfor %}</td>
         </tr>
+        {# The worker's latest events (GET /events?worker_id=…), newest first, under its row.
+           The actor is shown only when it is not the worker itself (e.g. "system"). #}
+        <tr class="worker-events {{ 'offline' if not entry.online else '' }}" data-worker-id="{{ worker.id }}">
+          <td colspan="8">
+            {% if row.recent_events is none %}
+            <span class="small muted">Recent events unavailable.</span>
+            {% elif not row.recent_events %}
+            <span class="small muted">No events yet.</span>
+            {% else %}
+            <ol class="mini-log">
+              {% for line in row.recent_events %}
+              <li>{{ m.time(line.at, relative=true) }}
+                {% if line.actor != worker.name %}<strong class="actor">{{ line.actor }}</strong>{% endif %}
+                {{ line.what }}
+                {%- if line.job_id %} · <a href="/review/jobs/{{ line.job_id }}"><code>{{ line.job_id|short_id }}</code></a>{% endif %}
+                {%- if line.reason %} <span class="muted">— {{ line.reason }}</span>{% endif %}</li>
+              {% endfor %}
+            </ol>
+            {% endif %}
+          </td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>

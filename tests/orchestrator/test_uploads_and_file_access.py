@@ -14,6 +14,7 @@ from orchestrator.testing.scenarios import (
 )
 from shared.models import TaskKind, WorkerRole
 from shared.protocol import (
+    FRAME_RATE_HEADER,
     LEASE_ID_HEADER,
     UPLOAD_LENGTH_HEADER,
     UPLOAD_OFFSET_HEADER,
@@ -53,6 +54,48 @@ def test_chunked_proxy_upload_moves_the_job_to_awaiting_review(harness, proxy_re
     assert harness.context.layout.thumbnail_path(job_id).read_bytes() == SAMPLE_JPEG
     # The make_proxy lease ended with the upload.
     assert harness.job(job_id)["leases"] == []
+
+
+def send_whole_proxy(harness, worker, job_id, lease_id, extra_headers):
+    """Upload SAMPLE_PROXY in one chunk with some extra headers; returns the response."""
+    return harness.client.post(
+        f"/jobs/{job_id}/proxy",
+        content=SAMPLE_PROXY,
+        headers={
+            **worker.headers,
+            UPLOAD_OFFSET_HEADER: "0",
+            UPLOAD_LENGTH_HEADER: str(len(SAMPLE_PROXY)),
+            UPLOAD_SHA256_HEADER: hashlib.sha256(SAMPLE_PROXY).hexdigest(),
+            LEASE_ID_HEADER: lease_id,
+            **extra_headers,
+        },
+    )
+
+
+def test_the_proxy_upload_stores_the_frame_rate_on_the_job(harness, proxy_ready_to_upload):
+    # Before the proxy exists nobody knows the frame rate.
+    master, job_id, lease_id = proxy_ready_to_upload
+    assert harness.job(job_id)["frame_rate"] is None
+    # The worker sends the proxy's frame rate (NTSC 29.97 fps) with the upload.
+    response = send_whole_proxy(harness, master, job_id, lease_id, {FRAME_RATE_HEADER: "29.97"})
+    assert response.json()["complete"] is True
+    # The job now carries it, so the review UI can step exactly one frame.
+    assert harness.job(job_id)["frame_rate"] == 29.97
+
+
+def test_a_proxy_without_a_frame_rate_leaves_it_unknown(harness, proxy_ready_to_upload):
+    # The header is optional: an old worker (or ffprobe not knowing) sends none.
+    master, job_id, lease_id = proxy_ready_to_upload
+    assert send_whole_proxy(harness, master, job_id, lease_id, {}).json()["complete"] is True
+    assert harness.job(job_id)["frame_rate"] is None
+
+
+def test_a_nonsense_frame_rate_is_a_validation_error(harness, proxy_ready_to_upload):
+    # Zero frames per second cannot be right; refuse it instead of storing it.
+    master, job_id, lease_id = proxy_ready_to_upload
+    response = send_whole_proxy(harness, master, job_id, lease_id, {FRAME_RATE_HEADER: "0"})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "validation_error"
 
 
 def test_a_chunk_at_the_wrong_offset_is_told_where_to_continue(harness, proxy_ready_to_upload):

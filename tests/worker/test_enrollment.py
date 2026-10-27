@@ -5,7 +5,12 @@ import threading
 import httpx
 
 from shared.models import WorkerCapabilities, WorkerRole
-from tests.worker.fake_orchestrator import BASE_URL, GOOD_ENROLLMENT_TOKEN, FakeOrchestrator
+from tests.worker.fake_orchestrator import (
+    BASE_URL,
+    GOOD_ENROLLMENT_TOKEN,
+    TAILNET_URL,
+    FakeOrchestrator,
+)
 from tests.worker.fakes import RoutingTransport
 from worker.api_client import OrchestratorClient
 from worker.config import WorkerConfig, load_config, save_config
@@ -78,6 +83,9 @@ def test_enrollment_saves_identity_forgets_token_and_writes_tailscale_key(tmp_pa
         assert config.role == WorkerRole.MASTER
         # The one-time token is used up: it must not linger in the file.
         assert config.enrollment_token is None
+        # Caddy's tailnet listener from the answer: the second origin that
+        # may see our bearer token (design §17).
+        assert config.tailnet_base_url == TAILNET_URL
     # The installer picks up the Tailscale key from this file.
     key_file = config_path.parent / TAILSCALE_AUTH_KEY_FILE_NAME
     assert key_file.read_text().strip() == "tskey-auth-test"
@@ -120,3 +128,17 @@ def test_already_enrolled_config_skips_enrollment(tmp_path):
     )
     assert enroll_now(config_path, network).worker_id == "w"
     assert orchestrator.enroll_requests == []
+
+
+def test_config_enrolled_before_tailnet_base_url_existed_still_loads(tmp_path):
+    # A worker.json written by an older version has no "tailnet_base_url"
+    # key. It must still load as enrolled; the token then goes only to
+    # orchestrator_url (worker.token_origins skips the missing one).
+    config_path = tmp_path / "worker.json"
+    config_path.write_text(
+        '{"orchestrator_url": "http://100.64.0.1:8080", "worker_id": "w",'
+        ' "bearer_token": "t", "role": "worker"}'
+    )
+    config = load_config(config_path)
+    assert config.is_enrolled
+    assert config.tailnet_base_url is None

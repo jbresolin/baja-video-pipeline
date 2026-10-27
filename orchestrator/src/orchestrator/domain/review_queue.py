@@ -35,7 +35,7 @@ def get_job(context: OrchestratorContext, job_id: str) -> Job:
 
 def find_team(context: OrchestratorContext, car_number: int) -> Team:
     try:
-        team = context.baja_app.find_team(car_number)
+        team = context.teams.find_team(car_number)
     except BajaAppError as error:
         raise upstream_error("baja app", str(error)) from error
     if team is None:

@@ -8,7 +8,7 @@ another one on the setup page.
 Before enrollment the file holds only what the installer and the setup page
 put there (orchestrator URLs, enrollment token, working folder, cap). After
 a successful POST /enroll the token is removed and the worker id, bearer
-token and role are stored instead.
+token, role and Caddy's tailnet base URL are stored instead.
 """
 
 import json
@@ -44,6 +44,11 @@ class WorkerConfig(BaseModel):
     worker_id: str | None = None
     bearer_token: str | None = None
     role: WorkerRole | None = None
+    # Caddy's tailnet listener from the /enroll answer, e.g.
+    # "http://100.64.0.1:8080" (it serves /inbox/* and /outbox/*). The bearer
+    # token goes only to this origin and orchestrator_url's (design §17).
+    # None in configs enrolled before it existed: then only orchestrator_url.
+    tailnet_base_url: str | None = None
 
     worker_name: str = Field(default_factory=socket.gethostname)
     # Where raws/, clips/, tmp/ and logs/ live. None = the config file's folder.

@@ -13,9 +13,13 @@ from pydantic import TypeAdapter, ValidationError
 
 from shared.models import (
     DeliverTask,
+    DeliveryPlan,
+    DeliveryRoute,
     DownloadRawTask,
     ErrorResponse,
+    Event,
     FailedRequest,
+    FailureScope,
     HeartbeatRequest,
     HeartbeatResponse,
     IntakeSource,
@@ -152,6 +156,7 @@ def test_next_task_response_can_be_empty_or_hold_a_task():
         show_pass=True,
         clip_relative_path="enduro/42/1.mp4",
         outbox_upload_url="http://vps/jobs/job-1/clip",
+        delivery=DeliveryPlan(mode=DeliveryRoute.OUTBOX),
     )
     round_tripped = NextTaskResponse.model_validate_json(
         NextTaskResponse(task=process).model_dump_json()
@@ -239,3 +244,45 @@ def test_error_response_shape():
     parsed = ErrorResponse.model_validate(body)
     assert parsed.error.code == "lease_lost"
     assert parsed.error.details == {}
+
+
+def test_failed_request_scope_defaults_to_worker():
+    # Design §17: leaving "scope" out means "this worker could not do it",
+    # which never fails a job by itself. "job" must be asked for explicitly.
+    assert FailedRequest(lease_id="l1", message="disk full").scope == FailureScope.WORKER
+    bad_input = FailedRequest(lease_id="l1", message="moov atom not found", scope="job")
+    assert bad_input.scope == FailureScope.JOB
+    with pytest.raises(ValidationError):
+        FailedRequest(lease_id="l1", message="x", scope="everyone")
+
+
+def test_job_frame_rate_is_optional_but_must_be_positive():
+    # None until the first holder uploads the proxy; a frame rate of zero
+    # would make the review UI divide by zero, so it is refused.
+    assert make_job().frame_rate is None
+    assert make_job(frame_rate=29.97).frame_rate == 29.97
+    with pytest.raises(ValidationError):
+        make_job(frame_rate=0)
+
+
+def test_delivery_plan_studio_url_is_only_needed_for_direct():
+    # "outbox" needs no address; "direct" carries the studio's receive URL.
+    assert DeliveryPlan(mode="outbox").studio_url is None
+    direct = DeliveryPlan(mode="direct", studio_url="http://100.64.0.9:8720/receive/j")
+    assert direct.mode == DeliveryRoute.DIRECT
+
+
+def test_event_round_trips_and_keeps_states_as_text():
+    # The event log travels as JSON to the review UI; states stay plain words.
+    event = Event(
+        id=7,
+        at=utc_now(),
+        job_id="j",
+        actor="worker:w1",
+        kind="state_changed",
+        from_state="ready",
+        to_state="claimed",
+        reason="holder claimed processing",
+    )
+    assert Event.model_validate_json(event.model_dump_json()) == event
+    assert event.model_dump(mode="json")["to_state"] == "claimed"

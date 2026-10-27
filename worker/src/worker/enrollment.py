@@ -1,12 +1,12 @@
 """First run: exchange the one-time enrollment token for our identity.
 
 design §8, docs/api.md §5: POST /enroll with the token and a description of
-this machine returns a worker id, a bearer token, our role and a Tailscale
-auth key. We save the first three in the config file (and forget the
-enrollment token, which is now used up), and write the auth key to
-`tailscale-authkey.txt` next to the config file. The installer reads that
-file and runs `tailscale up --authkey=…`; the daemon itself never runs
-Tailscale.
+this machine returns a worker id, a bearer token, our role, a Tailscale
+auth key and Caddy's tailnet base URL. We save all but the key in the
+config file (and forget the enrollment token, which is now used up), and
+write the auth key to `tailscale-authkey.txt` next to the config file. The
+installer reads that file and runs `tailscale up --authkey=…`; the daemon
+itself never runs Tailscale.
 """
 
 import logging
@@ -101,6 +101,7 @@ def enroll(
             "worker_id": answer.worker_id,
             "bearer_token": answer.bearer_token,
             "role": answer.role,
+            "tailnet_base_url": answer.tailnet_base_url,
         }
     )
     save_config(config_path, enrolled)

@@ -35,6 +35,7 @@ Then look around:
 ```sh
 curl -u ana:ana 'http://127.0.0.1:8000/review/queue?state=received'
 curl -u ana:ana http://127.0.0.1:8000/fleet
+curl -u ana:ana 'http://127.0.0.1:8000/events?limit=20'      # the event log, oldest first
 
 # enroll a worker by hand
 curl -s -H 'Authorization: Bearer dev-admin' -H 'Content-Type: application/json' \
@@ -91,11 +92,26 @@ sudo install -d -o 10001 -g 10001 /srv/pipeline/{inbox,proxies,thumbs,outbox,db}
 | `app.py`, `__main__.py` | wiring (`build_context`, `create_app`) and `python -m orchestrator` |
 | `db/` | SQLite in WAL mode, numbered `migrations/*.sql` applied at startup |
 | `repositories/` | plain SQL, one module per table group |
-| `domain/` | the rules: intake, enrollment, `task_rules` (who gets what), leases, uploads, review, delivery, fleet, `/auth/file` |
-| `clients/` | Evolution `sendText`, Tailscale key minting, Baja app teams (cached) |
+| `domain/` | the rules: intake, enrollment, `task_rules` (who gets what, delivery plan), `worker_loop` (`/next` order incl. the master's backfill), `task_results` (failure scopes), leases, uploads, review, delivery, fleet, `event_log`, `/auth/file` |
+| `clients/` | Evolution `sendText`, Tailscale key minting, team lookup (`teams.py`: `BVP_TEAMS_FILE` CSV first, then the Baja app, cached) |
 | `api/` | FastAPI routes, the four auth schemes, the error shape |
 | `background/` | lease expiry, inbox cleanup, proxy eviction, outbox cleanup |
 | `testing/` | fakes, harness, scenarios, the dev server |
 
 Every state change goes through `domain/transitions.move_job`, which asks
 `shared.state_machine` and appends to the `events` table (who, when, why).
+`GET /jobs/{id}/events` and `GET /events` expose that table to the review UI.
+
+## Rules worth knowing (design §17)
+
+* **Failures.** `POST /jobs/{id}/failed` with `scope: "job"` fails the job
+  at once. `scope: "worker"` (the default) excludes that worker from the
+  task on that job and re-offers it; the job fails on the second different
+  worker for the same task (`WORKER_SCOPE_FAILURES_BEFORE_JOB_FAILS`).
+* **Master backfill.** After all live work, `/next` offers the master
+  `download_raw` for every done or failed job it does not hold.
+* **Delivery plan.** Process offers say `direct` (with the studio's receive
+  URL) when a studio heartbeated within 45 s, else `outbox`.
+* **Teams.** `BVP_TEAMS_FILE` (CSV `car_number,team_name,school`, reloaded
+  on change) first, then `BVP_BAJA_APP_URL`; both optional. Unknown cars
+  answer 404 and leave `team_name` empty.

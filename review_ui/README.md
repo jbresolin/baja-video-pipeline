@@ -20,15 +20,18 @@ public. So the page scripts call the UI's own JSON endpoints under
 | Path | What |
 | --- | --- |
 | `/review/` | Queue: awaiting review + failed by default; filters by state, prova, low-res; auto-refresh every 5 s; `↑↓`/`j k` + `Enter` |
-| `/review/jobs/{id}` | Proxy player, cut in/out marks, fields, actions, status strip, event log (refreshes every 5 s) |
+| `/review/jobs/{id}` | Proxy player, cut in/out marks, fields, actions, status strip, event log from `GET /jobs/{id}/events` (refreshes every 5 s; if the log cannot be read the page still works and says so) |
 | `/review/clips` | Delivery manifest, newest first, prova filter, copyable studio path |
-| `/review/fleet` | Workers (role, online, heartbeat age, held raws, storage vs cap, stats, leases), VPS disk, jobs per state; refreshes every 10 s |
+| `/review/fleet` | Workers (role, online, heartbeat age, held raws, storage vs cap, stats, leases, last 5 events from `GET /events?worker_id=…&limit=5`), VPS disk, jobs per state; refreshes every 10 s |
 | `/healthz` | Container health check (not routed by Caddy) |
 
 Job page keys: `Space`/`k` play, `i`/`o` set in/out, `Shift+i`/`o` jump to
 them, `←`/`→` one frame, `Shift+←`/`→` one second, `-`/`=` nudge the last
 mark by a frame, `p` play the cut, `Ctrl+S` save, `Ctrl+Enter`
-ready/reprocess/retry, `?` shows the list.
+ready/reprocess/retry, `?` shows the list. A frame is `1 / Job.frame_rate`
+seconds (the proxy's fps, measured by the holder that uploaded it), or
+1/30 s when the job has no frame rate yet; the server puts the value in
+`data-frame-rate` on the page and the shortcut list shows it.
 
 Every action sends the version of the job the page was loaded with
 (`expected_version`). If someone else changed the job first, the
@@ -78,4 +81,5 @@ it is the `review-ui` service (profile `orchestrator`, image
 | `routes_api.py` | JSON endpoints for the page scripts (review actions, proxy request, team lookup) |
 | `errors.py` | Error page for browsers, JSON errors for scripts, 401 sign-in challenge |
 | `job_view.py`, `queue_view.py`, `clips_and_fleet_view.py` | Plain functions that turn API data into what the pages show |
+| `event_log_view.py` | Orchestrator events (`Event`) in words: actor names, state changes, reasons; used by the job and fleet pages |
 | `templates/`, `static/` | Jinja2 templates; CSS and small ES modules (no build step) |

@@ -10,6 +10,7 @@ find_raw() never returns. No app-level auth in v1 (tailnet ACL, design §15).
 
 import logging
 import threading
+import time
 
 import uvicorn
 from starlette.applications import Starlette
@@ -47,7 +48,8 @@ class BackgroundServer:
     """Runs an ASGI app with uvicorn in a daemon thread; stop() ends it.
 
     uvicorn installs no signal handlers outside the main thread, so the
-    daemon's own SIGTERM/CTRL-C handling stays in charge.
+    daemon's own SIGTERM/CTRL-C handling stays in charge. Port 0 asks the
+    system for any free port; `wait_until_listening()` then says which.
     """
 
     def __init__(self, app, host: str, port: int, name: str) -> None:
@@ -65,6 +67,21 @@ class BackgroundServer:
     def start(self) -> None:
         logger.info("starting %s", self.description)
         self._thread.start()
+
+    def wait_until_listening(self, timeout: float = 10.0) -> int:
+        """Block until the socket is open; returns the port actually bound.
+
+        Raises RuntimeError if the server did not come up (port taken, …).
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._server.started:
+                sockets = [sock for server in self._server.servers for sock in server.sockets]
+                return sockets[0].getsockname()[1]
+            if not self._thread.is_alive():
+                break
+            time.sleep(0.02)
+        raise RuntimeError(f"{self.description} did not start listening")
 
     def stop(self, timeout: float = 5.0) -> None:
         self._server.should_exit = True

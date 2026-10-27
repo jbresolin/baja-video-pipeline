@@ -20,6 +20,7 @@ from orchestrator.background.runner import start_background_tasks
 from orchestrator.clients.baja_app import BajaAppClient
 from orchestrator.clients.evolution import EvolutionClient
 from orchestrator.clients.tailscale import TailscaleClient
+from orchestrator.clients.teams import TeamDirectory, TeamsFile
 from orchestrator.clock import Clock
 from orchestrator.config import Settings
 from orchestrator.context import OrchestratorContext
@@ -73,11 +74,18 @@ def build_context(
             settings.tailscale_tailnet,
             clock,
         ),
-        baja_app=BajaAppClient(
-            baja_app_http_client or httpx.Client(timeout=API_TIMEOUT),
-            settings.baja_app_url,
-            settings.baja_app_token.get_secret_value(),
-            clock,
+        teams=TeamDirectory(
+            TeamsFile(settings.teams_file) if settings.teams_file else None,
+            (
+                BajaAppClient(
+                    baja_app_http_client or httpx.Client(timeout=API_TIMEOUT),
+                    settings.baja_app_url,
+                    settings.baja_app_token.get_secret_value(),
+                    clock,
+                )
+                if settings.baja_app_url
+                else None
+            ),
         ),
         enroll_rate_limiter=SlidingWindowRateLimiter(
             settings.enroll_rate_limit_requests, settings.enroll_rate_limit_window_s

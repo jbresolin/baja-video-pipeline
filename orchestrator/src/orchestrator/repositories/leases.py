@@ -4,7 +4,7 @@ import sqlite3
 from datetime import datetime, timedelta
 
 from orchestrator.db.database import from_db_time, to_db_time
-from shared.models import Holder, HolderStatus, Lease, TaskKind
+from shared.models import FailureScope, Holder, HolderStatus, Lease, TaskKind
 
 # --- Holders ---
 
@@ -150,13 +150,30 @@ def delete_lease(connection: sqlite3.Connection, lease_id: str) -> None:
 
 
 def add_task_exclusion(
-    connection: sqlite3.Connection, job_id: str, worker_id: str, kind: TaskKind, now: datetime
+    connection: sqlite3.Connection,
+    job_id: str,
+    worker_id: str,
+    kind: TaskKind,
+    now: datetime,
+    scope: FailureScope = FailureScope.WORKER,
 ) -> None:
     connection.execute(
-        "INSERT INTO task_exclusions (job_id, worker_id, task_kind, created_at)"
-        " VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
-        (job_id, worker_id, str(kind), to_db_time(now)),
+        "INSERT INTO task_exclusions (job_id, worker_id, task_kind, created_at, scope)"
+        " VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+        (job_id, worker_id, str(kind), to_db_time(now), str(scope)),
     )
+
+
+def count_workers_excluded_for_their_own_fault(
+    connection: sqlite3.Connection, job_id: str, kind: TaskKind
+) -> int:
+    """How many different workers reported scope "worker" for this task on this job."""
+    row = connection.execute(
+        "SELECT COUNT(DISTINCT worker_id) AS n FROM task_exclusions"
+        " WHERE job_id = ? AND task_kind = ? AND scope = ?",
+        (job_id, str(kind), str(FailureScope.WORKER)),
+    ).fetchone()
+    return row["n"]
 
 
 def is_task_excluded(

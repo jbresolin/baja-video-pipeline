@@ -111,6 +111,10 @@ class Job(ApiModel):
     # Filled in by the first holder (ffprobe) when it confirms the download.
     duration_s: Seconds | None = None
     has_audio: bool | None = None
+    # Frames per second of the proxy (= the raw's, the proxy keeps a constant
+    # frame rate). Reported with the proxy upload; the review UI steps one
+    # frame with it and falls back to 30 while it is None.
+    frame_rate: float | None = Field(default=None, gt=0)
     # True while the VPS inbox still has a copy (until two holders confirm,
     # or the job is discarded).
     raw_on_vps: bool = True

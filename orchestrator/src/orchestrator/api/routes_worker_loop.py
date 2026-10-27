@@ -30,7 +30,7 @@ from shared.models import (
     NextTaskResponse,
     PeersResponse,
 )
-from shared.protocol import LEASE_ID_HEADER
+from shared.protocol import FRAME_RATE_HEADER, LEASE_ID_HEADER
 
 router = APIRouter(tags=["worker loop"])
 
@@ -117,12 +117,20 @@ async def upload_proxy(
     job_id: str,
     request: Request,
     lease_id: str = Header(..., alias=LEASE_ID_HEADER),
+    frame_rate: float | None = Header(None, alias=FRAME_RATE_HEADER, gt=0),
     worker_row: sqlite3.Row = Depends(require_worker),
     context: OrchestratorContext = Depends(get_context),
 ) -> ChunkAccepted:
     chunk = await request.body()
     return await run_in_threadpool(
-        uploads.accept_proxy_chunk, context, worker_row, job_id, lease_id, request.headers, chunk
+        uploads.accept_proxy_chunk,
+        context,
+        worker_row,
+        job_id,
+        lease_id,
+        request.headers,
+        chunk,
+        frame_rate,
     )
 
 

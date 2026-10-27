@@ -14,6 +14,7 @@ import pytest
 from shared.ffmpeg import X264_ENCODER, build_test_clip_command
 from shared.media_probe import MediaInfo
 from shared.models import MakeProxyTask, ProcessTask
+from tests.worker.conftest import OUTBOX_DELIVERY
 from tests.worker.fake_orchestrator import BASE_URL
 from worker.media_tools import MediaTools
 
@@ -83,6 +84,7 @@ def test_real_final_render_is_trimmed_1080p_with_audio(harness, held_clip_job):
             show_pass=True,
             clip_relative_path="enduro/42/3.mp4",
             outbox_upload_url=f"{BASE_URL}/jobs/{job.job_id}/clip",
+            delivery=OUTBOX_DELIVERY,
         )
     )
 

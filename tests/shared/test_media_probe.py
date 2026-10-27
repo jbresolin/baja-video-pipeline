@@ -65,3 +65,27 @@ def test_probe_result_drives_the_proxy_filter_chain():
     sdr_args = build_proxy_command("raw", "out", "libx264", tone_map_hdr=sdr.is_hdr)
     assert "tonemap=tonemap=hable" in hdr_args[hdr_args.index("-vf") + 1]
     assert "tonemap" not in sdr_args[sdr_args.index("-vf") + 1]
+
+
+@pytest.mark.parametrize(
+    ("avg_rate", "real_rate", "expected"),
+    [
+        # NTSC video: ffprobe writes 29.97 fps as the fraction 30000/1001.
+        ("30000/1001", "30000/1001", 30000 / 1001),
+        # avg_frame_rate wins when both are present.
+        ("25/1", "50/1", 25.0),
+        # "0/0" means ffprobe does not know; fall back to r_frame_rate.
+        ("0/0", "60/1", 60.0),
+        # Neither is usable: no frame rate (the review UI then assumes 30).
+        ("0/0", "0/0", None),
+    ],
+)
+def test_parse_probe_output_reads_the_frame_rate(avg_rate, real_rate, expected):
+    # The worker reports this with the proxy upload so the review UI can
+    # step exactly one frame (design §17).
+    video = {"codec_type": "video", "avg_frame_rate": avg_rate, "r_frame_rate": real_rate}
+    info = parse_probe_output(json.dumps({"streams": [video], "format": {}}))
+    if expected is None:
+        assert info.frame_rate is None
+    else:
+        assert info.frame_rate == pytest.approx(expected)

@@ -2,9 +2,10 @@
 
 from shared.hashing import sha256_of_bytes
 from shared.http_transfer import partial_path_for
-from shared.models import DeliverTask, TaskKind, WorkerRole
+from shared.models import DeliverTask, FailureScope, TaskKind, WorkerRole
 from tests.worker.conftest import build_harness
 from tests.worker.fake_orchestrator import BASE_URL, BEARER_TOKEN
+from tests.worker.fakes import always_unavailable
 
 CLIP = b"finished clip " * 2000
 
@@ -65,12 +66,31 @@ def test_interrupted_pull_resumes(tmp_path):
     assert destination.read_bytes() == CLIP
 
 
-def test_corrupt_outbox_clip_is_not_stored_or_acked(tmp_path):
+def test_corrupt_outbox_clip_is_not_stored_and_is_reported_as_the_jobs_problem(tmp_path):
     harness, job, task = studio_with_outbox_clip(tmp_path)
     harness.orchestrator.outbox[f"{job.job_id}.mp4"] = b"garbage"
 
     harness.claim_and_run(task)
 
-    # Nothing visible for OBS, no ACK (the lease expires and it is retried).
+    # Nothing visible for OBS and no ACK...
     assert not (harness.env.studio_library.root / "suspensao/7/1.mp4").exists()
     assert harness.orchestrator.outbox_acks == []
+    # ...and the outbox copy itself is wrong, so pulling it again cannot
+    # help: reported with scope "job" for a human (reprocess fixes it).
+    [(_, failure)] = harness.orchestrator.failures
+    assert failure.scope == FailureScope.JOB
+
+
+def test_outbox_unreachable_is_not_reported_by_the_studio(tmp_path):
+    # Setup: the outbox file does not answer (Caddy down: 503 every time).
+    # The studio is the only one who can deliver, and a "worker" report
+    # would exclude it from this job, so it lets the lease expire instead
+    # and the orchestrator offers the delivery again later.
+    harness, job, task = studio_with_outbox_clip(tmp_path)
+    harness.network.override_path(BASE_URL, "/outbox/", always_unavailable())
+
+    harness.claim_and_run(task)
+
+    assert harness.orchestrator.failures == []
+    assert harness.orchestrator.outbox_acks == []
+    assert harness.leases.ids() == []  # no longer renewed: it will expire

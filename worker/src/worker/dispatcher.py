@@ -47,7 +47,11 @@ class Dispatcher:
         storage: Storage,
         shutdown: threading.Event,
         stage_freed: threading.Event,
+        max_wait_seconds: float | None = None,
     ) -> None:
+        """`max_wait_seconds` caps every pause between rounds (the
+        orchestrator's retry_after_s, the 10 s after a network error); in-
+        process test runs use it. None = wait as long as asked."""
         self._api = api
         self._role = role
         self._stages = stages
@@ -56,6 +60,7 @@ class Dispatcher:
         self._storage = storage
         self._shutdown = shutdown
         self._stage_freed = stage_freed
+        self._max_wait_seconds = max_wait_seconds
 
     def kinds_to_ask_for(self) -> list[TaskKind]:
         kinds = []
@@ -129,6 +134,8 @@ class Dispatcher:
             except Exception:
                 logger.exception("unexpected error in the dispatcher")
                 wait_seconds = UNREACHABLE_RETRY_SECONDS
+            if self._max_wait_seconds is not None:
+                wait_seconds = min(wait_seconds, self._max_wait_seconds)
             if wait_seconds > 0:
                 # Wake early when a stage finishes, or at shutdown.
                 self._stage_freed.wait(wait_seconds)

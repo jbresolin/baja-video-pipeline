@@ -1,10 +1,12 @@
 """Shaping data for the clips page (manifest) and the fleet page."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
+from review_ui.event_log_view import EventLine, event_lines_newest_first
 from review_ui.formatting import percent
 from review_ui.queue_view import STATES_IN_PIPELINE_ORDER, same_prova
-from shared.models import FleetResponse, FleetWorker, ManifestEntry, WorkerRole
+from shared.models import Event, FleetResponse, FleetWorker, ManifestEntry, WorkerRole
 
 # --- Clips ---
 
@@ -41,20 +43,35 @@ class WorkerRow:
     used_percent: int
     # Short "what is it doing" texts, one per active lease.
     lease_texts: list[str]
+    # The worker's latest events, newest first; None when they could not be
+    # loaded (the row says so instead of the whole page failing).
+    recent_events: list[EventLine] | None
 
 
 _ROLE_ORDER = {WorkerRole.MASTER: 0, WorkerRole.WORKER: 1, WorkerRole.STUDIO: 2}
 
 
-def build_worker_rows(fleet: FleetResponse) -> list[WorkerRow]:
-    """Master first, then the other workers, then the studio; online before offline."""
+def build_worker_rows(
+    fleet: FleetResponse, events_by_worker: Mapping[str, list[Event] | None] | None = None
+) -> list[WorkerRow]:
+    """Master first, then the other workers, then the studio; online before offline.
+
+    events_by_worker maps a worker id to its recent events (any order), or
+    to None when loading them failed. A worker missing from it counts as
+    "could not be loaded" too.
+    """
+    events_by_worker = events_by_worker or {}
+    # Event actors are "worker:<id>"; the fleet itself knows every name.
+    worker_names = {entry.worker.id: entry.worker.name for entry in fleet.workers}
     rows = []
     for entry in fleet.workers:
         worker = entry.worker
         cap = worker.storage_cap_bytes
         used = max(0, cap - worker.free_bytes)
         leases = [f"{lease.task_kind.value} · {lease.job_id[:8]}" for lease in entry.leases]
-        rows.append(WorkerRow(entry, used, percent(used, cap), leases))
+        events = events_by_worker.get(worker.id)
+        recent = None if events is None else event_lines_newest_first(events, worker_names)
+        rows.append(WorkerRow(entry, used, percent(used, cap), leases, recent))
     return sorted(
         rows,
         key=lambda row: (

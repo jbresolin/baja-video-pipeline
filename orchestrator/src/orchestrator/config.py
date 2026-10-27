@@ -9,7 +9,7 @@ the first request that needs it.
 import ipaddress
 from pathlib import Path
 
-from pydantic import AliasChoices, Field, SecretStr, ValidationError
+from pydantic import AliasChoices, Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from shared.protocol import ENROLL_RATE_LIMIT_REQUESTS, ENROLL_RATE_LIMIT_WINDOW_SECONDS
@@ -56,14 +56,16 @@ class Settings(BaseSettings):
     # --- WhatsApp / Evolution ---
     whatsapp_media_base_url: str = DEFAULT_MEDIA_BASE_URL
     evolution_url: str = "http://evolution:8080"
-    # The VPS compose file calls it BVP_EVOLUTION_INSTANCE_TOKEN; accept both.
+    # BVP_EVOLUTION_API_KEY is the canonical name (design §17); the older
+    # BVP_EVOLUTION_INSTANCE_TOKEN is accepted as an alias.
     evolution_api_key: SecretStr = Field(
         validation_alias=AliasChoices("BVP_EVOLUTION_API_KEY", "BVP_EVOLUTION_INSTANCE_TOKEN")
     )
     evolution_instance: str = "baja-bot"
 
-    # --- Baja app (team names) ---
-    baja_app_url: str
+    # --- Team names (design §17): CSV file first, then the Baja app. Both optional. ---
+    teams_file: Path | None = None
+    baja_app_url: str = ""
     baja_app_token: SecretStr = SecretStr("")
 
     # --- Tailscale auth-key minting (infra/tailnet/mint_auth_key.md) ---
@@ -77,6 +79,12 @@ class Settings(BaseSettings):
     )
 
     # --- Derived values ---
+
+    @field_validator("teams_file", mode="before")
+    @classmethod
+    def _empty_teams_file_means_none(cls, value):
+        # Compose passes BVP_TEAMS_FILE= (empty) when it is not configured.
+        return None if value == "" else value
 
     @property
     def inbox_hold_bytes(self) -> int:

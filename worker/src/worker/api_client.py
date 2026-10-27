@@ -7,8 +7,7 @@ raises:
     `error.code` (docs/api.md §3), e.g. "lease_lost", "already_claimed".
 """
 
-from datetime import datetime
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin
 
 import httpx
 
@@ -25,14 +24,13 @@ from shared.models import (
     HolderConfirmResponse,
     Job,
     JobStateResponse,
-    ManifestResponse,
     NextTaskRequest,
     NextTaskResponse,
     OutboxAckRequest,
-    PeersResponse,
     TaskKind,
 )
 from shared.protocol import LEASE_ID_HEADER
+from worker.token_origins import may_send_bearer_token
 
 
 class OrchestratorUnreachableError(Exception):
@@ -68,11 +66,15 @@ class OrchestratorClient:
         *,
         worker_id: str | None = None,
         bearer_token: str | None = None,
+        tailnet_base_url: str | None = None,
     ) -> None:
+        """`base_url` is worker.json's orchestrator_url; `tailnet_base_url` comes
+        from the /enroll answer (None for configs enrolled before it existed)."""
         self.http = http
         self.base_url = base_url.rstrip("/")
         self.worker_id = worker_id
         self.bearer_token = bearer_token
+        self.tailnet_base_url = tailnet_base_url
 
     # --- Helpers used by tasks too ---
 
@@ -80,20 +82,23 @@ class OrchestratorClient:
         """Task offers carry absolute URLs; accept relative ones too, just in case."""
         return urljoin(self.base_url + "/", url)
 
-    def is_orchestrator_url(self, url: str) -> bool:
-        """True when `url` points at the orchestrator/Caddy, so it gets our token.
+    def auth_headers_for(self, url: str) -> dict[str, str]:
+        """The Authorization header for `url`, or nothing.
 
-        Peers (port 8710) and the studio must never see the bearer token.
+        Every request that could carry our token asks here, so the rule
+        lives in one place (worker.token_origins): only orchestrator_url
+        and tailnet_base_url get it; peers and the studio never do.
         """
-        ours, theirs = urlsplit(self.base_url), urlsplit(self.absolute_url(url))
-        return (ours.scheme, ours.netloc) == (theirs.scheme, theirs.netloc)
+        if not self.bearer_token:
+            return {}
+        trusted = (self.base_url, self.tailnet_base_url)
+        if not may_send_bearer_token(self.absolute_url(url), trusted):
+            return {}
+        return {"Authorization": f"Bearer {self.bearer_token}"}
 
-    def auth_headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.bearer_token}"} if self.bearer_token else {}
-
-    def upload_headers(self, lease_id: str) -> dict[str, str]:
+    def upload_headers(self, url: str, lease_id: str) -> dict[str, str]:
         """Headers for chunked uploads to the orchestrator (proxy, clip)."""
-        return {**self.auth_headers(), LEASE_ID_HEADER: lease_id}
+        return {**self.auth_headers_for(url), LEASE_ID_HEADER: lease_id}
 
     # --- Enrollment (no bearer yet; the one-time token is in the body) ---
 
@@ -142,13 +147,6 @@ class OrchestratorClient:
     def get_job(self, job_id: str) -> Job:
         return Job.model_validate(self._send("GET", f"/jobs/{job_id}").json())
 
-    def manifest(self, since: datetime | None = None) -> ManifestResponse:
-        params = {"since": since.isoformat()} if since else None
-        return ManifestResponse.model_validate(self._send("GET", "/manifest", params=params).json())
-
-    def peers(self) -> PeersResponse:
-        return PeersResponse.model_validate(self._send("GET", "/workers").json())
-
     # --- Plumbing ---
 
     def _post_json(self, path: str, body) -> httpx.Response:
@@ -163,11 +161,11 @@ class OrchestratorClient:
         headers: dict[str, str] | None = None,
         **kwargs,
     ) -> httpx.Response:
-        all_headers = {**(self.auth_headers() if auth else {}), **(headers or {})}
+        absolute_url = self.absolute_url(url)
+        auth_headers = self.auth_headers_for(absolute_url) if auth else {}
+        all_headers = {**auth_headers, **(headers or {})}
         try:
-            response = self.http.request(
-                method, self.absolute_url(url), headers=all_headers, **kwargs
-            )
+            response = self.http.request(method, absolute_url, headers=all_headers, **kwargs)
         except httpx.TransportError as error:
             raise OrchestratorUnreachableError(f"{method} {url}: {error!r}") from error
         if response.status_code >= 500:

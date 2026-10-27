@@ -35,6 +35,8 @@ from shared.protocol import (
 # Order in which /next looks at the kinds a worker accepts. Proxies first:
 # they unblock the human reviewers, who are the slowest part of the line.
 KIND_PRIORITY = [TaskKind.MAKE_PROXY, TaskKind.PROCESS, TaskKind.DOWNLOAD_RAW, TaskKind.DELIVER]
+# After all of that, the master backfills raws of finished jobs it missed
+# (design §17): the lowest priority there is.
 
 
 def process_heartbeat(
@@ -162,7 +164,39 @@ def offer_next_task(
                 )
                 if decision.task is not None:
                     return NextTaskResponse(task=decision.task, retry_after_s=0)
+        backfill = _master_backfill_offer(context, connection, snapshot, worker_row, accepted)
+        if backfill is not None:
+            return NextTaskResponse(task=backfill, retry_after_s=0)
     return NextTaskResponse(task=None, retry_after_s=EMPTY_QUEUE_RETRY_SECONDS)
+
+
+def _master_backfill_offer(
+    context: OrchestratorContext,
+    connection: sqlite3.Connection,
+    snapshot: FleetSnapshot,
+    worker_row: sqlite3.Row,
+    accepted_kinds: set[TaskKind],
+):
+    """A download_raw of a done or failed job the master does not hold yet, or None.
+
+    Only asked when nothing live was found. Same one-download-at-a-time rule
+    as live downloads; evaluate_task picks the sources (inbox if it is still
+    there, else online confirmed holders on :8710).
+    """
+    if worker_row["role"] != WorkerRole.MASTER or TaskKind.DOWNLOAD_RAW not in accepted_kinds:
+        return None
+    if any(
+        lease.task_kind == TaskKind.DOWNLOAD_RAW
+        for lease in leases_repo.list_leases_for_worker(connection, worker_row["id"])
+    ):
+        return None
+    for job_row in jobs_repo.list_backfill_candidates(connection, worker_row["id"]):
+        decision = evaluate_task(
+            connection, context.layout, snapshot, job_row, worker_row, TaskKind.DOWNLOAD_RAW
+        )
+        if decision.task is not None:
+            return decision.task
+    return None
 
 
 def claim_task(

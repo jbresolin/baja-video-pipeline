@@ -1,10 +1,22 @@
 {% import "macros.html" as m %}
+{# The orchestrator's event log for this job, newest first (event_log_view.py).
+   event_lines is None when GET /jobs/{id}/events failed: the rest of the
+   page still works, and the next refresh tries again. #}
 <section id="event-log" class="event-log">
   <h2>Event log</h2>
+  {% if event_lines is none %}
+  <p class="note warning">Event log unavailable right now; it is retried on the next refresh.</p>
+  {% elif not event_lines %}
+  <p class="hint">No events recorded for this job yet.</p>
+  {% else %}
   <ol>
-    {% for event in timeline %}
-    <li>{{ m.time(event.at) }} <span>{{ event.text }}</span></li>
+    {% for line in event_lines %}
+    <li>{{ m.time(line.at) }}
+      <span><strong class="actor">{{ line.actor }}</strong> {{ line.what }}
+        {%- if line.about_worker %} · {{ line.about_worker }}{% endif %}
+        {%- if line.reason %}<span class="reason">{{ line.reason }}</span>{% endif %}</span>
+    </li>
     {% endfor %}
   </ol>
-  <p class="hint">Rebuilt from the job record, so only the latest of each kind of event is shown.</p>
+  {% endif %}
 </section>

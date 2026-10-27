@@ -10,6 +10,8 @@ docs/api.md describes:
     GET   /teams/{car_number}
     GET   /manifest
     GET   /fleet
+    GET   /jobs/{job_id}/events
+    GET   /events?worker_id=…&since=…&limit=…
 
 Like the real one, it answers 401 unless the request carries the reviewer's
 Basic credentials (REVIEWER_AUTHORIZATION). It also writes down every
@@ -22,7 +24,7 @@ and responses, but handled in memory, with no network or ports.
 import base64
 import json
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import httpx
 from fastapi import FastAPI, Query, Request
@@ -30,6 +32,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from shared.models import (
+    Event,
     FleetResponse,
     Job,
     JobState,
@@ -47,6 +50,7 @@ from tests.review_ui.sample_data import (
     make_manifest,
     make_teams,
 )
+from tests.review_ui.sample_events import make_events
 
 # Which states each review action is accepted from (docs/api.md §7.1).
 ACTION_FROM_STATES = {
@@ -62,6 +66,9 @@ ACTION_TO_STATE = {
     ReviewAction.DISCARD: JobState.DISCARDED,
 }
 REQUIRED_FIELDS = ["prova", "car_number", "passagem", "cut_in_s", "cut_out_s"]
+# GET /events: default and largest `limit` (docs/api.md §7.1).
+EVENTS_DEFAULT_LIMIT = 100
+EVENTS_MAX_LIMIT = 1000
 
 
 @dataclass
@@ -86,10 +93,14 @@ class FakeOrchestrator:
     teams: dict[int, Team] = field(default_factory=make_teams)
     manifest: ManifestResponse = field(default_factory=make_manifest)
     fleet: FleetResponse = field(default_factory=make_fleet)
+    # The event log, oldest first (ids count up).
+    events: list[Event] = field(default_factory=make_events)
     requests: list[RecordedRequest] = field(default_factory=list)
     # Switches that make an endpoint fail, to test the UI's error handling.
     fleet_fails: bool = False
     teams_upstream_down: bool = False
+    # Makes both event endpoints answer 500.
+    events_fail: bool = False
 
     def add_job(self, job: Job) -> None:
         self.jobs[job.id] = job
@@ -97,6 +108,21 @@ class FakeOrchestrator:
     def http_client(self) -> httpx.Client:
         """An httpx.Client whose requests are answered by this fake, in memory."""
         return httpx.Client(transport=SyncAsgiTransport(build_app(self)), base_url="http://orch")
+
+    def select_events(
+        self, worker_id: str | None, since: datetime | None, limit: int
+    ) -> list[Event]:
+        """GET /events semantics (docs/api.md §7.1), always oldest first.
+
+        With `since`: the first `limit` events strictly after it (paging
+        forward). Without: the newest `limit` events.
+        """
+        matching = sorted(self.events, key=lambda event: event.id)
+        if worker_id is not None:
+            matching = [event for event in matching if event.worker_id == worker_id]
+        if since is not None:
+            return [event for event in matching if event.at > since][:limit]
+        return matching[-limit:]
 
     def requests_to(self, method: str, path: str) -> list[RecordedRequest]:
         return [r for r in self.requests if r.method == method and r.path == path]
@@ -220,5 +246,25 @@ def build_app(fake: FakeOrchestrator) -> FastAPI:
         if fake.fleet_fails:
             return _error(503, "upstream_error", "fleet is down for this test")
         return fake.fleet.model_dump(mode="json")
+
+    @app.get("/jobs/{job_id}/events")
+    def job_events(job_id: str):
+        if fake.events_fail:
+            return _error(500, "internal_error", "event log is down for this test")
+        if job_id not in fake.jobs:
+            return _error(404, "not_found", f"no job {job_id}")
+        ordered = sorted(fake.events, key=lambda event: event.id)
+        return {"events": [e.model_dump(mode="json") for e in ordered if e.job_id == job_id]}
+
+    @app.get("/events")
+    def events(
+        worker_id: str | None = None,
+        since: datetime | None = None,
+        limit: int = Query(EVENTS_DEFAULT_LIMIT, ge=1, le=EVENTS_MAX_LIMIT),
+    ):
+        if fake.events_fail:
+            return _error(500, "internal_error", "event log is down for this test")
+        selected = fake.select_events(worker_id, since, limit)
+        return {"events": [event.model_dump(mode="json") for event in selected]}
 
     return app
