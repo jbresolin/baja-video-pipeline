@@ -61,7 +61,7 @@ types**; this page explains the behaviour around them. Design background:
 | worker loop, `/workers`, `/auth/file`, `/outbox/{id}/ack` | workerBearer |
 | `/review/queue`, `PATCH …/review`, `…/regenerate-proxy`, `/teams/*` | reviewerBasic |
 | `GET /jobs/{job_id}`, `GET /manifest` | reviewerBasic **or** workerBearer |
-| `GET /fleet` | reviewerBasic **or** adminBearer |
+| `GET /fleet`, `GET /jobs/{job_id}/events`, `GET /events` | reviewerBasic **or** adminBearer |
 
 ### 2.1 File serving: `GET /auth/file` (Caddy `forward_auth`)
 
@@ -185,7 +185,7 @@ direct push: the studio ACK moves claimed → uploaded → delivered in one call
 ## 5. Worker loop
 
 ```
-first run:   POST /enroll ──▶ worker_id, bearer token, Tailscale key ──▶ tailscale up
+first run:   POST /enroll ──▶ worker_id, bearer token, Tailscale key, tailnet_base_url ──▶ tailscale up
 every 15 s:  POST /workers/{id}/heartbeat   (renews every lease it lists)
 when free:   POST /workers/{id}/next        {accept_kinds: [...]}
              └─ task? ──▶ POST /jobs/{job_id}/claim {task_kind} ──▶ lease + task
@@ -194,6 +194,11 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
              └─ null  ──▶ wait retry_after_s, ask again
 ```
 
+* **Where the bearer token goes.** Only to two origins (scheme, host and
+  port): the configured `orchestrator_url` and the `tailnet_base_url` from
+  the `/enroll` answer (Caddy's tailnet listener, which serves `/inbox/*`
+  and `/outbox/*`). Never to a peer (`:8710`), the studio (`:8720`) or any
+  other URL an offer might carry.
 * `/next` returns an **offer**, not a reservation. Two workers may get the
   same offer; the first claim wins, the other gets 409 `already_claimed`
   and asks `/next` again.
@@ -213,20 +218,42 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
 
 | Task kind | Who gets it | What to do | How it ends |
 | --- | --- | --- | --- |
-| `download_raw` | master (always), one more worker; never studio | GET `download_url` with your bearer (Caddy inbox), or the `fallback_download_urls` (peers, port 8710, no token), with `shared.http_transfer.download_file`; ffprobe it | `POST /jobs/{id}/holder-confirm` |
+| `download_raw` | master (always, see backfill below), one more worker; never studio | GET `download_url` with your bearer (Caddy inbox), or the `fallback_download_urls` (peers, port 8710, no token), with `shared.http_transfer.download_file`; ffprobe it | `POST /jobs/{id}/holder-confirm` |
 | `make_proxy` | a confirmed holder | Probe (`shared.media_probe`), render thumbnail and proxy with `tone_map_hdr=info.is_hdr`; `PUT …/thumbnail`, then chunked `POST …/proxy` | completing chunk of `…/proxy` |
-| `process` | a confirmed holder | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`). Push it to the studio (§7.2); if that fails, chunked `POST …/clip` to the outbox | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
+| `process` | a confirmed holder | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
 | `deliver` | studio only | GET `download_url` (Caddy outbox) with your bearer, verify SHA-256, store at `clip_relative_path`, rewrite `latest.m3u` | `POST /outbox/{id}/ack` |
 
-**Failures.** `POST /jobs/{id}/failed {lease_id, message, exit_code}` is
-for errors that will not go away by retrying the same input (corrupt raw,
-ffmpeg exits with an error). A job in `received`, `proxy_ready` or
-`claimed` goes to `failed` (with `failed_from`); its other leases are
-revoked. In any other state (a second holder's late download, a proxy
-re-render after review) the job keeps its state, `Job.failure` and
-`waiting_reason` are set, and that task is not offered to the same worker
-for that job again.
-Network trouble is not a failure: retry, or let the lease expire.
+**Failures.** `POST /jobs/{id}/failed {lease_id, message, exit_code, scope}`
+ends the lease, and that worker is never offered that task on that job
+again. `scope` (design §17) says whose fault it is:
+
+| `scope` | Meaning | Examples | Effect |
+| --- | --- | --- | --- |
+| `worker` (default) | this worker could not do it | disk full, local ffmpeg crash, network gave up | task re-offered to other workers; the job fails only when a **second, different** worker reports `worker` for the same task on this job |
+| `job` | the input is bad | hash mismatch at the source (the inbox copy itself is wrong), undecodable raw | the job fails at once |
+
+"Fails" means: a job in `received`, `proxy_ready` or `claimed` goes to
+`failed` (with `failed_from`) and its other leases are revoked. In any
+other state (a second holder's late download, a proxy re-render after
+review) it cannot fail, so it keeps its state. Whenever the job does not
+fail, `Job.failure` and `waiting_reason` are set, and a `claimed` job whose
+process task failed with scope `worker` goes back to `ready` for another
+holder.
+
+**Delivery decision.** Every `process` offer (and claim answer) carries
+`delivery: {mode, studio_url}`. The orchestrator says `direct`, with
+`studio_url = http://<studio tailnet address>:<receiver_port>/receive/<job_id>`,
+when a studio heartbeated within the last 45 s and reported an address;
+otherwise `outbox` with `studio_url: null`. Workers do not look at
+`GET /workers` to decide.
+
+**Master backfill.** The master must end up holding every raw (design §4),
+also those that reached two holders while it was offline. So `/next`
+offers the master `download_raw` for every job it does not hold, in any
+state except `discarded` (including `done` and `failed`), but only after
+every other task it accepts: proxies, processing, and downloads of jobs
+that are still in the live pipeline. The source is the VPS inbox while it
+still has the raw, else online confirmed holders on `:8710`.
 
 **Direct push and the process lease.** After the studio answered
 `complete: true` to your push, keep listing the lease in heartbeats. The
@@ -258,6 +285,7 @@ Each chunk is a separate `POST` whose body is the raw bytes:
 | `Upload-SHA256` | SHA-256 of the whole file (same on every chunk) |
 | `Lease-Id` | Lease under which the worker uploads (orchestrator endpoints) |
 | `Clip-Relative-Path` | Studio push only: where to store the clip |
+| `Frame-Rate` | Proxy upload only, optional: the proxy's frames per second from ffprobe (e.g. `29.97`); stored as `Job.frame_rate` when the upload completes |
 
 Answers:
 
@@ -320,17 +348,19 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `POST /jobs/{job_id}/failed` | `FailedRequest` → `JobStateResponse` | ends the lease (§5) |
 | `POST /jobs/{job_id}/holder-confirm` | `HolderConfirmRequest` → `HolderConfirmResponse` | 422 `hash_mismatch` drops you as holder |
 | `PUT /jobs/{job_id}/thumbnail` | JPEG body, `Lease-Id` → 204 | before the proxy |
-| `POST /jobs/{job_id}/proxy` | chunk → `ChunkAccepted` | ends make_proxy lease |
+| `POST /jobs/{job_id}/proxy` | chunk (+ `Frame-Rate`) → `ChunkAccepted` | ends make_proxy lease; sets `Job.frame_rate` |
 | `POST /jobs/{job_id}/clip` | chunk → `ChunkAccepted` | outbox route; claimed → uploaded |
 | `POST /jobs/{job_id}/delivered` | `DeliveredRequest` → `JobStateResponse` | studio; direct route |
 | `GET /review/queue?state=…&limit=…` | → `ReviewQueueResponse` | default `awaiting_review`, oldest first |
 | `GET /jobs/{job_id}` | → `Job` | |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
 | `POST /jobs/{job_id}/regenerate-proxy` | → 202 `RegenerateProxyResponse` | no state change |
-| `GET /teams/{car_number}` | → `Team` | from the Baja app; 404 unknown car |
+| `GET /teams/{car_number}` | → `Team` | `BVP_TEAMS_FILE`, then the Baja app; 404 unknown car |
 | `GET /manifest?since=…&prova=…` | → `ManifestResponse` | newest first, latest per prova/car/passagem |
 | `POST /outbox/{job_id}/ack` | `OutboxAckRequest` → `JobStateResponse` | studio; uploaded → delivered → done |
 | `GET /fleet` | → `FleetResponse` | workers, stats, disk, leases, job counts |
+| `GET /jobs/{job_id}/events` | → `EventsResponse` | that job's event log, oldest first; 404 unknown job |
+| `GET /events?worker_id=…&since=…&limit=…` | → `EventsResponse` | event log, oldest first; without `since` the newest `limit` (default 100, max 1000) |
 
 **Evolution webhook.** The route is exactly **`POST
 /intake/evolution-webhook`** with the header **`X-Webhook-Secret:
@@ -480,9 +510,10 @@ variables keep the names fixed in design §8.
 | `BVP_PROXY_EVICT_MIN_FREE_GB` | `10` | Evict oldest completed proxies when free disk drops below this |
 | `BVP_WHATSAPP_MEDIA_BASE_URL` | `https://mmg.whatsapp.net` | Only media URLs under this are fetched (dev: the fake CDN) |
 | `BVP_EVOLUTION_URL` | `http://evolution:8080` | Evolution API, for `sendText` replies |
-| `BVP_EVOLUTION_API_KEY` | — (required) | Evolution API key |
+| `BVP_EVOLUTION_API_KEY` | — (required) | Evolution API key (`BVP_EVOLUTION_INSTANCE_TOKEN` is accepted as an alias) |
 | `BVP_EVOLUTION_INSTANCE` | `baja-bot` | Evolution instance name |
-| `BVP_BAJA_APP_URL` | — (required) | Baja app base URL for `/teams/{car_number}` |
+| `BVP_TEAMS_FILE` | empty | Optional CSV `car_number,team_name,school` (header optional), reloaded when it changes. Asked first by `/teams/{car_number}` |
+| `BVP_BAJA_APP_URL` | empty | Optional Baja app base URL (`GET /api/teams/{car}`), asked when the file does not know the car. Neither source set → every car is unknown |
 | `BVP_BAJA_APP_TOKEN` | empty | Token for the Baja app, if it needs one |
 | `TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`, `TAILSCALE_TAILNET`, `TAILSCALE_API_BASE` | see design §8 | Auth-key minting for `/enroll` (`infra/tailnet/mint_auth_key.md`) |
 

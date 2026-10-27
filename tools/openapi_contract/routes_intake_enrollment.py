@@ -133,5 +133,9 @@ def enroll(body: EnrollRequest) -> EnrollResponse:
     auth-keys scope) as single-use, pre-approved, non-ephemeral and tagged
     `tag:worker` (or `tag:studio` for the studio role). If the Tailscale API
     fails: 503 `upstream_error` and the token stays unused.
+
+    The answer's `tailnet_base_url` is Caddy's tailnet listener. The worker
+    sends its bearer token only to that origin and to its configured
+    orchestrator URL (design §17), never to a peer or the studio.
     """
     not_implemented()

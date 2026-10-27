@@ -5,7 +5,13 @@ from datetime import datetime
 from pydantic import Field
 
 from shared.models.common import ApiModel, ByteCount, Seconds, Sha256Hex
-from shared.models.enums import JobState, LeaseHeartbeatStatus, MeasurementKind, WorkerRole
+from shared.models.enums import (
+    FailureScope,
+    JobState,
+    LeaseHeartbeatStatus,
+    MeasurementKind,
+    WorkerRole,
+)
 from shared.models.job import Lease
 
 
@@ -82,11 +88,12 @@ class ChunkAccepted(ApiModel):
 
 
 class FailedRequest(ApiModel):
-    """POST /jobs/{id}/failed: "this task cannot succeed, a human must decide".
+    """POST /jobs/{id}/failed: "I cannot finish this task".
 
-    Only for errors that retrying on the same input will not fix (corrupt
-    raw, ffmpeg exits with an error). Network trouble is not a failure:
-    retry it, or let the lease expire.
+    `scope` says whose fault it is (design §17). With "job" the job fails
+    at once and a reviewer decides retry or discard. With "worker" the
+    task is re-offered to other workers; the job fails only when a second,
+    different worker also reports "worker" for the same task.
     """
 
     lease_id: str
@@ -94,6 +101,10 @@ class FailedRequest(ApiModel):
     message: str = Field(min_length=1, max_length=4000)
     # The failing program's exit code, when there is one.
     exit_code: int | None = None
+    # "worker": only this worker could not do it (disk, local ffmpeg crash,
+    # network); the task goes to someone else. "job": the input is bad
+    # (hash mismatch at the source, undecodable file); the job fails now.
+    scope: FailureScope = FailureScope.WORKER
 
 
 class DeliveredRequest(ApiModel):

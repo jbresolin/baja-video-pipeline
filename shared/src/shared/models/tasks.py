@@ -18,7 +18,7 @@ from shared.models.common import (
     Seconds,
     Sha256Hex,
 )
-from shared.models.enums import TaskKind
+from shared.models.enums import DeliveryRoute, TaskKind
 from shared.models.job import Lease
 
 
@@ -49,6 +49,21 @@ class MakeProxyTask(ApiModel):
     thumbnail_upload_url: str
 
 
+class DeliveryPlan(ApiModel):
+    """How a process task should deliver its clip; decided by the orchestrator.
+
+    "direct": a studio heartbeated in the last 45 s; push the clip to
+    `studio_url` (and fall back to the outbox if that push fails).
+    "outbox": no studio is online; upload straight to the outbox.
+    The worker never works this out itself from GET /workers (design §17).
+    """
+
+    mode: DeliveryRoute
+    # "http://<studio tailnet address>:8720/receive/<job_id>" for "direct";
+    # None for "outbox".
+    studio_url: str | None = None
+
+
 class ProcessTask(ApiModel):
     kind: Literal[TaskKind.PROCESS] = TaskKind.PROCESS
     job_id: str
@@ -66,6 +81,7 @@ class ProcessTask(ApiModel):
     clip_relative_path: str
     # Fallback route if the direct push to the studio fails.
     outbox_upload_url: str
+    delivery: DeliveryPlan
 
 
 class DeliverTask(ApiModel):

@@ -63,6 +63,11 @@ def next_task(worker_id: str, body: NextTaskRequest) -> NextTaskResponse:
     tailnet listener (`http://<vps tailscale ip>:8080/inbox/<name>` or
     `/outbox/<name>`, send your bearer token) or a peer's file server
     (`http://<peer tailscale ip>:8710/raw/<job_id>`, no token).
+
+    `process` offers carry `delivery`: `direct` with the studio's
+    `studio_url` when a studio heartbeated in the last 45 s, else `outbox`.
+    The master is also offered `download_raw` for every non-discarded job
+    it does not hold (including `done` and `failed`), after all live work.
     """
     not_implemented()
 
@@ -151,16 +156,23 @@ def authorize_file(
 )
 def report_failure(job_id: str, body: FailedRequest) -> JobStateResponse:
     """Ends the lease named in the body (409 `lease_lost` if it is gone).
+    The worker is never offered that task on that job again, whatever the
+    scope.
 
-    * From `received`, `proxy_ready` (any task) or `claimed` (the `process`
-      lease): job → failed, `Job.failure` set and `Job.failed_from` records
-      the state it failed from; other leases on the job are revoked. The
-      review UI shows the message and offers retry (back to `failed_from`,
-      `claimed` → `ready`) or discard.
-    * Any other state (e.g. a second holder's download, or a proxy
-      re-render after review): the job keeps its state, `Job.failure` and
-      `waiting_reason` are set, and that task is not offered to the same
-      worker for that job again.
+    * `scope: "job"` (bad input: hash mismatch at the source, undecodable
+      file) fails the job at once. `scope: "worker"` (the default: disk,
+      local ffmpeg crash, network) re-offers the task to other workers; it
+      fails the job only once two different workers reported `worker`
+      scope for the same task on this job.
+    * Failing the job is only possible from `received`, `proxy_ready` (any
+      task) or `claimed` (the `process` lease): job → failed, `Job.failure`
+      set, `Job.failed_from` records the state, other leases are revoked.
+      The review UI offers retry (back to `failed_from`, `claimed` →
+      `ready`) or discard.
+    * Otherwise (worker scope below the threshold, or a state that cannot
+      fail, e.g. a second holder's download after review) the job keeps its
+      state (a `claimed` job goes back to `ready`) and `Job.failure` and
+      `waiting_reason` are set.
     """
     not_implemented()
 
@@ -193,10 +205,18 @@ def upload_proxy(
     upload_length: int = Header(..., alias="Upload-Length"),
     upload_sha256: str = Header(..., alias="Upload-SHA256"),
     lease_id: str = Header(..., alias="Lease-Id"),
+    frame_rate: float | None = Header(
+        None,
+        alias="Frame-Rate",
+        gt=0,
+        description="Proxy frames per second from ffprobe, e.g. 29.97 (stored as Job.frame_rate)",
+    ),
 ) -> ChunkAccepted:
-    """On the completing chunk: proxy stored, `proxy_available` true, a
-    `received` job moves to proxy_ready → awaiting_review, and the
-    make_proxy lease ends. Upload the thumbnail *before* the proxy."""
+    """On the completing chunk: proxy stored, `proxy_available` true,
+    `Job.frame_rate` set from the `Frame-Rate` header (send it on every
+    chunk; the completing one counts), a `received` job moves to
+    proxy_ready → awaiting_review, and the make_proxy lease ends. Upload
+    the thumbnail *before* the proxy."""
     not_implemented()
 
 

@@ -222,7 +222,14 @@ paths:
 
         `tag:worker` (or `tag:studio` for the studio role). If the Tailscale API
 
-        fails: 503 `upstream_error` and the token stays unused.'
+        fails: 503 `upstream_error` and the token stays unused.
+
+
+        The answer''s `tailnet_base_url` is Caddy''s tailnet listener. The worker
+
+        sends its bearer token only to that origin and to its configured
+
+        orchestrator URL (design §17), never to a peer or the studio.'
       operationId: enroll_enroll_post
       requestBody:
         content:
@@ -347,7 +354,16 @@ paths:
 
         `/outbox/<name>`, send your bearer token) or a peer''s file server
 
-        (`http://<peer tailscale ip>:8710/raw/<job_id>`, no token).'
+        (`http://<peer tailscale ip>:8710/raw/<job_id>`, no token).
+
+
+        `process` offers carry `delivery`: `direct` with the studio''s
+
+        `studio_url` when a studio heartbeated in the last 45 s, else `outbox`.
+
+        The master is also offered `download_raw` for every non-discarded job
+
+        it does not hold (including `done` and `failed`), after all live work.'
       operationId: next_task_workers__worker_id__next_post
       security:
       - workerBearer: []
@@ -594,13 +610,17 @@ paths:
       tags:
       - worker loop
       summary: Report an unrecoverable task error (a reviewer decides retry or discard)
-      description: "Ends the lease named in the body (409 `lease_lost` if it is gone).\n\n* From `received`,\
-        \ `proxy_ready` (any task) or `claimed` (the `process`\n  lease): job → failed, `Job.failure`\
-        \ set and `Job.failed_from` records\n  the state it failed from; other leases on the job are revoked.\
-        \ The\n  review UI shows the message and offers retry (back to `failed_from`,\n  `claimed` → `ready`)\
-        \ or discard.\n* Any other state (e.g. a second holder's download, or a proxy\n  re-render after\
-        \ review): the job keeps its state, `Job.failure` and\n  `waiting_reason` are set, and that task\
-        \ is not offered to the same\n  worker for that job again."
+      description: "Ends the lease named in the body (409 `lease_lost` if it is gone).\nThe worker is\
+        \ never offered that task on that job again, whatever the\nscope.\n\n* `scope: \"job\"` (bad input:\
+        \ hash mismatch at the source, undecodable\n  file) fails the job at once. `scope: \"worker\"\
+        ` (the default: disk,\n  local ffmpeg crash, network) re-offers the task to other workers; it\n\
+        \  fails the job only once two different workers reported `worker`\n  scope for the same task\
+        \ on this job.\n* Failing the job is only possible from `received`, `proxy_ready` (any\n  task)\
+        \ or `claimed` (the `process` lease): job → failed, `Job.failure`\n  set, `Job.failed_from` records\
+        \ the state, other leases are revoked.\n  The review UI offers retry (back to `failed_from`, `claimed`\
+        \ →\n  `ready`) or discard.\n* Otherwise (worker scope below the threshold, or a state that cannot\n\
+        \  fail, e.g. a second holder's download after review) the job keeps its\n  state (a `claimed`\
+        \ job goes back to `ready`) and `Job.failure` and\n  `waiting_reason` are set."
       operationId: report_failure_jobs__job_id__failed_post
       security:
       - workerBearer: []
@@ -722,11 +742,15 @@ paths:
       tags:
       - worker loop
       summary: Chunked upload of the 480p proxy (MP4)
-      description: 'On the completing chunk: proxy stored, `proxy_available` true, a
+      description: 'On the completing chunk: proxy stored, `proxy_available` true,
 
-        `received` job moves to proxy_ready → awaiting_review, and the
+        `Job.frame_rate` set from the `Frame-Rate` header (send it on every
 
-        make_proxy lease ends. Upload the thumbnail *before* the proxy.'
+        chunk; the completing one counts), a `received` job moves to
+
+        proxy_ready → awaiting_review, and the make_proxy lease ends. Upload
+
+        the thumbnail *before* the proxy.'
       operationId: upload_proxy_jobs__job_id__proxy_post
       security:
       - workerBearer: []
@@ -761,6 +785,17 @@ paths:
         schema:
           type: string
           title: Lease-Id
+      - name: Frame-Rate
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0
+          - type: 'null'
+          description: Proxy frames per second from ffprobe, e.g. 29.97 (stored as Job.frame_rate)
+          title: Frame-Rate
+        description: Proxy frames per second from ffprobe, e.g. 29.97 (stored as Job.frame_rate)
       responses:
         '200':
           description: Successful Response
@@ -1410,6 +1445,120 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /jobs/{job_id}/events:
+    get:
+      tags:
+      - events
+      summary: One job's event log, oldest first
+      description: 'Every event recorded for the job (state changes, leases, holders,
+
+        failures), oldest first. 404 if the job does not exist.'
+      operationId: job_events_jobs__job_id__events_get
+      security:
+      - reviewerBasic: []
+      - adminBearer: []
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventsResponse'
+        '401':
+          description: Missing or wrong credentials (unauthenticated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No such job / worker / team (not_found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /events:
+    get:
+      tags:
+      - events
+      summary: The event log across jobs and workers, oldest first
+      description: 'Oldest first. With `since`, the first `limit` events after it (page
+
+        forward by passing the last `at` back). Without `since`, the newest
+
+        `limit` events, still returned oldest first.'
+      operationId: events_events_get
+      security:
+      - reviewerBasic: []
+      - adminBearer: []
+      parameters:
+      - name: worker_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Only events about this worker
+          title: Worker Id
+        description: Only events about this worker
+      - name: since
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          description: Only events strictly after this time
+          title: Since
+        description: Only events strictly after this time
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventsResponse'
+        '400':
+          description: Malformed request (validation_error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or wrong credentials (unauthenticated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /fleet:
     get:
       tags:
@@ -1613,6 +1762,30 @@ components:
       - relative_path
       title: DeliveredRequest
       description: 'POST /jobs/{id}/delivered: studio ACK after a direct push from a worker.'
+    DeliveryPlan:
+      properties:
+        mode:
+          $ref: '#/components/schemas/DeliveryRoute'
+        studio_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Studio Url
+      additionalProperties: false
+      type: object
+      required:
+      - mode
+      title: DeliveryPlan
+      description: 'How a process task should deliver its clip; decided by the orchestrator.
+
+
+        "direct": a studio heartbeated in the last 45 s; push the clip to
+
+        `studio_url` (and fall back to the outbox if that push fails).
+
+        "outbox": no studio is online; upload straight to the outbox.
+
+        The worker never works this out itself from GET /workers (design §17).'
     DeliveryRoute:
       type: string
       enum:
@@ -1709,6 +1882,9 @@ components:
             type: string
           type: array
           title: Tailscale Tags
+        tailnet_base_url:
+          type: string
+          title: Tailnet Base Url
         heartbeat_interval_s:
           type: integer
           title: Heartbeat Interval S
@@ -1723,6 +1899,7 @@ components:
       - bearer_token
       - tailscale_auth_key
       - tailscale_tags
+      - tailnet_base_url
       - heartbeat_interval_s
       - lease_ttl_s
       title: EnrollResponse
@@ -1800,6 +1977,66 @@ components:
       - error
       title: ErrorResponse
       description: 'The shape of every non-2xx response body: {"error": {...}}.'
+    Event:
+      properties:
+        id:
+          type: integer
+          minimum: 1.0
+          title: Id
+        at:
+          type: string
+          format: date-time
+          title: At
+        job_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Job Id
+        worker_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Worker Id
+        actor:
+          type: string
+          title: Actor
+        kind:
+          type: string
+          title: Kind
+        from_state:
+          anyOf:
+          - $ref: '#/components/schemas/JobState'
+          - type: 'null'
+        to_state:
+          anyOf:
+          - $ref: '#/components/schemas/JobState'
+          - type: 'null'
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - at
+      - actor
+      - kind
+      title: Event
+      description: 'One line of the log: who did what, to which job or worker, when and why.'
+    EventsResponse:
+      properties:
+        events:
+          items:
+            $ref: '#/components/schemas/Event'
+          type: array
+          title: Events
+      additionalProperties: false
+      type: object
+      required:
+      - events
+      title: EventsResponse
     EvolutionDocumentWithCaption:
       properties:
         message:
@@ -1964,20 +2201,32 @@ components:
           - type: integer
           - type: 'null'
           title: Exit Code
+        scope:
+          $ref: '#/components/schemas/FailureScope'
+          default: worker
       additionalProperties: false
       type: object
       required:
       - lease_id
       - message
       title: FailedRequest
-      description: 'POST /jobs/{id}/failed: "this task cannot succeed, a human must decide".
+      description: 'POST /jobs/{id}/failed: "I cannot finish this task".
 
 
-        Only for errors that retrying on the same input will not fix (corrupt
+        `scope` says whose fault it is (design §17). With "job" the job fails
 
-        raw, ffmpeg exits with an error). Network trouble is not a failure:
+        at once and a reviewer decides retry or discard. With "worker" the
 
-        retry it, or let the lease expire.'
+        task is re-offered to other workers; the job fails only when a second,
+
+        different worker also reports "worker" for the same task.'
+    FailureScope:
+      type: string
+      enum:
+      - worker
+      - job
+      title: FailureScope
+      description: Who a POST /jobs/{id}/failed blames (design §17).
     FleetResponse:
       properties:
         workers:
@@ -2322,6 +2571,12 @@ components:
           - type: boolean
           - type: 'null'
           title: Has Audio
+        frame_rate:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Frame Rate
         raw_on_vps:
           type: boolean
           title: Raw On Vps
@@ -2956,6 +3211,8 @@ components:
         outbox_upload_url:
           type: string
           title: Outbox Upload Url
+        delivery:
+          $ref: '#/components/schemas/DeliveryPlan'
       additionalProperties: false
       type: object
       required:
@@ -2972,6 +3229,7 @@ components:
       - show_pass
       - clip_relative_path
       - outbox_upload_url
+      - delivery
       title: ProcessTask
     ReceivedAs:
       type: string

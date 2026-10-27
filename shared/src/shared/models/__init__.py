@@ -9,6 +9,7 @@ The models are split over several files only to keep each file short:
     api_worker_loop.py  heartbeat, holder-confirm, uploads, ACKs, peers
     api_review.py       review queue and review update
     api_admin.py        intake, enrollment, fleet, manifest
+    events.py           the orchestrator's event log
     evolution.py        the Evolution webhook payload
 """
 
@@ -50,6 +51,7 @@ from shared.models.api_worker_loop import (
 from shared.models.common import ErrorBody, ErrorCode, ErrorResponse, utc_now
 from shared.models.enums import (
     DeliveryRoute,
+    FailureScope,
     HolderStatus,
     JobState,
     LeaseHeartbeatStatus,
@@ -59,6 +61,7 @@ from shared.models.enums import (
     TaskKind,
     WorkerRole,
 )
+from shared.models.events import Event, EventsResponse
 from shared.models.evolution import EvolutionWebhook, IncomingMedia, find_incoming_video
 from shared.models.job import (
     ClipInfo,
@@ -73,6 +76,7 @@ from shared.models.tasks import (
     ClaimRequest,
     ClaimResponse,
     DeliverTask,
+    DeliveryPlan,
     DownloadRawTask,
     MakeProxyTask,
     NextTaskRequest,
@@ -90,7 +94,9 @@ __all__ = [
     "CreateEnrollmentTokenRequest",
     "DeliverTask",
     "DeliveredRequest",
+    "DeliveryPlan",
     "FailedRequest",
+    "FailureScope",
     "JobFailure",
     "DeliveryRoute",
     "DownloadRawTask",
@@ -101,6 +107,8 @@ __all__ = [
     "ErrorBody",
     "ErrorCode",
     "ErrorResponse",
+    "Event",
+    "EventsResponse",
     "EvolutionWebhook",
     "FleetResponse",
     "FleetWorker",

@@ -23,6 +23,9 @@ UPLOAD_SHA256_HEADER = "Upload-SHA256"
 LEASE_ID_HEADER = "Lease-Id"
 # Where the studio should store a pushed clip, relative to the box root.
 CLIP_RELATIVE_PATH_HEADER = "Clip-Relative-Path"
+# Proxy upload only: the proxy's frame rate from ffprobe (frames per second,
+# e.g. "29.97"). The review UI steps one frame with it (design §17).
+FRAME_RATE_HEADER = "Frame-Rate"
 # Shared secret the Evolution webhook must send so random posts are rejected.
 WEBHOOK_SECRET_HEADER = "X-Webhook-Secret"
 
@@ -48,3 +51,15 @@ ENROLL_RATE_LIMIT_WINDOW_SECONDS = 600
 
 # Every raw must be held by this many workers before the VPS deletes its copy.
 REQUIRED_HOLDER_COUNT = 2
+
+# --- Failures (design §17) ---
+
+# A job fails after this many *different* workers reported scope "worker"
+# for the same task on it; one report with scope "job" fails it at once.
+WORKER_SCOPE_FAILURES_BEFORE_JOB_FAILS = 2
+
+# --- Delivery (design §17) ---
+
+# A studio that heartbeated within this many seconds counts as online, so
+# process offers say "push directly"; otherwise they say "use the outbox".
+STUDIO_ONLINE_WINDOW_SECONDS = 45

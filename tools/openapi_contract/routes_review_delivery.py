@@ -9,6 +9,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 
 from shared.models import (
+    EventsResponse,
     FleetResponse,
     Job,
     JobState,
@@ -156,6 +157,42 @@ def manifest(
 def outbox_ack(job_id: str, body: OutboxAckRequest) -> JobStateResponse:
     """Studio role only. uploaded → delivered → done; ends the deliver lease.
     422 `hash_mismatch` if `sha256` differs from the clip's."""
+    not_implemented()
+
+
+# --- Event log ---
+
+
+@router.get(
+    "/jobs/{job_id}/events",
+    tags=["events"],
+    summary="One job's event log, oldest first",
+    response_model=EventsResponse,
+    dependencies=_reviewer_or_admin,
+    responses=error_responses(401, 404),
+)
+def job_events(job_id: str) -> EventsResponse:
+    """Every event recorded for the job (state changes, leases, holders,
+    failures), oldest first. 404 if the job does not exist."""
+    not_implemented()
+
+
+@router.get(
+    "/events",
+    tags=["events"],
+    summary="The event log across jobs and workers, oldest first",
+    response_model=EventsResponse,
+    dependencies=_reviewer_or_admin,
+    responses=error_responses(400, 401),
+)
+def events(
+    worker_id: str | None = Query(None, description="Only events about this worker"),
+    since: datetime | None = Query(None, description="Only events strictly after this time"),
+    limit: int = Query(100, ge=1, le=1000),
+) -> EventsResponse:
+    """Oldest first. With `since`, the first `limit` events after it (page
+    forward by passing the last `at` back). Without `since`, the newest
+    `limit` events, still returned oldest first."""
     not_implemented()
 
 
