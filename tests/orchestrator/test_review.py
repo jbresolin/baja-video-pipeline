@@ -105,10 +105,11 @@ def test_reprocess_revokes_the_process_lease_and_queues_the_job_again(harness, j
 
 
 def fail_job(harness, worker, job_id, kind):
+    # scope "job" (bad input) fails the job straight away (design §17).
     lease_id, _ = claim_ok(harness, worker, job_id, kind)
     harness.client.post(
         f"/jobs/{job_id}/failed",
-        json={"lease_id": lease_id, "message": "broken"},
+        json={"lease_id": lease_id, "message": "broken", "scope": "job"},
         headers=worker.headers,
     )
 

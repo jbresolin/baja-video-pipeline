@@ -23,12 +23,14 @@ from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
 from shared.models import (
     FailedRequest,
+    FailureScope,
     HolderConfirmRequest,
     HolderConfirmResponse,
     JobState,
     JobStateResponse,
     TaskKind,
 )
+from shared.protocol import WORKER_SCOPE_FAILURES_BEFORE_JOB_FAILS
 from shared.state_machine import FAILABLE_STATES
 
 # Which job states a failure under each task kind moves to `failed` (design §4).
@@ -37,6 +39,8 @@ STATES_FAILED_BY_KIND = {
     TaskKind.MAKE_PROXY: {JobState.RECEIVED, JobState.PROXY_READY},
     TaskKind.PROCESS: {JobState.CLAIMED},
 }
+# Jobs only the master's backfill still downloads (design §17).
+BACKFILL_STATES = frozenset({JobState.DONE, JobState.FAILED})
 
 
 def confirm_holder(
@@ -128,6 +132,13 @@ def _record_confirmation(
 def report_failure(
     context: OrchestratorContext, worker_row: sqlite3.Row, job_id: str, request: FailedRequest
 ) -> JobStateResponse:
+    """POST /jobs/{id}/failed with the scope rules of design §17.
+
+    The reporting worker is always excluded from that task on that job. The
+    job itself fails when the scope is "job", or when this is the second
+    different worker to report "worker" scope for the same task, and only
+    from a state that can fail (STATES_FAILED_BY_KIND).
+    """
     worker_id = worker_row["id"]
     actor = events_repo.worker_actor(worker_id)
     with context.database.transaction() as connection:
@@ -137,20 +148,36 @@ def report_failure(
         lease = require_active_lease(
             connection, request.lease_id, worker_id=worker_id, job_id=job_id, now=now
         )
+        kind = lease.task_kind
         end_lease(connection, lease, now, actor=actor, reason="worker reported a failure")
-        if lease.task_kind == TaskKind.DOWNLOAD_RAW:
+        if kind == TaskKind.DOWNLOAD_RAW:
             drop_unconfirmed_holder(connection, job_id, worker_id)
+        leases_repo.add_task_exclusion(connection, job_id, worker_id, kind, now, request.scope)
+        events_repo.record_event(
+            connection,
+            now,
+            actor=actor,
+            kind="task_failed",
+            job_id=job_id,
+            worker_id=worker_id,
+            reason=f"{kind} failed (scope {request.scope}): {request.message[:200]}",
+        )
 
         state = JobState(job_row["state"])
+        if state in BACKFILL_STATES:
+            # A master backfill download of a finished job: nothing else to
+            # change, and a failed job keeps the failure the reviewer sees.
+            return JobStateResponse(job_id=job_id, state=state)
+
         failure_columns = {
             "failure_worker_id": worker_id,
-            "failure_task_kind": str(lease.task_kind),
+            "failure_task_kind": str(kind),
             "failure_message": request.message,
             "failure_exit_code": request.exit_code,
             "failure_at": to_db_time(now),
         }
-        reason = f"{lease.task_kind} failed: {request.message[:200]}"
-        if state in FAILABLE_STATES and state in STATES_FAILED_BY_KIND.get(lease.task_kind, ()):
+        can_fail = state in FAILABLE_STATES and state in STATES_FAILED_BY_KIND.get(kind, ())
+        if can_fail and _failure_is_final(connection, job_id, kind, request.scope):
             # The job waits for a human: retry (back to `state`) or discard.
             revoke_job_leases(
                 connection, job_id, now, actor=actor, reason="job failed on another worker"
@@ -161,25 +188,37 @@ def report_failure(
                 JobState.FAILED,
                 now,
                 actor=actor,
-                reason=reason,
+                reason=f"{kind} failed: {request.message[:200]}",
                 changes={**failure_columns, "failed_from": str(state), "waiting_reason": None},
             )
-            new_state = JobState.FAILED
-        else:
-            # The job carries on; only this worker stops trying this task here.
-            leases_repo.add_task_exclusion(connection, job_id, worker_id, lease.task_kind, now)
-            waiting = f"{lease.task_kind} failed on {worker_row['name']}: {request.message[:200]}"
-            jobs_repo.update_job(
-                connection, job_id, now, {**failure_columns, "waiting_reason": waiting}
-            )
-            events_repo.record_event(
+            return JobStateResponse(job_id=job_id, state=JobState.FAILED)
+
+        # The job carries on without this worker for this task.
+        waiting = f"{kind} failed on {worker_row['name']}: {request.message[:200]}"
+        changes = {**failure_columns, "waiting_reason": waiting}
+        if state == JobState.CLAIMED and kind == TaskKind.PROCESS:
+            # Hand the render to another holder.
+            move_job(
                 connection,
+                job_row,
+                JobState.READY,
                 now,
                 actor=actor,
-                kind="task_failed",
-                job_id=job_id,
-                worker_id=worker_id,
-                reason=reason,
+                reason=f"process failed on {worker_row['name']}; offered to another holder",
+                changes=changes,
             )
-            new_state = state
-    return JobStateResponse(job_id=job_id, state=new_state)
+            return JobStateResponse(job_id=job_id, state=JobState.READY)
+        jobs_repo.update_job(connection, job_id, now, changes)
+    return JobStateResponse(job_id=job_id, state=state)
+
+
+def _failure_is_final(
+    connection: sqlite3.Connection, job_id: str, kind: TaskKind, scope: FailureScope
+) -> bool:
+    """Scope "job" fails at once; scope "worker" only on the second different worker."""
+    if scope == FailureScope.JOB:
+        return True
+    return (
+        leases_repo.count_workers_excluded_for_their_own_fault(connection, job_id, kind)
+        >= WORKER_SCOPE_FAILURES_BEFORE_JOB_FAILS
+    )
