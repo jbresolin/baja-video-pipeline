@@ -218,3 +218,16 @@ def test_partial_download_is_a_hidden_dot_file(tmp_path):
     partial = partial_path_for(tmp_path / "inbox" / "job1.mp4")
     assert partial.name == ".job1.mp4.part"
     assert partial.parent == tmp_path / "inbox"
+
+
+def test_refusal_carries_the_http_status(tmp_path):
+    # Setup: a peer that no longer holds the raw answers 404.
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(404)), base_url="http://peer"
+    )
+    with pytest.raises(DownloadFailedError) as raised:
+        download_file(client, "/raw/abc", tmp_path / "abc.mp4")
+
+    # The caller can tell "not there" (404) from "not allowed" (403) by
+    # the status, without parsing the message.
+    assert raised.value.status_code == 404
