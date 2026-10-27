@@ -1,0 +1,67 @@
+# Root of the uv workspace. This root project is not a package itself; it
+# only ties the three member packages together and holds shared tool config
+# (ruff, pytest) and the dev dependencies used by the whole repo.
+
+[project]
+name = "baja-video-pipeline"
+version = "0.1.0"
+description = "Baja video pipeline v2: intake, distributed editing and delivery of pass videos"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = ["shared", "orchestrator", "worker"]
+
+[tool.uv]
+# The root is a "virtual" project: install its dependencies, don't build it.
+package = false
+
+[tool.uv.workspace]
+members = ["shared", "orchestrator", "worker"]
+
+[tool.uv.sources]
+shared = { workspace = true }
+orchestrator = { workspace = true }
+worker = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.7",
+    "pyyaml>=6.0",
+    # The shared tests run a tiny in-process web app to exercise transfers.
+    "fastapi>=0.115",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: import sorting, B: bugbear,
+# UP: modern syntax, N: naming, SIM: simplifications.
+select = ["E", "W", "F", "I", "B", "UP", "N", "SIM"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's parameter markers are meant to be used as argument defaults.
+extend-immutable-calls = [
+    "fastapi.Body", "fastapi.Depends", "fastapi.File", "fastapi.Form",
+    "fastapi.Header", "fastapi.Path", "fastapi.Query", "fastapi.Security",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["shared", "orchestrator", "worker", "tools"]
+
+[tool.pytest.ini_options]
+# One folder per package: tests/shared, tests/orchestrator, tests/worker,
+# tests/tools. They live outside the package folders on purpose: a folder
+# named shared/tests would make pytest invent a module called "shared"
+# that hides the real package.
+testpaths = ["tests"]
+# The repo root on sys.path makes `import tools.openapi_contract` work. The
+# real packages still win over the same-named folders at the root, because
+# Python prefers a regular package over a folder without __init__.py.
+pythonpath = ["."]
+# importlib mode lets several folders have test files with the same name.
+addopts = "--import-mode=importlib -ra"
+markers = [
+    "integration: needs real external tools such as ffmpeg; skipped when they are missing",
+]
