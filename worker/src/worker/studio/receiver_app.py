@@ -35,8 +35,9 @@ from shared.upload_receiver import (
     read_upload_headers,
 )
 from worker.logging_setup import job_context
-from worker.studio.acknowledger import DeliveryAcknowledger, PendingDelivery
+from worker.studio.acknowledger import DeliveryAcknowledger
 from worker.studio.library import StudioLibrary, UnsafeClipPathError
+from worker.studio.pending_acks import PendingDelivery
 
 logger = logging.getLogger(__name__)
 

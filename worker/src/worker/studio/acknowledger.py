@@ -6,35 +6,41 @@ worker `complete: true` straight away, and then calls POST
 repeating it is harmless". This module is that background part. It also
 looks the job up (GET /jobs/{id}) for the playlist titles first.
 
-Pending ACKs live in memory only. If the studio restarts before one is
-sent, the pushing worker sees its lease still renewed after 60 s and
-uploads to the outbox, so the clip still arrives (via the deliver task).
+Pending ACKs survive a restart (design §17): every change to the list is
+written to `pending_acks.json` in the studio's working folder
+(worker.studio.pending_acks), and the list is read back at start, so the
+first round after a restart sends whatever was still owed.
+
+When an ACK leaves the list:
+  * 2xx: accepted.
+  * 4xx other than the ones below: the orchestrator says the ACK no longer
+    applies (404 the job is gone, 409 it was reprocessed or discarded
+    meanwhile, 422 the hash or path does not match what it expects).
+    Sending it again would get the same answer, so it is dropped with a
+    warning. If the pushing worker is still waiting, it falls back to the
+    outbox after 60 s, so nothing is lost.
+It stays (and is retried every 10 s) on a network error or 5xx, and also
+on 401/403/408/429: those say "not now" or "fix the setup", not "this ACK
+is wrong", and are worth replaying once that is sorted out.
 """
 
 import logging
-import queue
 import threading
-from dataclasses import dataclass
+from pathlib import Path
 
 from shared.models import DeliveredRequest
 from worker.api_client import ApiError, OrchestratorClient, OrchestratorUnreachableError
 from worker.logging_setup import job_context
 from worker.studio.library import StudioLibrary
+from worker.studio.pending_acks import PendingAckFile, PendingDelivery
 
 logger = logging.getLogger(__name__)
 
 RETRY_DELAY_SECONDS = 10.0
+# Refusals that do not mean "this ACK is wrong": keep it and try again later.
+RETRYABLE_REFUSAL_STATUSES = frozenset({401, 403, 408, 429})
 
-
-@dataclass
-class PendingDelivery:
-    job_id: str
-    relative_path: str
-    sha256: str
-    size_bytes: int
-    # Set once the clip is in latest.m3u, so an ACK retry does not move it
-    # back above clips that arrived in the meantime.
-    in_playlist: bool = False
+__all__ = ["DeliveryAcknowledger", "PendingDelivery"]
 
 
 class DeliveryAcknowledger:
@@ -44,38 +50,62 @@ class DeliveryAcknowledger:
         library: StudioLibrary,
         shutdown: threading.Event,
         retry_delay_seconds: float = RETRY_DELAY_SECONDS,
+        pending_acks_path: Path | None = None,
     ) -> None:
+        """`pending_acks_path=None` keeps the list in memory only (some tests)."""
         self._api = api
         self._library = library
         self._shutdown = shutdown
         self._retry_delay_seconds = retry_delay_seconds
-        self._pending: queue.Queue[PendingDelivery] = queue.Queue()
+        self._file = PendingAckFile(pending_acks_path) if pending_acks_path else None
+        # Guards _pending and the file: the receiver submits from its
+        # request threads while the ACK thread works through the list.
+        self._lock = threading.Lock()
+        self._pending: list[PendingDelivery] = self._file.load() if self._file else []
+        self._new_delivery = threading.Event()
+        if self._pending:
+            logger.info("%d delivered ACK(s) left from the last run; replaying", len(self._pending))
 
     def submit(self, delivery: PendingDelivery) -> None:
-        self._pending.put(delivery)
+        with self._lock:
+            # A newer push of the same job (reprocessed clip) replaces an
+            # older ACK that was still waiting: only the latest one counts.
+            self._pending = [d for d in self._pending if d.job_id != delivery.job_id]
+            self._pending.append(delivery)
+            self._save_locked()
+        self._new_delivery.set()
 
     def pending_count(self) -> int:
-        return self._pending.qsize()
+        with self._lock:
+            return len(self._pending)
 
     def run_forever(self) -> None:
         """Thread body: handle deliveries until shutdown."""
         while not self._shutdown.is_set():
-            try:
-                delivery = self._pending.get(timeout=0.5)
-            except queue.Empty:
+            if self.pending_count() == 0:
+                self._new_delivery.wait(0.5)
+                self._new_delivery.clear()
                 continue
-            while not self._shutdown.is_set() and not self.handle(delivery):
+            if not self.handle_all_pending():
                 self._shutdown.wait(self._retry_delay_seconds)
 
-    def handle_all_pending(self) -> None:
-        """Try every queued delivery once; unsuccessful ones are queued again (tests)."""
-        for _ in range(self._pending.qsize()):
-            delivery = self._pending.get_nowait()
-            if not self.handle(delivery):
-                self._pending.put(delivery)
+    def handle_all_pending(self) -> bool:
+        """Try every pending delivery once, oldest first. True when none is left."""
+        with self._lock:
+            snapshot = list(self._pending)
+        for delivery in snapshot:
+            if self._shutdown.is_set():
+                break
+            finished = self.handle(delivery)
+            with self._lock:
+                if finished:
+                    # By identity: a newer submit for the same job stays.
+                    self._pending = [d for d in self._pending if d is not delivery]
+                self._save_locked()  # also records in_playlist for a replay
+        return self.pending_count() == 0
 
     def handle(self, delivery: PendingDelivery) -> bool:
-        """Playlist + ACK for one clip; False means "try again later"."""
+        """Playlist + ACK for one clip; False means "keep it and try again later"."""
         with job_context(delivery.job_id):
             if not delivery.in_playlist:
                 self._add_to_playlist(delivery)
@@ -91,8 +121,10 @@ class DeliveryAcknowledger:
                 logger.warning("delivered ACK not sent yet (%s); will retry", error)
                 return False
             except ApiError as error:
-                # E.g. the job was reprocessed meanwhile: nothing to retry.
-                logger.warning("orchestrator refused the delivered ACK: %s", error)
+                if error.status_code in RETRYABLE_REFUSAL_STATUSES:
+                    logger.warning("delivered ACK refused for now (%s); will retry", error)
+                    return False
+                logger.warning("delivered ACK no longer applies, dropping it: %s", error)
                 return True
             logger.info("delivered ACK sent; job is now %s", answer.state)
             return True
@@ -105,3 +137,7 @@ class DeliveryAcknowledger:
             logger.warning("cannot look up the job for the playlist title: %s", error)
         self._library.record_clip(delivery.relative_path, job)
         delivery.in_playlist = True
+
+    def _save_locked(self) -> None:
+        if self._file is not None:
+            self._file.save(self._pending)
