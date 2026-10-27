@@ -1,0 +1,29 @@
+# Third-party payloads bundled into the Windows installer.
+#
+# fetch_vendor.py downloads each `url` into installer/vendor/, checks the
+# SHA-256 before anything else touches the file, and unpacks zips. A file
+# whose hash differs is deleted and the build stops. How to bump a version:
+# installer/MAINTAINERS.md.
+#
+# `path_in_archive` is the part of a zip the build uses (relative to the
+# unpacked zip); payloads without it are used as downloaded.
+
+[ffmpeg]
+# BtbN FFmpeg-Builds, release tag autobuild-2026-10-27-18-38, release
+# branch 9.0 (n9.0.2), win64, GPL, shared libraries. Includes h264_nvenc.
+# The hash equals the digest GitHub publishes for the asset.
+url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-27-18-38/ffmpeg-n9.0.2-36-g6882969ce9-win64-gpl-shared-9.0.zip"
+sha256 = "dbfef481021a393424c9bd4e588c8d568f0ebba780c01c63dfcb87c87be901c7"
+path_in_archive = "ffmpeg-n9.0.2-36-g6882969ce9-win64-gpl-shared-9.0"
+
+[nssm]
+# NSSM 2.24 (2014-08-31), the last release; we use win64/nssm.exe.
+url = "https://nssm.cc/release/nssm-2.24.zip"
+sha256 = "727d1e42275c605e0f04aba98095c38a8e1e46def453cdffce42869428aa6743"
+path_in_archive = "nssm-2.24/win64/nssm.exe"
+
+[tailscale]
+# Tailscale stable 1.104.2, amd64 MSI. The hash equals the published
+# <url>.sha256.
+url = "https://pkgs.tailscale.com/stable/tailscale-setup-1.104.2-amd64.msi"
+sha256 = "7eff4abdcbcf592ac9bce28f2b9f0fd51f8fc09194c955fbe8253b67b531e7f5"
