@@ -6,7 +6,9 @@ parameter.
 
 The main one is `harness`: a worker whose parts are all real (dispatcher,
 stage runners, heartbeat, storage, task handlers) except for three things:
-  * the orchestrator is FakeOrchestrator (in memory, records requests);
+  * the orchestrator is FakeOrchestrator (in memory, records requests),
+    reachable at BASE_URL (orchestrator_url) and TAILNET_URL (the
+    tailnet_base_url from /enroll), the two origins that get our token;
   * the "network" is RoutingTransport (in-process apps, no sockets);
   * ffmpeg/ffprobe are FakeMediaTools (no real video work).
 Tests call `harness.claim_and_run(task)` to push one task through the
@@ -22,8 +24,14 @@ from threading import Event
 import httpx
 import pytest
 
-from shared.models import Peer, WorkerRole
-from tests.worker.fake_orchestrator import BASE_URL, BEARER_TOKEN, WORKER_ID, FakeOrchestrator
+from shared.models import DeliveryPlan, DeliveryRoute, WorkerRole
+from tests.worker.fake_orchestrator import (
+    BASE_URL,
+    BEARER_TOKEN,
+    TAILNET_URL,
+    WORKER_ID,
+    FakeOrchestrator,
+)
 from tests.worker.fakes import FakeMediaTools, RoutingTransport
 from worker.api_client import OrchestratorClient
 from worker.dispatcher import STAGE_KINDS_BY_ROLE, Dispatcher
@@ -43,16 +51,33 @@ GB = 1024**3
 PEER_URL = "http://peer.test:8710"
 STUDIO_URL = "http://studio.test:8720"
 
-# Fast settings so tests never sit waiting: no pause between report
-# retries, and only 0.3 s (instead of 60 s) for the studio's ACK.
+# The two delivery plans a process offer can carry (docs/api.md §5,
+# "Delivery decision"). The orchestrator picks one; tests pick for it.
+OUTBOX_DELIVERY = DeliveryPlan(mode=DeliveryRoute.OUTBOX, studio_url=None)
+
+
+def direct_delivery(job_id: str) -> DeliveryPlan:
+    """ "Push to the studio at studio.test:8720", as the orchestrator says it."""
+    return DeliveryPlan(mode=DeliveryRoute.DIRECT, studio_url=f"{STUDIO_URL}/receive/{job_id}")
+
+
+# Fast settings so tests never sit waiting: no pause between report or
+# transfer retries, and only 0.3 s (instead of 60 s) for the studio's ACK.
 FAST_SETTINGS = TaskSettings(
-    push_ack_wait_seconds=0.3, report_attempts=3, report_retry_delay_seconds=0
+    push_ack_wait_seconds=0.3,
+    report_attempts=3,
+    report_retry_delay_seconds=0,
+    transfer_retry_delay_seconds=0,
 )
 
 
 def make_api_client(network: httpx.BaseTransport) -> OrchestratorClient:
     return OrchestratorClient(
-        httpx.Client(transport=network), BASE_URL, worker_id=WORKER_ID, bearer_token=BEARER_TOKEN
+        httpx.Client(transport=network),
+        BASE_URL,
+        worker_id=WORKER_ID,
+        bearer_token=BEARER_TOKEN,
+        tailnet_base_url=TAILNET_URL,
     )
 
 
@@ -84,39 +109,15 @@ class WorkerHarness:
         peer_storage = Storage(self.tmp_path / "peer", 100 * GB, disk_free=lambda _: 500 * GB)
         peer_storage.raw_path(job_id, ".mp4").write_bytes(raw_bytes)
         self.network.add_app(PEER_URL, build_peer_file_server_app(peer_storage, "peer-1", "worker"))
-        self.orchestrator.peers.append(
-            Peer(
-                worker_id="peer-1",
-                name="peer",
-                role=WorkerRole.WORKER,
-                tailnet_address="peer.test",
-                file_server_port=8710,
-                receiver_port=None,
-                online=True,
-                last_heartbeat=None,
-            )
-        )
         return peer_storage
 
     def add_studio(self) -> tuple[StudioLibrary, DeliveryAcknowledger]:
-        """The studio's real receiver app at studio.test:8720, listed as online."""
+        """The studio's real receiver app, answering at studio.test:8720."""
         library = StudioLibrary(self.tmp_path / "studio-box")
         acknowledger = DeliveryAcknowledger(
             make_api_client(self.network), library, Event(), retry_delay_seconds=0
         )
         self.network.add_app(STUDIO_URL, build_receiver_app(library, acknowledger, "studio-1"))
-        self.orchestrator.peers.append(
-            Peer(
-                worker_id="studio-1",
-                name="studio",
-                role=WorkerRole.STUDIO,
-                tailnet_address="studio.test",
-                file_server_port=None,
-                receiver_port=8720,
-                online=True,
-                last_heartbeat=None,
-            )
-        )
         return library, acknowledger
 
 
@@ -129,6 +130,7 @@ def build_harness(
     orchestrator = FakeOrchestrator(tmp_path / "vps", role=role)
     network = RoutingTransport()
     network.add_app(BASE_URL, orchestrator.app)
+    network.add_app(TAILNET_URL, orchestrator.app)
     media = FakeMediaTools()
     storage = Storage(
         tmp_path / "worker",
@@ -150,6 +152,7 @@ def build_harness(
         transfer_transport=network,
         settings=FAST_SETTINGS,
         studio_library=library,
+        role=role,
     )
     heartbeater = Heartbeater(
         api=api,

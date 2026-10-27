@@ -1,17 +1,21 @@
 """process: render the final clip and deliver it (docs/api.md §5, design §7).
 
-Delivery has two routes:
-  direct  push to the studio's receiver; the studio's ACK ends our lease
-  outbox  chunked upload to the VPS when there is no studio, the push
-          fails, or no ACK ended the lease within the wait (60 s in real
-          life, 0.3 s in these tests)
+The orchestrator decides the delivery route and puts it in the offer as
+`delivery` (docs/api.md §5, "Delivery decision"):
+  outbox  chunked upload to the VPS outbox
+  direct  push to the studio's receiver at `delivery.studio_url`; the
+          studio's ACK ends our lease. If the push fails, or no ACK ended
+          the lease within the wait (60 s in real life, 0.3 s in these
+          tests), the worker uploads to the outbox instead.
+Failure reports and their scope are in test_process_failures.py.
 """
 
 import json
 from dataclasses import replace
 
 import worker.tasks.clip_delivery as clip_delivery
-from shared.models import ProcessTask
+from shared.models import DeliveryPlan, DeliveryRoute, ProcessTask
+from tests.worker.conftest import OUTBOX_DELIVERY, STUDIO_URL, direct_delivery
 from tests.worker.fake_orchestrator import BASE_URL
 
 
@@ -24,6 +28,7 @@ def hold_raw(harness, raw_bytes):
 
 
 def process_task(job, **changes) -> ProcessTask:
+    """The offer for `job`; delivery through the outbox unless a test says otherwise."""
     fields = dict(
         job_id=job.job_id,
         raw_sha256=job.sha256,
@@ -38,6 +43,7 @@ def process_task(job, **changes) -> ProcessTask:
         show_pass=True,
         clip_relative_path="enduro/42/3.mp4",
         outbox_upload_url=f"{BASE_URL}/jobs/{job.job_id}/clip",
+        delivery=OUTBOX_DELIVERY,
     )
     fields.update(changes)
     return ProcessTask(**fields)
@@ -60,21 +66,28 @@ def test_render_command_uses_cuts_overlay_and_loudnorm(harness, raw_bytes):
     assert "loudnorm" in " ".join(command)
 
 
-def test_no_studio_online_uploads_to_the_outbox(harness, raw_bytes):
+def test_outbox_delivery_uploads_to_the_outbox_and_never_contacts_the_studio(harness, raw_bytes):
+    # Setup: a studio receiver is running, but the offer says "outbox"
+    # (for example, the studio's last heartbeat is too old). The worker
+    # must follow the offer, not look for a studio itself.
     job = hold_raw(harness, raw_bytes)
+    harness.add_studio()
 
-    harness.claim_and_run(process_task(job))
+    harness.claim_and_run(process_task(job, delivery=OUTBOX_DELIVERY))
 
     # The clip landed in the VPS outbox through the chunked upload.
     stored = harness.orchestrator.stored_upload("outbox", job.job_id)
     assert stored.read_bytes().startswith(b"fake final render")
+    # Not a single request went to the studio.
+    assert harness.network.headers_sent_to("studio.test") == []
     # Once delivered, the local copy is no longer needed.
     assert not harness.storage.clip_path(job.job_id).exists()
     assert harness.orchestrator.failures == []
 
 
 def test_direct_push_to_the_studio_and_ack_ends_the_lease(harness, raw_bytes, monkeypatch):
-    # Setup: a studio is online; its receiver is the real app.
+    # Setup: the offer says "direct" with the studio's receive URL; the
+    # studio's receiver is the real app.
     job = hold_raw(harness, raw_bytes)
     library, acknowledger = harness.add_studio()
 
@@ -91,7 +104,7 @@ def test_direct_push_to_the_studio_and_ack_ends_the_lease(harness, raw_bytes, mo
 
     monkeypatch.setattr(clip_delivery, "_studio_ack_ended_lease", studio_acts_then_wait)
 
-    harness.claim_and_run(process_task(job))
+    harness.claim_and_run(process_task(job, delivery=direct_delivery(job.job_id)))
 
     # The clip is on the box at <prova>/<car>/<passagem>.mp4...
     assert (library.root / "enduro/42/3.mp4").read_bytes().startswith(b"fake final render")
@@ -103,6 +116,32 @@ def test_direct_push_to_the_studio_and_ack_ends_the_lease(harness, raw_bytes, mo
     assert not harness.storage.clip_path(job.job_id).exists()
 
 
+def test_direct_push_never_carries_the_bearer_token(harness, raw_bytes):
+    # The studio (:8720) is not one of the two origins allowed to see our
+    # token (design §17). We look at the headers of every push request.
+    job = hold_raw(harness, raw_bytes)
+    harness.add_studio()
+
+    harness.claim_and_run(process_task(job, delivery=direct_delivery(job.job_id)))
+
+    studio_requests = harness.network.headers_sent_to("studio.test")
+    assert studio_requests, "the clip should have been pushed to the studio"
+    assert all("authorization" not in headers for headers in studio_requests)
+
+
+def test_studio_url_from_the_offer_is_used_exactly(harness, raw_bytes):
+    # The worker pushes to the URL the orchestrator gave, path included;
+    # it does not build its own from a host and port.
+    job = hold_raw(harness, raw_bytes)
+    harness.add_studio()
+
+    harness.claim_and_run(process_task(job, delivery=direct_delivery(job.job_id)))
+
+    pushed_urls = [url for url in harness.network.requested_urls if "studio.test" in url]
+    assert pushed_urls
+    assert all(url == f"{STUDIO_URL}/receive/{job.job_id}" for url in pushed_urls)
+
+
 def test_push_without_ack_falls_back_to_the_outbox_after_the_wait(harness, raw_bytes):
     # Setup: the studio receives the push, but its ACK never reaches the
     # orchestrator (we never run its acknowledger), so our lease keeps
@@ -110,22 +149,32 @@ def test_push_without_ack_falls_back_to_the_outbox_after_the_wait(harness, raw_b
     job = hold_raw(harness, raw_bytes)
     library, _ = harness.add_studio()
 
-    harness.claim_and_run(process_task(job))
+    harness.claim_and_run(process_task(job, delivery=direct_delivery(job.job_id)))
 
     assert (library.root / "enduro/42/3.mp4").exists()
     assert harness.orchestrator.stored_upload("outbox", job.job_id).exists()
 
 
 def test_studio_offline_falls_back_to_the_outbox(harness, raw_bytes):
-    # Setup: /workers lists the studio as online, but it does not answer.
+    # Setup: the offer says "direct", but nothing answers at the studio's
+    # address (it went offline after its last heartbeat).
     job = hold_raw(harness, raw_bytes)
-    harness.add_studio()
-    harness.network.remove("http://studio.test:8720")
 
-    harness.claim_and_run(process_task(job))
+    harness.claim_and_run(process_task(job, delivery=direct_delivery(job.job_id)))
 
     assert harness.orchestrator.stored_upload("outbox", job.job_id).exists()
     assert harness.orchestrator.failures == []
+
+
+def test_direct_without_a_studio_url_uses_the_outbox(harness, raw_bytes):
+    # A malformed offer ("direct" but no URL) should never happen; the
+    # outbox always works, so the worker uses it rather than failing.
+    job = hold_raw(harness, raw_bytes)
+    plan = DeliveryPlan(mode=DeliveryRoute.DIRECT, studio_url=None)
+
+    harness.claim_and_run(process_task(job, delivery=plan))
+
+    assert harness.orchestrator.stored_upload("outbox", job.job_id).exists()
 
 
 def test_lease_lost_mid_render_discards_the_clip_and_uploads_nothing(harness, raw_bytes):
@@ -146,16 +195,6 @@ def test_lease_lost_mid_render_discards_the_clip_and_uploads_nothing(harness, ra
     assert harness.orchestrator.failures == []
     assert not harness.storage.clip_path(job.job_id).exists()
     assert list(harness.storage.tmp_dir.iterdir()) == []
-
-
-def test_render_failure_is_reported(harness, raw_bytes):
-    job = hold_raw(harness, raw_bytes)
-    harness.media.failing_render = "final render"
-
-    harness.claim_and_run(process_task(job))
-
-    [(_, failure)] = harness.orchestrator.failures
-    assert failure.exit_code == 1 and "final render" in failure.message
 
 
 def test_outbox_upload_resumes_after_a_crash_without_rendering_again(harness, raw_bytes):
