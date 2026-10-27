@@ -47,13 +47,25 @@ def test_defaults_match_docs_api_section_10():
 
 def test_missing_required_variables_are_named_in_the_error():
     # Leave out two required settings and read the error message.
-    incomplete = {k: v for k, v in REQUIRED.items() if k not in ("admin_token", "baja_app_url")}
+    incomplete = {k: v for k, v in REQUIRED.items() if k not in ("admin_token", "webhook_secret")}
     with pytest.raises(ConfigError) as caught:
         load_settings(**incomplete)
     message = str(caught.value)
     # The message names the *environment variables* a human must set.
     assert "BVP_ADMIN_TOKEN" in message
-    assert "BVP_BAJA_APP_URL" in message
+    assert "BVP_WEBHOOK_SECRET" in message
+
+
+def test_team_sources_are_optional(monkeypatch):
+    # Design §17: neither BVP_TEAMS_FILE nor BVP_BAJA_APP_URL is needed to
+    # start. Leave the Baja app out and pass the teams file as the empty
+    # string compose sends when the variable is unset.
+    without_app = {k: v for k, v in REQUIRED.items() if k != "baja_app_url"}
+    monkeypatch.setenv("BVP_TEAMS_FILE", "")
+    settings = load_settings(**without_app)
+    # Both read as "not configured" instead of failing at startup.
+    assert settings.baja_app_url == ""
+    assert settings.teams_file is None
 
 
 def test_settings_are_read_from_the_environment(monkeypatch):
@@ -74,9 +86,9 @@ def test_settings_are_read_from_the_environment(monkeypatch):
     assert settings.tailscale_oauth_client_id == "id"
 
 
-def test_the_compose_file_name_for_the_evolution_key_is_accepted(monkeypatch):
-    # infra/vps/docker-compose.yml passes BVP_EVOLUTION_INSTANCE_TOKEN
-    # while docs/api.md says BVP_EVOLUTION_API_KEY. Both must work.
+def test_the_old_name_for_the_evolution_key_is_accepted(monkeypatch):
+    # BVP_EVOLUTION_API_KEY is the canonical name (design §17), but older
+    # .env files say BVP_EVOLUTION_INSTANCE_TOKEN. Both must work.
     monkeypatch.setenv("BVP_EVOLUTION_INSTANCE_TOKEN", "instance-token")
     without_key = {k: v for k, v in REQUIRED.items() if k != "evolution_api_key"}
     settings = load_settings(**without_key)

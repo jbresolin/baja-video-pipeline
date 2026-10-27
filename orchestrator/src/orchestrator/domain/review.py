@@ -55,7 +55,7 @@ CLEARED_FAILURE_COLUMNS = {
 def _team_name_or_none(context: OrchestratorContext, car_number: int) -> str | None:
     """The team name for a review; a Baja app outage must not block reviewing."""
     try:
-        team = context.baja_app.find_team(car_number)
+        team = context.teams.find_team(car_number)
     except BajaAppError as error:
         logger.warning("team lookup for car %s failed: %s", car_number, error)
         return None
