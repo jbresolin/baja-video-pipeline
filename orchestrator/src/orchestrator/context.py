@@ -16,6 +16,7 @@ from orchestrator.clients.tailscale import TailscaleClient
 from orchestrator.clients.teams import TeamDirectory
 from orchestrator.clock import Clock
 from orchestrator.config import Settings
+from orchestrator.counters import TaskCounters
 from orchestrator.db.database import Database
 from orchestrator.security import ReviewerDirectory, SlidingWindowRateLimiter
 from orchestrator.storage import VpsLayout
@@ -48,3 +49,5 @@ class OrchestratorContext:
     teams: TeamDirectory
     enroll_rate_limiter: SlidingWindowRateLimiter
     upload_locks: KeyedLocks = field(default_factory=KeyedLocks)
+    # Offers, claims and failures since start, for GET /metrics.
+    task_counters: TaskCounters = field(default_factory=TaskCounters)

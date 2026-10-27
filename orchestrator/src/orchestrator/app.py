@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from orchestrator.api import (
     routes_dev_files,
     routes_intake_enrollment,
+    routes_metrics,
     routes_review_delivery,
     routes_worker_loop,
 )
@@ -118,6 +119,7 @@ def create_app(context: OrchestratorContext, *, run_background_tasks: bool = Tru
     app.include_router(routes_intake_enrollment.router)
     app.include_router(routes_worker_loop.router)
     app.include_router(routes_review_delivery.router)
+    app.include_router(routes_metrics.router)
     if context.settings.dev_mode:
         # Caddy's static file routes, for a laptop with no Caddy (design §18).
         # load_settings() refuses dev mode unless BVP_PUBLIC_BASE_URL is localhost.

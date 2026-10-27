@@ -362,6 +362,7 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `GET /fleet` | → `FleetResponse` | workers, stats, disk, leases, job counts |
 | `GET /jobs/{job_id}/events` | → `EventsResponse` | that job's event log, oldest first; 404 unknown job |
 | `GET /events?worker_id=…&since=…&limit=…` | → `EventsResponse` | event log, oldest first; without `since` the newest `limit` (default 100, max 1000) |
+| `GET /metrics` | → Prometheus text 0.0.4 | admin only; see below |
 
 **Evolution webhook.** The route is exactly **`POST
 /intake/evolution-webhook`** with the header **`X-Webhook-Secret:
@@ -384,7 +385,10 @@ sender to resend. A repeated `data.key.id` (in progress or done) → 200
 `duplicate: true` with the existing `job_id` if any. Inbox above
 `BVP_INBOX_CAP_GB` → 413 `inbox_full`; above `BVP_INBOX_HOLD_GB` the media
 is accepted but the bot asks the sender to hold further videos. Replies to
-the sender go through Evolution `sendText`.
+the sender go through Evolution `sendText`; every text is in
+`orchestrator/domain/bot_messages.py` (pt-BR). A verified document gets
+`RECEIVED_OK` once its job exists, unless the webhook already answered
+(low_res or hold notice), so each video gets one positive reply.
 
 **Review update.** `expected_version` must equal the job's `version`
 (else 409 `version_conflict`).
@@ -401,6 +405,18 @@ Other combinations → 409 `illegal_transition`. "All fields" = `prova`,
 `car_number`, `passagem`, `cut_in_s`, `cut_out_s` set after the update,
 else 422 `missing_review_fields`. `team_name` is resolved from
 `car_number`. Cuts must satisfy `0 ≤ in < out ≤ duration`.
+
+**Metrics.** `GET /metrics` (`adminBearer`, contract 1.1.0) answers in the
+Prometheus text format for an external scraper on the tailnet
+(`infra/vps/MONITORING.md`). Gauges, read on every scrape:
+`bvp_jobs{state}`, `bvp_workers_enrolled{role}`, `bvp_workers_online{role}`
+(heartbeat within 45 s), `bvp_storage_bytes{area="inbox"|"proxies"|"outbox"}`
+(proxies includes thumbs), `bvp_disk_free_bytes`, `bvp_inbox_hold_bytes`,
+`bvp_inbox_cap_bytes`. Counters since the process started (they reset on a
+restart, which `rate()`/`increase()` handle): `bvp_task_offers_total{kind}`,
+`bvp_task_claims_total{kind}` (new leases only),
+`bvp_task_failures_total{kind,scope}`. Every label value is always listed,
+zeros included.
 
 ### 7.2 Worker-hosted endpoints (tailnet only)
 

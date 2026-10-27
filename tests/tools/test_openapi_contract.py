@@ -48,6 +48,8 @@ REQUIRED_ENDPOINTS = {
     # Event log (design §17)
     ("get", "/jobs/{job_id}/events"),
     ("get", "/events"),
+    # Operations (wave 3): Prometheus scrape target, admin only
+    ("get", "/metrics"),
 }
 
 # Routes that must work without an auth header: the health check, and
@@ -196,3 +198,14 @@ def test_enroll_answer_names_the_tailnet_base_url():
     # The second origin (besides orchestrator_url) a worker may send its token to.
     schemas = load_committed_contract()["components"]["schemas"]
     assert "tailnet_base_url" in schemas["EnrollResponse"]["required"]
+
+
+def test_metrics_is_prometheus_text_for_the_admin_only():
+    # /metrics is scraped by an external Prometheus with the admin token
+    # (infra/vps/MONITORING.md). Reviewers and workers may not read it.
+    metrics = load_committed_contract()["paths"]["/metrics"]["get"]
+    assert metrics["security"] == [{"adminBearer": []}]
+    # The success body is Prometheus' text format, not JSON...
+    assert list(metrics["responses"]["200"]["content"]) == ["text/plain; version=0.0.4"]
+    # ...but a refusal is still the standard JSON error shape.
+    assert "application/json" in metrics["responses"]["401"]["content"]
