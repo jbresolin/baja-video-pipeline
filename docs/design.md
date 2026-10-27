@@ -349,3 +349,18 @@ confirmed later by João.
   `ghcr.io/jbresolin/baja-review-ui` on pushes to `main` (tag `main` and
   the short SHA) and on `v*` tags.
 * Root README folder map and §13 updated: review UI is its own package.
+
+## 18. Integration PR #7 amendments (2026-10-27)
+
+* Frame rate travels as a `Frame-Rate` header on the chunked proxy upload
+  (there is no JSON body on that POST).
+* Unknown team → `team_name` empty and `GET /teams/{car}` → 404. The
+  literal "unknown" is never stored, so it cannot reach the overlay or
+  `latest.m3u`.
+* Failure scope exceptions: the master's `download_raw` and the studio's
+  outbox pull report nothing on a network failure and simply let the lease
+  expire, because a `worker`-scope report would bar the only machine that
+  can do that task. Everything else follows §17.
+* Known gap: `worker/README.md` local-dev recipe points workers at a bare
+  orchestrator, which does not serve raw bytes (Caddy does). Fixed in wave 3
+  by a dev-only static file route behind `BVP_DEV_MODE=1`.
