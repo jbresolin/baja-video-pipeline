@@ -1,14 +1,9 @@
-"""What every task handler receives, and how a handler says how it ended.
+"""What every task handler receives (TaskEnvironment) and shared helpers.
 
 A handler is `handler(env, lease, task, cancel)`. It returns normally on
-success, or raises one of:
-
-  * TaskFailedError     – the input is bad (corrupt raw, ffmpeg error): the
-                     stage runner reports POST /jobs/{id}/failed.
-  * TaskAbandonedError  – it cannot be done *now* (network, no source online):
-                     we stop renewing the lease and let it expire, so the
-                     orchestrator offers the task again later.
-  * TaskCancelledError  – lease lost or shutdown (worker.leases).
+success, or raises; worker.failures explains how each exception ends the
+task (failure report with scope "job"/"worker", lease left to expire, or
+cancelled) and holds the one table that decides the scope.
 """
 
 import logging
@@ -20,10 +15,11 @@ from typing import TypeVar
 
 import httpx
 
-from shared.models import Measurement, MeasurementKind
+from shared.models import Measurement, MeasurementKind, WorkerRole
 from shared.protocol import DEFAULT_UPLOAD_CHUNK_BYTES
 from worker.api_client import ApiError, OrchestratorClient, OrchestratorUnreachableError
 from worker.cancellable_transport import transfer_client_for
+from worker.failures import TaskAbandonedError
 from worker.leases import REASON_LEASE_LOST, CancelToken, TaskCancelledError
 from worker.media_tools import MediaTools
 from worker.storage import Storage
@@ -39,19 +35,7 @@ REPORT_RETRY_DELAY_SECONDS = 5.0
 # Design §5 / docs/api.md §5: after a direct push, wait this long for the
 # studio's ACK to end our lease before uploading to the outbox instead.
 PUSH_ACK_WAIT_SECONDS = 60.0
-
-
-class TaskFailedError(Exception):
-    """An error that retrying the same input will not fix."""
-
-    def __init__(self, message: str, exit_code: int | None = None) -> None:
-        self.message = message
-        self.exit_code = exit_code
-        super().__init__(message)
-
-
-class TaskAbandonedError(Exception):
-    """Give up for now; the lease expires and the task is offered again."""
+TRANSFER_RETRY_DELAY_SECONDS = 1.0
 
 
 class MeasurementLog:
@@ -86,6 +70,8 @@ class TaskSettings:
     report_attempts: int = REPORT_ATTEMPTS
     report_retry_delay_seconds: float = REPORT_RETRY_DELAY_SECONDS
     upload_chunk_bytes: int = DEFAULT_UPLOAD_CHUNK_BYTES
+    # Pause between retries inside one download/upload (network error, 5xx).
+    transfer_retry_delay_seconds: float = TRANSFER_RETRY_DELAY_SECONDS
 
 
 @dataclass
@@ -101,6 +87,8 @@ class TaskEnvironment:
     settings: TaskSettings = field(default_factory=TaskSettings)
     # Studio only (worker.studio.library.StudioLibrary).
     studio_library: object | None = None
+    # Our role; decides whether some failures are reported (worker.failures).
+    role: WorkerRole | None = None
 
     def transfer_client(self, cancel: CancelToken) -> httpx.Client:
         return transfer_client_for(self.transfer_transport, cancel)
@@ -116,6 +104,8 @@ class TaskEnvironment:
                 return call()
             except OrchestratorUnreachableError as error:
                 if attempt == self.settings.report_attempts:
+                    # Reporting a failure would not get through either:
+                    # leave the lease to expire.
                     raise TaskAbandonedError(f"could not send {what}: {error}") from error
                 logger.warning("%s: orchestrator unreachable (%s); retrying", what, error)
                 cancel.sleep(self.settings.report_retry_delay_seconds)
