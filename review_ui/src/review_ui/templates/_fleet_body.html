@@ -1,0 +1,79 @@
+{% import "macros.html" as m %}
+{% set disk = fleet.server_disk %}
+<section class="cards">
+  <div class="card">
+    <h2>Workers online</h2>
+    <p class="big">{{ online_count }} <span class="of">/ {{ fleet.workers|length }}</span></p>
+  </div>
+  <div class="card">
+    <h2>VPS inbox</h2>
+    {# Bar against the hard cap, with a tick at the soft "hold" limit. #}
+    <div class="meter {% if disk.inbox_bytes >= disk.inbox_hold_bytes %}warn{% endif %}"
+         role="img" aria-label="Inbox {{ percent(disk.inbox_bytes, disk.inbox_cap_bytes) }}% of the cap">
+      <span class="meter-fill" style="width: {{ percent(disk.inbox_bytes, disk.inbox_cap_bytes) }}%"></span>
+      <span class="meter-mark" style="left: {{ percent(disk.inbox_hold_bytes, disk.inbox_cap_bytes) }}%" title="hold limit"></span>
+    </div>
+    <p class="small">{{ disk.inbox_bytes|bytes }} of {{ disk.inbox_cap_bytes|bytes }} · senders asked to hold at {{ disk.inbox_hold_bytes|bytes }}</p>
+  </div>
+  <div class="card">
+    <h2>VPS disk</h2>
+    <dl class="kv">
+      <dt>Proxies</dt><dd>{{ disk.proxy_bytes|bytes }}</dd>
+      <dt>Outbox</dt><dd>{{ disk.outbox_bytes|bytes }}</dd>
+      <dt>Free</dt><dd>{{ disk.free_bytes|bytes }}</dd>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <h2>Jobs by state</h2>
+  <ul class="state-counts">
+    {% for state, count in job_counts %}
+    <li class="{{ 'zero' if count == 0 else '' }}">{{ m.state_badge(state) }} <b>{{ count }}</b></li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section>
+  <h2>Workers</h2>
+  {% if worker_rows %}
+  <div class="table-wrap">
+    <table class="data fleet">
+      <thead>
+        <tr>
+          <th>Worker</th><th>Status</th><th class="num">Held raws</th><th>Storage used of cap</th>
+          <th class="num">Download</th><th class="num">Process</th><th class="num">Upload</th><th>Doing</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in worker_rows %}
+        {% set entry = row.entry %}
+        {% set worker = entry.worker %}
+        <tr class="{{ 'offline' if not entry.online else '' }}">
+          <td>
+            <strong>{{ worker.name }}</strong> <span class="badge role role-{{ worker.role }}">{{ worker.role }}</span>
+            <div class="small">{{ worker.capabilities.video_encoder }}{% if worker.capabilities.gpu_name %} · {{ worker.capabilities.gpu_name }}{% endif %}</div>
+          </td>
+          <td>
+            <span class="dot {{ 'online' if entry.online else 'offline' }}"></span>{{ "online" if entry.online else "offline" }}
+            <div class="small">heartbeat {{ age(worker.last_heartbeat, now) }}</div>
+          </td>
+          <td class="num">{{ entry.held_job_count }}<div class="small">{{ entry.held_bytes|bytes }}</div></td>
+          <td>
+            <div class="meter {{ 'warn' if not entry.accepting_new_raws else '' }}"><span class="meter-fill" style="width: {{ row.used_percent }}%"></span></div>
+            <div class="small">{{ row.used_bytes|bytes }} of {{ worker.storage_cap_bytes|bytes }} · {{ worker.free_bytes|bytes }} free
+              {% if not entry.accepting_new_raws %}· <strong>near cap, no new raws</strong>{% endif %}</div>
+          </td>
+          <td class="num">{{ worker.stats.download_mbps|rate("Mbps") }}</td>
+          <td class="num">{{ worker.stats.process_s_per_gb|rate("s/GB") }}</td>
+          <td class="num">{{ worker.stats.upload_mbps|rate("Mbps") }}</td>
+          <td>{% for text in row.lease_texts %}<div class="small"><code>{{ text }}</code></div>{% else %}<span class="small muted">idle</span>{% endfor %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">No workers enrolled yet.</p>
+  {% endif %}
+</section>

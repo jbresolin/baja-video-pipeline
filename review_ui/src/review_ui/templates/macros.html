@@ -1,0 +1,16 @@
+{# Small pieces used by several templates. #}
+
+{# A time the browser rewrites into local time (js/common.js). Until then
+   it shows UTC, so the page is still correct without JavaScript. #}
+{% macro time(moment, relative=false) -%}
+<time datetime="{{ moment|iso }}" data-local="{{ 'relative' if relative else 'clock' }}">{{ moment|clock }}</time>
+{%- endmacro %}
+
+{% macro state_badge(state) -%}
+<span class="badge state state-{{ state }}">{{ state|state_label }}</span>
+{%- endmacro %}
+
+{# Car number 0 is a real number, so test for none instead of truthiness. #}
+{% macro or_unknown(value) -%}
+{{ value if value is not none else "?" }}
+{%- endmacro %}

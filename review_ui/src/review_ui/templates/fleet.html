@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Fleet{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Fleet</h1>
+  <p class="hint">Workers, VPS disk and jobs. Refreshes every {{ poll_seconds }} s.</p>
+</div>
+<div id="fleet-body" data-poll-url="/review/partials/fleet" data-poll-seconds="{{ poll_seconds }}">
+  {% include "_fleet_body.html" %}
+</div>
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ static('js/fleet.js') }}"></script>{% endblock %}

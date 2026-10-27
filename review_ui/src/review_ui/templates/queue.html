@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Queue{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Queue</h1>
+  <p class="hint"><kbd>↑</kbd><kbd>↓</kbd> or <kbd>j</kbd><kbd>k</kbd> to move, <kbd>Enter</kbd> to open. Refreshes every {{ poll_seconds }} s.</p>
+</div>
+
+<form class="filters" method="get" action="/review/" id="queue-filters">
+  <fieldset class="chips">
+    <legend>State</legend>
+    {% for state in all_states %}
+    <label class="chip"><input type="checkbox" name="state" value="{{ state.value }}" {% if state in filter.states %}checked{% endif %}> {{ state|state_label }}</label>
+    {% endfor %}
+  </fieldset>
+  <label class="field-inline">Prova
+    <select name="prova">
+      <option value="">Any</option>
+      {% if filter.prova and filter.prova not in prova_options %}
+      <option selected>{{ filter.prova }}</option>
+      {% endif %}
+      {% for prova in prova_options %}
+      <option {% if prova == filter.prova %}selected{% endif %}>{{ prova }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="chip"><input type="checkbox" name="flagged" value="1" {% if filter.flagged_only %}checked{% endif %}> Low-res only</label>
+  <noscript><button type="submit">Apply</button></noscript>
+</form>
+
+<div id="queue" data-poll-url="/review/partials/queue?{{ filter.query_string() }}" data-poll-seconds="{{ poll_seconds }}">
+  {% include "_queue_rows.html" %}
+</div>
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ static('js/queue.js') }}"></script>{% endblock %}

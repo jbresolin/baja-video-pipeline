@@ -1,0 +1,6 @@
+{# The status strip. data-version lets the page notice changes by others. #}
+<div id="status-strip" class="status-strip" data-version="{{ job.version }}" data-state="{{ job.state }}" aria-live="polite">
+  {% for note in notes %}
+  <p class="note {{ note.level }}">{{ note.text }}</p>
+  {% endfor %}
+</div>

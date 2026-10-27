@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}Clips{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Clips</h1>
+  <p class="hint">
+    {{ total_count }} delivered clip{{ "" if total_count == 1 else "s" }}, newest first ·
+    manifest from {{ m.time(generated_at) }}
+    {% if not settings.studio_clip_root %}· paths are relative to the studio's clip folder{% endif %}
+  </p>
+</div>
+
+<form class="filters" method="get" action="/review/clips" id="clips-filters">
+  <label class="field-inline">Prova
+    <select name="prova">
+      <option value="">Any</option>
+      {% if chosen_prova and chosen_prova not in prova_options %}<option selected>{{ chosen_prova }}</option>{% endif %}
+      {% for prova in prova_options %}
+      <option {% if prova == chosen_prova %}selected{% endif %}>{{ prova }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <noscript><button type="submit">Apply</button></noscript>
+</form>
+
+{% if rows %}
+<div class="table-wrap">
+  <table class="data clips">
+    <thead>
+      <tr><th>Delivered</th><th>Prova</th><th class="num">Car</th><th>Team</th><th class="num">Pass</th><th>Studio path</th></tr>
+    </thead>
+    <tbody>
+      {% for clip, path in rows %}
+      <tr>
+        <td>{{ m.time(clip.delivered_at) }}</td>
+        <td>{{ clip.prova }}</td>
+        <td class="num">{{ clip.car_number }}</td>
+        <td>{{ clip.team_name or "—" }}</td>
+        <td class="num">{{ clip.passagem }}</td>
+        <td>
+          <span class="path">
+            <code>{{ path }}</code>
+            <button type="button" class="copy" data-copy="{{ path }}">Copy</button>
+            <a href="/review/jobs/{{ clip.job_id }}" title="Open the job">job</a>
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty">No delivered clips{% if chosen_prova %} for {{ chosen_prova }}{% endif %} yet.</p>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ static('js/clips.js') }}"></script>{% endblock %}

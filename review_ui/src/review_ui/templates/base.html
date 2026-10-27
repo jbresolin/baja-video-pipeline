@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}Review{% endblock %} · Baja pipeline</title>
+  <link rel="stylesheet" href="{{ static('css/app.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/review/">Baja pipeline</a>
+    <nav class="nav" aria-label="Sections">
+      <a href="/review/" {% if active_nav == "queue" %}aria-current="page"{% endif %}>Queue</a>
+      <a href="/review/clips" {% if active_nav == "clips" %}aria-current="page"{% endif %}>Clips</a>
+      <a href="/review/fleet" {% if active_nav == "fleet" %}aria-current="page"{% endif %}>Fleet</a>
+    </nav>
+    <span class="topbar-right">
+      <span class="live" id="live-status" hidden></span>
+      {% if reviewer %}<span class="who" title="Signed in as {{ reviewer }}">{{ reviewer }}</span>{% endif %}
+    </span>
+  </header>
+  <main class="page {% block main_class %}{% endblock %}">
+    <div id="flash" class="flash" role="status" aria-live="polite" hidden></div>
+    {% block content %}{% endblock %}
+  </main>
+  <script type="module" src="{{ static('js/page.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

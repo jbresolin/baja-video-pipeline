@@ -1,0 +1,40 @@
+{% import "macros.html" as m %}
+<p class="count">{{ items|length }} job{{ "" if items|length == 1 else "s" }}</p>
+{% if items %}
+<ol class="job-list">
+  {% for item in items %}
+  <li>
+    <a class="job-row" href="/review/jobs/{{ item.id }}" data-job-id="{{ item.id }}">
+      <span class="thumb">
+        {% if item.thumbnail_url %}
+        <img src="{{ media_url(item.thumbnail_url) }}" alt="" loading="lazy" width="160" height="90">
+        {% else %}
+        <span class="thumb-empty">no thumbnail</span>
+        {% endif %}
+        {% if item.duration_s is not none %}<span class="thumb-duration">{{ item.duration_s|duration }}</span>{% endif %}
+      </span>
+      <span class="row-main">
+        <span class="row-title">
+          {% if item.prova %}{{ item.prova }} · car {{ m.or_unknown(item.car_number) }} · pass {{ m.or_unknown(item.passagem) }}{% else %}Not reviewed yet{% endif %}
+        </span>
+        <span class="row-meta">
+          {{ m.time(item.created_at, relative=true) }} · {{ item.sender_name or "unknown sender" }} · {{ item.size_bytes|bytes }} · <code>{{ item.id|short_id }}</code>
+        </span>
+        {% if item.failure_message %}
+        <span class="row-note error">{{ item.failure_message }}</span>
+        {% elif item.waiting_reason %}
+        <span class="row-note warning">{{ item.waiting_reason }}</span>
+        {% endif %}
+      </span>
+      <span class="row-badges">
+        {{ m.state_badge(item.state) }}
+        {% if item.low_res %}<span class="badge flag" title="Arrived as a WhatsApp video (recompressed)">low-res</span>{% endif %}
+        {% if not item.proxy_available %}<span class="badge muted">no proxy</span>{% endif %}
+      </span>
+    </a>
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<p class="empty">Nothing here. New videos appear automatically.</p>
+{% endif %}
