@@ -25,6 +25,7 @@ flows and nothing else (Tailscale denies everything by default).
 | 22/tcp | VPS (`tag:server`) | SSH over the tailnet | admins only |
 | 8710/tcp | each worker (`tag:worker`) | Worker file server (peer raw fetches) | `tag:worker` |
 | 8720/tcp | streaming PC (`tag:studio`) | Studio receiver (clip push) | `tag:worker` |
+| 8700/tcp | every worker and the studio, **127.0.0.1 only** | Worker setup/status page (design §17). Not on the tailnet, so no grant and no firewall rule | the local user only |
 
 | Tag | Applied to | Enrolled by |
 | --- | --- | --- |

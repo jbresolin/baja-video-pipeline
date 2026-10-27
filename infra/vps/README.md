@@ -174,7 +174,8 @@ sudo docker exec "$EVO_C" wget -qO- --header "apikey: $EVO_KEY" "http://127.0.0.
 ```
 
 * `id` = the instance id (`INSTANCE_ID=<id>`). `name` → `BVP_EVOLUTION_INSTANCE`.
-  `token` → `BVP_EVOLUTION_INSTANCE_TOKEN` in the VPS `.env`.
+  `token` → `BVP_EVOLUTION_API_KEY` in the VPS `.env` (the orchestrator
+  still accepts the older name `BVP_EVOLUTION_INSTANCE_TOKEN`).
 * The webhook JSON [R13] is the old consumer's config. It comes over with
   Postgres and gets replaced in §3.8/§6.2. Just keep a copy.
 
@@ -201,13 +202,25 @@ load it into the shell with `set -a; . ./.env; set +a`.
 ### 2.1 Checkout and directories
 
 `/srv/pipeline` is `BVP_DATA_DIR` (design §15). The orchestrator mounts it
-read-write and Caddy read-only.
+read-write and Caddy read-only. The orchestrator and review-UI images run
+as **uid/gid 10001**, so the data folders and the two files the
+orchestrator reads belong to that user (design §17):
 
 ```bash
 sudo git clone https://github.com/jbresolin/baja-video-pipeline.git /opt/baja
 cd /opt/baja/infra/vps
-sudo mkdir -p /srv/pipeline/inbox /srv/pipeline/proxies /srv/pipeline/thumbs /srv/pipeline/outbox /srv/pipeline/db /var/lib/baja /root/evo-migration
+sudo install -d -o 10001 -g 10001 -m 750 /srv/pipeline
+sudo install -d -o 10001 -g 10001 /srv/pipeline/{inbox,proxies,thumbs,outbox,db}
+# Reviewers (filled in §2.6) and teams (optional CSV, see below), owned by 10001.
+[ -e /srv/pipeline/reviewers.txt ] || sudo install -o 10001 -g 10001 -m 640 /dev/null /srv/pipeline/reviewers.txt
+[ -e /srv/pipeline/teams.csv ] || echo 'car_number,team_name,school' | sudo install -o 10001 -g 10001 -m 640 /dev/stdin /srv/pipeline/teams.csv
+sudo mkdir -p /var/lib/baja /root/evo-migration
 ```
+
+`teams.csv` (`BVP_TEAMS_FILE`) is one `car_number,team_name,school` line per
+car; the orchestrator re-reads it when it changes. It may stay with only
+the header: team names then come from `BVP_BAJA_APP_URL`, or stay empty.
+Caddy runs as root inside its container and reads both files read-only.
 
 ### 2.2 Kernel settings, swap, journald
 
@@ -304,15 +317,15 @@ Then validate. This must print nothing:
 sudo docker compose config -q
 ```
 
-### 2.6 Reviewers file (`/srv/pipeline/reviewers.htpasswd`)
+### 2.6 Reviewers file (`/srv/pipeline/reviewers.txt`)
 
 One file of named reviewers, read by **Caddy** (basic auth on `/review*`,
 `/proxies/*`, `/thumbs/*`) and by the **orchestrator** (`BVP_REVIEWERS_FILE`,
 `reviewerBasic` in `docs/api.md`) (design §15).
 
 **Format: one `username bcrypt-hash` pair per line, separated by a space.**
-`#` starts a comment line. This is htpasswd-*style*, but **not** Apache's
-`user:hash`. Caddy imports the file straight into its `basic_auth` block,
+`#` starts a comment line. This is **not** Apache's htpasswd `user:hash`
+format (hence the `.txt` name, design §17). Caddy imports the file straight into its `basic_auth` block,
 and a colon line fails to load ("username and password cannot be empty").
 Usernames must not contain spaces.
 
@@ -320,8 +333,9 @@ Add a reviewer:
 
 ```bash
 HASH=$(sudo docker run --rm caddy:2.11.7-alpine caddy hash-password --plaintext 'their-password')
-echo "ana $HASH" | sudo tee -a /srv/pipeline/reviewers.htpasswd
-sudo chmod 640 /srv/pipeline/reviewers.htpasswd
+echo "ana $HASH" | sudo tee -a /srv/pipeline/reviewers.txt
+sudo chown 10001:10001 /srv/pipeline/reviewers.txt
+sudo chmod 640 /srv/pipeline/reviewers.txt
 sudo docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
 ```
 
@@ -549,8 +563,10 @@ network**. The webhook never leaves the host and has no public route.
 
 ### 6.2 Enable it when the orchestrator is deployed (LIVESTACK-24)
 
-1. Set `ORCHESTRATOR_IMAGE` in `.env` and start it:
-   `sudo docker compose --profile orchestrator up -d orchestrator`
+1. Set `ORCHESTRATOR_IMAGE` and `REVIEW_UI_IMAGE` in `.env` (CI publishes
+   `ghcr.io/jbresolin/baja-orchestrator` and `…/baja-review-ui` with tags
+   `main`, the short commit SHA and `v*`) and start both:
+   `sudo docker compose --profile orchestrator up -d orchestrator review-ui`
 2. Point the instance webhook at it, with the shared secret:
    ```bash
    curl -sS -X POST "https://$EVO_DOMAIN/webhook/set/$BVP_EVOLUTION_INSTANCE" \
@@ -683,7 +699,7 @@ the Caddy-side facts live here. If one of them changes, update the
 
 | Listener | Reachable from | Routes |
 | --- | --- | --- |
-| `:443` `{$PIPELINE_DOMAIN}` | internet | `/review*` → orchestrator (reviewer basic auth); `/proxies/*`, `/thumbs/*` → static (reviewer basic auth); `POST /enroll` → orchestrator (no auth, 16 KB body cap); `/` → redirect to `/review/`; anything else 404 |
+| `:443` `{$PIPELINE_DOMAIN}` | internet | `/review*` → review-ui:8001 (reviewer basic auth); `/proxies/*`, `/thumbs/*` → static (reviewer basic auth); `POST /enroll` → orchestrator (no auth, 16 KB body cap); `/` → redirect to `/review/`; anything else 404 |
 | `:443` `{$EVO_DOMAIN}` | internet | Evolution API (`apikey` header required), `/manager` + `/assets/*` (manager basic auth) |
 | `${TAILSCALE_IP}:8080` | tailnet only | `/inbox/*`, `/outbox/*` → static behind `forward_auth`; everything else → orchestrator |
 | `orchestrator:8000` | compose network only | Caddy and Evolution's webhook (`POST /intake/evolution-webhook`) |
@@ -696,7 +712,7 @@ the Caddy-side facts live here. If one of them changes, update the
 log. Any other status is returned to the worker unchanged.
 
 **Reviewer requests**: Caddy checks basic auth against
-`/srv/pipeline/reviewers.htpasswd` (format in §2.6), then proxies `/review*`
+`/srv/pipeline/reviewers.txt` (format in §2.6), then proxies `/review*` to `review-ui:8001`
 with the client's `Authorization` header unchanged, plus `X-Reviewer:
 <username>`.
 

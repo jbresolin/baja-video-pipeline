@@ -93,7 +93,7 @@
 	# reviewer: README §2.6. Caddy reads it at (re)load time.
 	@reviewer_area path /review /review/* /proxies/* /thumbs/*
 	basic_auth @reviewer_area {
-		import /srv/pipeline/reviewers.htpasswd
+		import /srv/pipeline/reviewers.txt
 	}
 
 	# Proxies (480p review copies, design §6): /proxies/<job_id>.mp4

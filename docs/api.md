@@ -33,6 +33,7 @@ types**; this page explains the behaviour around them. Design background:
 | 8000 | VPS, compose network only | orchestrator (uvicorn) |
 | 8710 | every master/worker, tailnet | worker file server (`GET /raw/{job_id}`) |
 | 8720 | studio, tailnet | studio receiver (`POST /receive/{job_id}`) |
+| 8700 | every worker/studio, 127.0.0.1 only (not on the tailnet) | worker setup/status page |
 
 ## 2. Authentication
 
