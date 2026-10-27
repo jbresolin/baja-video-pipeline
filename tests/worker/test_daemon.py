@@ -2,18 +2,26 @@
 
 Unlike the other tests, these run the real background threads (heartbeat,
 dispatcher, stages), so they wait for things with a short polling helper.
-The HTTP servers are not started (no ports in tests); the "network" is
-still the in-memory RoutingTransport.
+The HTTP servers are not started here; the "network" is still the
+in-memory RoutingTransport. test_daemon_in_process.py covers the servers
+(on 127.0.0.1 only) and the knobs an in-process end-to-end test uses.
 """
 
 import threading
 import time
 
 from shared.models import ProcessTask, WorkerRole
-from tests.worker.fake_orchestrator import BASE_URL, BEARER_TOKEN, WORKER_ID, FakeOrchestrator
+from tests.worker.conftest import OUTBOX_DELIVERY
+from tests.worker.fake_orchestrator import (
+    BASE_URL,
+    BEARER_TOKEN,
+    TAILNET_URL,
+    WORKER_ID,
+    FakeOrchestrator,
+)
 from tests.worker.fakes import FakeMediaTools, RoutingTransport
 from worker.config import WorkerConfig
-from worker.daemon import Daemon
+from worker.daemon import Daemon, DaemonTimings
 from worker.status import StatusBoard
 
 
@@ -26,18 +34,38 @@ def wait_until(condition, timeout=10.0) -> bool:
     return False
 
 
-def start_daemon(tmp_path, media):
-    orchestrator = FakeOrchestrator(tmp_path / "vps")
+def start_daemon(
+    tmp_path,
+    media,
+    *,
+    role=WorkerRole.WORKER,
+    start_servers=False,
+    timings: DaemonTimings | None = None,
+    before_start=None,
+    **config_changes,
+):
+    """Build and start a daemon against a fake orchestrator.
+
+    The daemon's "network" (daemon.env.transfer_transport) is an in-memory
+    RoutingTransport. `before_start(config)` runs just before start(), to
+    put files in the working folder as an earlier run would have.
+    """
+    orchestrator = FakeOrchestrator(tmp_path / "vps", role=role)
     network = RoutingTransport()
     network.add_app(BASE_URL, orchestrator.app)
+    network.add_app(TAILNET_URL, orchestrator.app)
     config = WorkerConfig(
         orchestrator_url=BASE_URL,
+        tailnet_base_url=TAILNET_URL,
         worker_id=WORKER_ID,
         bearer_token=BEARER_TOKEN,
-        role=WorkerRole.WORKER,
+        role=role,
         working_folder=tmp_path / "work",
         tailnet_address="worker.test",
+        **config_changes,
     )
+    if before_start is not None:
+        before_start(config)
     shutdown = threading.Event()
     daemon = Daemon(
         config,
@@ -46,7 +74,8 @@ def start_daemon(tmp_path, media):
         shutdown,
         media=media,
         transport=network,
-        start_servers=False,
+        start_servers=start_servers,
+        timings=timings,
     )
     daemon.start()
     return orchestrator, daemon
@@ -67,6 +96,7 @@ def process_task(job) -> ProcessTask:
         show_pass=True,
         clip_relative_path="enduro/7/1.mp4",
         outbox_upload_url=f"{BASE_URL}/jobs/{job.job_id}/clip",
+        delivery=OUTBOX_DELIVERY,
     )
 
 

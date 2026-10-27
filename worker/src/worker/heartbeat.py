@@ -36,7 +36,10 @@ class Heartbeater:
         tailnet_address: str | None,
         file_server_port: int,
         receiver_port: int,
+        fixed_interval_seconds: float | None = None,
     ) -> None:
+        """`fixed_interval_seconds` overrides the orchestrator's
+        heartbeat_interval_s (in-process test runs beat faster)."""
         self._api = api
         self._role = role
         self._storage = storage
@@ -46,7 +49,8 @@ class Heartbeater:
         self._tailnet_address = tailnet_address
         self._file_server_port = file_server_port
         self._receiver_port = receiver_port
-        self.interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS
+        self._fixed_interval_seconds = fixed_interval_seconds
+        self.interval_seconds: float = fixed_interval_seconds or HEARTBEAT_INTERVAL_SECONDS
         # Until the first answer arrives, assume we may take new raws.
         self._accepting_new_raws = threading.Event()
         self._accepting_new_raws.set()
@@ -58,6 +62,11 @@ class Heartbeater:
     def stop_accepting_new_raws(self) -> None:
         """Local override until the next answer (an offered raw did not fit)."""
         self._accepting_new_raws.clear()
+
+    def use_listening_ports(self, file_server_port: int, receiver_port: int) -> None:
+        """The ports actually bound (they differ from the config when it says 0)."""
+        self._file_server_port = file_server_port
+        self._receiver_port = receiver_port
 
     def build_request(self) -> HeartbeatRequest:
         is_studio = self._role == WorkerRole.STUDIO
@@ -87,7 +96,11 @@ class Heartbeater:
 
         self._status.set_now("last heartbeat")
         self._status.set("orchestrator", "connected")
-        self.interval_seconds = answer.heartbeat_interval_s or HEARTBEAT_INTERVAL_SECONDS
+        self.interval_seconds = (
+            self._fixed_interval_seconds
+            or answer.heartbeat_interval_s
+            or HEARTBEAT_INTERVAL_SECONDS
+        )
         for lease_id, lease_status in answer.lease_status.items():
             if lease_status == LeaseHeartbeatStatus.LOST:
                 logger.info("lease %s reported lost", lease_id)
