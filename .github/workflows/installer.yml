@@ -1,0 +1,145 @@
+name: Windows installer
+
+# Builds BajaWorker-Setup-<version>.exe (installer/README.md, MAINTAINERS.md).
+# Releases: push a tag v<installer/VERSION>; the installer is attached to the
+# GitHub Release of that tag. Test builds: run it by hand (workflow_dispatch).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      enroll_url:
+        description: "Public site that routes POST /enroll. Empty = repository variable BVP_ENROLL_URL"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  # Everything that does not need Windows runs on Linux first: the installer
+  # tests and a frozen build of the same entry point.
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install Python and dependencies
+        run: uv sync --locked --group installer
+
+      - name: Install ffmpeg (bundled into the Linux smoke build)
+        run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+
+      - name: Installer tests
+        run: uv run pytest tests/installer
+
+      - name: Frozen build (Linux)
+        run: uv run python installer/build.py --ffmpeg-from-path
+
+      - name: Smoke test the frozen exe
+        run: |
+          installer/dist/BajaWorker/BajaWorker --version
+          installer/dist/BajaWorker/BajaWorker --check
+
+  windows:
+    needs: linux
+    runs-on: windows-latest
+    permissions:
+      contents: write # attach the installer to the release
+    env:
+      ENROLL_URL: ${{ inputs.enroll_url || vars.BVP_ENROLL_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe needs the tags
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.12 and dependencies
+        run: |
+          uv python install 3.12
+          uv sync --locked --group installer
+
+      - name: Releases need an enroll URL and a tag that matches installer/VERSION
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version="$(tr -d '\r\n' < installer/VERSION)"
+          if [ -z "$ENROLL_URL" ]; then
+            echo "::error::Set the repository variable BVP_ENROLL_URL (public /enroll site)"; exit 1
+          fi
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match installer/VERSION ($version)"; exit 1
+          fi
+
+      - name: Warn when a test build has no enroll URL
+        if: env.ENROLL_URL == ''
+        shell: bash
+        run: echo "::warning::No enroll URL; this build's worker.json will not know where to enroll."
+
+      # The pinned payloads never change for a given lock, so cache them.
+      - name: Cache vendor downloads
+        uses: actions/cache@v4
+        with:
+          path: installer/vendor/downloads
+          key: vendor-${{ hashFiles('installer/vendor.lock') }}
+
+      - name: Fetch and verify vendor payloads (SHA-256 from vendor.lock)
+        run: uv run python installer/fetch_vendor.py
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build BajaWorker.exe and the Setup .exe
+        shell: bash
+        run: uv run python installer/build.py --compile-installer ${ENROLL_URL:+--enroll-url "$ENROLL_URL"}
+
+      - name: Smoke test the frozen exe
+        shell: pwsh
+        run: |
+          $exe = "installer\dist\BajaWorker\BajaWorker.exe"
+          & $exe --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $exe --check
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Install, check, upgrade and uninstall the Setup .exe
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem installer\output\BajaWorker-Setup-*.exe).FullName
+          ./installer/ci/smoke_install.ps1 -Setup $setup
+
+      - name: Checksum
+        shell: bash
+        run: |
+          cd installer/output
+          sha256sum BajaWorker-Setup-*.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BajaWorker-Setup
+          path: |
+            installer/output/BajaWorker-Setup-*.exe
+            installer/output/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Attach to the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" \
+              --notes "Instalador do Baja Worker para Windows. Veja installer/README.md."
+          fi
+          gh release upload "$GITHUB_REF_NAME" installer/output/BajaWorker-Setup-*.exe \
+            installer/output/SHA256SUMS.txt --clobber
