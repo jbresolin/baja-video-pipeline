@@ -4,8 +4,10 @@ In production each runs every few seconds on asyncio (background/runner.py).
 Here we call a single pass directly, so the tests are fast and exact.
 """
 
+import asyncio
 import os
 
+from orchestrator.background.runner import PeriodicTask, run_periodically
 from orchestrator.background.sweepers import (
     clean_inbox_once,
     clean_outbox_once,
@@ -117,3 +119,26 @@ def test_outbox_cleanup_deletes_files_nobody_needs(harness):
     result = clean_outbox_once(harness.context)
     assert sorted(result.deleted_files) == sorted([orphan.name, old_partial.name])
     assert list(outbox.iterdir()) == []
+
+
+def test_a_failing_pass_does_not_stop_the_periodic_loop(harness):
+    # The runner calls run_once again and again. If one pass raises, it
+    # must log it and carry on; a crashed loop would silently stop, e.g.,
+    # leases from ever expiring.
+    calls = []
+
+    def flaky_pass(context):
+        calls.append(len(calls))
+        if len(calls) == 1:
+            raise RuntimeError("first pass fails")
+
+    async def run_three_passes():
+        task = asyncio.create_task(
+            run_periodically(PeriodicTask("flaky", 0, flaky_pass), harness.context)
+        )
+        while len(calls) < 3:
+            await asyncio.sleep(0.01)
+        task.cancel()
+
+    asyncio.run(asyncio.wait_for(run_three_passes(), timeout=5))
+    assert len(calls) >= 3

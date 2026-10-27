@@ -1,0 +1,11 @@
+# Used by BuildKit for orchestrator/Dockerfile only (context = repo root).
+**/.venv
+**/__pycache__
+**/*.pyc
+.git
+.scratch
+.pytest_cache
+.ruff_cache
+data
+*.mp4
+*.mov
