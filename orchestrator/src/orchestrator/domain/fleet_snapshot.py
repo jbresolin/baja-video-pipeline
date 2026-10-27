@@ -11,7 +11,12 @@ from orchestrator.db.database import from_db_time
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.repositories import workers as workers_repo
 from shared.models import TaskKind, WorkerRole
-from shared.protocol import DEFAULT_WORKER_FILE_SERVER_PORT, LEASE_TTL_SECONDS
+from shared.protocol import (
+    DEFAULT_STUDIO_RECEIVER_PORT,
+    DEFAULT_WORKER_FILE_SERVER_PORT,
+    LEASE_TTL_SECONDS,
+    STUDIO_ONLINE_WINDOW_SECONDS,
+)
 
 # A worker with less free space than this under its cap takes no new raws
 # (design §9). Two maximum-size WhatsApp documents (~2 GB each).
@@ -73,6 +78,28 @@ class FleetSnapshot:
     def is_master(self, worker_id: str) -> bool:
         row = self.workers_by_id.get(worker_id)
         return row is not None and row["role"] == WorkerRole.MASTER
+
+    def studio_receive_url(self, job_id: str) -> str | None:
+        """Where to push a clip right now, or None when no studio is online.
+
+        "Online" for delivery: heartbeated within STUDIO_ONLINE_WINDOW_SECONDS
+        and reported a tailnet address. With several studios (not expected),
+        the one heard from most recently wins.
+        """
+        window = timedelta(seconds=STUDIO_ONLINE_WINDOW_SECONDS)
+        best_row, best_heartbeat = None, None
+        for row in self.workers_by_id.values():
+            last_heartbeat = from_db_time(row["last_heartbeat"])
+            if row["role"] != WorkerRole.STUDIO or not row["tailnet_address"]:
+                continue
+            if last_heartbeat is None or self.now - last_heartbeat >= window:
+                continue
+            if best_heartbeat is None or last_heartbeat > best_heartbeat:
+                best_row, best_heartbeat = row, last_heartbeat
+        if best_row is None:
+            return None
+        port = best_row["receiver_port"] or DEFAULT_STUDIO_RECEIVER_PORT
+        return f"http://{best_row['tailnet_address']}:{port}/receive/{job_id}"
 
     def any_master_online(self) -> bool:
         return any(
