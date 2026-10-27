@@ -594,11 +594,13 @@ paths:
       tags:
       - worker loop
       summary: Report an unrecoverable task error (a reviewer decides retry or discard)
-      description: "Ends the lease named in the body (409 `lease_lost` if it is gone).\n\n* Under a `process`\
-        \ lease: job claimed → failed, `Job.failure` set; the\n  review UI shows the message and offers\
-        \ retry or discard.\n* Under a `download_raw`/`make_proxy` lease: the job keeps its state\n  (design\
-        \ §4 allows `failed` only from `claimed`), `Job.failure` and\n  `waiting_reason` are set, and\
-        \ that task is not offered to the same\n  worker for that job again."
+      description: "Ends the lease named in the body (409 `lease_lost` if it is gone).\n\n* From `received`,\
+        \ `proxy_ready` (any task) or `claimed` (the `process`\n  lease): job → failed, `Job.failure`\
+        \ set and `Job.failed_from` records\n  the state it failed from; other leases on the job are revoked.\
+        \ The\n  review UI shows the message and offers retry (back to `failed_from`,\n  `claimed` → `ready`)\
+        \ or discard.\n* Any other state (e.g. a second holder's download, or a proxy\n  re-render after\
+        \ review): the job keeps its state, `Job.failure` and\n  `waiting_reason` are set, and that task\
+        \ is not offered to the same\n  worker for that job again."
       operationId: report_failure_jobs__job_id__failed_post
       security:
       - workerBearer: []
@@ -1141,11 +1143,13 @@ paths:
         \ → ready; any\n  process lease is revoked (the worker sees `lost` on its next heartbeat).\n*\
         \ `action: discard` from awaiting_review/ready/failed → discarded (final):\n  leases revoked,\
         \ the VPS inbox copy deleted, and holders get the job in\n  `deletable_job_ids` on their next\
-        \ heartbeat. Fields are not required.\n* `action: retry` from failed → ready; clears `Job.failure`.\
-        \ Fields and\n  cuts may be corrected in the same request.\n* Other state/action combinations\
-        \ → 409 `illegal_transition`.\n* ready/reprocess with prova, car_number, passagem or a cut missing\
-        \ → 422\n  `missing_review_fields` (details.missing lists them).\n* `team_name` is resolved from\
-        \ car_number when it changes.\n* cut_out_s beyond the known duration → 422 `validation_error`."
+        \ heartbeat. Fields are not required.\n* `action: retry` from failed → `Job.failed_from` (`received`,\n\
+        \  `proxy_ready`, or `ready` for a job that failed while `claimed`);\n  clears `Job.failure` and\
+        \ `failed_from`. Fields and cuts may be\n  corrected in the same request; they are required only\
+        \ when the\n  target is `ready`.\n* Other state/action combinations → 409 `illegal_transition`.\n\
+        * ready/reprocess with prova, car_number, passagem or a cut missing → 422\n  `missing_review_fields`\
+        \ (details.missing lists them).\n* `team_name` is resolved from car_number when it changes.\n\
+        * cut_out_s beyond the known duration → 422 `validation_error`."
       operationId: update_review_jobs__job_id__review_patch
       security:
       - reviewerBasic: []
@@ -2404,6 +2408,10 @@ components:
         failure:
           anyOf:
           - $ref: '#/components/schemas/JobFailure'
+          - type: 'null'
+        failed_from:
+          anyOf:
+          - $ref: '#/components/schemas/JobState'
           - type: 'null'
         waiting_reason:
           anyOf:

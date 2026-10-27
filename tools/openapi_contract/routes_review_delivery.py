@@ -85,8 +85,11 @@ def update_review(job_id: str, body: ReviewUpdate) -> Job:
     * `action: discard` from awaiting_review/ready/failed → discarded (final):
       leases revoked, the VPS inbox copy deleted, and holders get the job in
       `deletable_job_ids` on their next heartbeat. Fields are not required.
-    * `action: retry` from failed → ready; clears `Job.failure`. Fields and
-      cuts may be corrected in the same request.
+    * `action: retry` from failed → `Job.failed_from` (`received`,
+      `proxy_ready`, or `ready` for a job that failed while `claimed`);
+      clears `Job.failure` and `failed_from`. Fields and cuts may be
+      corrected in the same request; they are required only when the
+      target is `ready`.
     * Other state/action combinations → 409 `illegal_transition`.
     * ready/reprocess with prova, car_number, passagem or a cut missing → 422
       `missing_review_fields` (details.missing lists them).

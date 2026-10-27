@@ -140,8 +140,9 @@ States and allowed moves live in `shared.state_machine`
 
 ```
 received → proxy_ready → awaiting_review → ready → claimed (lease) → uploaded → delivered → done
-                              │               │        │
-                              └── discarded ◄─┘        └── failed ──► ready (retry) | discarded
+    │           │                 │               │        │
+    └───────────┴─────────────────┼───────────────┼────────┴── failed ──► failed_from (retry) | discarded
+                                  └── discarded ◄─┘
 
 proxy_ready → awaiting_review is automatic.
 back to ready also from: claimed (lease expired/revoked), and claimed | uploaded |
@@ -159,16 +160,18 @@ direct push: the studio ACK moves claimed → uploaded → delivered in one call
 | claimed → ready | process lease expired or revoked |
 | claimed / uploaded / delivered / done → ready | review `action: reprocess` |
 | awaiting_review / ready → discarded | review `action: discard` |
-| claimed → failed | `POST /jobs/{id}/failed` under the process lease |
-| failed → ready | review `action: retry` |
+| received / proxy_ready / claimed → failed | `POST /jobs/{id}/failed` (records `failed_from`) |
+| failed → received / proxy_ready / ready | review `action: retry` (back to `failed_from`; claimed → ready) |
 | failed → discarded | review `action: discard` |
 
 * **`discarded`** is final. The orchestrator revokes any lease, deletes
   the VPS inbox copy and lists the job in each holder's heartbeat answer
   (`deletable_job_ids`), so holders may delete their raw.
 * **`failed`**: `Job.failure` holds who failed, under which task, the
-  message and exit code; the review queue shows it (`failure_message`).
-  `retry` clears it.
+  message and exit code; `Job.failed_from` the state it failed from. The
+  review queue shows it (`failure_message`). `retry` returns the job to
+  `failed_from` (a job that failed while `claimed` goes to `ready`) and
+  clears both.
 * **Holders** are tracked beside the state (`Job.holders`): the raw is
   downloaded by the master plus one more worker while the job moves on.
   The first holder to confirm gets `make_proxy`, so the job can reach
@@ -217,10 +220,12 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
 
 **Failures.** `POST /jobs/{id}/failed {lease_id, message, exit_code}` is
 for errors that will not go away by retrying the same input (corrupt raw,
-ffmpeg exits with an error). Under a `process` lease the job goes
-claimed → failed. Under `download_raw`/`make_proxy` the job keeps its state
-(§4 has no `failed` from there), `Job.failure` and `waiting_reason` are
-set, and that task is not offered to the same worker for that job again.
+ffmpeg exits with an error). A job in `received`, `proxy_ready` or
+`claimed` goes to `failed` (with `failed_from`); its other leases are
+revoked. In any other state (a second holder's late download, a proxy
+re-render after review) the job keeps its state, `Job.failure` and
+`waiting_reason` are set, and that task is not offered to the same worker
+for that job again.
 Network trouble is not a failure: retry, or let the lease expire.
 
 **Direct push and the process lease.** After the studio answered
@@ -359,7 +364,7 @@ the sender go through Evolution `sendText`.
 | `ready` | `awaiting_review` | → `ready`; needs all fields |
 | `reprocess` | `claimed`, `uploaded`, `delivered`, `done` | → `ready`; revokes any process lease; needs all fields |
 | `discard` | `awaiting_review`, `ready`, `failed` | → `discarded` (final); fields not needed |
-| `retry` | `failed` | → `ready`; clears `failure`; needs all fields (may be corrected in the same call) |
+| `retry` | `failed` | → `failed_from` (`claimed` → `ready`); clears `failure`; needs all fields only when the target is `ready` (may be corrected in the same call) |
 
 Other combinations → 409 `illegal_transition`. "All fields" = `prova`,
 `car_number`, `passagem`, `cut_in_s`, `cut_out_s` set after the update,

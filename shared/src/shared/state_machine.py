@@ -9,10 +9,23 @@ from shared.models.enums import JobState
 
 # For each state, the states a job may move to next, with the reason.
 ALLOWED_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
-    # A holder uploaded the proxy.
-    JobState.RECEIVED: frozenset({JobState.PROXY_READY}),
-    # The orchestrator puts the job in the review queue.
-    JobState.PROXY_READY: frozenset({JobState.AWAITING_REVIEW}),
+    JobState.RECEIVED: frozenset(
+        {
+            # A holder uploaded the proxy.
+            JobState.PROXY_READY,
+            # A holder reported the raw unusable (corrupt file, ffprobe or
+            # ffmpeg error) under download_raw or make_proxy.
+            JobState.FAILED,
+        }
+    ),
+    JobState.PROXY_READY: frozenset(
+        {
+            # The orchestrator puts the job in the review queue.
+            JobState.AWAITING_REVIEW,
+            # Same as from received: a holder reported an unrecoverable error.
+            JobState.FAILED,
+        }
+    ),
     JobState.AWAITING_REVIEW: frozenset(
         {
             # A reviewer saved the cut and fields with action "ready".
@@ -42,7 +55,10 @@ ALLOWED_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
     ),
     JobState.FAILED: frozenset(
         {
-            # A reviewer chose "retry".
+            # A reviewer chose "retry": the job goes back to where it failed
+            # (Job.failed_from), see retry_target_for.
+            JobState.RECEIVED,
+            JobState.PROXY_READY,
             JobState.READY,
             # A reviewer chose "discard".
             JobState.DISCARDED,
@@ -82,6 +98,26 @@ DISCARDABLE_STATES: frozenset[JobState] = frozenset(
 
 # States from which a reviewer's "retry" action is accepted.
 RETRYABLE_STATES: frozenset[JobState] = frozenset({JobState.FAILED})
+
+# States a worker failure can come from (design §4). Job.failed_from is one of them.
+FAILABLE_STATES: frozenset[JobState] = frozenset(
+    {JobState.RECEIVED, JobState.PROXY_READY, JobState.CLAIMED}
+)
+
+
+def retry_target_for(failed_from: JobState) -> JobState:
+    """Where "retry" sends a failed job, given the state it failed from.
+
+    received and proxy_ready go straight back, so the holders are offered
+    the download/proxy task again. claimed goes back to ready, not claimed:
+    a claimed job without a worker's lease would be stuck, and ready is the
+    queue from which a holder claims it again.
+    """
+    if failed_from not in FAILABLE_STATES:
+        raise ValueError(f"a job cannot have failed from '{failed_from.value}'")
+    if failed_from == JobState.CLAIMED:
+        return JobState.READY
+    return failed_from
 
 
 class IllegalTransitionError(ValueError):
