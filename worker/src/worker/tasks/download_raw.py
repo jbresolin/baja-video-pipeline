@@ -5,10 +5,15 @@ else each of `fallback_download_urls` (peers on 8710, no token), with
 shared.http_transfer.download_file (Range resume + SHA-256 check). Then
 ffprobe it and POST /jobs/{id}/holder-confirm.
 
+`download_url` itself may be a peer: the master is offered every job it
+does not hold, also after the VPS deleted its copy (design §17, "master
+backfill"), and then the only sources are other holders' file servers.
+
 Crash safety: bytes go to the hidden "raws/.<job>.<ext>.part" and are
-renamed only after the hash matched. After a crash or restart the same
-task resumes from that partial file. When the lease is lost the partial
-file is thrown away (docs/api.md §5); on shutdown it is kept.
+renamed only after the hash matched. That partial file is kept when the
+task stops early for any reason (shutdown, crash, lost lease): if the
+same job is offered again, the download resumes from it (design §17).
+Partial files nobody resumed for 24 h are deleted at start (Storage).
 """
 
 import logging
@@ -19,12 +24,23 @@ from urllib.parse import urlsplit
 import httpx
 
 from shared.hashing import sha256_of_file
-from shared.http_transfer import DownloadFailedError, HashMismatchError, download_file
+from shared.http_transfer import (
+    DownloadFailedError,
+    HashMismatchError,
+    download_file,
+    partial_path_for,
+)
 from shared.models import DownloadRawTask, HolderConfirmRequest, MeasurementKind
 from worker.api_client import ApiError
-from worker.leases import ActiveLease, CancelToken, TaskCancelledError
-from worker.media_tools import MediaToolError
-from worker.tasks.environment import TaskAbandonedError, TaskEnvironment, TaskFailedError
+from worker.failures import (
+    SourceHashMismatchError,
+    TaskAbandonedError,
+    TransferGaveUpError,
+    UndecodableInputError,
+    probe_input,
+)
+from worker.leases import ActiveLease, CancelToken
+from worker.tasks.environment import TaskEnvironment
 
 logger = logging.getLogger(__name__)
 
@@ -53,13 +69,12 @@ def run_download_raw(
         raw_path = _already_held_raw(env, task) or _download_from_sources(env, task, cancel)
         cancel.raise_if_cancelled()
         try:
-            info = env.media.probe(raw_path)
-        except MediaToolError as error:
-            # The bytes are exactly what was sent (hash matched): the file
-            # itself is not a usable video. Keep nothing, tell a human.
+            info = probe_input(env.media, raw_path)
+        except UndecodableInputError:
+            # The bytes are exactly what was sent (hash matched), so the
+            # file itself is not a usable video: keep nothing.
             raw_path.unlink(missing_ok=True)
-            message = f"downloaded raw is not a readable video: {error.message}"
-            raise TaskFailedError(message) from error
+            raise
 
         confirm = HolderConfirmRequest(
             lease_id=lease.lease_id,
@@ -98,41 +113,92 @@ def _already_held_raw(env: TaskEnvironment, task: DownloadRawTask) -> Path | Non
     return None
 
 
+def raw_destination_for(env: TaskEnvironment, sources: list[str], job_id: str) -> Path:
+    """Where the raw goes: beside an earlier partial download if there is one.
+
+    Resuming needs the same destination as last time, even when this offer
+    lists other sources (first the inbox "….mp4", later only a peer
+    "…/raw/<job>" with no extension). Otherwise the first source that
+    names an extension decides, else ".bin" (ffmpeg reads the content, not
+    the name).
+    """
+    earlier = env.storage.partial_raw_destination(job_id)
+    if earlier is not None:
+        return earlier
+    for url in sources:
+        extension = raw_extension_from(url)
+        if extension != RAW_EXTENSION_FALLBACK:
+            return env.storage.raw_path(job_id, extension)
+    return env.storage.raw_path(job_id, RAW_EXTENSION_FALLBACK)
+
+
 def _download_from_sources(
     env: TaskEnvironment, task: DownloadRawTask, cancel: CancelToken
 ) -> Path:
+    sources = [task.download_url, *task.fallback_download_urls]
     # Every source writes to the same destination, so a partial file from
     # the inbox can be finished from a peer and vice versa.
-    destination = env.storage.raw_path(task.job_id, raw_extension_from(task.download_url))
-    sources = [task.download_url, *task.fallback_download_urls]
+    destination = raw_destination_for(env, sources, task.job_id)
     wrong_hash_sources = 0
     client = env.transfer_client(cancel)
     for url in sources:
         absolute_url = env.api.absolute_url(url)
-        headers = env.api.auth_headers() if env.api.is_orchestrator_url(absolute_url) else {}
-        logger.info("downloading raw from %s", absolute_url)
+        try:
+            return _download_from_one_source(env, task, client, absolute_url, destination, cancel)
+        except HashMismatchError as error:
+            wrong_hash_sources += 1
+            logger.warning("source %s sent a file with the wrong hash: %s", absolute_url, error)
+        except (DownloadFailedError, httpx.HTTPError) as error:
+            logger.warning("source %s failed: %s", absolute_url, error)
+
+    if wrong_hash_sources == len(sources):
+        raise SourceHashMismatchError(
+            f"every source ({len(sources)}) sent a file whose SHA-256 is not {task.sha256}; "
+            "the raw is probably corrupt at the source"
+        )
+    raise TransferGaveUpError(
+        f"could not download the raw from any of its {len(sources)} source(s)"
+    )
+
+
+def _download_from_one_source(
+    env: TaskEnvironment,
+    task: DownloadRawTask,
+    client: httpx.Client,
+    url: str,
+    destination: Path,
+    cancel: CancelToken,
+) -> Path:
+    """Download (or resume) from `url`; raises what download_file raises.
+
+    TaskCancelledError (lease lost, shutdown) passes straight through and
+    leaves the partial file in place for a later resume.
+
+    A wrong hash after *resuming* may be the fault of our old partial file
+    (e.g. written from a source that changed since), not of this source.
+    download_file has deleted that partial file by then, so one more try
+    from byte 0 tells the two apart before we blame the source.
+    """
+    for attempt in ("resume", "from scratch"):
+        had_partial_file = partial_path_for(destination).exists()
+        logger.info("downloading raw from %s", url)
         started_at = time.monotonic()
         try:
             result = download_file(
                 client,
-                absolute_url,
+                url,
                 destination,
                 task.sha256,
-                headers=headers,
+                headers=env.api.auth_headers_for(url),
                 max_attempts=ATTEMPTS_PER_SOURCE,
+                retry_delay_s=env.settings.transfer_retry_delay_seconds,
                 sleep=cancel.sleep,
             )
-        except TaskCancelledError as cancelled:
-            if cancelled.lease_lost:
-                env.storage.delete_partial_raws(task.job_id)
+        except HashMismatchError:
+            if attempt == "resume" and had_partial_file:
+                logger.warning("resumed download has the wrong hash; trying again from byte 0")
+                continue
             raise
-        except HashMismatchError as error:
-            wrong_hash_sources += 1
-            logger.warning("source %s sent a file with the wrong hash: %s", absolute_url, error)
-            continue
-        except (DownloadFailedError, httpx.HTTPError) as error:
-            logger.warning("source %s failed: %s", absolute_url, error)
-            continue
         env.measurements.record(
             MeasurementKind.DOWNLOAD, result.size_bytes - result.resumed_from_byte, started_at
         )
@@ -142,10 +208,4 @@ def _download_from_sources(
             result.resumed_from_byte,
         )
         return result.path
-
-    if wrong_hash_sources == len(sources):
-        raise TaskFailedError(
-            f"every source ({len(sources)}) sent a file whose SHA-256 is not {task.sha256}; "
-            "the raw is probably corrupt on the server"
-        )
-    raise TaskAbandonedError("no download source is reachable right now")
+    raise AssertionError("unreachable: the second attempt returns or raises")

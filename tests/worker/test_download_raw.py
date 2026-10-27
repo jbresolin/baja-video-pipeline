@@ -2,28 +2,16 @@
 
 Every test offers a DownloadRawTask through the fake orchestrator and runs
 it with `harness.claim_and_run`, which goes through the real dispatcher,
-stage runner and handler.
+stage runner and handler. Partial files, resuming and lost leases are in
+test_download_raw_resume.py.
 """
 
-import httpx
-
 from shared.hashing import sha256_of_bytes
-from shared.http_transfer import partial_path_for
-from shared.models import DownloadRawTask, MeasurementKind
-from tests.worker.conftest import PEER_URL
-from tests.worker.fake_orchestrator import BASE_URL, BEARER_TOKEN
+from shared.models import FailureScope, MeasurementKind, WorkerRole
+from tests.worker.conftest import PEER_URL, build_harness
+from tests.worker.download_offers import download_task
+from tests.worker.fake_orchestrator import BEARER_TOKEN, TAILNET_URL
 from worker.media_tools import MediaToolError
-
-
-def download_task(job, *, inbox: bool = True, fallbacks=()) -> DownloadRawTask:
-    """The offer the orchestrator would send for `job`."""
-    return DownloadRawTask(
-        job_id=job.job_id,
-        sha256=job.sha256,
-        size_bytes=len(job.raw_bytes),
-        download_url=f"{BASE_URL}/inbox/{job.job_id}.mp4" if inbox else f"{PEER_URL}/raw/x",
-        fallback_download_urls=list(fallbacks),
-    )
 
 
 def test_raw_is_downloaded_from_the_inbox_and_holder_confirmed(harness, raw_bytes):
@@ -51,22 +39,28 @@ def test_raw_is_downloaded_from_the_inbox_and_holder_confirmed(harness, raw_byte
     assert measurement.byte_count == len(raw_bytes)
 
 
+def test_inbox_on_the_tailnet_origin_from_enroll_gets_the_token(harness, raw_bytes):
+    # On the VPS the inbox URL in offers starts with Caddy's tailnet
+    # listener (tailnet_base_url from /enroll), which may differ from the
+    # worker's orchestrator_url. It is the second origin allowed the token.
+    job = harness.orchestrator.add_job(raw_bytes)
+    task = download_task(job).model_copy(
+        update={"download_url": f"{TAILNET_URL}/inbox/{job.job_id}.mp4"}
+    )
+
+    harness.claim_and_run(task)
+
+    assert harness.storage.find_raw(job.job_id).read_bytes() == raw_bytes
+    [(_, headers)] = harness.orchestrator.file_requests
+    assert headers["authorization"] == f"Bearer {BEARER_TOKEN}"
+
+
 def test_falls_back_to_a_peer_and_never_sends_it_our_token(harness, raw_bytes):
     # Setup: the inbox no longer has the file (the VPS deleted it after two
     # holders confirmed), but a peer holds it.
     job = harness.orchestrator.add_job(raw_bytes)
     harness.orchestrator.inbox.clear()
     harness.add_peer_holding(job.job_id, raw_bytes)
-    peer_requests = []
-    real_handle = harness.network.handle_request
-
-    def spy(request: httpx.Request) -> httpx.Response:
-        # Remember the headers of every request that goes to the peer.
-        if request.url.host == "peer.test":
-            peer_requests.append(dict(request.headers))
-        return real_handle(request)
-
-    harness.network.handle_request = spy
     task = download_task(job, fallbacks=[f"{PEER_URL}/raw/{job.job_id}"])
 
     harness.claim_and_run(task)
@@ -76,27 +70,69 @@ def test_falls_back_to_a_peer_and_never_sends_it_our_token(harness, raw_bytes):
     assert len(harness.orchestrator.holder_confirms) == 1
     # The peer was asked, and no request to it carried the bearer token:
     # only the orchestrator/Caddy may see it.
+    peer_requests = harness.network.headers_sent_to("peer.test")
     assert peer_requests
     assert all("authorization" not in headers for headers in peer_requests)
 
 
-def test_peer_offline_and_inbox_gone_abandons_without_reporting_failure(harness, raw_bytes):
-    # Setup: inbox empty, and the only fallback peer is not reachable.
+def test_master_takes_a_raw_from_a_peer_when_the_offer_has_no_vps_copy(tmp_path, raw_bytes):
+    # Setup: the master was offline while two volunteers took the raw and
+    # the VPS deleted its copy. The orchestrator now offers the master the
+    # job with a peer as `download_url` and no fallbacks (design §17,
+    # "master backfill"). This replaces the old manifest-based backfill.
+    harness = build_harness(tmp_path, role=WorkerRole.MASTER)
+    job = harness.orchestrator.add_job(raw_bytes)
+    harness.orchestrator.inbox.clear()
+    harness.add_peer_holding(job.job_id, raw_bytes)
+
+    harness.claim_and_run(download_task(job, inbox=False))
+
+    # The master holds a verified copy and told the orchestrator so.
+    held = harness.storage.find_raw(job.job_id)
+    assert held is not None and held.read_bytes() == raw_bytes
+    assert len(harness.orchestrator.holder_confirms) == 1
+    # A peer URL has no file extension, so the raw is stored as ".bin";
+    # ffmpeg reads the content, not the name.
+    assert held.name == f"{job.job_id}.bin"
+    # And no request went anywhere with our token except the orchestrator.
+    assert all("authorization" not in h for h in harness.network.headers_sent_to("peer.test"))
+
+
+def test_no_source_reachable_is_reported_as_this_workers_problem(harness, raw_bytes):
+    # Setup: inbox empty, and the only fallback peer is not reachable. The
+    # orchestrator itself is fine.
     job = harness.orchestrator.add_job(raw_bytes)
     harness.orchestrator.inbox.clear()
 
     harness.claim_and_run(download_task(job, fallbacks=[f"{PEER_URL}/raw/{job.job_id}"]))
 
-    # Network trouble is not a failure (docs/api.md §5): nothing reported,
-    # no raw on disk, and our lease is no longer renewed (it will expire
-    # and the orchestrator offers the download again later).
-    assert harness.orchestrator.failures == []
+    # Network trouble after the retries is "this worker could not do it"
+    # (design §17): reported with scope "worker", so the orchestrator
+    # offers the download to someone else instead of waiting for the
+    # lease to expire.
+    [(_, failure)] = harness.orchestrator.failures
+    assert failure.scope == FailureScope.WORKER
     assert harness.orchestrator.holder_confirms == []
     assert harness.storage.find_raw(job.job_id) is None
     assert harness.leases.ids() == []
 
 
-def test_wrong_hash_from_every_source_is_reported_as_failed(harness, raw_bytes):
+def test_master_lets_the_lease_expire_instead_of_reporting_network_trouble(tmp_path, raw_bytes):
+    # The master must end up holding every raw (design §4). A "worker"
+    # report would exclude it from this job's download until a reviewer
+    # acts, so for network trouble it lets the lease expire instead and
+    # the orchestrator offers the download again later.
+    harness = build_harness(tmp_path, role=WorkerRole.MASTER)
+    job = harness.orchestrator.add_job(raw_bytes)
+    harness.orchestrator.inbox.clear()
+
+    harness.claim_and_run(download_task(job, fallbacks=[f"{PEER_URL}/raw/{job.job_id}"]))
+
+    assert harness.orchestrator.failures == []
+    assert harness.leases.ids() == []  # no longer renewed: it will expire
+
+
+def test_wrong_hash_from_every_source_is_reported_as_the_jobs_problem(harness, raw_bytes):
     # Setup: the inbox file is corrupt (one byte changed), so its SHA-256
     # never matches what the job says.
     job = harness.orchestrator.add_job(raw_bytes)
@@ -104,16 +140,31 @@ def test_wrong_hash_from_every_source_is_reported_as_failed(harness, raw_bytes):
 
     harness.claim_and_run(download_task(job))
 
-    # Retrying the same bytes cannot help, so a human must look: failed.
+    # Every worker would get the same wrong bytes: the job fails at once
+    # (scope "job") and a human looks at it.
     [(failed_job_id, failure)] = harness.orchestrator.failures
     assert failed_job_id == job.job_id
+    assert failure.scope == FailureScope.JOB
     assert "SHA-256" in failure.message
     # And no corrupt file was left behind, visible or partial.
     assert harness.storage.find_raw(job.job_id) is None
     assert list(harness.storage.raws_dir.iterdir()) == []
 
 
-def test_unreadable_video_is_deleted_and_reported(harness, raw_bytes):
+def test_wrong_hash_at_one_source_and_an_offline_peer_blames_the_network(harness, raw_bytes):
+    # Only the inbox answered (with bad bytes); the peer could not be
+    # asked. That does not prove the raw is bad everywhere, so the report
+    # says "worker", not "job".
+    job = harness.orchestrator.add_job(raw_bytes)
+    harness.orchestrator.inbox[f"{job.job_id}.mp4"] = b"X" + raw_bytes[1:]
+
+    harness.claim_and_run(download_task(job, fallbacks=[f"{PEER_URL}/raw/{job.job_id}"]))
+
+    [(_, failure)] = harness.orchestrator.failures
+    assert failure.scope == FailureScope.WORKER
+
+
+def test_unreadable_video_is_deleted_and_reported_as_the_jobs_problem(harness, raw_bytes):
     # Setup: the bytes arrive fine, but ffprobe cannot read them.
     job = harness.orchestrator.add_job(raw_bytes)
     harness.media.probe_error = MediaToolError("ffprobe cannot read the file: Invalid data", 1)
@@ -122,29 +173,27 @@ def test_unreadable_video_is_deleted_and_reported(harness, raw_bytes):
 
     [(_, failure)] = harness.orchestrator.failures
     assert "not a readable video" in failure.message
+    assert failure.scope == FailureScope.JOB
     assert harness.storage.find_raw(job.job_id) is None
 
 
-def test_download_resumes_from_the_partial_file_after_a_crash(harness, raw_bytes):
-    # Setup: an earlier run crashed after receiving the first 80,000 bytes.
-    # They sit in the hidden partial file, exactly where download_file
-    # leaves them.
+def test_disk_error_while_downloading_is_reported_as_this_workers_problem(
+    harness, raw_bytes, monkeypatch
+):
+    # A full disk shows up in Python as OSError ("No space left on
+    # device") while writing. That is this machine's problem: scope "worker".
     job = harness.orchestrator.add_job(raw_bytes)
-    destination = harness.storage.raw_path(job.job_id, ".mp4")
-    partial_path_for(destination).write_bytes(raw_bytes[:80_000])
 
-    # The restarted worker is offered the same download again.
+    def disk_full(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("worker.tasks.download_raw.download_file", disk_full)
+
     harness.claim_and_run(download_task(job))
 
-    # It asked only for the missing bytes...
-    [(_, headers)] = harness.orchestrator.file_requests
-    assert headers["range"] == "bytes=80000-"
-    # ...and still ended with the complete, verified raw.
-    assert destination.read_bytes() == raw_bytes
-    assert len(harness.orchestrator.holder_confirms) == 1
-    # The measurement counts only the bytes that crossed the network now.
-    [measurement] = harness.env.measurements.drain()
-    assert measurement.byte_count == len(raw_bytes) - 80_000
+    [(_, failure)] = harness.orchestrator.failures
+    assert failure.scope == FailureScope.WORKER
+    assert "No space left on device" in failure.message
 
 
 def test_raw_already_on_disk_is_not_downloaded_again(harness, raw_bytes):
@@ -158,57 +207,3 @@ def test_raw_already_on_disk_is_not_downloaded_again(harness, raw_bytes):
     # No byte was fetched, but holder-confirm was sent.
     assert harness.orchestrator.file_requests == []
     assert len(harness.orchestrator.holder_confirms) == 1
-
-
-def streaming_inbox(content: bytes, after_first_piece) -> httpx.MockTransport:
-    """An inbox that sends the file in 10 KB pieces and calls `after_first_piece`
-    once the first piece is out, to simulate something happening mid-download."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        def pieces():
-            for start in range(0, len(content), 10_000):
-                yield content[start : start + 10_000]
-                if start == 0:
-                    after_first_piece()
-
-        return httpx.Response(200, content=pieces())
-
-    return httpx.MockTransport(handler)
-
-
-def test_lease_lost_mid_download_stops_and_discards_the_partial_file(harness, raw_bytes):
-    # Setup: while the first piece is arriving, a heartbeat reports the
-    # lease as lost (for example, a reviewer discarded the job).
-    job = harness.orchestrator.add_job(raw_bytes)
-
-    def lose_lease():
-        harness.orchestrator.revoke_lease(harness.leases.ids()[0])
-        harness.heartbeater.beat_once()
-
-    # Only /inbox/* is replaced by the slow streaming file; the API stays.
-    harness.network.override_path(BASE_URL, "/inbox/", streaming_inbox(raw_bytes, lose_lease))
-
-    harness.claim_and_run(download_task(job))
-
-    # The task stopped: no holder-confirm, no failure report...
-    assert harness.orchestrator.holder_confirms == []
-    assert harness.orchestrator.failures == []
-    # ...and docs/api.md §5 says to discard partial output on "lost".
-    assert list(harness.storage.raws_dir.iterdir()) == []
-
-
-def test_shutdown_mid_download_keeps_the_partial_file_for_next_time(harness, raw_bytes):
-    # Setup: SIGTERM (shutdown) arrives while the first piece is arriving.
-    job = harness.orchestrator.add_job(raw_bytes)
-    inbox = streaming_inbox(raw_bytes, harness.shutdown.set)
-    harness.network.override_path(BASE_URL, "/inbox/", inbox)
-
-    harness.claim_and_run(download_task(job))
-
-    # Nothing was reported, and the bytes received so far are still in
-    # the hidden partial file, so the next start resumes instead of
-    # downloading everything again. No visible (= complete) raw exists.
-    assert harness.orchestrator.holder_confirms == []
-    partial = partial_path_for(harness.storage.raw_path(job.job_id, ".mp4"))
-    assert partial.exists() and 0 < partial.stat().st_size < len(raw_bytes)
-    assert harness.storage.find_raw(job.job_id) is None

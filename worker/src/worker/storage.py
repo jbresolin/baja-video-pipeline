@@ -35,6 +35,8 @@ LOGS_FOLDER = "logs"
 DISK_RESERVE_BYTES = 2 * 1024**3
 # Partial downloads nobody resumed for this long are thrown away at start.
 STALE_PARTIAL_AGE_SECONDS = 24 * 3600
+# shared.http_transfer.partial_path_for: "abc.mp4" downloads into ".abc.mp4.part".
+PARTIAL_SUFFIX = ".part"
 
 # Returns the free bytes on the disk that holds the given folder.
 DiskFreeFunction = Callable[[Path], int]
@@ -80,6 +82,21 @@ class Storage:
         for path in self._complete_files(self.raws_dir):
             if _job_id_of(path.name) == job_id:
                 return path
+        return None
+
+    def partial_raw_destination(self, job_id: str) -> Path | None:
+        """Final path of an unfinished download of `job_id`, if one is on disk.
+
+        ".abc.mov.part" → raws/abc.mov, so a re-offered download resumes it.
+        """
+        for path in self.raws_dir.iterdir():
+            name = path.name
+            if (
+                name.startswith(".")
+                and name.endswith(PARTIAL_SUFFIX)
+                and _job_id_of(name) == job_id
+            ):
+                return self.raws_dir / name.removeprefix(".").removesuffix(PARTIAL_SUFFIX)
         return None
 
     def held_job_ids(self) -> list[str]:
@@ -161,12 +178,6 @@ class Storage:
         if targets:
             logger.info("deleted raw of job %s", job_id, extra={"job_id": job_id})
         return True
-
-    def delete_partial_raws(self, job_id: str) -> None:
-        """Remove an unfinished download of `job_id` (lease lost: discard it)."""
-        for path in self.raws_dir.iterdir():
-            if path.name.startswith(".") and _belongs_to_job(path.name, job_id):
-                path.unlink(missing_ok=True)
 
     def delete_clip(self, job_id: str) -> None:
         self.clip_sidecar_path(job_id).unlink(missing_ok=True)
