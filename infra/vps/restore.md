@@ -69,8 +69,9 @@ re-send those videos to the bot if they matter.
 sudo install -o 10001 -g 10001 -m 640 "$B/reviewers.txt" /srv/pipeline/reviewers.txt
 sudo install -o 10001 -g 10001 -m 640 "$B/teams.csv" /srv/pipeline/teams.csv
 sudo docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
-sudo docker compose --profile orchestrator restart orchestrator
 ```
+
+The orchestrator re-reads both files when they change; no restart.
 
 ## C. Evolution (Postgres + Redis + instances)
 

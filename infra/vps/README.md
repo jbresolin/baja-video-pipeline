@@ -349,10 +349,13 @@ sudo chmod 640 /srv/pipeline/reviewers.txt
 sudo docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
 ```
 
-Remove a reviewer: delete the line, then reload the same way. The
-orchestrator also has to pick up the change, so follow its PR (re-read or
-`docker compose restart orchestrator`). The file must exist with **at
-least one** reviewer before Caddy starts, or Caddy refuses the config.
+Remove a reviewer: delete the line, then reload Caddy the same way. The
+orchestrator needs nothing: it re-reads the file on the next login after
+it changes (like `teams.csv`). If an edit leaves the file unparseable it
+logs a warning and keeps the previous version; Caddy's reload fails
+loudly in that case, so fix the line and reload again. The file must
+exist with **at least one** reviewer before Caddy starts, or Caddy
+refuses the config.
 
 ### 2.7 Pull images, create volumes, start Caddy early
 

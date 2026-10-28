@@ -369,8 +369,10 @@ Request/response models are in `shared.models`; the YAML has every field.
 <BVP_WEBHOOK_SECRET>`** (wrong or missing → 401); the VPS Caddyfile routes
 exactly that path from the public site, and it is configured as the Baja
 Bot **instance** webhook (no global webhook; nothing else consumes it).
-Only `event == "messages.upsert"` from others (`fromMe == false`) is
-considered. `shared.models.find_incoming_video` decides: a
+Only `event == "messages.upsert"` from others (`fromMe == false`) in a
+private chat is considered: a `remoteJid` ending in `@g.us` or
+`@broadcast`, or a key with a `participant` (group sender), → 200
+`ignored: true`, no job and no bot reply (design §3, videos by DM only). `shared.models.find_incoming_video` decides: a
 `documentMessage` (also inside `documentWithCaptionMessage`) with a
 `video/*` mimetype → normal job; a `videoMessage` → `low_res: true` and the
 bot asks for a resend as document; anything else → 200 `ignored: true`.
@@ -501,8 +503,11 @@ bruno $2y$05$GSNSWdsjEMHlNpC4bm6t1.u9AYqnyN9YhH8lkHrQV8.mcbv7JJ1Wa
 * Real htpasswd `user:hash` lines are **refused** (Caddy cannot import
   them), as are tabs, extra words or trailing comments, plain-text
   passwords and duplicate usernames. Each error names the line number.
-* The username becomes `Job.reviewed_by`. Reload: restart the orchestrator
-  and reload Caddy after editing.
+* The username becomes `Job.reviewed_by`. After editing, reload Caddy;
+  the orchestrator re-reads the file by itself when its modification time
+  or size changes (checked on every reviewer login, like `BVP_TEAMS_FILE`).
+  A deleted file means no reviewers; a file that no longer parses is
+  logged and the previous version stays in force.
 
 ## 10. Orchestrator environment
 

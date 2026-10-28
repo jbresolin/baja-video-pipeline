@@ -75,12 +75,11 @@ streaming PC, `worker` for everyone else. Each token works once.
 
 ### 4. Reviewers
 
-For each person reviewing videos, README §2.6 ("Add a reviewer"), then
-restart the orchestrator so it reads the new file (Caddy reloads, the
-orchestrator does not re-read `reviewers.txt` by itself):
+For each person reviewing videos, README §2.6 ("Add a reviewer"): append
+the line and reload Caddy. The orchestrator picks the change up by itself
+on the next login, no restart. Then:
 
 ```bash
-sudo docker compose --profile orchestrator restart orchestrator
 sudo ./compose-smoke.sh                      # "reviewers file" row lists everyone
 ```
 
