@@ -1,0 +1,8 @@
+# Third-party payloads fetched by fetch_vendor.py (pinned in vendor.lock).
+vendor/
+# PyInstaller and Inno Setup output (build.py).
+build/
+dist/
+output/
+# Written by build.py before freezing; never committed.
+baja_installer/_build_info.py

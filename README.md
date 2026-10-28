@@ -14,11 +14,12 @@ OBS. Design: [`docs/design.md`](docs/design.md). API contract:
 | `orchestrator/` | VPS service: intake, jobs DB, scheduling, review API, event log, manifest. `openapi.yaml` is its contract; `fakes/` has dev tools |
 | `review_ui/` | VPS service: the reviewers' web UI (`/review`) and fleet view, its own package and image, talking to the orchestrator over its HTTP API (design §16) |
 | `worker/` | Worker app, one codebase for the `master`, `worker` and `studio` roles |
+| `installer/` | Windows installer for the worker: PyInstaller build, Inno Setup script, pinned ffmpeg/NSSM/Tailscale (`vendor.lock`), first-run Tailscale join. Volunteer guide (pt-BR) in `installer/README.md` |
 | `tools/` | Repo tooling. `openapi_contract/` declares the API as FastAPI stubs; `generate_openapi.py` writes the YAML |
 | `tests/<package>/` | Tests per package (kept outside the package folders, see `pyproject.toml`) |
 | `tests/e2e/` | Whole-system test: real orchestrator, review UI and worker code (master, worker, studio) with a stub ffmpeg |
 | `infra/` | Compose, Caddy, Tailscale ACLs, runbooks |
-| `.github/workflows/` | `ci.yml` (lint, contract check, tests); `images.yml` (push `ghcr.io/jbresolin/baja-orchestrator` and `baja-review-ui`) |
+| `.github/workflows/` | `ci.yml` (lint, contract check, tests); `images.yml` (push `ghcr.io/jbresolin/baja-orchestrator` and `baja-review-ui`); `installer.yml` (Windows Setup .exe on `v*` tags) |
 | `docs/` | Design and API docs |
 
 ## Getting started

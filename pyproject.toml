@@ -31,6 +31,9 @@ dev = [
     # The shared tests run a tiny in-process web app to exercise transfers.
     "fastapi>=0.115",
 ]
+installer = [
+    "pyinstaller>=6.11",
+]
 
 [tool.ruff]
 line-length = 100
@@ -49,7 +52,7 @@ extend-immutable-calls = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["shared", "orchestrator", "worker", "review_ui", "tools"]
+known-first-party = ["shared", "orchestrator", "worker", "review_ui", "tools", "baja_installer"]
 
 [tool.pytest.ini_options]
 # One folder per package: tests/shared, tests/orchestrator, tests/worker,
