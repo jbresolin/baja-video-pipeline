@@ -5,7 +5,8 @@ only on the VPS, so the most important test here is the round trip: back
 up a live orchestrator's DB, restore it into an empty data folder, start an
 orchestrator on it, and find the same jobs (and nothing written after the
 backup). The shell script is then run with fake `docker` and `setpriv`
-programs to check the folder it writes, the checksums and the retention.
+programs to check the folder it writes, the checksums, the retention, and
+the check its systemd unit uses to skip nights when the pipeline is down.
 """
 
 import hashlib
@@ -128,24 +129,16 @@ linux_only = pytest.mark.skipif(
     reason="backup.sh is a bash script for the Linux VPS",
 )
 
-# Fake `docker`: answers the four kinds of call backup.sh makes with small
-# recognisable bytes. FAKE_DOCKER_FAIL=postgres makes the pg_dump fail.
+# Fake `docker`: backup.sh only calls `docker ps -aq --filter ...` (the
+# --pipeline-present check). FAKE_DOCKER_PS_IDS is what it prints; the
+# filters it was given are written to FAKE_DOCKER_LOG.
 FAKE_DOCKER = """#!{python}
 import os, sys
 args = sys.argv[1:]
-fail = os.environ.get("FAKE_DOCKER_FAIL", "")
-if "exec" in args and "postgres" in args:
-    if fail == "postgres":
-        sys.exit(1)
-    sys.stdout.write("PGDMP-fake-dump")
-elif "cp" in args:
-    open(args[-1], "w").write("REDIS0011-fake-snapshot")
-elif "exec" in args:
-    pass  # redis-cli --rdb / rm inside the redis container
-elif "run" in args:
-    sys.stdout.write("fake-instances-tarball")
-else:
+if args[:2] != ["ps", "-aq"]:
     sys.exit("fake docker: unexpected call " + " ".join(args))
+open(os.environ["FAKE_DOCKER_LOG"], "w").write(" ".join(args))
+sys.stdout.write(os.environ.get("FAKE_DOCKER_PS_IDS", ""))
 """
 
 # Fake `setpriv`: drop the user-switching options and run the command as is
@@ -180,12 +173,13 @@ def prepare_vps(tmp_path: Path) -> dict[str, str]:
         "BAJA_DATA_DIR": str(tmp_path / "srv-pipeline"),
         "BAJA_BACKUP_UID": str(os.getuid()),
         "BAJA_BACKUP_PYTHON": sys.executable,
+        "FAKE_DOCKER_LOG": str(tmp_path / "docker.log"),
     }
 
 
-def run_backup(environment: dict[str, str]) -> subprocess.CompletedProcess:
+def run_backup(environment: dict[str, str], *arguments: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["bash", str(VPS_FOLDER / "backup.sh")],
+        ["bash", str(VPS_FOLDER / "backup.sh"), *arguments],
         env=environment,
         capture_output=True,
         text=True,
@@ -207,18 +201,11 @@ def test_backup_sh_writes_every_part_with_checksums(tmp_path):
     assert completed.returncode == 0, completed.stdout + completed.stderr
     [folder] = backup_folders(environment)
     names = sorted(path.name for path in folder.iterdir())
-    assert names == [
-        "SHA256SUMS",
-        "bvp.sqlite3",
-        "evolution.dump",
-        "evolution.rdb",
-        "evolution_instances.tgz",
-        "reviewers.txt",
-        "teams.csv",
-    ]
+    # The pipeline's state only: Evolution is the base stack's to back up.
+    assert names == ["SHA256SUMS", "bvp.sqlite3", "reviewers.txt", "teams.csv"]
     # No .env in a backup: secrets are kept elsewhere.
     assert not any(".env" in name for name in names)
-    # Only root (here: the owner) may enter it: it holds WhatsApp keys.
+    # Only root (here: the owner) may enter it: it holds password hashes.
     assert folder.stat().st_mode & 0o777 == 0o700
     # The DB copy is a real, intact orchestrator DB with the one job.
     copy = sqlite3.connect(folder / "bvp.sqlite3")
@@ -232,18 +219,43 @@ def test_backup_sh_writes_every_part_with_checksums(tmp_path):
 
 @linux_only
 def test_a_failed_part_marks_the_backup_incomplete_but_keeps_the_rest(tmp_path):
-    environment = {**prepare_vps(tmp_path), "FAKE_DOCKER_FAIL": "postgres"}
+    environment = prepare_vps(tmp_path)
+    # teams.csv went missing: that part fails, the DB part must not care.
+    (Path(environment["BAJA_DATA_DIR"]) / "teams.csv").unlink()
 
     completed = run_backup(environment)
 
     # Exit 1 makes the systemd unit show "failed"...
     assert completed.returncode == 1
-    assert "postgres FAILED" in completed.stdout
+    assert "pipeline files FAILED" in completed.stdout
     # ...and the folder says so in its name, but still has the other parts.
     [folder] = backup_folders(environment)
     assert folder.name.endswith("-incomplete")
     assert (folder / "bvp.sqlite3").exists()
-    assert (folder / "evolution.rdb").exists()
+
+
+@linux_only
+def test_the_timer_skips_nights_when_the_pipeline_is_down(tmp_path):
+    # The unit's ExecCondition runs `backup.sh --pipeline-present`: exit 0
+    # runs the backup, exit 1 makes systemd skip it without a failure.
+    environment = prepare_vps(tmp_path)
+
+    up = run_backup({**environment, "FAKE_DOCKER_PS_IDS": "3f2a1b9c0d4e\n"}, "--pipeline-present")
+    down = run_backup({**environment, "FAKE_DOCKER_PS_IDS": ""}, "--pipeline-present")
+
+    assert up.returncode == 0
+    assert down.returncode == 1 and "skipping" in down.stdout
+    # It looks for this stack's orchestrator by its compose labels, stopped or not.
+    filters = Path(environment["FAKE_DOCKER_LOG"]).read_text()
+    assert "label=com.docker.compose.project=baja-pipeline" in filters
+    assert "label=com.docker.compose.service=orchestrator" in filters
+    # The check alone never writes a backup.
+    assert not Path(environment["BAJA_BACKUP_ROOT"]).exists()
+
+
+def test_the_systemd_unit_uses_the_check_as_its_condition():
+    unit = (VPS_FOLDER / "systemd" / "baja-backup.service").read_text()
+    assert "ExecCondition=/opt/baja/infra/vps/backup.sh --pipeline-present" in unit
 
 
 @linux_only

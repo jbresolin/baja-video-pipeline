@@ -18,6 +18,7 @@ Every check prints one or more result lines, tab separated:
 """
 
 import argparse
+import ipaddress
 import json
 import sys
 from pathlib import Path
@@ -29,9 +30,13 @@ from shared.reviewers_file import ReviewersFileError, parse_reviewers  # noqa: E
 PASS, FAIL = "PASS", "FAIL"
 GIB = 1024**3
 
-# Services of docker-compose.yml with the orchestrator profile on. Caddy has
-# no healthcheck, so "running" is the best it can say.
-EXPECTED_SERVICES = ["evolution", "postgres", "redis", "caddy", "orchestrator", "review-ui"]
+# Services of docker-compose.yml (the pipeline stack only; Evolution and the
+# public Caddy are the base stack's). pipeline-edge has no healthcheck, so
+# "running" is the best it can say.
+EXPECTED_SERVICES = ["orchestrator", "review-ui", "pipeline-edge"]
+
+# The orchestrator's default when BVP_TRUSTED_PROXY_CIDRS is unset (config.py).
+DEFAULT_TRUSTED_PROXY_CIDRS = "127.0.0.1/32,10.201.0.0/24,172.16.0.0/12"
 
 # Folders the orchestrator writes (design §15, README §2.1), and the two
 # files it reads. All must belong to the containers' user (design §17).
@@ -43,6 +48,63 @@ def result(status: str, check: str, detail: str) -> str:
     # Tabs and newlines inside a detail would break the table.
     clean = " ".join(detail.split())
     return f"{status}\t{check}\t{clean}"
+
+
+# --- The base stack (jbresolin/baja-vps, README §1) ----------------------------
+
+
+def check_base_network(inspect_output: str, network: str, trusted_cidrs: str) -> list[str]:
+    """`docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}'`, or MISSING.
+
+    Two rows: the network exists, and BVP_TRUSTED_PROXY_CIDRS covers every
+    subnet of it. The base Caddy reaches the orchestrator over this network,
+    so its address is the TCP peer of every public /enroll; if that address
+    is not trusted, the orchestrator ignores X-Forwarded-For and every
+    volunteer shares the base Caddy's single rate-limit bucket (README §9).
+    """
+    check = f"base network {network}"
+    if inspect_output.strip() in ("", "MISSING"):
+        return [result(FAIL, check, "not found; start the base stack first")]
+    subnets = inspect_output.split()
+    lines = [result(PASS, check, " ".join(subnets))]
+    check = f"trusted proxies cover {network}"
+    try:
+        trusted = [ipaddress.ip_network(cidr.strip()) for cidr in trusted_cidrs.split(",")]
+        networks = [ipaddress.ip_network(subnet) for subnet in subnets]
+    except ValueError as error:
+        return lines + [result(FAIL, check, str(error))]
+    uncovered = [
+        str(subnet)
+        for subnet in networks
+        if not any(subnet.version == cidr.version and subnet.subnet_of(cidr) for cidr in trusted)
+    ]
+    if uncovered:
+        detail = f"{', '.join(uncovered)} not in BVP_TRUSTED_PROXY_CIDRS={trusted_cidrs}; README §9"
+        return lines + [result(FAIL, check, detail)]
+    return lines + [result(PASS, check, trusted_cidrs)]
+
+
+def check_base_caddy(inspect_output: str, container: str) -> list[str]:
+    """`docker inspect -f '{{.State.Status}}' caddy`, or MISSING."""
+    check = f"base container {container}"
+    status = inspect_output.strip() or "MISSING"
+    if status == "MISSING":
+        return [result(FAIL, check, "not found; start the base stack first")]
+    if status != "running":
+        return [result(FAIL, check, f"state {status}; the base stack's docker compose logs caddy")]
+    return [result(PASS, check, "running")]
+
+
+def check_confd(path: Path, domain: str) -> list[str]:
+    """up.sh installed the public routes for this domain into the base Caddy."""
+    check = "caddy routes installed"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return [result(FAIL, check, f"{path} missing; run ./up.sh")]
+    if f"\n{domain} {{" not in text:
+        return [result(FAIL, check, f"{path} is not for {domain}; run ./up.sh again")]
+    return [result(PASS, check, str(path))]
 
 
 # --- Containers ---------------------------------------------------------------
@@ -119,8 +181,27 @@ def check_evolution_state(got_status: str, body: str) -> list[str]:
     except (json.JSONDecodeError, KeyError, TypeError):
         return [result(FAIL, check, "unexpected answer from Evolution")]
     if state != "open":
-        return [result(FAIL, check, f"state {state!r}; README §4 (do NOT scan a new QR first)")]
+        detail = f"state {state!r}; the base stack's runbook (do NOT scan a new QR first)"
+        return [result(FAIL, check, detail)]
     return [result(PASS, check, "open")]
+
+
+def check_webhook(got_status: str, body: str, url: str) -> list[str]:
+    """GET /webhook/find/{instance}: enabled, and pointing at the orchestrator."""
+    check = "evolution webhook"
+    if got_status != "200":
+        return [result(FAIL, check, f"HTTP {got_status} from webhook/find")]
+    try:
+        found = json.loads(body) if body.strip() else None
+    except json.JSONDecodeError:
+        return [result(FAIL, check, "unexpected answer from Evolution")]
+    if isinstance(found, dict) and isinstance(found.get("webhook"), dict):
+        found = found["webhook"]
+    if not isinstance(found, dict) or not found.get("enabled"):
+        return [result(FAIL, check, "disabled; run ./up.sh (README §8)")]
+    if found.get("url") != url:
+        return [result(FAIL, check, f"points at {found.get('url')!r}; run ./up.sh")]
+    return [result(PASS, check, f"enabled, {url}")]
 
 
 def check_metrics(got_status: str, body: str) -> list[str]:
@@ -142,7 +223,7 @@ def check_reviewers_file(path: Path) -> list[str]:
     try:
         reviewers = parse_reviewers(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return [result(FAIL, check, f"{path} does not exist (README §2.6)")]
+        return [result(FAIL, check, f"{path} does not exist (README §4)")]
     except PermissionError:
         return [result(FAIL, check, f"cannot read {path}; run the smoke test with sudo")]
     except ReviewersFileError as error:
@@ -224,6 +305,17 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("evolution-state", "metrics"):
         sub = commands.add_parser(name, help="stdin: response body")
         sub.add_argument("--got", required=True)
+    webhook = commands.add_parser("webhook", help="stdin: GET /webhook/find body")
+    webhook.add_argument("--got", required=True)
+    webhook.add_argument("--url", required=True)
+    base_network = commands.add_parser("base-network", help="stdin: subnets, or MISSING")
+    base_network.add_argument("network")
+    base_network.add_argument("--trusted-cidrs", default=DEFAULT_TRUSTED_PROXY_CIDRS)
+    base_caddy = commands.add_parser("base-caddy", help="stdin: container status, or MISSING")
+    base_caddy.add_argument("container")
+    confd = commands.add_parser("confd")
+    confd.add_argument("path", type=Path)
+    confd.add_argument("--domain", required=True)
     reviewers = commands.add_parser("reviewers")
     reviewers.add_argument("path", type=Path)
     ownership = commands.add_parser("ownership", help="stdin: stat -c '%%u %%g %%a %%n' lines")
@@ -240,8 +332,16 @@ def main(argv: list[str] | None = None) -> int:
         print(table)
         return 0 if all_passed else 1
 
-    stdin = "" if arguments.command == "reviewers" else sys.stdin.read()
-    if arguments.command == "containers":
+    stdin = "" if arguments.command in ("reviewers", "confd") else sys.stdin.read()
+    if arguments.command == "base-network":
+        lines = check_base_network(stdin, arguments.network, arguments.trusted_cidrs)
+    elif arguments.command == "base-caddy":
+        lines = check_base_caddy(stdin, arguments.container)
+    elif arguments.command == "confd":
+        lines = check_confd(arguments.path, arguments.domain)
+    elif arguments.command == "webhook":
+        lines = check_webhook(arguments.got, stdin, arguments.url)
+    elif arguments.command == "containers":
         lines = check_containers(stdin, arguments.services)
     elif arguments.command == "http":
         lines = check_http(

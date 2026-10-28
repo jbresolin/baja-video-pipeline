@@ -1,7 +1,7 @@
 """Tests for infra/vps/compose-smoke.sh and its helper infra/vps/smoke_checks.py.
 
-The smoke test runs on the VPS after `docker compose up` and prints a
-PASS/FAIL table. We cannot run Docker, Caddy or Evolution here, so:
+The smoke test runs on the VPS at the end of up.sh and prints a PASS/FAIL
+table. We cannot run Docker, Caddy or Evolution here, so:
 
 * the first group of tests calls the helper's decision functions directly
   with text copied from what the real commands print;
@@ -49,9 +49,9 @@ def compose_line(service: str, state: str = "running", health: str = "healthy") 
 
 
 def test_all_expected_containers_running_and_healthy_pass():
-    # Caddy has no healthcheck, so compose reports Health as "".
+    # pipeline-edge (Caddy) has no healthcheck, so compose reports Health as "".
     output = "\n".join(
-        compose_line(service, health="" if service == "caddy" else "healthy")
+        compose_line(service, health="" if service == "pipeline-edge" else "healthy")
         for service in smoke.EXPECTED_SERVICES
     )
     lines = smoke.check_containers(output, smoke.EXPECTED_SERVICES)
@@ -61,12 +61,12 @@ def test_all_expected_containers_running_and_healthy_pass():
 def test_unhealthy_exited_and_missing_containers_each_fail_with_a_reason():
     output = "\n".join(
         [
-            compose_line("evolution", health="unhealthy"),
-            compose_line("postgres", state="exited", health=""),
-            compose_line("redis"),
+            compose_line("orchestrator", health="unhealthy"),
+            compose_line("review-ui", state="exited", health=""),
+            compose_line("pipeline-edge", health=""),
         ]
     )
-    lines = smoke.check_containers(output, ["evolution", "postgres", "redis", "orchestrator"])
+    lines = smoke.check_containers(output, [*smoke.EXPECTED_SERVICES, "extra"])
     # One line per expected service, in order: unhealthy, exited, fine, missing.
     assert statuses(lines) == ["FAIL", "FAIL", "PASS", "FAIL"]
     assert "unhealthy" in lines[0]
@@ -76,8 +76,59 @@ def test_unhealthy_exited_and_missing_containers_each_fail_with_a_reason():
 
 def test_older_compose_json_array_output_is_understood_too():
     # Compose before 2.21 printed one JSON array instead of one object per line.
-    output = json.dumps([{"Service": "redis", "State": "running", "Health": "healthy"}])
-    assert statuses(smoke.check_containers(output, ["redis"])) == ["PASS"]
+    output = json.dumps([{"Service": "review-ui", "State": "running", "Health": "healthy"}])
+    assert statuses(smoke.check_containers(output, ["review-ui"])) == ["PASS"]
+
+
+def test_only_the_pipeline_services_are_expected():
+    # Evolution, Postgres, Redis and the public Caddy are the base stack's now.
+    assert smoke.EXPECTED_SERVICES == ["orchestrator", "review-ui", "pipeline-edge"]
+
+
+# --- The base stack -------------------------------------------------------------
+
+
+def test_base_network_must_exist_and_be_covered_by_the_trusted_proxies():
+    default = smoke.DEFAULT_TRUSTED_PROXY_CIDRS
+    # baja-edge as the base stack pins it, and the .env.example value.
+    for cidrs in (default, "127.0.0.1/32,10.201.0.0/24,10.202.0.0/24"):
+        covered = smoke.check_base_network("10.201.0.0/24 ", "baja-edge", cidrs)
+        assert statuses(covered) == ["PASS", "PASS"]
+    # Docker's usual pool: 172.18.0.0/16 is inside the default 172.16.0.0/12.
+    covered = smoke.check_base_network("172.18.0.0/16 ", "baja-edge", default)
+    assert statuses(covered) == ["PASS", "PASS"]
+    # Docker hands out 192.168.x.0/20 once its 172.x pool is used up. The base
+    # Caddy's address is then not trusted, X-Forwarded-For is ignored, and
+    # every volunteer's /enroll counts against the base Caddy's one IP.
+    uncovered = smoke.check_base_network("192.168.16.0/20 ", "baja-edge", default)
+    assert statuses(uncovered) == ["PASS", "FAIL"]
+    assert "192.168.16.0/20" in uncovered[1] and "README §9" in uncovered[1]
+    # Narrowed to exactly baja-edge's subnet: fine. An IPv6 subnet needs its own entry.
+    narrowed = smoke.check_base_network(
+        "172.30.0.0/24 fd00:ba1a::/64", "baja-edge", "172.30.0.0/24,fd00:ba1a::/48"
+    )
+    assert statuses(narrowed) == ["PASS", "PASS"]
+    ipv6_missing = smoke.check_base_network("172.30.0.0/24 fd00:ba1a::/64", "baja-edge", default)
+    assert statuses(ipv6_missing) == ["PASS", "FAIL"]
+    # No network: the base stack is not up; no point judging the CIDRs.
+    assert statuses(smoke.check_base_network("MISSING", "baja-edge", default)) == ["FAIL"]
+
+
+def test_base_caddy_must_be_running():
+    assert statuses(smoke.check_base_caddy("running\n", "caddy")) == ["PASS"]
+    assert statuses(smoke.check_base_caddy("exited\n", "caddy")) == ["FAIL"]
+    missing = smoke.check_base_caddy("MISSING\n", "caddy")
+    assert statuses(missing) == ["FAIL"] and "base stack" in missing[0]
+
+
+def test_confd_routes_must_be_installed_for_this_domain(tmp_path):
+    installed = tmp_path / "pipeline.caddy"
+    installed.write_text("# header\nreview.test {\n\trespond 404\n}\n")
+    assert statuses(smoke.check_confd(installed, "review.test")) == ["PASS"]
+    # Rendered for another domain (the .env changed since up.sh ran).
+    assert statuses(smoke.check_confd(installed, "other.test")) == ["FAIL"]
+    gone = smoke.check_confd(tmp_path / "missing.caddy", "review.test")
+    assert statuses(gone) == ["FAIL"] and "./up.sh" in gone[0]
 
 
 # --- HTTP answers -------------------------------------------------------------
@@ -107,6 +158,19 @@ def test_evolution_must_be_open():
     assert statuses(failed) == ["FAIL"] and "connecting" in failed[0]
     # A wrong API key gives 401.
     assert statuses(smoke.check_evolution_state("401", "")) == ["FAIL"]
+
+
+def test_webhook_must_be_enabled_and_point_at_the_orchestrator():
+    url = "http://bvp-orchestrator:8000/intake/evolution-webhook"
+    ours = json.dumps({"enabled": True, "url": url, "events": ["MESSAGES_UPSERT"]})
+    assert statuses(smoke.check_webhook("200", ours, url)) == ["PASS"]
+    disabled = json.dumps({"enabled": False, "url": url})
+    assert "disabled" in smoke.check_webhook("200", disabled, url)[0]
+    elsewhere = json.dumps({"enabled": True, "url": "http://old-consumer/hook"})
+    assert "old-consumer" in smoke.check_webhook("200", elsewhere, url)[0]
+    # An instance that never had a webhook answers null.
+    assert statuses(smoke.check_webhook("200", "null", url)) == ["FAIL"]
+    assert statuses(smoke.check_webhook("401", "", url)) == ["FAIL"]
 
 
 def test_metrics_check_counts_online_workers():
@@ -190,8 +254,25 @@ linux_only = pytest.mark.skipif(
     reason="compose-smoke.sh is a bash script for the Linux VPS (uses GNU stat)",
 )
 
-FAKE_DOCKER = """#!/bin/sh
-cat "$FAKE_DOCKER_PS"
+# The fake docker answers the three calls compose-smoke.sh makes:
+# `network inspect` (baja-edge's subnets), `inspect` (the base Caddy's
+# state) and `compose ps`. An empty FAKE_BASE_* file means "not found".
+FAKE_DOCKER = """#!{python}
+import os, sys
+args = sys.argv[1:]
+def answer(variable):
+    text = open(os.environ[variable]).read()
+    if not text:
+        sys.exit(1)
+    sys.stdout.write(text)
+if args[:2] == ["network", "inspect"]:
+    answer("FAKE_BASE_NETWORK")
+elif args[0] == "inspect":
+    answer("FAKE_BASE_CADDY")
+elif args[0] == "compose":
+    answer("FAKE_DOCKER_PS")
+else:
+    sys.exit("fake docker: unexpected call " + " ".join(args))
 """
 
 FAKE_FINDMNT = """#!/bin/sh
@@ -216,7 +297,7 @@ sys.stdout.write(status)
 def install_fake_commands(bin_dir: Path) -> None:
     bin_dir.mkdir()
     for name, text in {
-        "docker": FAKE_DOCKER,
+        "docker": FAKE_DOCKER.replace("{python}", sys.executable),
         "findmnt": FAKE_FINDMNT,
         "curl": FAKE_CURL.replace("{python}", sys.executable),
     }.items():
@@ -230,11 +311,15 @@ def healthy_vps(tmp_path: Path) -> dict[str, str]:
     install_fake_commands(tmp_path / "bin")
     env_file = tmp_path / ".env"
     env_file.write_text(
-        "PIPELINE_DOMAIN=review.test\nEVO_DOMAIN=evo.test\nTAILSCALE_IP=100.64.0.1\n"
-        "EVOLUTION_API_KEY=k\nBVP_EVOLUTION_INSTANCE=baja\nBVP_ADMIN_TOKEN=admin\n"
-        # Single-quoted bcrypt hash, the way README §2.5 says to write it.
-        f"MANAGER_BASIC_AUTH_HASH='{a_bcrypt_hash()}'\n"
+        "PIPELINE_DOMAIN=review.test\nTAILSCALE_IP=100.64.0.1\n"
+        "EVOLUTION_URL=https://evo.test\nBVP_EVOLUTION_API_KEY=k\n"
+        "BVP_EVOLUTION_INSTANCE=baja\nBVP_ADMIN_TOKEN=admin\n"
+        # A value with spaces, single-quoted the way .env.example says.
+        "BVP_TRUSTED_PROXY_CIDRS='127.0.0.1/32,10.201.0.0/24,10.202.0.0/24'\n"
     )
+    confd_dir = tmp_path / "conf.d"
+    confd_dir.mkdir()
+    (confd_dir / "pipeline.caddy").write_text("# rendered by up.sh\nreview.test {\n}\n")
     data_dir = tmp_path / "srv-pipeline"
     for folder in ("inbox", "proxies", "thumbs", "outbox", "db"):
         (data_dir / folder).mkdir(parents=True)
@@ -244,15 +329,18 @@ def healthy_vps(tmp_path: Path) -> dict[str, str]:
     docker_ps = tmp_path / "ps.json"
     docker_ps.write_text(
         "\n".join(
-            compose_line(service, health="" if service == "caddy" else "healthy")
+            compose_line(service, health="" if service == "pipeline-edge" else "healthy")
             for service in smoke.EXPECTED_SERVICES
         )
     )
+    base_network = tmp_path / "network.txt"
+    base_network.write_text("10.201.0.0/24 \n")
+    base_caddy = tmp_path / "caddy-state.txt"
+    base_caddy.write_text("running\n")
     findmnt = tmp_path / "findmnt.txt"
     findmnt.write_text(f"ext4 {24 * 1024**3}\n")
     answers = {
         "https://review.test/review/": ["401", ""],
-        "https://evo.test/": ["401", "Missing apikey header"],
         "http://100.64.0.1:8080/health": ["200", '{"status":"ok"}'],
         "https://review.test/enroll": ["400", '{"error":{"code":"validation_error"}}'],
         "http://100.64.0.1:8080/metrics": [
@@ -263,6 +351,12 @@ def healthy_vps(tmp_path: Path) -> dict[str, str]:
             "200",
             '{"instance":{"instanceName":"baja","state":"open"}}',
         ],
+        "https://evo.test/webhook/find/baja": [
+            "200",
+            json.dumps(
+                {"enabled": True, "url": "http://bvp-orchestrator:8000/intake/evolution-webhook"}
+            ),
+        ],
     }
     answers_file = tmp_path / "answers.json"
     answers_file.write_text(json.dumps(answers))
@@ -271,11 +365,14 @@ def healthy_vps(tmp_path: Path) -> dict[str, str]:
         "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}",
         "SMOKE_ENV_FILE": str(env_file),
         "SMOKE_DATA_DIR": str(data_dir),
+        "SMOKE_CONFD_DIR": str(confd_dir),
         # The temp folder belongs to whoever runs the tests, not to 10001.
         "SMOKE_UID": str(os.getuid()),
         "SMOKE_GID": str(os.getgid()),
         "SMOKE_PYTHON": sys.executable,
         "FAKE_DOCKER_PS": str(docker_ps),
+        "FAKE_BASE_NETWORK": str(base_network),
+        "FAKE_BASE_CADDY": str(base_caddy),
         "FAKE_FINDMNT_OUTPUT": str(findmnt),
         "FAKE_CURL_ANSWERS": str(answers_file),
     }
@@ -298,7 +395,16 @@ def test_the_script_passes_on_a_healthy_vps(tmp_path):
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "ALL CHECKS PASSED" in completed.stdout
     assert "FAIL" not in completed.stdout
-    for check in ("container evolution", "caddy 443 review.test", "evolution instance state"):
+    for check in (
+        "base network baja-edge",
+        "trusted proxies cover baja-edge",
+        "base container caddy",
+        "caddy routes installed",
+        "container pipeline-edge",
+        "caddy 443 review.test",
+        "evolution instance state",
+        "evolution webhook",
+    ):
         assert check in completed.stdout
 
 
@@ -327,6 +433,21 @@ def test_the_script_fails_and_names_each_problem(tmp_path):
     assert any("outbox" in row and "missing" in row for row in fail_rows)
     assert any("/health" in row and "no connection" in row for row in fail_rows)
     assert "3 CHECK(S) FAILED" in completed.stdout
+
+
+@linux_only
+def test_the_script_reports_a_missing_base_stack(tmp_path):
+    environment = healthy_vps(tmp_path)
+    # The base stack is down: no network, no Caddy container.
+    Path(environment["FAKE_BASE_NETWORK"]).write_text("")
+    Path(environment["FAKE_BASE_CADDY"]).write_text("")
+
+    completed = run_smoke(environment)
+
+    assert completed.returncode == 1
+    fail_rows = [line for line in completed.stdout.splitlines() if line.startswith("FAIL")]
+    assert any("base network baja-edge" in row for row in fail_rows), completed.stdout
+    assert any("base container caddy" in row for row in fail_rows), completed.stdout
 
 
 @linux_only

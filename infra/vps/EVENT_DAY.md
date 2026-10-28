@@ -5,13 +5,17 @@ marked 🇧🇷). The message for people who *send* videos from their phones is
 [`docs/volunteers-pt-BR.md`](../../docs/volunteers-pt-BR.md); pin it in the
 volunteers' group.
 
+The pipeline stack is up only around events (README §6): `up.sh` at T-7,
+`down.sh` once the archive is verified. The base stack (Caddy, Evolution)
+stays up all the time and is not covered here.
+
 Every VPS command below runs as root in `/opt/baja/infra/vps` after
 loading the settings once per shell:
 
 ```bash
 cd /opt/baja/infra/vps
 set -a; . ./.env; set +a
-API="http://$TAILSCALE_IP:8080"                       # Caddy's tailnet listener → orchestrator
+API="http://$TAILSCALE_IP:8080"                       # pipeline-edge's tailnet listener → orchestrator
 ADMIN="Authorization: Bearer $BVP_ADMIN_TOKEN"
 ```
 
@@ -19,18 +23,37 @@ ADMIN="Authorization: Bearer $BVP_ADMIN_TOKEN"
 
 ## T-7 days: everything in place
 
-### 1. VPS health and backups
+### 1. Bring the pipeline up
+
+Pin the images for the event: set `ORCHESTRATOR_IMAGE` and `REVIEW_UI_IMAGE`
+in `.env` to a `v*` tag or a commit SHA instead of `main`, so a merge during
+the event week does not change what runs. The images are private on ghcr.io
+unless you made them public; the VPS needs `docker login ghcr.io` with a
+read-only token otherwise (README §5).
 
 ```bash
-sudo ./compose-smoke.sh                      # must end with ALL CHECKS PASSED
+cd /opt/baja && sudo git pull && cd infra/vps
+sudo ./up.sh                                 # must end with ALL CHECKS PASSED (exit 0)
+```
+
+`up.sh` checks the base stack, starts the containers, installs the public
+routes into the base Caddy, points the Evolution webhook at the
+orchestrator and runs the smoke test. Safe to run again any time.
+
+### 2. Backups
+
+The nightly backup only runs while the stack is up, so start one now:
+
+```bash
 systemctl list-timers baja-backup.timer      # next run is tonight
-ls -1 /var/backups/baja/ | tail -3           # recent nightly folders, none "-incomplete"
+sudo systemctl start baja-backup.service     # one now
+ls -1 /var/backups/baja/ | tail -3           # newest folder from just now, not "-incomplete"
 ```
 
 Practise a DB restore on a copy (restore.md, "Practising a restore").
 Check `.env` and `orchestrator.env` are current in the password manager.
 
-### 2. Tailnet nodes
+### 3. Tailnet nodes
 
 In the Tailscale admin console (*Machines*):
 
@@ -46,7 +69,7 @@ In the Tailscale admin console (*Machines*):
 On the VPS: `tailscale status` lists the VPS itself, and
 `tailscale ip -4` equals `TAILSCALE_IP` in `.env`.
 
-### 3. Enrollment tokens (one per PC)
+### 4. Enrollment tokens (one per PC)
 
 Ask each volunteer lending a PC for a name you will recognise on the fleet
 page. One token per PC, valid for a week (`valid_for_hours`, max 720):
@@ -73,11 +96,11 @@ streaming PC, `worker` for everyone else. Each token works once.
 >    abrir nada: o programa roda sozinho em segundo plano.
 > Não apague essa pasta depois do evento até eu avisar que o backup terminou.
 
-### 4. Reviewers
+### 5. Reviewers
 
-For each person reviewing videos, README §2.6 ("Add a reviewer"): append
-the line and reload Caddy. The orchestrator picks the change up by itself
-on the next login, no restart. Then:
+For each person reviewing videos, README §4 ("Add a reviewer"): append
+the line and reload the base Caddy. The orchestrator picks the change up by
+itself on the next login, no restart. Then:
 
 ```bash
 sudo ./compose-smoke.sh                      # "reviewers file" row lists everyone
@@ -86,7 +109,7 @@ sudo ./compose-smoke.sh                      # "reviewers file" row lists everyo
 Send each reviewer `https://<PIPELINE_DOMAIN>/review/` and their own
 password. Shortcuts are on the job page (`?`).
 
-### 5. Teams (`teams.csv`)
+### 6. Teams (`teams.csv`)
 
 One `car_number,team_name,school` line per car, from the official entry
 list. The orchestrator re-reads it when it changes; no restart:
@@ -98,7 +121,7 @@ curl -s -u '<reviewer>:<password>' "https://$PIPELINE_DOMAIN/review/api/teams/42
 
 A car missing from the file shows no team name on the overlay (design §18).
 
-### 6. Inbox cap
+### 7. Inbox cap
 
 ```bash
 df -h /srv/pipeline/inbox                    # its own ~25G filesystem
@@ -207,7 +230,7 @@ Rendered clips are deleted by the worker once delivered.
 
 A PC was reinstalled, its folder deleted, or the token expired before use:
 
-1. Mint a new token for it (T-7 §3). Use a slightly different
+1. Mint a new token for it (T-7 §4). Use a slightly different
    `volunteer_name` (e.g. "Ana - notebook (2)") so you can tell the two
    rows apart on the fleet page.
 2. On that PC, open `http://127.0.0.1:8700` and paste it. If the PC was
@@ -227,9 +250,11 @@ is simply not to send it again.
 ```bash
 curl -s -H "$ADMIN" "$API/metrics" | grep -E '^bvp_(jobs|workers_online)'   # numbers at a glance
 curl -s -H "$ADMIN" "$API/events?limit=30"                                  # latest events
-sudo docker compose --profile orchestrator logs --since 10m orchestrator
-sudo docker compose logs --since 10m evolution | grep -iE 'error|close'
+sudo docker compose logs --since 10m orchestrator
+sudo docker compose logs --since 10m pipeline-edge                      # tailnet requests (workers, studio)
 ```
+
+Evolution's logs are in the base stack (its folder: `docker compose logs --since 10m evolution`).
 
 🇧🇷 Para quem emprestou o PC, durante o evento: *Deixe o PC ligado, na tomada,
 com internet e sem entrar em suspensão. Se precisar desligar, me avise antes:
@@ -309,11 +334,22 @@ sudo ls -la /srv/pipeline/inbox /srv/pipeline/outbox                    # should
 sudo docker image prune -f
 ```
 
-Keep `db/bvp.sqlite3` (the next event starts from it or from a fresh DB,
-your choice: to start fresh, stop the orchestrator, move the file aside,
-start it). Keep the nightly backups' timer running.
+Keep `db/bvp.sqlite3`: the next event starts from it or from a fresh DB,
+your choice. To start fresh, move the file aside after step 5; the next
+`up.sh` creates an empty one.
 
-### 5. Release the volunteers' PCs
+### 5. Take the pipeline down
+
+```bash
+sudo ./down.sh                               # exit 0; read any WARNING it prints
+```
+
+It disables the Evolution webhook (the bot stops answering videos until the
+next `up.sh`), removes the public routes from the base Caddy and stops the
+containers. `/srv/pipeline` and the backups stay. The nightly backup timer
+stays enabled but skips every night until the next `up.sh`.
+
+### 6. Release the volunteers' PCs
 
 🇧🇷 Mensagem para quem emprestou o PC (só depois do passo 3 conferido):
 

@@ -139,8 +139,9 @@ def test_enroll_documents_its_rate_limit():
     assert "10 requests per source IP per 600 s" in enroll["description"]
 
 
-def test_webhook_route_and_secret_header_are_exactly_what_caddy_routes():
-    # The VPS Caddyfile forwards exactly this path; it must not drift.
+def test_webhook_route_and_secret_header_are_exactly_what_evolution_is_told():
+    # infra/vps/up.sh points Evolution at exactly this path with this header
+    # (tests/infra/test_up_down.py checks its side); it must not drift.
     webhook = load_committed_contract()["paths"]["/intake/evolution-webhook"]["post"]
     assert webhook["security"] == [{"webhookSecret": []}]
     scheme = load_committed_contract()["components"]["securitySchemes"]["webhookSecret"]
