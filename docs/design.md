@@ -429,3 +429,20 @@ VPS layout (supersedes the single compose in §2/§15):
 * Pipeline: `BVP_TRUSTED_PROXY_CIDRS` must include `10.201.0.0/24` (the base
   Caddy's address) and the pipeline's own compose network; the `/enroll`
   rate limiter reads the last `X-Forwarded-For` hop as before.
+
+### §20 addendum 2 — stack split as built (2026-10-28, baja-vps PR + PR #10)
+* Pipeline's own compose network: **10.202.0.0/24**; services answer on
+  `baja-edge` as `bvp-orchestrator` and `bvp-review-ui`.
+* Base Caddy is a custom build `baja-caddy:2.11.7-cf0.2.4` (caddy-dns/
+  cloudflare v0.2.4). Cloudflare ranges are a static list in
+  `caddy/cloudflare-ips.env`, feeding both the `remote_ip` gate and
+  `trusted_proxies`; `refresh-cloudflare-ips.sh` updates it.
+* Staging vhosts: apex, api, certificado, fila, juiz, resultados, forum
+  under BAJA_DOMAIN, plus FORMULA_DOMAIN. `www` is not served (no nginx
+  template). Port 80 is ungated (HTTPS redirect only).
+* Evolution webhook is set with `POST /webhook/set/{instance}` using the
+  instance token (`EVOLUTION_URL` + instance token in the pipeline `.env`;
+  the global Evolution key never leaves the base stack).
+* Caddy reload: `docker exec caddy caddy reload --config /etc/caddy/Caddyfile`.
+* Scoring repo must add `set_real_ip_from 10.201.0.0/24` with
+  `real_ip_header CF-Connecting-IP` in its staging override.
