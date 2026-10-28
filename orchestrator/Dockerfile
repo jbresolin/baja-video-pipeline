@@ -20,11 +20,14 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app
 
 # 1. Third-party dependencies only, from the lockfile. This layer is reused
-#    as long as the pyproject files and uv.lock do not change.
+#    as long as the pyproject files and uv.lock do not change. Every workspace
+#    member's pyproject.toml must be present, or `uv sync --locked` cannot
+#    resolve the workspace (add a line here when a member is added).
 COPY pyproject.toml uv.lock README.md ./
 COPY shared/pyproject.toml shared/pyproject.toml
 COPY orchestrator/pyproject.toml orchestrator/pyproject.toml
 COPY worker/pyproject.toml worker/pyproject.toml
+COPY review_ui/pyproject.toml review_ui/pyproject.toml
 RUN uv sync --locked --no-dev --package orchestrator --no-install-workspace
 
 # 2. Our own code: shared + orchestrator, installed (not editable) into the venv.

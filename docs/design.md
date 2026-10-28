@@ -365,3 +365,18 @@ confirmed later by João.
 * Known gap: `worker/README.md` local-dev recipe points workers at a bare
   orchestrator, which does not serve raw bytes (Caddy does). Fixed in wave 3
   by a dev-only static file route behind `BVP_DEV_MODE=1`.
+
+## 19. Wave-3 decisions (2026-10-27, PR #9)
+
+* Intake ignores group chats entirely (no job, no reply); DMs only, per §3.
+* `reviewers.txt` is reloaded on change, like `teams.csv`; no restart to
+  add or remove a reviewer.
+* Dev mode (`BVP_DEV_MODE=1`, localhost only) serves inbox/outbox/proxies/
+  thumbs from the orchestrator with the Caddy rules, so the local recipe
+  needs no Caddy.
+* `GET /metrics` (admin bearer, Prometheus text) added; contract 1.1.0.
+  Counters reset on restart; no Prometheus/Grafana in compose.
+* Nightly `backup.sh` via systemd timer, 14 dated folders, `.env` excluded.
+* A good document gets "✅ Vídeo recebido! Obrigado." once per video.
+* The smoke script probes the public side with an empty `POST /enroll`
+  expecting 400 (one of the VPS IP's 10 tries per 10 min). Accepted.
