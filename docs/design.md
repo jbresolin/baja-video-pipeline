@@ -414,3 +414,18 @@ VPS layout (supersedes the single compose in §2/§15):
   accepted on a staging box.
 * Cloudflare Tunnel was considered and rejected for the public side
   (concern about tunnel limitations); Caddy terminates TLS.
+
+### §20 addendum — edge network and Cloudflare (2026-10-28)
+* `baja-edge` is an external network on the fixed subnet **10.201.0.0/24**
+  (outside Docker's default pools, 172.16/12, 192.168/16 and Tailscale's
+  100.64/10), created by the base stack.
+* Staging hostnames stay Cloudflare-proxied (orange): their vhosts accept
+  connections only from Cloudflare's IPv4+IPv6 ranges (`remote_ip`), use the
+  same ranges as `trusted_proxies`, pass `CF-Connecting-IP` through
+  unchanged and forward `X-Forwarded-For/-Proto`; nginx trusts only the
+  `baja-edge` subnet as proxy. Certificates via DNS-01 (caddy-dns/cloudflare,
+  custom Caddy build) with Cloudflare SSL mode Full (strict).
+* Pipeline hostnames are DNS-only (grey): open vhosts, ordinary HTTP-01.
+* Pipeline: `BVP_TRUSTED_PROXY_CIDRS` must include `10.201.0.0/24` (the base
+  Caddy's address) and the pipeline's own compose network; the `/enroll`
+  rate limiter reads the last `X-Forwarded-For` hop as before.
