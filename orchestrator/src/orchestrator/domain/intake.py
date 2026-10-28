@@ -96,6 +96,10 @@ def handle_webhook(context: OrchestratorContext, payload: Any) -> WebhookOutcome
     key = webhook.data.key
     if key.from_me:
         return ignored("sent by the bot itself", key.id)
+    if key.is_group_or_broadcast:
+        # Videos come by DM only (design §3). No job and no reply: the bot
+        # must never post into a group it happens to be in.
+        return ignored("group or broadcast chat; videos are accepted by DM only", key.id)
     incoming = find_incoming_video(webhook.data.message)
     if incoming is None:
         return ignored("not a video document or video message", key.id)

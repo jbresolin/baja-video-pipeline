@@ -2185,6 +2185,11 @@ components:
         id:
           type: string
           title: Id
+        participant:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Participant
       additionalProperties: true
       type: object
       required:

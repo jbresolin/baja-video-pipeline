@@ -72,7 +72,8 @@ escolha o vídeo na pasta onde salvou.
 * Renomear o arquivo: o nome não importa.
 * Escrever a prova, o carro ou a passagem: quem revisa preenche vendo o
   vídeo.
-* Mandar no grupo: os vídeos vão só no privado do Baja Bot.
+* Mandar no grupo: o bot ignora vídeos postados em grupos. Só vale no
+  privado do Baja Bot.
 
 ### Se mandou errado
 
