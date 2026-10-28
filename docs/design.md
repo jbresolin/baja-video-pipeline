@@ -380,3 +380,37 @@ confirmed later by João.
 * A good document gets "✅ Vídeo recebido! Obrigado." once per video.
 * The smoke script probes the public side with an empty `POST /enroll`
   expecting 400 (one of the VPS IP's 10 tries per 10 min). Accepted.
+
+## 20. Installer (PR #8) and VPS stack split (2026-10-27)
+
+Installer, as built:
+* `BajaWorker.exe` (PyInstaller onedir + Inno Setup), service `BajaWorker`
+  under NSSM, install dir `C:\Program Files\BajaWorker`, data `C:\BajaWorker`
+  (ACL: SYSTEM + Administrators), firewall rules for 8710/8720, setup page
+  on localhost:8700. Uninstall keeps `C:\BajaWorker`.
+* First run is `BajaWorker.exe --first-run` (frozen, Linux-tested with a
+  fake `tailscale`); re-runnable from the Start menu.
+* Tailnet hostname `baja-w-<8 chars of worker id>` or `baja-studio`
+  (generic on purpose: hostnames can reach public certificate logs).
+* Vendor payloads pinned by SHA-256 in `installer/vendor.lock`, with mirror
+  fallbacks checked against the same hash.
+* Enroll URL baked at build time from the repository variable
+  `BVP_ENROLL_URL`; `v*` builds fail without it. Set it before release 1.
+* Not yet verified on a physical Windows PC: SmartScreen/UAC flow, real
+  `tailscale up`, boot ordering, NVENC, upgrade over an enrolled install.
+
+VPS layout (supersedes the single compose in §2/§15):
+* The staging VPS runs three stacks. **Base** (repo `jbresolin/baja-vps`,
+  always on): Caddy on host 80/443 importing `/srv/caddy/conf.d/*.caddy`,
+  Evolution, Postgres, Redis, Evolution backups, external network
+  `baja-edge`. **Scoring staging** (repo `baja-sae-brasil-online`): nginx
+  unpublished, joins `baja-edge`, reached by Caddy at `baja-nginx:80` via a
+  permanent compose override. **Pipeline** (this repo, up only around
+  events): orchestrator + review UI on `baja-edge`, its own small Caddy for
+  the tailnet listener on `TAILSCALE_IP:8080`, `up.sh`/`down.sh` that
+  install/remove `conf.d/pipeline.caddy`, reload Caddy and toggle the
+  Evolution instance webhook.
+* If the scoring stack is down Caddy answers 502 for its hostnames;
+  accepted on a staging box.
+* Cloudflare Tunnel was considered and rejected for the public side
+  (concern about tunnel limitations); Caddy terminates TLS.
