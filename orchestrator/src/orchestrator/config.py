@@ -52,7 +52,8 @@ class Settings(BaseSettings):
     port: int = 8000
     public_base_url: str
     tailnet_base_url: str
-    trusted_proxy_cidrs: str = "127.0.0.1/32,172.16.0.0/12"
+    # 10.201.0.0/24 = baja-edge, where the base stack's Caddy reaches us (design §20).
+    trusted_proxy_cidrs: str = "127.0.0.1/32,10.201.0.0/24,172.16.0.0/12"
     enroll_rate_limit_requests: int = Field(default=ENROLL_RATE_LIMIT_REQUESTS, ge=1)
     enroll_rate_limit_window_s: int = Field(default=ENROLL_RATE_LIMIT_WINDOW_SECONDS, ge=1)
 
