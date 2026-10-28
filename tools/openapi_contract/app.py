@@ -4,11 +4,12 @@ from fastapi import FastAPI
 
 from tools.openapi_contract import (
     routes_intake_enrollment,
+    routes_metrics,
     routes_review_delivery,
     routes_worker_loop,
 )
 
-CONTRACT_VERSION = "1.0.0"
+CONTRACT_VERSION = "1.1.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from
@@ -27,4 +28,5 @@ def build_contract_app() -> FastAPI:
     app.include_router(routes_intake_enrollment.router)
     app.include_router(routes_worker_loop.router)
     app.include_router(routes_review_delivery.router)
+    app.include_router(routes_metrics.router)
     return app

@@ -153,6 +153,7 @@ def report_failure(
         if kind == TaskKind.DOWNLOAD_RAW:
             drop_unconfirmed_holder(connection, job_id, worker_id)
         leases_repo.add_task_exclusion(connection, job_id, worker_id, kind, now, request.scope)
+        context.task_counters.count_failure(kind, request.scope)
         events_repo.record_event(
             connection,
             now,

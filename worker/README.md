@@ -31,41 +31,59 @@ uv run python -m worker --config path/to/worker.json [--console]
 * On first run (no `worker_id` in the config) it serves only the setup page
   until a token is entered, then calls `POST /enroll` and continues.
 
-### Locally against the orchestrator's dev mode
+### Locally: the whole pipeline on one PC (five terminals)
 
-1. Start the orchestrator (LIVESTACK-24) on `http://127.0.0.1:8000` with
-   `BVP_DEV_MODE=1` and `BVP_TAILNET_BASE_URL=http://127.0.0.1:8000`, so
-   task offers point at it directly (there is no Caddy locally).
-2. Mint one enrollment token per role you want to run:
-   ```
-   curl -s -X POST http://127.0.0.1:8000/admin/enrollment-tokens \
-     -H "Authorization: Bearer $BVP_ADMIN_TOKEN" -H "Content-Type: application/json" \
-     -d '{"volunteer_name": "local master", "role": "master"}'
-   ```
-3. Give each worker its own folder and config. Several workers on one PC
-   need different ports. Example `.scratch/master/worker.json`:
-   ```json
-   {
-     "orchestrator_url": "http://127.0.0.1:8000",
-     "enrollment_token": "<token from step 2>",
-     "tailnet_address": "127.0.0.1",
-     "storage_cap_bytes": 20000000000
-   }
-   ```
-   A second worker: `"file_server_port": 8711, "setup_page_port": 8701`.
-   A studio: `"receiver_port": 8720, "setup_page_port": 8702` and
-   optionally `"studio_clip_root": "/path/OBS/plays/from"`.
-4. Start each one: `uv run python -m worker --config .scratch/master/worker.json --console`.
-5. Feed it a video:
-   ```
-   uv run python orchestrator/fakes/make_test_clip.py .scratch/clip.mp4
-   curl -s -X POST http://127.0.0.1:8000/intake/test-upload \
-     -H "Authorization: Bearer $BVP_ADMIN_TOKEN" \
-     -F file=@.scratch/clip.mp4 -F sender_name=test -F received_as=test_upload
-   ```
-   The master downloads it and renders the proxy. Review it in the review
-   UI, mark it ready, and a holder renders the clip and pushes it to the
-   studio (or the outbox when no studio is running).
+No Caddy, no Tailscale, no WhatsApp. The orchestrator's dev server runs
+with `BVP_DEV_MODE=1`, which makes it serve `/inbox/*`, `/outbox/*`,
+`/proxies/*` and `/thumbs/*` itself, with the same permission rules as
+Caddy + `GET /auth/file` and with Range support (design §18). Dev mode
+refuses to start unless `BVP_PUBLIC_BASE_URL` is `localhost`/`127.0.0.1`,
+so it cannot be left on by accident on the VPS. Needs `ffmpeg` on `PATH`.
+All commands run from the repo root.
+
+```sh
+# Terminal 1: orchestrator (dev mode, fakes for Evolution/Tailscale/Baja app,
+# data in .scratch/bvp-dev, admin token dev-admin, reviewer ana/ana)
+uv run python -m orchestrator.testing.dev_server
+
+# Terminal 2: mint three enrollment tokens and write three configs
+# (.scratch/local/{master,worker,studio}/worker.json, non-clashing ports), then the master
+uv run python orchestrator/fakes/make_local_workers.py
+uv run python -m worker --config .scratch/local/master/worker.json --console
+
+# Terminal 3: a volunteer worker
+uv run python -m worker --config .scratch/local/worker/worker.json --console
+
+# Terminal 4: the studio (the streaming PC's receiver)
+uv run python -m worker --config .scratch/local/studio/worker.json --console
+
+# Terminal 5: "a volunteer sends a video to the bot", as a WhatsApp document
+uv run python orchestrator/fakes/make_test_clip.py .scratch/clip.mp4
+uv run python orchestrator/fakes/fake_evolution_webhook.py .scratch/clip.mp4
+```
+
+Within a few seconds the master downloads the raw from the orchestrator's
+`/inbox/…` and uploads a proxy. Still in terminal 5, review it (the
+review UI works too, see `review_ui/README.md`; this is the curl version):
+
+```sh
+curl -s -u ana:ana 'http://127.0.0.1:8000/review/queue'        # note "id" and "version"
+curl -s -u ana:ana -X PATCH -H 'Content-Type: application/json' \
+  http://127.0.0.1:8000/jobs/<id>/review \
+  -d '{"expected_version": <version>, "action": "ready", "prova": "Enduro",
+       "car_number": 42, "passagem": 1, "cut_in_s": 1.0, "cut_out_s": 4.0}'
+```
+
+A holder renders the clip and pushes it to the studio:
+
+```sh
+find .scratch/local/studio/box -name '*.mp4'      # → .scratch/local/studio/box/enduro/42/1.mp4
+cat .scratch/local/studio/box/latest.m3u
+```
+
+Stop the studio before marking a job ready to exercise the outbox path
+instead (the studio pulls it from `/outbox/…` when it comes back). Start
+over with `rm -rf .scratch/bvp-dev .scratch/local`.
 
 Without the orchestrator, the test suite runs every role against an
 in-memory fake (`tests/worker/fake_orchestrator.py`).

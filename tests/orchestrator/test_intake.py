@@ -7,6 +7,7 @@ duplicates, flag low_res videos, and protect the VPS inbox (design §10).
 
 import hashlib
 
+from orchestrator.domain import bot_messages
 from orchestrator.testing.harness import build_harness
 from orchestrator.testing.scenarios import (
     SAMPLE_VIDEO_BYTES,
@@ -46,8 +47,9 @@ def test_a_document_video_becomes_a_received_job_with_the_raw_in_the_inbox(harne
     # The original extension is kept, lowercased (docs/api.md §8.2).
     inbox_file = harness.context.layout.inbox_path(job_id, ".mov")
     assert inbox_file.read_bytes() == SAMPLE_VIDEO_BYTES
-    # No bot reply for a good document.
-    assert harness.evolution.sent == []
+    # Exactly one bot reply for a good document: the "received" confirmation,
+    # sent only after the file was verified and the job created.
+    assert harness.evolution.texts_to("5511999999999") == [bot_messages.RECEIVED_OK]
 
 
 def test_a_repeated_webhook_is_a_duplicate_pointing_at_the_same_job(harness):
@@ -174,3 +176,55 @@ def test_test_upload_in_dev_mode_creates_a_job_synchronously(tmp_path):
         auth=harness.reviewer_auth,
     )
     assert refused.status_code == 401
+
+
+def post_real_video(harness, payload_changes: dict) -> tuple[dict, dict]:
+    """Post a real, downloadable document webhook after applying `payload_changes` to its key.
+
+    Returns (response JSON, payload). The video is genuinely encrypted on the
+    fake CDN, so if the orchestrator did NOT ignore it, a job would appear.
+    """
+    blob, encrypted = encrypt_bytes(SAMPLE_VIDEO_BYTES)
+    path = f"/v/{hashlib.sha256(blob + repr(payload_changes).encode()).hexdigest()[:12]}.enc"
+    url = harness.cdn.add_blob(path, blob)
+    payload = document_message_payload(encrypted, url, path, sender_phone="5511955554444")
+    payload["data"]["key"].update(payload_changes)
+    response = harness.client.post(
+        "/intake/evolution-webhook", json=payload, headers=harness.webhook_headers
+    )
+    assert response.status_code in (200, 202), response.text
+    return response.json(), payload
+
+
+def test_group_and_broadcast_videos_are_ignored_while_the_same_video_by_dm_is_accepted(harness):
+    # The Baja Bot number may sit in WhatsApp groups. Design §3: videos come
+    # by DM only. Here the same document arrives four ways; only the DM counts.
+    group_jid = {
+        "remoteJid": "120363025246125486@g.us",
+        "participant": "5511955554444@s.whatsapp.net",
+    }
+    # A group message where only `participant` gives the group away.
+    participant_only = {"participant": "5511955554444@s.whatsapp.net"}
+    status_broadcast = {"remoteJid": "status@broadcast"}
+
+    ignored_answers = [
+        post_real_video(harness, changes)
+        for changes in (group_jid, participant_only, status_broadcast)
+    ]
+    dm_answer, dm_payload = post_real_video(harness, {})
+
+    # Each non-DM one is answered 200 "ignored" (so Evolution does not
+    # retry), creates no job, and leaves nothing in the inbox.
+    for answer, payload in ignored_answers:
+        assert answer["ignored"] is True
+        assert "group" in answer["reason"]
+        assert job_id_for_message(harness, payload["data"]["key"]["id"]) is None
+    # The DM is accepted and becomes a job, with its raw in the inbox.
+    assert dm_answer["accepted"] is True
+    dm_job = job_id_for_message(harness, dm_payload["data"]["key"]["id"])
+    assert harness.job(dm_job)["state"] == "received"
+    assert len(list(harness.context.layout.inbox_dir.iterdir())) == 1
+    # The bot said nothing into the group: its only message is the DM confirmation.
+    assert [(m.number, m.text) for m in harness.evolution.sent] == [
+        ("5511955554444", bot_messages.RECEIVED_OK)
+    ]

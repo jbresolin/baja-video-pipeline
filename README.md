@@ -18,6 +18,10 @@ OBS. Design: [`docs/design.md`](docs/design.md). API contract:
 | `tools/` | Repo tooling. `openapi_contract/` declares the API as FastAPI stubs; `generate_openapi.py` writes the YAML |
 | `tests/<package>/` | Tests per package (kept outside the package folders, see `pyproject.toml`) |
 | `tests/e2e/` | Whole-system test: real orchestrator, review UI and worker code (master, worker, studio) with a stub ffmpeg |
+| `tests/infra/` | VPS scripts: smoke-test decisions, backup/restore round trip, both shell scripts against fake commands |
+| `infra/` | Compose, Caddy, Tailscale ACLs, runbooks; `infra/vps/` also has the smoke test, backups (`restore.md`), `MONITORING.md` and `EVENT_DAY.md` |
+| `.github/workflows/` | `ci.yml` (lint, contract check, tests); `images.yml` (push `ghcr.io/jbresolin/baja-orchestrator` and `baja-review-ui`) |
+| `docs/` | Design and API docs; `volunteers-pt-BR.md` is the message pinned for volunteers |
 | `infra/` | Compose, Caddy, Tailscale ACLs, runbooks |
 | `.github/workflows/` | `ci.yml` (lint, contract check, tests); `images.yml` (push `ghcr.io/jbresolin/baja-orchestrator` and `baja-review-ui`); `installer.yml` (Windows Setup .exe on `v*` tags) |
 | `docs/` | Design and API docs |

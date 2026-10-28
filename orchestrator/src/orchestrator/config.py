@@ -8,6 +8,7 @@ the first request that needs it.
 
 import ipaddress
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,6 +17,11 @@ from shared.protocol import ENROLL_RATE_LIMIT_REQUESTS, ENROLL_RATE_LIMIT_WINDOW
 from shared.whatsapp_media import DEFAULT_MEDIA_BASE_URL
 
 BYTES_PER_GB = 1_000_000_000
+
+# BVP_DEV_MODE=1 is refused unless BVP_PUBLIC_BASE_URL points at one of
+# these hosts: dev mode serves raw files without Caddy and enables
+# /intake/test-upload, neither of which may ever run on the VPS.
+LOCAL_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 class ConfigError(Exception):
@@ -40,6 +46,8 @@ class Settings(BaseSettings):
     webhook_secret: SecretStr
 
     # --- Server ---
+    # Laptop only (see LOCAL_HOSTNAMES): /intake/test-upload and the
+    # orchestrator serving /inbox /outbox /proxies /thumbs itself.
     dev_mode: bool = False
     port: int = 8000
     public_base_url: str
@@ -121,6 +129,11 @@ def environment_name_for(field_or_alias: str) -> str:
     return f"BVP_{field_or_alias.upper()}"
 
 
+def is_local_url(url: str) -> bool:
+    """True if the URL's host is this machine (localhost, 127.0.0.1 or ::1)."""
+    return (urlsplit(url).hostname or "").lower() in LOCAL_HOSTNAMES
+
+
 def load_settings(**overrides) -> Settings:
     """Read the environment (plus `overrides`, for tests); raise ConfigError if incomplete."""
     try:
@@ -141,6 +154,12 @@ def load_settings(**overrides) -> Settings:
             lines.append("invalid environment variable(s): " + "; ".join(invalid))
         raise ConfigError("\n".join(lines)) from error
 
+    if settings.dev_mode and not is_local_url(settings.public_base_url):
+        raise ConfigError(
+            "BVP_DEV_MODE=1 is only allowed on a developer machine: BVP_PUBLIC_BASE_URL must be "
+            f"http://localhost or http://127.0.0.1, not {settings.public_base_url!r}. "
+            "Remove BVP_DEV_MODE from the VPS environment (orchestrator.env)."
+        )
     if settings.inbox_hold_gb > settings.inbox_cap_gb:
         raise ConfigError("BVP_INBOX_HOLD_GB must not be larger than BVP_INBOX_CAP_GB")
     try:

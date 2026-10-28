@@ -244,8 +244,9 @@ services:
     depends_on:
       evolution:
         condition: service_healthy
-    # Extra BVP_* settings beyond those below (e.g. BVP_DEV_MODE) go in
-    # orchestrator.env. It's optional, so the stack parses without it.
+    # Extra BVP_* settings beyond those below (e.g. BVP_TRUSTED_PROXY_CIDRS)
+    # go in orchestrator.env. It's optional, so the stack parses without it.
+    # Never BVP_DEV_MODE: the orchestrator refuses to start with it here.
     env_file:
       - path: ./orchestrator.env
         required: false

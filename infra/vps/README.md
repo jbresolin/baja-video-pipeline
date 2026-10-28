@@ -13,6 +13,10 @@ Files in this directory:
 | `docker-compose.yml` | Evolution API v2.3.7 + Postgres + Redis, Caddy, orchestrator (`BVP_*`) |
 | `Caddyfile` | Public Evolution vhost, public pipeline vhost (review/proxies/thumbs/enroll), tailnet-only listener |
 | `.env.example` | Every variable, with comments. Copy to `.env` |
+| `compose-smoke.sh` (+ `smoke_checks.py`) | Post-deploy smoke test, PASS/FAIL table (§12) |
+| `backup.sh`, `systemd/baja-backup.{service,timer}`, `restore.md` | Nightly backups to `/var/backups/baja/` and how to restore (§13) |
+| `MONITORING.md` | Pointing an external Prometheus/Grafana at `GET /metrics` |
+| `EVENT_DAY.md` | Event-day runbook: T-7, T-1, during, after |
 
 ```
                  internet                                    tailnet (100.x)
@@ -280,8 +284,14 @@ printf '[Unit]\nRequiresMountsFor=/srv/pipeline/inbox\n' | sudo tee /etc/systemd
 sudo systemctl daemon-reload
 ```
 
-Ownership: the orchestrator PR states its container UID. Then
-`sudo chown -R <uid>:<uid> /srv/pipeline`.
+Ownership: the freshly mounted filesystem's root belongs to root, so hand
+it back to the containers' user (uid/gid 10001, design §17). Without this
+the orchestrator cannot write raws, and `compose-smoke.sh` reports
+`owner /srv/pipeline/inbox` as FAIL:
+
+```bash
+sudo chown 10001:10001 /srv/pipeline/inbox
+```
 
 ### 2.4 Firewall
 
@@ -339,10 +349,13 @@ sudo chmod 640 /srv/pipeline/reviewers.txt
 sudo docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
 ```
 
-Remove a reviewer: delete the line, then reload the same way. The
-orchestrator also has to pick up the change, so follow its PR (re-read or
-`docker compose restart orchestrator`). The file must exist with **at
-least one** reviewer before Caddy starts, or Caddy refuses the config.
+Remove a reviewer: delete the line, then reload Caddy the same way. The
+orchestrator needs nothing: it re-reads the file on the next login after
+it changes (like `teams.csv`). If an edit leaves the file unparseable it
+logs a warning and keeps the previous version; Caddy's reload fails
+loudly in that case, so fix the line and reload again. The file must
+exist with **at least one** reviewer before Caddy starts, or Caddy
+refuses the config.
 
 ### 2.7 Pull images, create volumes, start Caddy early
 
@@ -727,7 +740,55 @@ Range requests (resume, seeking) are handled by file_server.
 
 ---
 
-## 12. References
+## 12. Smoke test after every `docker compose up`
+
+```bash
+cd /opt/baja/infra/vps
+sudo ./compose-smoke.sh
+```
+
+Read-only. It prints one row per check and ends with `ALL CHECKS PASSED`
+(exit 0) or `N CHECK(S) FAILED` (exit 1); exit 2 means it could not read
+`.env`. What it checks:
+
+| Check | Passes when | If it fails |
+| --- | --- | --- |
+| `container <service>` | all six services `running`, and `healthy` where they have a healthcheck (Caddy has none) | `docker compose --profile orchestrator logs <service>` |
+| `caddy 443 <PIPELINE_DOMAIN>` | `/review/` answers 401 (basic auth) over TLS | DNS, ports 80/443 (§2.4), `docker compose logs caddy` (certificate) |
+| `caddy 443 <EVO_DOMAIN>` | `/` without `apikey` answers 401 | same |
+| `orchestrator /health via <TAILSCALE_IP>:8080` | 200 `{"status":"ok"}` | `ip_nonlocal_bind` (§2.2), `tailscale ip -4` = `TAILSCALE_IP` |
+| `orchestrator via 443 (POST /enroll)` | an empty body comes back 400 from the orchestrator | orchestrator down or not on `edge`. The public site has no `/health` (design §8), so this is the 443 probe. It uses one of the VPS IP's 10 `/enroll` tries per 10 min |
+| `orchestrator /metrics` | 200 with the admin token, `bvp_jobs` present | `BVP_ADMIN_TOKEN`, image older than this PR |
+| `evolution instance state` | `open` | §4. **Do not scan a QR** as a first reaction |
+| `reviewers file` | parses with the orchestrator's rules and has at least one reviewer | §2.6 (`user hash`, one space, no colon) |
+| `owner <path>` | `/srv/pipeline`, its five folders, `reviewers.txt` and `teams.csv` are `10001:10001` | the `chown` the row prints |
+| `inbox filesystem` | `/srv/pipeline/inbox` is its own mount, no bigger than `BVP_INBOX_CAP_GB` GiB | §2.3 |
+
+The decisions live in `smoke_checks.py` (stdlib only, plus the repo's
+`shared/reviewers_file.py`), tested in `tests/infra/test_compose_smoke.py`
+with fake `docker`/`curl`/`findmnt`.
+
+---
+
+## 13. Backups and restore
+
+`backup.sh` runs nightly from a systemd timer and writes one dated folder
+to `/var/backups/baja/`, keeping the last 14. Install once:
+
+```bash
+sudo install -m 644 /opt/baja/infra/vps/systemd/baja-backup.service /opt/baja/infra/vps/systemd/baja-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now baja-backup.timer
+sudo systemctl start baja-backup.service      # one run now, to check
+sudo journalctl -u baja-backup.service -n 30
+ls -l /var/backups/baja/
+```
+
+What is in each backup, and how to bring it back: [`restore.md`](restore.md).
+
+---
+
+## 14. References
 
 Evolution API (official docs live at docs.evolutionfoundation.com.br; doc.evolution-api.com redirects there):
 

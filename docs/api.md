@@ -362,14 +362,17 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `GET /fleet` | → `FleetResponse` | workers, stats, disk, leases, job counts |
 | `GET /jobs/{job_id}/events` | → `EventsResponse` | that job's event log, oldest first; 404 unknown job |
 | `GET /events?worker_id=…&since=…&limit=…` | → `EventsResponse` | event log, oldest first; without `since` the newest `limit` (default 100, max 1000) |
+| `GET /metrics` | → Prometheus text 0.0.4 | admin only; see below |
 
 **Evolution webhook.** The route is exactly **`POST
 /intake/evolution-webhook`** with the header **`X-Webhook-Secret:
 <BVP_WEBHOOK_SECRET>`** (wrong or missing → 401); the VPS Caddyfile routes
 exactly that path from the public site, and it is configured as the Baja
 Bot **instance** webhook (no global webhook; nothing else consumes it).
-Only `event == "messages.upsert"` from others (`fromMe == false`) is
-considered. `shared.models.find_incoming_video` decides: a
+Only `event == "messages.upsert"` from others (`fromMe == false`) in a
+private chat is considered: a `remoteJid` ending in `@g.us` or
+`@broadcast`, or a key with a `participant` (group sender), → 200
+`ignored: true`, no job and no bot reply (design §3, videos by DM only). `shared.models.find_incoming_video` decides: a
 `documentMessage` (also inside `documentWithCaptionMessage`) with a
 `video/*` mimetype → normal job; a `videoMessage` → `low_res: true` and the
 bot asks for a resend as document; anything else → 200 `ignored: true`.
@@ -384,7 +387,10 @@ sender to resend. A repeated `data.key.id` (in progress or done) → 200
 `duplicate: true` with the existing `job_id` if any. Inbox above
 `BVP_INBOX_CAP_GB` → 413 `inbox_full`; above `BVP_INBOX_HOLD_GB` the media
 is accepted but the bot asks the sender to hold further videos. Replies to
-the sender go through Evolution `sendText`.
+the sender go through Evolution `sendText`; every text is in
+`orchestrator/domain/bot_messages.py` (pt-BR). A verified document gets
+`RECEIVED_OK` once its job exists, unless the webhook already answered
+(low_res or hold notice), so each video gets one positive reply.
 
 **Review update.** `expected_version` must equal the job's `version`
 (else 409 `version_conflict`).
@@ -401,6 +407,18 @@ Other combinations → 409 `illegal_transition`. "All fields" = `prova`,
 `car_number`, `passagem`, `cut_in_s`, `cut_out_s` set after the update,
 else 422 `missing_review_fields`. `team_name` is resolved from
 `car_number`. Cuts must satisfy `0 ≤ in < out ≤ duration`.
+
+**Metrics.** `GET /metrics` (`adminBearer`, contract 1.1.0) answers in the
+Prometheus text format for an external scraper on the tailnet
+(`infra/vps/MONITORING.md`). Gauges, read on every scrape:
+`bvp_jobs{state}`, `bvp_workers_enrolled{role}`, `bvp_workers_online{role}`
+(heartbeat within 45 s), `bvp_storage_bytes{area="inbox"|"proxies"|"outbox"}`
+(proxies includes thumbs), `bvp_disk_free_bytes`, `bvp_inbox_hold_bytes`,
+`bvp_inbox_cap_bytes`. Counters since the process started (they reset on a
+restart, which `rate()`/`increase()` handle): `bvp_task_offers_total{kind}`,
+`bvp_task_claims_total{kind}` (new leases only),
+`bvp_task_failures_total{kind,scope}`. Every label value is always listed,
+zeros included.
 
 ### 7.2 Worker-hosted endpoints (tailnet only)
 
@@ -485,8 +503,11 @@ bruno $2y$05$GSNSWdsjEMHlNpC4bm6t1.u9AYqnyN9YhH8lkHrQV8.mcbv7JJ1Wa
 * Real htpasswd `user:hash` lines are **refused** (Caddy cannot import
   them), as are tabs, extra words or trailing comments, plain-text
   passwords and duplicate usernames. Each error names the line number.
-* The username becomes `Job.reviewed_by`. Reload: restart the orchestrator
-  and reload Caddy after editing.
+* The username becomes `Job.reviewed_by`. After editing, reload Caddy;
+  the orchestrator re-reads the file by itself when its modification time
+  or size changes (checked on every reviewer login, like `BVP_TEAMS_FILE`).
+  A deleted file means no reviewers; a file that no longer parses is
+  logged and the previous version stays in force.
 
 ## 10. Orchestrator environment
 
@@ -499,7 +520,7 @@ variables keep the names fixed in design §8.
 | `BVP_REVIEWERS_FILE` | `/srv/pipeline/reviewers.txt` | Reviewer credentials (§9) |
 | `BVP_ADMIN_TOKEN` | — (required) | `adminBearer` token |
 | `BVP_WEBHOOK_SECRET` | — (required) | Expected `X-Webhook-Secret` value |
-| `BVP_DEV_MODE` | `0` | `1` enables `/intake/test-upload` |
+| `BVP_DEV_MODE` | `0` | `1` enables `/intake/test-upload` and serves `/inbox/*`, `/outbox/*`, `/proxies/*`, `/thumbs/*` from the orchestrator (Caddy's rules, Range; not in the OpenAPI document). Refused at startup unless `BVP_PUBLIC_BASE_URL` is localhost |
 | `BVP_PORT` | `8000` | Port uvicorn listens on inside the compose network |
 | `BVP_PUBLIC_BASE_URL` | — (required) | Public 443 site, e.g. `https://baja.example.org` (proxy/thumbnail links) |
 | `BVP_TAILNET_BASE_URL` | — (required) | Caddy tailnet listener, e.g. `http://100.101.102.103:8080`; base of every absolute URL in task offers |
@@ -522,6 +543,10 @@ variables keep the names fixed in design §8.
 
 * `uv run python orchestrator/fakes/make_test_clip.py .scratch/clip.mp4`
   — synthetic MP4 with ffmpeg.
+* `uv run python orchestrator/fakes/make_local_workers.py` — mints master,
+  worker and studio enrollment tokens from a dev-mode orchestrator and
+  writes `.scratch/local/<role>/worker.json` for each (five-terminal local
+  run: `worker/README.md`).
 * `uv run python orchestrator/fakes/fake_evolution_webhook.py .scratch/clip.mp4`
   — encrypts the file like WhatsApp, serves the blob as a fake CDN on
   `:8790`, and posts a document-message webhook to `http://127.0.0.1:8000`

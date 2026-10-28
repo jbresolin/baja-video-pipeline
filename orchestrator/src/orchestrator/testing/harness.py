@@ -41,6 +41,9 @@ WEBHOOK_SECRET = "test-webhook-secret"
 REVIEWER_NAME = "ana"
 REVIEWER_PASSWORD = "senha-da-ana"
 PUBLIC_BASE_URL = "https://review.example.test"
+# Dev mode is refused with a public URL (config.LOCAL_HOSTNAMES), so a
+# dev-mode harness defaults to this one.
+DEV_PUBLIC_BASE_URL = "http://127.0.0.1:8000"
 TAILNET_BASE_URL = "http://100.64.0.1:8080"
 # Plenty of room: workers in tests accept new raws unless a test says otherwise.
 ROOMY_FREE_BYTES = 500_000_000_000
@@ -138,7 +141,9 @@ def build_harness(data_dir: Path, **setting_overrides) -> OrchestratorHarness:
             "reviewers_file": reviewers_file,
             "admin_token": ADMIN_TOKEN,
             "webhook_secret": WEBHOOK_SECRET,
-            "public_base_url": PUBLIC_BASE_URL,
+            "public_base_url": (
+                DEV_PUBLIC_BASE_URL if setting_overrides.get("dev_mode") else PUBLIC_BASE_URL
+            ),
             "tailnet_base_url": TAILNET_BASE_URL,
             "whatsapp_media_base_url": FAKE_CDN_BASE_URL,
             "evolution_url": FAKE_EVOLUTION_URL,

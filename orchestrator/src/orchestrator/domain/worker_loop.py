@@ -163,9 +163,11 @@ def offer_next_task(
                     connection, context.layout, snapshot, job_row, worker_row, kind
                 )
                 if decision.task is not None:
+                    context.task_counters.count_offer(kind)
                     return NextTaskResponse(task=decision.task, retry_after_s=0)
         backfill = _master_backfill_offer(context, connection, snapshot, worker_row, accepted)
         if backfill is not None:
+            context.task_counters.count_offer(TaskKind.DOWNLOAD_RAW)
             return NextTaskResponse(task=backfill, retry_after_s=0)
     return NextTaskResponse(task=None, retry_after_s=EMPTY_QUEUE_RETRY_SECONDS)
 
@@ -225,6 +227,7 @@ def claim_task(
 
         lease = new_lease(new_id(), job_id, worker_id, kind, now)
         leases_repo.insert_lease(connection, lease)
+        context.task_counters.count_claim(kind)
         actor = events_repo.worker_actor(worker_id)
         events_repo.record_event(
             connection,

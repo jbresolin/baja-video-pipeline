@@ -60,6 +60,18 @@ class EvolutionMessageKey(EvolutionModel):
     from_me: bool = Field(default=False, alias="fromMe")
     # WhatsApp message id; our duplicate-detection key.
     id: str
+    # Who inside a group (or broadcast) sent it. Baileys sets it only there,
+    # never in a one-to-one chat.
+    participant: str | None = None
+
+    @property
+    def is_group_or_broadcast(self) -> bool:
+        """True unless this came from a private chat with the bot (design §3: no groups).
+
+        Groups end in "@g.us"; "status@broadcast" and broadcast lists in
+        "@broadcast". A `participant` marks a group even if the JID looks odd.
+        """
+        return self.remote_jid.endswith(("@g.us", "@broadcast")) or bool(self.participant)
 
 
 class EvolutionMediaMessage(EvolutionModel):
