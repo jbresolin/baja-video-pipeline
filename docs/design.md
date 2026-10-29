@@ -440,3 +440,35 @@ Pipeline stack as built (`infra/vps/`, follow-up to PR #9):
   certificates, no Cloudflare-only matcher, the TCP peer is the real client.
 * Backups cover only the pipeline (SQLite, reviewers, teams); the timer's
   `ExecCondition` skips nights when the orchestrator container does not exist.
+
+### §20 addendum — edge network and Cloudflare (2026-10-28)
+* `baja-edge` is an external network on the fixed subnet **10.201.0.0/24**
+  (outside Docker's default pools, 172.16/12, 192.168/16 and Tailscale's
+  100.64/10), created by the base stack.
+* Staging hostnames stay Cloudflare-proxied (orange): their vhosts accept
+  connections only from Cloudflare's IPv4+IPv6 ranges (`remote_ip`), use the
+  same ranges as `trusted_proxies`, pass `CF-Connecting-IP` through
+  unchanged and forward `X-Forwarded-For/-Proto`; nginx trusts only the
+  `baja-edge` subnet as proxy. Certificates via DNS-01 (caddy-dns/cloudflare,
+  custom Caddy build) with Cloudflare SSL mode Full (strict).
+* Pipeline hostnames are DNS-only (grey): open vhosts, ordinary HTTP-01.
+* Pipeline: `BVP_TRUSTED_PROXY_CIDRS` must include `10.201.0.0/24` (the base
+  Caddy's address) and the pipeline's own compose network; the `/enroll`
+  rate limiter reads the last `X-Forwarded-For` hop as before.
+
+### §20 addendum 2 — stack split as built (2026-10-28, baja-vps PR + PR #10)
+* Pipeline's own compose network: **10.202.0.0/24**; services answer on
+  `baja-edge` as `bvp-orchestrator` and `bvp-review-ui`.
+* Base Caddy is a custom build `baja-caddy:2.11.7-cf0.2.4` (caddy-dns/
+  cloudflare v0.2.4). Cloudflare ranges are a static list in
+  `caddy/cloudflare-ips.env`, feeding both the `remote_ip` gate and
+  `trusted_proxies`; `refresh-cloudflare-ips.sh` updates it.
+* Staging vhosts: apex, api, certificado, fila, juiz, resultados, forum
+  under BAJA_DOMAIN, plus FORMULA_DOMAIN. `www` is not served (no nginx
+  template). Port 80 is ungated (HTTPS redirect only).
+* Evolution webhook is set with `POST /webhook/set/{instance}` using the
+  instance token (`EVOLUTION_URL` + instance token in the pipeline `.env`;
+  the global Evolution key never leaves the base stack).
+* Caddy reload: `docker exec caddy caddy reload --config /etc/caddy/Caddyfile`.
+* Scoring repo must add `set_real_ip_from 10.201.0.0/24` with
+  `real_ip_header CF-Connecting-IP` in its staging override.
