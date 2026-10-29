@@ -1,8 +1,8 @@
-# Nightly backup of the Baja VPS (infra/vps/README.md §13, restore.md).
-# Install: see README §13. Started by baja-backup.timer; run by hand with
+# Nightly backup of the pipeline (infra/vps/README.md §12, restore.md).
+# Install: see README §12. Started by baja-backup.timer; run by hand with
 #   sudo systemctl start baja-backup.service
 [Unit]
-Description=Baja pipeline backup (SQLite jobs DB, reviewers/teams, Evolution Postgres/Redis)
+Description=Baja pipeline backup (SQLite jobs DB, reviewers.txt, teams.csv)
 Requires=docker.service
 After=docker.service
 # The jobs DB lives under /srv/pipeline; the inbox loop mount is not needed.
@@ -10,9 +10,13 @@ RequiresMountsFor=/srv/pipeline
 
 [Service]
 Type=oneshot
+# Only while the pipeline stack exists (between up.sh and down.sh). When the
+# orchestrator container is gone this exits 1 and systemd skips the run
+# cleanly: the unit is not marked failed.
+ExecCondition=/opt/baja/infra/vps/backup.sh --pipeline-present
 ExecStart=/opt/baja/infra/vps/backup.sh
 # Lowest CPU/IO priority: never slow down intake or proxy serving.
 Nice=19
 IOSchedulingClass=idle
-# Backups hold WhatsApp session keys: nothing else may read them.
+# Backups hold reviewer password hashes: nothing else may read them.
 UMask=0077

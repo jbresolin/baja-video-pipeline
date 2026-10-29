@@ -9,6 +9,7 @@ import os
 import pytest
 
 from orchestrator.config import ConfigError, load_settings
+from orchestrator.security import client_ip_for_rate_limit
 
 # The smallest complete set of required settings, by field name.
 REQUIRED = {
@@ -104,3 +105,15 @@ def test_hold_above_cap_is_refused():
 def test_a_typo_in_trusted_proxy_cidrs_is_refused():
     with pytest.raises(ConfigError, match="BVP_TRUSTED_PROXY_CIDRS"):
         load_settings(**REQUIRED, trusted_proxy_cidrs="127.0.0.1/32,not-a-network")
+
+
+def test_default_trusted_proxies_honour_the_base_caddy_on_baja_edge_only():
+    # The base stack's Caddy reaches the orchestrator from baja-edge,
+    # 10.201.0.0/24 (design §20). With no BVP_TRUSTED_PROXY_CIDRS set, its
+    # X-Forwarded-For must be believed; anyone else's must not, or a client
+    # could pick its own rate-limit bucket.
+    trusted = load_settings(**REQUIRED).trusted_proxy_networks
+    assert client_ip_for_rate_limit("10.201.0.7", "198.51.100.4", trusted) == "198.51.100.4"
+    assert client_ip_for_rate_limit("203.0.113.9", "198.51.100.4", trusted) == "203.0.113.9"
+    # Next door to baja-edge is not baja-edge.
+    assert client_ip_for_rate_limit("10.201.1.7", "198.51.100.4", trusted) == "10.201.1.7"

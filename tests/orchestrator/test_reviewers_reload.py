@@ -1,7 +1,7 @@
 """Tests that /srv/pipeline/reviewers.txt takes effect without a restart.
 
 On event day João adds a reviewer with `echo "name hash" >> reviewers.txt`
-and reloads Caddy (infra/vps/README.md §2.6). The orchestrator checks the
+and reloads Caddy (infra/vps/README.md §4). The orchestrator checks the
 same file itself, so it must notice the change on its own, the same way
 it notices edits to teams.csv: the file is re-read whenever its
 modification time or size changes. Each test edits the real file under a

@@ -19,9 +19,9 @@ flows and nothing else (Tailscale denies everything by default).
 
 | Port | Host (tag) | Service | Who may connect |
 | --- | --- | --- | --- |
-| 443/tcp | VPS (`tag:server`) | Caddy, public side: review UI, proxies, `/enroll`, Evolution webhook. Reached over the internet, not the tailnet | admins (tailnet); public otherwise |
-| 8080/tcp | VPS (`tag:server`), Tailscale IP only | Caddy, tailnet side: worker/studio API + inbox/outbox static files (plain HTTP; WireGuard encrypts) | `tag:worker`, `tag:studio`, admins |
-| 8000/tcp | VPS, compose network only | Orchestrator (FastAPI). Not published on the host; only Caddy reaches it, so no grant | — |
+| 443/tcp | VPS (`tag:server`) | Base stack's Caddy, public side: review UI, proxies, `/enroll` (the pipeline's conf.d routes, `infra/vps/README.md` §7), Evolution. Reached over the internet, not the tailnet | admins (tailnet); public otherwise |
+| 8080/tcp | VPS (`tag:server`), Tailscale IP only | `pipeline-edge` (the pipeline stack's own Caddy): worker/studio API + inbox/outbox static files (plain HTTP; WireGuard encrypts) | `tag:worker`, `tag:studio`, admins |
+| 8000/tcp | VPS, Docker networks only | Orchestrator (FastAPI). Not published on the host; only the base Caddy, `pipeline-edge` and Evolution's webhook reach it, so no grant | — |
 | 22/tcp | VPS (`tag:server`) | SSH over the tailnet | admins only |
 | 8710/tcp | each worker (`tag:worker`) | Worker file server (peer raw fetches) | `tag:worker` |
 | 8720/tcp | streaming PC (`tag:studio`) | Studio receiver (clip push) | `tag:worker` |
@@ -168,14 +168,9 @@ The orchestrator reads three environment variables (spec:
 | `TAILSCALE_OAUTH_CLIENT_SECRET` | Client secret from step 6 |
 | `TAILSCALE_TAILNET` | `-` (the token's own tailnet; this is the default) |
 
-Put them in the orchestrator's env file on the VPS. That file is
-**never committed** and is readable by root only. For example:
-
-```sh
-sudo install -d -m 0700 /etc/baja
-sudo install -m 0600 /dev/null /etc/baja/orchestrator.env
-sudoedit /etc/baja/orchestrator.env
-```
+Put them in the pipeline stack's env file on the VPS, `infra/vps/.env`
+(`infra/vps/README.md` §3). That file is **never committed** and is mode
+600, readable by root only:
 
 ```ini
 TAILSCALE_OAUTH_CLIENT_ID=k1a2b3c4d5CNTRL
@@ -183,8 +178,7 @@ TAILSCALE_OAUTH_CLIENT_SECRET=tskey-client-...
 TAILSCALE_TAILNET=-
 ```
 
-The compose file in `infra/` loads it with `env_file:`. Adjust the path if
-that file uses a different one.
+`infra/vps/docker-compose.yml` passes the three values to the orchestrator.
 
 **Smoke test (optional, from any machine with curl).** Run the two curl
 commands in `mint_auth_key.md`, then revoke the key you just created, so

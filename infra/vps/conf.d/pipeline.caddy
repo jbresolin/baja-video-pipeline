@@ -1,0 +1,106 @@
+# Public routes of the video pipeline (design §8, §20), for the BASE stack's
+# Caddy (repo jbresolin/baja-vps), which imports /srv/caddy/conf.d/*.caddy.
+#
+# This file is a TEMPLATE. Do not copy it by hand: ./up.sh renders it with
+# envsubst, installs it as /srv/caddy/conf.d/pipeline.caddy and reloads the
+# base Caddy; ./down.sh removes it again (README §6, §7). Only two
+# variables are substituted, both from .env (written here without their
+# dollar sign, or envsubst would replace them in this comment too):
+#   PIPELINE_DOMAIN     the public hostname (DNS A/AAAA -> VPS)
+#   CADDY_PIPELINE_DIR  where the base Caddy container sees /srv/pipeline
+#                       (read-only bind mount, README §1)
+# They are resolved at install time because the base Caddy's environment
+# belongs to the base stack: a Caddy env placeholder here would read the
+# base container's variables, which this repo does not set. Caddy
+# placeholders such as {http.auth.user.id} are left alone.
+#
+# DNS: the pipeline hostname is DNS-only at Cloudflare (grey cloud), so the
+# base Caddy gets a normal HTTP-01 certificate for it and sees the real client
+# as the TCP peer. There is deliberately NO Cloudflare-only matcher here (no
+# remote_ip allowlist, no trusted_proxies for Cloudflare): X-Forwarded-For
+# to the orchestrator carries the real client, which the /enroll rate limit
+# needs (README §7, §9).
+#
+# Snippet names carry a bvp_ prefix: they share one namespace with the base
+# Caddyfile and every other conf.d file.
+#
+# Upstreams are the pipeline containers' aliases on baja-edge
+# (docker-compose.yml): bvp-review-ui:8001 and bvp-orchestrator:8000.
+# Reviewers and Range requests: Caddyfile basic_auth caches bcrypt results,
+# so the many Range requests from the video player do not each pay a bcrypt
+# hash.
+
+# Static files from the pipeline data dir. file_server answers Range (206).
+# Writers drop in-progress files as dot-files and rename them when complete
+# (design §15); dot-files and upload staging files are never served.
+(bvp_pipeline_files) {
+	root * ${CADDY_PIPELINE_DIR}
+	file_server {
+		hide .* *.part *.part.json
+	}
+}
+
+${PIPELINE_DOMAIN} {
+	log {
+		output stdout
+		format console
+	}
+
+	# Named reviewers, one `username bcrypt-hash` pair per line. Same file
+	# the orchestrator reads via BVP_REVIEWERS_FILE (design §15). Adding a
+	# reviewer: README §4. Caddy reads it at (re)load time.
+	@bvp_reviewer_area path /review /review/* /proxies/* /thumbs/*
+	basic_auth @bvp_reviewer_area {
+		import ${CADDY_PIPELINE_DIR}/reviewers.txt
+	}
+
+	# Proxies (480p review copies, design §6): /proxies/<job_id>.mp4
+	handle /proxies/* {
+		header Cache-Control "private, max-age=3600"
+		import bvp_pipeline_files
+	}
+
+	# Thumbnails (worker-made): /thumbs/<job_id>.jpg
+	handle /thumbs/* {
+		header Cache-Control "private, max-age=3600"
+		import bvp_pipeline_files
+	}
+
+	# Review UI: its own service (design §16). reverse_proxy forwards the
+	# client's `Authorization: Basic …` header unchanged; the UI passes it
+	# on to the orchestrator, which checks reviewerBasic itself (docs/api.md
+	# §2). X-Reviewer is a convenience copy of the user name Caddy
+	# authenticated (header_up replaces any client-sent value).
+	handle /review* {
+		reverse_proxy bvp-review-ui:8001 {
+			header_up X-Reviewer {http.auth.user.id}
+		}
+	}
+
+	# Enrollment (design §8): a new PC is not on the tailnet yet, so this one
+	# orchestrator route is public. There's no basic auth, because the
+	# one-time token in the body is the credential. The orchestrator
+	# rate-limits per source IP itself, from the X-Forwarded-For Caddy sets,
+	# provided BVP_TRUSTED_PROXY_CIDRS covers baja-edge (README §9).
+	# POST only, small body. Anything else falls through to the 404.
+	@bvp_enroll {
+		path /enroll
+		method POST
+	}
+	handle @bvp_enroll {
+		request_body {
+			max_size 16KB
+		}
+		reverse_proxy bvp-orchestrator:8000
+	}
+
+	# Bare domain -> review UI.
+	handle / {
+		redir /review/ 302
+	}
+
+	# Nothing else is public.
+	handle {
+		respond "Not found" 404
+	}
+}

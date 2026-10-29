@@ -415,6 +415,32 @@ VPS layout (supersedes the single compose in §2/§15):
 * Cloudflare Tunnel was considered and rejected for the public side
   (concern about tunnel limitations); Caddy terminates TLS.
 
+Pipeline stack as built (`infra/vps/`, follow-up to PR #9):
+* `docker-compose.yml` (project `baja-pipeline`): orchestrator and review UI
+  on `baja-edge` with aliases `bvp-orchestrator` / `bvp-review-ui` (a bare
+  `orchestrator` could collide on a shared network), plus a private
+  `pipeline` network to `pipeline-edge` (Caddy, `Caddyfile.tailnet`,
+  published on `${TAILSCALE_IP}:8080` only).
+* `conf.d/pipeline.caddy` is a template; `up.sh` renders it with
+  `envsubst '${PIPELINE_DOMAIN} ${CADDY_PIPELINE_DIR}'` because the base
+  Caddy's own environment is the base repo's. The base Caddy serves
+  `proxies/`/`thumbs/` and reads `reviewers.txt` from a read-only mount of
+  `/srv/pipeline` (a requirement on the base stack). A reload the base Caddy
+  refuses rolls the file back, so it never blocks other stacks' reloads.
+* The webhook is set with `POST /webhook/set/{instance}` (v2.3.7 has no PUT
+  route) using the instance token, so the global Evolution key is not in
+  this repo. `down.sh` disables it but leaves a webhook pointing at another
+  URL alone.
+* `baja-edge` is `10.201.0.0/24` (the base stack pins it; this compose joins
+  it as external with no subnet). The pipeline's own network is pinned to
+  `10.202.0.0/24`. `BVP_TRUSTED_PROXY_CIDRS=127.0.0.1/32,10.201.0.0/24,10.202.0.0/24`
+  in `.env`; the orchestrator's default also gained `10.201.0.0/24`. The
+  smoke test fails if a `baja-edge` subnet is not covered.
+* The pipeline hostname is DNS-only at Cloudflare (grey cloud): HTTP-01
+  certificates, no Cloudflare-only matcher, the TCP peer is the real client.
+* Backups cover only the pipeline (SQLite, reviewers, teams); the timer's
+  `ExecCondition` skips nights when the orchestrator container does not exist.
+
 ### §20 addendum — edge network and Cloudflare (2026-10-28)
 * `baja-edge` is an external network on the fixed subnet **10.201.0.0/24**
   (outside Docker's default pools, 172.16/12, 192.168/16 and Tailscale's

@@ -1,4 +1,4 @@
-# Runs baja-backup.service every night (infra/vps/README.md §13).
+# Runs baja-backup.service every night (infra/vps/README.md §12).
 [Unit]
 Description=Nightly Baja pipeline backup
 

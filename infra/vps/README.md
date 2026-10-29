@@ -1,271 +1,134 @@
-# Baja staging VPS: Evolution + Caddy (LIVESTACK-30)
+# Baja staging VPS: the pipeline stack
 
-Copy-paste runbook for moving the **Baja Bot** Evolution API instance from
-the TrueNAS box at home to the Baja staging VPS **without re-scanning the QR
-code**, and for running it next to the pipeline orchestrator behind Caddy.
-Design context: [`docs/design.md`](../../docs/design.md) §2, §3, §8, §10,
-§13, §15. Orchestrator API: `docs/api.md`.
+Runbook for the **video pipeline** on the Baja staging VPS: orchestrator,
+review UI and the pipeline's own tailnet listener. The stack runs only
+around events: `./up.sh` before, `./down.sh` after.
+Design context: [`docs/design.md`](../../docs/design.md) §8, §10, §13,
+§15, §20. Orchestrator API: `docs/api.md`.
+
+The VPS runs three stacks (design §20):
+
+| Stack | Repo | Runs | Owns |
+| --- | --- | --- | --- |
+| **Base** | `jbresolin/baja-vps` | always | Caddy (container `caddy`, host 80/443, imports `/srv/caddy/conf.d/*.caddy`), Evolution (`evolution:8080`), Postgres, Redis, network `baja-edge`, Evolution's backups and its migration runbook, host basics (swap, journald, ufw) |
+| Scoring staging | `baja-sae-brasil-online` | always | its nginx on `baja-edge`, behind the base Caddy |
+| **Pipeline** | this folder | around events | orchestrator, review UI, `pipeline-edge` (tailnet Caddy), `conf.d/pipeline.caddy` while up, the Evolution instance webhook while up |
 
 Files in this directory:
 
 | File | What it is |
 | --- | --- |
-| `docker-compose.yml` | Evolution API v2.3.7 + Postgres + Redis, Caddy, orchestrator (`BVP_*`) |
-| `Caddyfile` | Public Evolution vhost, public pipeline vhost (review/proxies/thumbs/enroll), tailnet-only listener |
+| `docker-compose.yml` | orchestrator + review-ui on `baja-edge`, `pipeline-edge` on `${TAILSCALE_IP}:8080` |
+| `Caddyfile.tailnet` | `pipeline-edge`'s config: the worker/studio API and inbox/outbox files (forward_auth) |
+| `conf.d/pipeline.caddy` | Template of the public routes for the base Caddy; `up.sh` renders and installs it (§7) |
+| `up.sh`, `down.sh` (+ `stack_lib.sh`, `stack_ctl.py`) | Bring the stack up / take it down (§6) |
 | `.env.example` | Every variable, with comments. Copy to `.env` |
-| `compose-smoke.sh` (+ `smoke_checks.py`) | Post-deploy smoke test, PASS/FAIL table (§12) |
-| `backup.sh`, `systemd/baja-backup.{service,timer}`, `restore.md` | Nightly backups to `/var/backups/baja/` and how to restore (§13) |
+| `compose-smoke.sh` (+ `smoke_checks.py`) | Smoke test, PASS/FAIL table; `up.sh` runs it last (§11) |
+| `backup.sh`, `systemd/baja-backup.{service,timer}`, `restore.md` | Nightly backups of the pipeline's state while it is up (§12) |
 | `MONITORING.md` | Pointing an external Prometheus/Grafana at `GET /metrics` |
 | `EVENT_DAY.md` | Event-day runbook: T-7, T-1, during, after |
 
 ```
-                 internet                                    tailnet (100.x)
-                    │ 443                                         │ :8080
-              ┌─────▼──────────────────── VPS ────────────────────▼─────┐
-              │  caddy ── {EVO_DOMAIN} ──────────► evolution:8080        │
-              │    │      (apikey hdr; /manager = basic auth)  │         │
-              │    │                                           │ net     │
-              │    ├──── {PIPELINE_DOMAIN}                     │ evolution_db
-              │    │       /review*            ─► orchestrator ├─ postgres
-              │    │       /proxies/* /thumbs/* ─► file_server └─ redis
-              │    │       POST /enroll (no auth) ─► orchestrator        │
-              │    └──── http://:8080 (TAILSCALE_IP only)                │
-              │            /inbox/* /outbox/* ─► forward_auth + file_server
-              │            everything else    ─► orchestrator:8000       │
-              │  evolution ──instance webhook──► orchestrator:8000       │
-              │              POST /intake/evolution-webhook (internal)   │
-              └──────────────────────────────────────────────────────────┘
+             internet                                          tailnet (100.x)
+                │ 443                                               │ :8080
+  ┌─────────────▼──────────────────── VPS ──────────────────────────▼──────────┐
+  │  BASE STACK                                │  PIPELINE STACK (this folder) │
+  │  caddy ─ evo/scoring sites                 │                               │
+  │    └─ import conf.d/pipeline.caddy ────────┼─► {PIPELINE_DOMAIN}           │
+  │         /review*         ─► bvp-review-ui:8001                             │
+  │         /proxies/* /thumbs/* ─► file_server (/srv/pipeline, read-only)     │
+  │         POST /enroll     ─► bvp-orchestrator:8000                          │
+  │  evolution ── instance webhook ───────────►  orchestrator:8000            │
+  │  postgres, redis                           │   ▲                           │
+  │                                            │   │  network "pipeline"       │
+  │            ── network baja-edge ──         │  pipeline-edge (Caddy)  ◄─────┘
+  │                                            │   /inbox/* /outbox/* forward_auth
+  │                                            │   everything else ─► orchestrator
+  └────────────────────────────────────────────┴───────────────────────────────┘
 ```
 
 ## Key decisions (why it looks like this)
 
-* **Image `evoapicloud/evolution-api:v2.3.7`.** That is the latest stable
-  release (GitHub "Latest", Docker Hub tag pushed 2025-12-05). `latest` on
-  Docker Hub was re-pushed on 2026-05-06, the same day as `2.4.0-rc1`, so
-  it is not a safe pin. 2.4.0 is still RC and adds mandatory license
-  activation (§10). Images moved from `atendai/` to `evoapicloud/` at
-  v2.3.0. [R1][R2][R3]
-* **The WhatsApp session is spread over three stores.** A plain volume copy
-  is not enough. With Postgres + Redis enabled (Evolution's default), the
-  Baileys auth state is split up [R4][R5]:
-  * `creds` (identity keys, noise key, registration) are in the Postgres table
-    `"Session"` (`sessionId` = instance id).
-  * Every other Signal key (pre-keys, sessions, sender keys, app-state sync
-    keys) is in a Redis hash `<CACHE_REDIS_PREFIX_KEY>:instance:<instanceId>`
-    with **no TTL**. If Redis is disabled, the same keys are JSON files in
-    `/evolution/instances/<instanceId>/` instead.
-  * Instances are loaded only when their `clientName` equals
-    `DATABASE_CONNECTION_CLIENT_NAME` [R6].
-
-  So the runbook copies **all three** (Postgres dump, Redis snapshot,
-  instances volume) and keeps the prefix, DB index, schema and client name
-  identical. Evolution's docs have no migration page (checked the full
-  index [R7]), so these claims cite the v2.3.7 source.
-* **One webhook consumer: the orchestrator, via the instance webhook.** It
-  can carry the `X-Webhook-Secret` header. The global webhook is disabled
-  (design §15). Details in §6.
-* **Caddy is the only container with published ports.** Everything else
-  talks over Docker networks. Postgres/Redis are on an `internal` network
-  that only Evolution can reach.
+* **The pipeline owns its tailnet surface.** `pipeline-edge` is a small Caddy
+  in this stack, published only on `${TAILSCALE_IP}:8080`. The base Caddy
+  carries only public routes, and it carries ours only between `up.sh` and
+  `down.sh`.
+* **Public routes are a conf.d snippet, rendered at install time.** The base
+  Caddy's environment belongs to the base stack, so the snippet cannot read
+  `PIPELINE_DOMAIN` from it. `up.sh` substitutes it with `envsubst` (§7).
+* **Containers are named for a shared network.** On `baja-edge` the
+  orchestrator and review UI answer as `bvp-orchestrator` and `bvp-review-ui`,
+  so a generic `orchestrator` from another stack can never shadow them.
+* **The webhook follows the stack.** `up.sh` points Evolution's instance
+  webhook at the orchestrator; `down.sh` disables it. Between events Evolution
+  posts nowhere, and the bot does not answer videos. That is intended.
+* **The global Evolution API key stays out of this repo.** `up.sh`, `down.sh`
+  and the smoke test use the instance token (`BVP_EVOLUTION_API_KEY`), which
+  Evolution accepts for that instance's own routes.
 
 ---
 
-## 0. What you need before starting
+## 1. What the base stack must provide
 
-* VPS: Ubuntu, Docker Engine + Compose plugin **≥ 2.24** (`docker compose
-  version`; the optional `env_file` entry needs it), root/sudo, SSH.
-* The VPS has joined the Baja tailnet as `tag:server` (LIVESTACK-29). Note
-  its IP: `tailscale ip -4`.
-* Two DNS names pointing at the VPS public IP: `EVO_DOMAIN` (e.g.
-  `evo.<domain>`) and `PIPELINE_DOMAIN` (e.g. `review.<domain>`).
-* SSH access to TrueNAS (shell with `sudo docker`).
-* A maintenance window of about 30 minutes. During it the bot neither
-  receives nor answers. WhatsApp queues incoming messages and delivers them
-  on reconnect.
+This stack does not start without the base stack. `up.sh` checks the first
+three items and stops if one is missing:
 
-> **Golden rule:** the old and the new Evolution must **never run at the same
-> time** with the same session, and you must **never call logout or delete**
-> on the instance (on either side). Logout unlinks the device in WhatsApp,
-> and then a QR scan is unavoidable [R9].
-
----
-
-## 1. Pre-flight on TrueNAS (read-only, do it days before)
-
-### 1.1 Find the containers and their storage
-
-```bash
-sudo docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' | grep -Ei 'evolution|postgres|redis'
-```
-
-Set these for the rest of the session (use your actual names):
-
-```bash
-EVO_C=evolution_api        # Evolution API container
-PG_C=evolution_postgres    # its Postgres
-REDIS_C=evolution_redis    # its Redis
-```
-
-Write down mounts and the restart policy (needed for rollback):
-
-```bash
-for c in "$EVO_C" "$PG_C" "$REDIS_C"; do echo "== $c"; sudo docker inspect "$c" --format 'restart={{.HostConfig.RestartPolicy.Name}}{{println}}{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}}{{println}}{{end}}'; done
-```
-
-Evolution's instance data is mounted at `/evolution/instances` [R10].
-Check whether Postgres/Redis are **shared with other apps**. The procedure
-below never stops them and only copies Evolution's data, so sharing is
-fine. Just know it.
-
-### 1.2 Record the values that must match on the VPS
-
-The process environment overrides the defaults baked into the image at
-`/evolution/.env`. Read both:
-
-```bash
-sudo docker inspect "$EVO_C" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(SERVER_URL|AUTHENTICATION_API_KEY|DATABASE_|CACHE_|PROVIDER_|CONFIG_SESSION_)' | sort
-sudo docker exec "$EVO_C" sh -c 'grep -E "^(DATABASE_CONNECTION_CLIENT_NAME|CACHE_REDIS_PREFIX_KEY|CACHE_REDIS_URI|CACHE_REDIS_SAVE_INSTANCES|PROVIDER_ENABLED)=" /evolution/.env'
-```
-
-Copy into the VPS `.env` (see `.env.example`, marked `[MATCH TRUENAS]`):
-
-| TrueNAS variable | VPS `.env` |
+| Item | Detail |
 | --- | --- |
-| `AUTHENTICATION_API_KEY` | `EVOLUTION_API_KEY` |
-| `DATABASE_CONNECTION_CLIENT_NAME` | `EVOLUTION_CLIENT_NAME` |
-| `?schema=` of `DATABASE_CONNECTION_URI` | `EVOLUTION_DB_SCHEMA` |
-| `/N` at the end of `CACHE_REDIS_URI` | `EVOLUTION_REDIS_DB` |
-| `CACHE_REDIS_PREFIX_KEY` (code default `evolution-cache` [R11]) | `EVOLUTION_REDIS_PREFIX` |
-| `CACHE_REDIS_SAVE_INSTANCES` | `EVOLUTION_REDIS_SAVE_INSTANCES` |
-| `CONFIG_SESSION_PHONE_CLIENT` / `_NAME` | `EVOLUTION_PHONE_CLIENT` / `_NAME` |
+| Network `baja-edge` | External Docker network; Evolution and the base Caddy are on it, and it has internet egress |
+| Container `caddy` | Running, config at `/etc/caddy/Caddyfile` with `import /srv/caddy/conf.d/*.caddy`, admin API on its default `localhost:2019` (for `caddy reload`) |
+| `/srv/caddy/conf.d/` | Host folder, bind-mounted into `caddy` at the same path. `up.sh` writes `pipeline.caddy` there |
+| `/srv/pipeline` in `caddy` | Read-only bind mount of the host's `/srv/pipeline`, by default at the same path (`CADDY_PIPELINE_DIR` otherwise). The base Caddy serves `proxies/`, `thumbs/` and reads `reviewers.txt` from it. Docker creates an empty root-owned folder if it does not exist yet; §2.1 then fixes the owner |
+| Evolution | `evolution:8080` on `baja-edge`, v2.3.x webhook API; reachable from the VPS host at `EVOLUTION_URL` (normally its public hostname) |
+| `baja-edge` subnet | `10.201.0.0/24`, pinned by the base stack; `BVP_TRUSTED_PROXY_CIDRS` names it (§9). This compose declares no subnet for it |
 
-Also note the user/password/db name inside `DATABASE_CONNECTION_URI`
-(needed for `pg_dump`):
+## 2. One-time preparation on the VPS
 
-```bash
-PGU=<user from URI>; PGD=<db from URI>; SCHEMA=<schema from URI>
-EVO_KEY=<AUTHENTICATION_API_KEY>; EVO_NAME=<instance name>
-```
-
-**Stop conditions.** These setups are not covered here. Stop and plan
-separately if any applies:
-`DATABASE_PROVIDER` is not `postgresql`, `PROVIDER_ENABLED=true`, or the
-Evolution version (next step) is 1.x.
-
-### 1.3 Versions
-
-```bash
-sudo docker exec "$EVO_C" wget -qO- http://127.0.0.1:8080/ ; echo
-sudo docker exec "$PG_C" postgres --version
-sudo docker exec "$REDIS_C" redis-server --version
-```
-
-* Evolution **2.x older than 2.3.7**: fine. The new container runs Prisma
-  migrations on start (`Docker/scripts/deploy_database.sh` in the image
-  entrypoint [R12]). The TrueNAS DB is only *dumped*, never migrated, so
-  rollback stays possible.
-* Postgres: the VPS major (`postgres:15.19-alpine`) must be **≥** TrueNAS's.
-  If TrueNAS is on 16/17, change the image in `docker-compose.yml` first.
-* Redis: the VPS (`redis:8.10.2-alpine`) must be **≥** TrueNAS's, so it can
-  load the snapshot.
-
-### 1.4 Record the instance and the key counts
-
-```bash
-sudo docker exec "$PG_C" psql -U "$PGU" -d "$PGD" -c "SELECT id, name, \"connectionStatus\", \"clientName\", token FROM \"$SCHEMA\".\"Instance\";"
-sudo docker exec "$PG_C" psql -U "$PGU" -d "$PGD" -c "SELECT \"sessionId\", length(creds) FROM \"$SCHEMA\".\"Session\";"
-sudo docker exec "$EVO_C" wget -qO- --header "apikey: $EVO_KEY" "http://127.0.0.1:8080/webhook/find/$EVO_NAME" ; echo
-```
-
-* `id` = the instance id (`INSTANCE_ID=<id>`). `name` → `BVP_EVOLUTION_INSTANCE`.
-  `token` → `BVP_EVOLUTION_API_KEY` in the VPS `.env` (the orchestrator
-  still accepts the older name `BVP_EVOLUTION_INSTANCE_TOKEN`).
-* The webhook JSON [R13] is the old consumer's config. It comes over with
-  Postgres and gets replaced in §3.8/§6.2. Just keep a copy.
-
-Count the Redis keys for this instance (compare after the restore):
-
-```bash
-REDIS_DB=<N>; REDIS_PREFIX=<prefix>
-sudo docker exec "$REDIS_C" redis-cli -n "$REDIS_DB" --scan --pattern "*$INSTANCE_ID*" | wc -l
-sudo docker exec "$REDIS_C" redis-cli -n "$REDIS_DB" HLEN "$REDIS_PREFIX:instance:$INSTANCE_ID"
-```
-
-(Add `-a <password>` to `redis-cli` if TrueNAS's Redis has one.) With
-`CACHE_REDIS_ENABLED=true` and `SAVE_INSTANCES=false`, `HLEN` should be
-in the hundreds. Zero means the keys are in files under
-`/evolution/instances/<id>/` (Redis disabled), and those are copied too.
-
----
-
-## 2. Prepare the VPS (any time before the cutover)
-
-Run all VPS steps as root (`sudo -i`). `.env` is mode 600, and later steps
-load it into the shell with `set -a; . ./.env; set +a`.
+Run all VPS steps as root (`sudo -i`). Host basics (Docker, swap, journald,
+the firewall's public ports) are the base stack's runbook.
 
 ### 2.1 Checkout and directories
 
 `/srv/pipeline` is `BVP_DATA_DIR` (design §15). The orchestrator mounts it
-read-write and Caddy read-only. The orchestrator and review-UI images run
-as **uid/gid 10001**, so the data folders and the two files the
-orchestrator reads belong to that user (design §17):
+read-write; `pipeline-edge` and the base Caddy read-only. The orchestrator and
+review-UI images run as **uid/gid 10001**, so the data folders and the two
+files the orchestrator reads belong to that user (design §17):
 
 ```bash
 sudo git clone https://github.com/jbresolin/baja-video-pipeline.git /opt/baja
 cd /opt/baja/infra/vps
 sudo install -d -o 10001 -g 10001 -m 750 /srv/pipeline
 sudo install -d -o 10001 -g 10001 /srv/pipeline/{inbox,proxies,thumbs,outbox,db}
-# Reviewers (filled in §2.6) and teams (optional CSV, see below), owned by 10001.
+# Reviewers (filled in §4) and teams (optional CSV, see below), owned by 10001.
 [ -e /srv/pipeline/reviewers.txt ] || sudo install -o 10001 -g 10001 -m 640 /dev/null /srv/pipeline/reviewers.txt
 [ -e /srv/pipeline/teams.csv ] || echo 'car_number,team_name,school' | sudo install -o 10001 -g 10001 -m 640 /dev/stdin /srv/pipeline/teams.csv
-sudo mkdir -p /var/lib/baja /root/evo-migration
+sudo mkdir -p /var/lib/baja
+sudo apt-get install -y gettext-base     # envsubst, for up.sh (usually already there)
 ```
 
 `teams.csv` (`BVP_TEAMS_FILE`) is one `car_number,team_name,school` line per
 car; the orchestrator re-reads it when it changes. It may stay with only
 the header: team names then come from `BVP_BAJA_APP_URL`, or stay empty.
-Caddy runs as root inside its container and reads both files read-only.
+Both Caddies run as root inside their containers and read the files read-only.
 
-### 2.2 Kernel settings, swap, journald
+### 2.2 Binding to the Tailscale IP
 
-`ip_nonlocal_bind` lets Docker bind Caddy's tailnet port to the Tailscale IP
+`ip_nonlocal_bind` lets Docker publish `pipeline-edge` on the Tailscale IP
 even if `tailscaled` has not brought the IP up yet at boot. Without it the
-publish fails with "cannot assign requested address".
+publish fails with "cannot assign requested address":
 
 ```bash
-printf 'vm.swappiness=10\nnet.ipv4.ip_nonlocal_bind=1\n' | sudo tee /etc/sysctl.d/90-baja.conf
+printf 'net.ipv4.ip_nonlocal_bind=1\n' | sudo tee /etc/sysctl.d/91-baja-pipeline.conf
 sudo sysctl --system
-```
-
-**Swap: 2 GiB recommended on the 4 GB box.** The containers can't use it
-(`memswap_limit = mem_limit`, so a leaking container is OOM-killed and
-restarted, not slowly swapped). It absorbs host-side spikes (apt,
-dockerd, image pulls) so they don't trigger the OOM killer on Evolution.
-
-```bash
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
-
-Cap the system journal:
-
-```bash
-sudo mkdir -p /etc/systemd/journald.conf.d
-printf '[Journal]\nSystemMaxUse=500M\n' | sudo tee /etc/systemd/journald.conf.d/90-baja.conf
-sudo systemctl restart systemd-journald
 ```
 
 ### 2.3 Inbox as a 25 GiB filesystem (hard cap, design §10)
 
 The inbox gets its own loop-mounted ext4 file, sized = `BVP_INBOX_CAP_GB`.
-When it is full, writes fail with ENOSPC inside the inbox only, and
-Postgres/Redis/Evolution on the root filesystem keep working. The soft cap
-(`BVP_INBOX_HOLD_GB`, bot asks senders to hold) is the orchestrator's job,
-see §8. The image file lives outside `/srv/pipeline`, so no container can
-see it.
+When it is full, writes fail with ENOSPC inside the inbox only, and the base
+stack on the root filesystem keeps working. The soft cap (`BVP_INBOX_HOLD_GB`,
+bot asks senders to hold) is the orchestrator's job, see §10. The image file
+lives outside `/srv/pipeline`, so no container can see it.
 
 ```bash
 sudo fallocate -l 25G /var/lib/baja/inbox.img
@@ -295,343 +158,284 @@ sudo chown 10001:10001 /srv/pipeline/inbox
 
 ### 2.4 Firewall
 
-Docker-published ports bypass ufw [R14]. That's acceptable here, because
-only Caddy publishes (80/443 public, 8080 on the Tailscale IP only). Still
-close everything else on the host:
+Docker-published ports bypass ufw [R14]. `pipeline-edge` publishes only on
+the Tailscale IP, so it is unreachable from the internet either way. If the
+base stack's ufw policy does not already allow the tailnet interface, add:
 
 ```bash
-sudo ufw default deny incoming
-sudo ufw allow OpenSSH
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 443/udp
 sudo ufw allow in on tailscale0
-sudo ufw enable
 ```
 
-Also allow 80/443 in the VPS provider's firewall, if it has one.
-
-### 2.5 `.env`
+## 3. `.env`
 
 ```bash
 sudo cp .env.example .env
 sudo chmod 600 .env
-openssl rand -hex 24      # run once per secret: POSTGRES_PASSWORD, BVP_WEBHOOK_SECRET, BVP_ADMIN_TOKEN
-sudo docker run --rm caddy:2.11.7-alpine caddy hash-password --plaintext 'manager-password'
-sudo nano .env            # fill in everything; put the bcrypt hash in SINGLE quotes
+openssl rand -hex 24      # run once per secret: BVP_WEBHOOK_SECRET, BVP_ADMIN_TOKEN
+sudo nano .env            # fill in everything
+sudo docker compose config -q     # must print nothing
 ```
 
-Then validate. This must print nothing:
+`BVP_EVOLUTION_INSTANCE` and `BVP_EVOLUTION_API_KEY` (the instance token)
+come from the base stack's Evolution; its runbook says where to read them.
 
-```bash
-sudo docker compose config -q
-```
+## 4. Reviewers file (`/srv/pipeline/reviewers.txt`)
 
-### 2.6 Reviewers file (`/srv/pipeline/reviewers.txt`)
-
-One file of named reviewers, read by **Caddy** (basic auth on `/review*`,
-`/proxies/*`, `/thumbs/*`) and by the **orchestrator** (`BVP_REVIEWERS_FILE`,
-`reviewerBasic` in `docs/api.md`) (design §15).
+One file of named reviewers, read by the **base Caddy** (basic auth on
+`/review*`, `/proxies/*`, `/thumbs/*`, through `conf.d/pipeline.caddy`) and
+by the **orchestrator** (`BVP_REVIEWERS_FILE`, `reviewerBasic` in
+`docs/api.md`) (design §15).
 
 **Format: one `username bcrypt-hash` pair per line, separated by a space.**
 `#` starts a comment line. This is **not** Apache's htpasswd `user:hash`
-format (hence the `.txt` name, design §17). Caddy imports the file straight into its `basic_auth` block,
-and a colon line fails to load ("username and password cannot be empty").
-Usernames must not contain spaces.
+format (hence the `.txt` name, design §17). Caddy imports the file straight
+into its `basic_auth` block, and a colon line fails to load ("username and
+password cannot be empty"). Usernames must not contain spaces.
 
-Add a reviewer:
+Add a reviewer, then reload the base Caddy (re-running `./up.sh` does the
+same, plus its checks):
 
 ```bash
 HASH=$(sudo docker run --rm caddy:2.11.7-alpine caddy hash-password --plaintext 'their-password')
 echo "ana $HASH" | sudo tee -a /srv/pipeline/reviewers.txt
 sudo chown 10001:10001 /srv/pipeline/reviewers.txt
 sudo chmod 640 /srv/pipeline/reviewers.txt
-sudo docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+sudo docker exec -w /etc/caddy caddy caddy reload --config /etc/caddy/Caddyfile
 ```
 
-Remove a reviewer: delete the line, then reload Caddy the same way. The
-orchestrator needs nothing: it re-reads the file on the next login after
+Remove a reviewer: delete the line, then reload the base Caddy the same way.
+The orchestrator needs nothing: it re-reads the file on the next login after
 it changes (like `teams.csv`). If an edit leaves the file unparseable it
-logs a warning and keeps the previous version; Caddy's reload fails
-loudly in that case, so fix the line and reload again. The file must
-exist with **at least one** reviewer before Caddy starts, or Caddy
-refuses the config.
+logs a warning and keeps the previous version; Caddy's reload fails loudly
+and keeps running the previous config, so fix the line and reload again.
+The file must have **at least one** reviewer before `up.sh`, or the base
+Caddy refuses the routes and `up.sh` takes them back out (§6).
 
-### 2.7 Pull images, create volumes, start Caddy early
+## 5. Images on ghcr.io
+
+`.github/workflows/images.yml` pushes `ghcr.io/jbresolin/baja-orchestrator`
+and `ghcr.io/jbresolin/baja-review-ui` (tags `main`, the short commit SHA,
+`v*`). **GitHub creates container packages private**, so `docker compose
+pull` on the VPS fails with `denied` or `unauthorized` until you pick one:
+
+**Option A: log the VPS in with a read-only token** (images stay private).
+On GitHub: *Settings → Developer settings → Personal access tokens → Tokens
+(classic) → Generate new token*, scope **`read:packages` only**, an
+expiry past the event. (ghcr.io has needed a classic token for this; if
+GitHub's fine-grained tokens list *Packages: read* for your account by now,
+that works too.) Then on the VPS:
 
 ```bash
-sudo docker compose pull
-sudo docker compose create postgres redis evolution
-sudo docker compose up -d caddy
-sudo docker compose logs caddy | grep -i -E 'certificate obtained|error'
+sudo docker login ghcr.io -u jbresolin     # paste the token as the password
 ```
 
-Caddy gets the TLS certificates now, so the cutover doesn't wait on ACME.
-Until Evolution runs, `https://$EVO_DOMAIN/` with an `apikey` header
-returns 502, which is expected.
+Docker keeps it in `/root/.docker/config.json` (base64, not encrypted:
+that is why the token can only read packages). Renew it before it expires,
+and `sudo docker logout ghcr.io` when the VPS is retired.
 
----
+**Option B: make the two packages public.** On GitHub: your profile →
+*Packages* → `baja-orchestrator` → *Package settings* → *Change
+visibility* → Public; repeat for `baja-review-ui`. No login on the VPS. The
+images hold only the code, which is the same as this repo's: no secrets are
+baked in (everything comes from `.env` at run time). Choose this if the
+repo itself is public or you don't mind the code being pullable.
 
-## 3. Cutover: stop old → copy → start new
-
-Expected downtime: about 15 minutes. Run the TrueNAS part (3.1–3.3) and the
-VPS part (3.4–3.8) back to back.
-
-### 3.1 TrueNAS: stop the old Evolution for good
-
-```bash
-sudo docker update --restart=no "$EVO_C"
-sudo docker stop "$EVO_C"
-sudo docker ps --filter "name=$EVO_C"      # must list nothing
-```
-
-If Evolution is a TrueNAS **App**, also stop the app in the UI, so the
-middleware doesn't restart it. If that stops its Postgres/Redis too,
-start just those two again: `sudo docker start "$PG_C" "$REDIS_C"`. Only
-the API container must stay down.
-
-### 3.2 TrueNAS: export the three stores
+## 6. `up.sh` and `down.sh`
 
 ```bash
-mkdir -p ~/evo-migration
-cd ~/evo-migration
-# (a) Postgres: logical dump of Evolution's DB (Session, Instance, Webhook, ... tables)
-sudo docker exec "$PG_C" pg_dump -U "$PGU" -d "$PGD" -Fc --no-owner --no-privileges -f /tmp/evolution.dump
-sudo docker cp "$PG_C":/tmp/evolution.dump ./evolution.dump
-# (b) Redis: consistent RDB snapshot over the replication protocol (doesn't stop Redis)
-sudo docker exec "$REDIS_C" redis-cli --rdb /tmp/evolution.rdb
-sudo docker cp "$REDIS_C":/tmp/evolution.rdb ./evolution.rdb
-# (c) Instances volume (works on a stopped container)
-sudo docker cp "$EVO_C":/evolution/instances ./instances
-sudo tar -C ./instances -czf evolution_instances.tgz .
-sha256sum evolution.dump evolution.rdb evolution_instances.tgz | tee SHA256SUMS
-```
-
-These files contain the WhatsApp private keys. Treat them like a password.
-
-### 3.3 Transfer to the VPS
-
-```bash
-scp evolution.dump evolution.rdb evolution_instances.tgz SHA256SUMS root@<vps>:/root/evo-migration/
-```
-
-### 3.4 VPS: verify and restore Postgres
-
-```bash
-cd /root/evo-migration
-sha256sum -c SHA256SUMS
 cd /opt/baja/infra/vps
-set -a; . ./.env; set +a
-INSTANCE_ID=<id from §1.4>
-sudo docker compose up -d postgres
-sudo docker compose cp /root/evo-migration/evolution.dump postgres:/tmp/evolution.dump
-sudo docker compose exec postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-privileges /tmp/evolution.dump'
-sudo docker compose exec postgres sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -c 'SELECT id, name, \"clientName\" FROM \"$EVOLUTION_DB_SCHEMA\".\"Instance\";'"
+sudo ./up.sh      # before the event (EVENT_DAY.md, T-7)
+sudo ./down.sh    # after it (EVENT_DAY.md, "After the event")
 ```
 
-Keep this shell open for §3.5–§6, because later steps use the loaded
-variables. The row must show the same `id` and `clientName` as in §1.4.
-If `pg_restore` only complains that `schema "public" already exists`, that
-is harmless.
+Both are idempotent: run them again whenever in doubt. Each step checks
+first and says what it did or why it did nothing.
 
-### 3.5 VPS: restore Redis (RDB → AOF the safe way)
+**`up.sh`**
 
-Our Redis runs with `appendonly yes`. If Redis starts with AOF enabled and
-no AOF files present, it ignores `dump.rdb`. So load the RDB with AOF
-off, then switch AOF on *live*. That's the procedure Redis documents [R15]:
+1. The base stack is present: network `baja-edge`, container `caddy`
+   running, `/srv/caddy/conf.d/` writable. Otherwise it stops before touching
+   anything.
+2. `docker compose pull` and `docker compose up -d --remove-orphans`.
+3. Waits (up to 90 s) for the orchestrator's `/health` through
+   `pipeline-edge` on `${TAILSCALE_IP}:8080`.
+4. Renders `conf.d/pipeline.caddy` (§7), installs it as
+   `/srv/caddy/conf.d/pipeline.caddy` when it differs from what is there, and
+   reloads the base Caddy (always: that also picks up reviewer edits). If the
+   base Caddy refuses it, the previous file is put back, or the new one
+   removed, so a bad file never blocks the other stacks' reloads.
+5. Asks Evolution for the instance webhook and sets it (§8) unless it
+   already points at `http://bvp-orchestrator:8000/intake/evolution-webhook`
+   with the right secret, events, and `base64` off.
+6. Runs `compose-smoke.sh` (§11).
+
+Exit 0 = up and every check passed; 1 = up, but a smoke check failed; 2 =
+a step failed and `up.sh` stopped there (the message says which).
+
+**`down.sh`**
+
+1. Disables the instance webhook, so Evolution stops posting to an
+   orchestrator that is about to stop. A webhook that someone pointed at a
+   different URL is left alone.
+2. Removes `/srv/caddy/conf.d/pipeline.caddy` and reloads the base Caddy, so
+   `PIPELINE_DOMAIN` stops being served (browsers get a TLS error for it
+   until the next `up.sh`; fine for a staging box).
+3. `docker compose down --remove-orphans`. No `-v`: the stack has no named
+   volumes, and `/srv/pipeline` (jobs DB, reviewers, teams, any leftover
+   raws) stays as it is for the next `up.sh`.
+
+Every step runs even if an earlier one failed, so the containers always stop.
+Exit 0 = all done; 1 = down, but a step needs a look (e.g. Evolution was
+unreachable, so the webhook may still be on).
+
+The decisions live in `stack_ctl.py` (stdlib only), tested with fake
+`docker`/`curl` in `tests/infra/test_up_down.py`.
+
+## 7. Listeners and routes
+
+**`docs/api.md` is the authority** for the orchestrator's routes, auth
+schemes, payloads and data layout (design §15 settles any conflict). Only
+the Caddy-side facts live here. If one of them changes, update
+`conf.d/pipeline.caddy` or `Caddyfile.tailnet` in the same PR.
+
+| Listener | Reachable from | Served by | Routes |
+| --- | --- | --- | --- |
+| `:443` `PIPELINE_DOMAIN` | internet | base Caddy, `conf.d/pipeline.caddy` | `/review*` → `bvp-review-ui:8001` (reviewer basic auth); `/proxies/*`, `/thumbs/*` → static (reviewer basic auth); `POST /enroll` → `bvp-orchestrator:8000` (no auth, 16 KB body cap); `/` → redirect to `/review/`; anything else 404 |
+| `${TAILSCALE_IP}:8080` | tailnet only | `pipeline-edge`, `Caddyfile.tailnet` | `/inbox/*`, `/outbox/*` → static behind `forward_auth`; everything else → orchestrator |
+| `bvp-orchestrator:8000` | `baja-edge` and `pipeline` networks | — | base Caddy (`/enroll`), Evolution's webhook (`POST /intake/evolution-webhook`), `pipeline-edge`, review UI |
+
+**DNS and certificates.** `PIPELINE_DOMAIN` is **DNS-only at Cloudflare
+(grey cloud)**: the A/AAAA record points straight at the VPS and Cloudflare
+does not proxy it. So the base Caddy gets its certificate with a plain
+**HTTP-01** challenge on port 80 (no DNS-provider plugin, no API token), and
+the snippet has **no Cloudflare-only matcher** (no `remote_ip` allowlist of
+Cloudflare ranges, no `trusted_proxies cloudflare`): the TCP peer the base
+Caddy sees is the real client, which is what goes into `X-Forwarded-For`
+(§9). Turning the orange cloud on later would break both assumptions: the
+`/enroll` rate limit would see Cloudflare's addresses.
+
+**Rendering `conf.d/pipeline.caddy`.** The file in the repo is a template
+with two variables, both from `.env`: `${PIPELINE_DOMAIN}` (the site
+address) and `${CADDY_PIPELINE_DIR}` (where the base Caddy sees
+`/srv/pipeline`: the `file_server` root and the `reviewers.txt` import).
+`up.sh` runs
 
 ```bash
-sudo docker run --rm -v baja_redis_data:/data -v /root/evo-migration:/backup alpine:3.22 cp /backup/evolution.rdb /data/dump.rdb
-sudo docker run -d --name redis-import -v baja_redis_data:/data redis:8.10.2-alpine redis-server --appendonly no
-sudo docker exec redis-import redis-cli -n "$EVOLUTION_REDIS_DB" HLEN "$EVOLUTION_REDIS_PREFIX:instance:$INSTANCE_ID"
-sudo docker exec redis-import redis-cli CONFIG SET appendonly yes
-sudo docker exec redis-import redis-cli INFO persistence | grep -E 'aof_rewrite_in_progress|aof_rewrite_scheduled|aof_last_bgrewrite_status'
+envsubst '${PIPELINE_DOMAIN} ${CADDY_PIPELINE_DIR}' < conf.d/pipeline.caddy
 ```
 
-Repeat the last command until both `*_in_progress` and `*_scheduled` are
-`0` and the status is `ok`. Then:
+The explicit list matters: only those two are replaced, so Caddy's own
+placeholders (`{http.auth.user.id}`) are untouched. Why not Caddy's
+`{$PIPELINE_DOMAIN}`: Caddy would resolve that from **the base Caddy
+container's** environment, which the base stack defines and this repo does
+not. So after changing either value in `.env`, run `./up.sh` again; it
+re-renders and reloads. Snippets in the file carry a `bvp_` prefix,
+because snippet names are shared with the base Caddyfile and every other
+conf.d file.
 
-```bash
-sudo docker exec redis-import redis-cli SHUTDOWN
-sudo docker rm redis-import
-sudo docker compose up -d redis
-sudo docker compose exec redis redis-cli -n "$EVOLUTION_REDIS_DB" HLEN "$EVOLUTION_REDIS_PREFIX:instance:$INSTANCE_ID"
-```
+**forward_auth (`/inbox/*`, `/outbox/*`)**: `pipeline-edge` sends `GET
+/auth/file` to `orchestrator:8000` with the client's original headers
+(including `Authorization: Bearer …`) plus `X-Forwarded-Method` and
+`X-Forwarded-Uri` (the requested path) [R23]. A 2xx lets Caddy serve the
+file, and an `X-Worker-Id` response header is copied onto the request for
+the access log. Any other status is returned to the worker unchanged.
 
-The `HLEN` must equal the TrueNAS number from §1.4.
+**Reviewer requests**: the base Caddy checks basic auth against
+`reviewers.txt` (format in §4), then proxies `/review*` to `bvp-review-ui:8001`
+with the client's `Authorization` header unchanged, plus `X-Reviewer:
+<username>`. Caddyfile `basic_auth` caches bcrypt results, so the video
+player's many Range requests don't each pay a bcrypt hash.
 
-### 3.6 VPS: restore the instances volume
+**Dot-file rule**: both Caddies' `file_server` hide `.*` (plus `*.part`,
+`*.part.json`) under the data dir [R24]. Writers create files as dot-files
+and rename them when complete, so Caddy never serves half a file. Range
+requests (resume, seeking) are handled by `file_server`.
 
-```bash
-sudo docker run --rm -v baja_evolution_instances:/evolution/instances -v /root/evo-migration:/backup alpine:3.22 tar -C /evolution/instances -xzf /backup/evolution_instances.tgz
-sudo docker run --rm -v baja_evolution_instances:/evolution/instances alpine:3.22 ls -la /evolution/instances
-```
-
-### 3.7 VPS: start Evolution
-
-```bash
-sudo docker compose up -d evolution
-sudo docker compose logs -f evolution
-```
-
-Expect the Prisma migrations (if TrueNAS was older), then the instance
-loading. **Do not open the Manager and do not click "connect"/QR.**
-
-### 3.8 VPS: retire the old webhook
-
-The instance webhook came over in Postgres, still pointing at the old
-consumer. Nothing listens there any more, and Evolution would retry every
-event against it. If the orchestrator is **already running**, skip this
-and do §6.2 now. Otherwise disable the webhook until it is:
-
-```bash
-curl -sS -X POST "https://$EVO_DOMAIN/webhook/set/$BVP_EVOLUTION_INSTANCE" \
-  -H "apikey: $EVOLUTION_API_KEY" -H 'content-type: application/json' \
-  -d '{"webhook":{"enabled":false,"url":"http://orchestrator:8000/intake/evolution-webhook","byEvents":false,"base64":false,"events":[]}}'
-```
-
-The body is **nested under `"webhook"`** with `byEvents`/`base64`. That's
-what v2.3.7 validates [R16]. The docs page shows a flat body [R13], which is
-wrong for this version. `url` is required even when disabled.
-
----
-
-## 4. Verify: connected without a QR
-
-```bash
-curl -sS -H "apikey: $EVOLUTION_API_KEY" "https://$EVO_DOMAIN/instance/connectionState/$BVP_EVOLUTION_INSTANCE" ; echo
-```
-
-Must be `{"instance":{"instanceName":"…","state":"open"}}` [R17]. Then:
-
-1. Phone of the Baja Bot number → *Linked devices*. The **same** device entry
-   as before ("Evolution API"/Chrome), with recent activity and **no new
-   device**.
-2. Send a test message from the bot [R18]:
-   ```bash
-   curl -sS -X POST "https://$EVO_DOMAIN/message/sendText/$BVP_EVOLUTION_INSTANCE" \
-     -H "apikey: $EVOLUTION_API_KEY" -H 'content-type: application/json' \
-     -d '{"number":"55XXXXXXXXXXX","text":"VPS migration test"}'
-   ```
-3. Reply to the bot from that phone, then check that the reply was received
-   **and decrypted**. It is stored, because `DATABASE_SAVE_DATA_NEW_MESSAGE=true`:
-   ```bash
-   sudo docker compose exec postgres sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -c 'SELECT \"messageType\", \"pushName\", to_timestamp(\"messageTimestamp\") FROM \"$EVOLUTION_DB_SCHEMA\".\"Message\" ORDER BY \"messageTimestamp\" DESC LIMIT 3;'"
-   ```
-   Your reply should be the top row with a real type (`conversation`,
-   `extendedTextMessage`), and Evolution's logs should show no `Bad MAC`.
-
-**If the state is `close`/`connecting`, or a QR appears:**
-
-* `fetchInstances` [R19] is empty → `EVOLUTION_CLIENT_NAME` or
-  `EVOLUTION_DB_SCHEMA` doesn't match. Fix `.env`, `docker compose up -d evolution`.
-* The instance exists but the keys are missing → `EVOLUTION_REDIS_DB`/`_PREFIX`
-  mismatch, or §3.5 skipped. Fix it and restart.
-* Make sure the TrueNAS container is really down (§3.1). Two live copies
-  conflict.
-* After 15 minutes without progress → rollback (§9). Scanning a new QR is
-  the last resort, not a fix. It also works with the same number, but it
-  creates a new linked device.
-
----
-
-## 5. Public checks
-
-```bash
-curl -sS -o /dev/null -w '%{http_code}\n' "https://$EVO_DOMAIN/"                 # 401 (no apikey header)
-curl -sS -o /dev/null -w '%{http_code}\n' "https://$EVO_DOMAIN/manager"          # 401 (basic auth)
-curl -sS -o /dev/null -w '%{http_code}\n' -H "apikey: $EVOLUTION_API_KEY" "https://$EVO_DOMAIN/"   # 200
-curl -sS -o /dev/null -w '%{http_code}\n' "https://$PIPELINE_DOMAIN/review/"     # 401
-curl -sS -o /dev/null -w '%{http_code}\n' "https://$PIPELINE_DOMAIN/thumbs/x.jpg" # 401
-curl -sS -o /dev/null -w '%{http_code}\n' "https://$PIPELINE_DOMAIN/enroll"      # 404 (GET is not routed)
-curl -sS -m 5 -o /dev/null -w '%{http_code}\n' "http://<vps-public-ip>:8080/"    # must time out / refuse
-```
-
-Manager UI: `https://$EVO_DOMAIN/manager`. First the basic auth, then
-Evolution's own login with the API key. Once the orchestrator runs,
-`POST https://$PIPELINE_DOMAIN/enroll` reaches it without auth (a bad
-token → 401 `enrollment_token_invalid`).
-
----
-
-## 6. Webhook → orchestrator
-
-### 6.1 How Evolution v2 delivers
+## 8. The Evolution webhook
 
 From the v2.3.7 source [R8] and docs [R13][R20]:
 
-* **Instance webhook**: one per instance (`"Webhook".instanceId` is
-  unique), **one URL**, custom `headers` supported, own event list, plus
-  `byEvents`/`base64` flags. Set via `POST /webhook/set/{instance}`.
-* **Global webhook**: one URL from env (`WEBHOOK_GLOBAL_*`), **no custom
-  headers**. Disabled here (`WEBHOOK_GLOBAL_ENABLED=false`), because the
-  orchestrator is the only consumer (design §15).
-* Delivery is awaited with retries. Upstream defaults are kept: 10
-  attempts, exponential backoff capped at 300 s, about 20 minutes in total
-  [R21]. That rides out an orchestrator restart instead of dropping a
-  video. 400/401/403/404/422 responses are not retried.
+* **Instance webhook**: one per instance, **one URL**, custom `headers`
+  supported (so it can carry `X-Webhook-Secret`), its own event list, plus
+  `byEvents`/`base64` flags. The orchestrator is its only consumer; the
+  global webhook (no custom headers) is the base stack's to keep disabled.
+* It is set with **`POST /webhook/set/{instance}`**, body **nested under
+  `"webhook"`** with `byEvents`/`base64`. That is what v2.3.7 validates
+  [R16]; the docs page shows a flat body [R13], which is wrong for this
+  version, and there is no `PUT` route. `url` is required even when
+  disabled, so `down.sh` sends ours with `"enabled": false`.
+* What `up.sh` sets:
+  `{"webhook":{"enabled":true,"url":"http://bvp-orchestrator:8000/intake/evolution-webhook","headers":{"X-Webhook-Secret":"<BVP_WEBHOOK_SECRET>"},"byEvents":false,"base64":false,"events":["MESSAGES_UPSERT","CONNECTION_UPDATE"]}}`.
+  The body goes to curl through a temporary file, so the secret is never on
+  a command line.
+* Evolution posts to `bvp-orchestrator:8000` **over `baja-edge`**. The
+  webhook never leaves the host and has no public route.
+* Delivery is retried by Evolution (the base stack's `WEBHOOK_RETRY_*`
+  settings), which rides out an orchestrator restart.
 
-Evolution posts to `http://orchestrator:8000/…` **inside the compose
-network**. The webhook never leaves the host and has no public route.
+**Keep `base64` off.** With it on, Evolution downloads *every* incoming
+media into a Node Buffer and embeds it in the payload [R22]. A 2 GB WhatsApp
+document (design §3) would OOM-kill Evolution. `up.sh` always sends
+`base64: false` and treats a webhook with it on as one to fix. The
+orchestrator streams and decrypts documents from the WhatsApp CDN itself
+(design §15).
 
-### 6.2 Enable it when the orchestrator is deployed (LIVESTACK-24)
+**Rotating the webhook secret**: change `BVP_WEBHOOK_SECRET` in `.env`,
+then `sudo ./up.sh`. It recreates the orchestrator with the new value and,
+seeing the old header on the webhook, sets the new one.
 
-1. Set `ORCHESTRATOR_IMAGE` and `REVIEW_UI_IMAGE` in `.env` (CI publishes
-   `ghcr.io/jbresolin/baja-orchestrator` and `…/baja-review-ui` with tags
-   `main`, the short commit SHA and `v*`) and start both:
-   `sudo docker compose --profile orchestrator up -d orchestrator review-ui`
-2. Point the instance webhook at it, with the shared secret:
-   ```bash
-   curl -sS -X POST "https://$EVO_DOMAIN/webhook/set/$BVP_EVOLUTION_INSTANCE" \
-     -H "apikey: $EVOLUTION_API_KEY" -H 'content-type: application/json' \
-     -d '{"webhook":{"enabled":true,"url":"http://orchestrator:8000/intake/evolution-webhook","headers":{"X-Webhook-Secret":"'"$BVP_WEBHOOK_SECRET"'"},"byEvents":false,"base64":false,"events":["MESSAGES_UPSERT","CONNECTION_UPDATE"]}}'
-   ```
-3. Check: `GET /webhook/find/$BVP_EVOLUTION_INSTANCE` shows that URL, and a
-   document sent to the bot shows up as a job in the orchestrator.
+## 9. `/enroll` source IP and `BVP_TRUSTED_PROXY_CIDRS`
 
-### 6.3 Keep `base64` off
+`/enroll` is rate-limited per source IP by the orchestrator (10 per 10 min,
+`docs/api.md` §2.2). The orchestrator takes the source IP from the **last
+`X-Forwarded-For` entry**, but only when the TCP peer is inside
+`BVP_TRUSTED_PROXY_CIDRS`. Otherwise it uses the peer itself.
 
-`base64` is a property of the instance webhook. When it is on, Evolution
-downloads *every* incoming media into a Node Buffer and embeds it in the
-payload [R22]. A 2 GB WhatsApp document (design §3) would OOM-kill Evolution
-at its 1 GiB limit. S3 upload is off for the same reason (it buffers
-too). The orchestrator streams and decrypts documents from the WhatsApp CDN
-itself (design §15).
+For a public `/enroll`, the peer is **the base Caddy's address on
+`baja-edge`**, because that is the network it uses to reach
+`bvp-orchestrator`. The base Caddy sets `X-Forwarded-For` to the client's
+address (the TCP peer it sees: `PIPELINE_DOMAIN` is DNS-only, so that is the
+real client, §7) and drops any value the client sent.
 
----
+| Network | Subnet | Set by | Who comes from it |
+| --- | --- | --- | --- |
+| `baja-edge` | `10.201.0.0/24` | the base stack (this compose joins it as `external`, with no subnet declaration) | the base Caddy (public `/enroll`), Evolution (webhook) |
+| `pipeline` | `10.202.0.0/24` | `docker-compose.yml` here (pinned so it can be named) | `pipeline-edge` (tailnet requests) |
 
-## 7. Rotating secrets
+So `.env.example` and `docker-compose.yml` set
 
-* **Evolution API key**: change `EVOLUTION_API_KEY` in `.env`, then
-  `sudo docker compose up -d evolution`. The orchestrator uses the instance
-  token, so it is not affected.
-* **Webhook secret**: change `BVP_WEBHOOK_SECRET`, then
-  `sudo docker compose --profile orchestrator up -d orchestrator`, then
-  repeat §6.2 step 2 with the new value.
-* **Reviewers**: §2.6.
+```
+BVP_TRUSTED_PROXY_CIDRS=127.0.0.1/32,10.201.0.0/24,10.202.0.0/24
+```
 
----
+and the orchestrator's own default (no variable at all) is
+`127.0.0.1/32,10.201.0.0/24,172.16.0.0/12`. Only containers on those two
+networks could spoof `X-Forwarded-For`: the base and scoring stacks and this
+one.
 
-## 8. Memory, disk, and where the caps are enforced
+* If `baja-edge` is not covered, every volunteer's enrollment counts against
+  the base Caddy's single IP, and the 11th PC in 10 minutes gets `429`.
+  `compose-smoke.sh` reads the subnets with
+  `docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' baja-edge`
+  and reports `trusted proxies cover baja-edge` as FAIL if one is not covered,
+  so a change of subnet in the base stack shows up at the next `up.sh`.
+* `.env` wins over `orchestrator.env` for this variable (`docker-compose.yml`
+  passes it in `environment:`).
 
-### 8.1 Memory (4 GB box)
+## 10. Memory, disk, and where the caps are enforced
+
+### 10.1 Memory (4 GB box, shared with the base stack)
 
 | Container | Limit | Notes |
 | --- | --- | --- |
-| evolution | 1024 MiB | Node + Baileys, one instance. Heap capped at 640 MiB (`NODE_OPTIONS`), so GC kicks in before an OOM. Media is never buffered (§6.3). |
-| postgres | 512 MiB | `shared_buffers=128MB`, `max_connections=50` (upstream: 1000) |
-| redis | 320 MiB | `maxmemory 160mb`, `volatile-lru`. Headroom for the AOF-rewrite fork. Session keys have no TTL and are never evicted. |
-| orchestrator | 768 MiB | FastAPI + SQLite. Must stream downloads/uploads to disk, never hold a file in RAM. |
-| caddy | 192 MiB | TLS + static files |
-| **Containers total** | **2816 MiB** | |
-| Host | ~1.2 GiB | kernel, dockerd/containerd, tailscaled, sshd, journald, page cache (which serves the proxies) |
-| Swap | 2 GiB | host only (`memswap_limit = mem_limit`) |
+| orchestrator | 768 MiB | FastAPI + SQLite. Streams downloads/uploads to disk, never holds a file in RAM |
+| review-ui | 160 MiB | |
+| pipeline-edge | 128 MiB | plain HTTP + static files |
+| **Pipeline total** | **1056 MiB** | only while up; the base stack's budget is in its own runbook |
 
-Check with `docker stats --no-stream`. Evolution + Postgres + Redis are the
-big three (design §10). If Evolution sits above about 800 MiB in steady
-state, look at `DATABASE_SAVE_*` before raising limits.
+`docker stats --no-stream` shows actual use.
 
-### 8.2 Disk (70 GB) and caps (design §10, §15)
+### 10.2 Disk (70 GB) and caps (design §10, §15)
 
 Throughput assumption: 200 passes × 500 MB = 100 GB/day through the VPS,
 pulled twice = 200 GB egress (about 4.5 h at 100 Mbps, spread over the day).
@@ -639,108 +443,20 @@ The VPS is **transit only**, so this volume never sits on disk at once.
 
 | Consumer | Budget | Enforced by |
 | --- | --- | --- |
-| Ubuntu + Docker images/layers | ~10 GB | — |
-| Swap file | 2 GB | fixed |
-| Evolution Postgres + Redis + instances | 1–3 GB | grows with saved messages (`DATABASE_SAVE_*`) |
+| Pipeline images | ~1 GB | `docker image prune` after an event |
 | Container logs | ≤ 30 MB per container | json-file rotation (`x-logging` in compose) |
-| journald | ≤ 500 MB | `SystemMaxUse` (§2.2) |
 | **Inbox** `/srv/pipeline/inbox` (raws waiting for a 2nd holder) | **hard cap 25 GiB**, normally near-empty | **Kernel:** 25 GiB loop filesystem (§2.3), the same size as `BVP_INBOX_CAP_GB=25`, which the orchestrator also enforces. **Soft cap: orchestrator** at `BVP_INBOX_HOLD_GB=22`, where the bot tells senders to hold. Only fills if all workers are offline. |
 | **Proxies + thumbs** | **~6 GB per 200-pass event** | **Orchestrator:** evicts the oldest *completed* jobs first when root free space < `BVP_PROXY_EVICT_MIN_FREE_GB=10`. Any holder regenerates on request. |
 | **Outbox** | fallback only | **Orchestrator:** deleted after the streaming PC's ACK |
 | Jobs DB `/srv/pipeline/db/` | small (SQLite WAL) | — |
+| Backups `/var/backups/baja/` | a few MB each, 14 kept | `backup.sh` retention |
 | Free headroom | ≥ 10 GB | same threshold as proxy eviction |
 
 Watch: `df -h / /srv/pipeline/inbox` and `sudo du -sh /srv/pipeline/*`.
 
----
+## 11. Smoke test
 
-## 9. Rollback
-
-Keep the TrueNAS stack **stopped, not deleted**, for at least two weeks.
-Its database was only dumped, never migrated, so the old image still
-matches it.
-
-**Clean rollback** (VPS never reached `open`, or only for minutes):
-
-```bash
-# VPS
-sudo docker compose stop evolution
-# TrueNAS (restore the restart policy you recorded in §1.1)
-sudo docker update --restart=unless-stopped "$EVO_C"
-sudo docker start "$EVO_C"
-sudo docker exec "$EVO_C" wget -qO- --header "apikey: $EVO_KEY" "http://127.0.0.1:8080/instance/connectionState/$EVO_NAME" ; echo
-```
-
-Restart the TrueNAS app in the UI if it is one.
-
-**Late rollback** (VPS ran connected for hours or days): the Signal session
-state on TrueNAS is now stale. It usually reconnects, because the identity
-(`creds`) didn't change, but some chats may show "waiting for this message"
-until keys renegotiate. Prefer fixing forward on the VPS. If you must go
-back and it won't connect, re-link with a QR on TrueNAS. Same number, new
-linked device.
-
-Never do either rollback while both sides are running, and never use
-`logout`/`delete` to "reset" (§0).
-
-**Cleanup after success** (after the two-week window): delete
-`~/evo-migration` on TrueNAS and `/root/evo-migration` on the VPS. They
-contain the session keys.
-
----
-
-## 10. Upgrading Evolution later
-
-* Bump the tag in `docker-compose.yml` deliberately. Never use `latest`.
-* **2.4.0 requires license activation** against the Evolution Foundation
-  licensing server before serving API traffic (business endpoints return
-  503 until activated). It is RC-only as of this writing [R3]. Evaluate it
-  before upgrading.
-* Before any upgrade: `pg_dump` (as §3.2a, against the VPS container) and a
-  copy of the Redis snapshot (`redis-cli --rdb`).
-
----
-
-## 11. Orchestrator ↔ Caddy
-
-**`docs/api.md` is the authority** for the orchestrator's routes, auth
-schemes, payloads and data layout (design §15 settles any conflict). Only
-the Caddy-side facts live here. If one of them changes, update the
-`Caddyfile` in the same PR.
-
-**Listener layout**
-
-| Listener | Reachable from | Routes |
-| --- | --- | --- |
-| `:443` `{$PIPELINE_DOMAIN}` | internet | `/review*` → review-ui:8001 (reviewer basic auth); `/proxies/*`, `/thumbs/*` → static (reviewer basic auth); `POST /enroll` → orchestrator (no auth, 16 KB body cap); `/` → redirect to `/review/`; anything else 404 |
-| `:443` `{$EVO_DOMAIN}` | internet | Evolution API (`apikey` header required), `/manager` + `/assets/*` (manager basic auth) |
-| `${TAILSCALE_IP}:8080` | tailnet only | `/inbox/*`, `/outbox/*` → static behind `forward_auth`; everything else → orchestrator |
-| `orchestrator:8000` | compose network only | Caddy and Evolution's webhook (`POST /intake/evolution-webhook`) |
-
-**forward_auth (`/inbox/*`, `/outbox/*`)**: Caddy sends `GET /auth/file` to
-`orchestrator:8000` with the client's original headers (including
-`Authorization: Bearer …`) plus `X-Forwarded-Method` and `X-Forwarded-Uri`
-(the requested path) [R23]. A 2xx lets Caddy serve the file, and an
-`X-Worker-Id` response header is copied onto the request for the access
-log. Any other status is returned to the worker unchanged.
-
-**Reviewer requests**: Caddy checks basic auth against
-`/srv/pipeline/reviewers.txt` (format in §2.6), then proxies `/review*` to `review-ui:8001`
-with the client's `Authorization` header unchanged, plus `X-Reviewer:
-<username>`.
-
-**`/enroll`**: proxied with `X-Forwarded-For` set by Caddy. The
-orchestrator rate-limits per source IP from that header, so it should only
-trust it from Caddy.
-
-**Dot-file rule**: Caddy's file_server hides `.*` (plus `*.part`,
-`*.part.json`) under `/srv/pipeline` [R24]. Writers create files as
-dot-files and rename them when complete, so Caddy never serves half a file.
-Range requests (resume, seeking) are handled by file_server.
-
----
-
-## 12. Smoke test after every `docker compose up`
+`up.sh` runs it last. By hand:
 
 ```bash
 cd /opt/baja/infra/vps
@@ -753,14 +469,18 @@ Read-only. It prints one row per check and ends with `ALL CHECKS PASSED`
 
 | Check | Passes when | If it fails |
 | --- | --- | --- |
-| `container <service>` | all six services `running`, and `healthy` where they have a healthcheck (Caddy has none) | `docker compose --profile orchestrator logs <service>` |
-| `caddy 443 <PIPELINE_DOMAIN>` | `/review/` answers 401 (basic auth) over TLS | DNS, ports 80/443 (§2.4), `docker compose logs caddy` (certificate) |
-| `caddy 443 <EVO_DOMAIN>` | `/` without `apikey` answers 401 | same |
-| `orchestrator /health via <TAILSCALE_IP>:8080` | 200 `{"status":"ok"}` | `ip_nonlocal_bind` (§2.2), `tailscale ip -4` = `TAILSCALE_IP` |
-| `orchestrator via 443 (POST /enroll)` | an empty body comes back 400 from the orchestrator | orchestrator down or not on `edge`. The public site has no `/health` (design §8), so this is the 443 probe. It uses one of the VPS IP's 10 `/enroll` tries per 10 min |
-| `orchestrator /metrics` | 200 with the admin token, `bvp_jobs` present | `BVP_ADMIN_TOKEN`, image older than this PR |
-| `evolution instance state` | `open` | §4. **Do not scan a QR** as a first reaction |
-| `reviewers file` | parses with the orchestrator's rules and has at least one reviewer | §2.6 (`user hash`, one space, no colon) |
+| `base network baja-edge` | the network exists | start the base stack |
+| `trusted proxies cover baja-edge` | every subnet of it is inside `BVP_TRUSTED_PROXY_CIDRS` | §9 |
+| `base container caddy` | running | the base stack's logs |
+| `caddy routes installed` | `/srv/caddy/conf.d/pipeline.caddy` exists, for `PIPELINE_DOMAIN` | `./up.sh` |
+| `container <service>` | orchestrator, review-ui, pipeline-edge `running`, and `healthy` where they have a healthcheck (pipeline-edge has none) | `docker compose logs <service>` |
+| `caddy 443 <PIPELINE_DOMAIN>` | `/review/` answers 401 (basic auth) over TLS | DNS, the base Caddy's certificate and logs |
+| `orchestrator /health via <TAILSCALE_IP>:8080` | 200 `{"status":"ok"}` | `ip_nonlocal_bind` (§2.2), `tailscale ip -4` = `TAILSCALE_IP`, `docker compose logs pipeline-edge` |
+| `orchestrator via 443 (POST /enroll)` | an empty body comes back 400 from the orchestrator | orchestrator down or not on `baja-edge`. The public site has no `/health` (design §8), so this is the 443 probe. It uses one of the VPS IP's 10 `/enroll` tries per 10 min |
+| `orchestrator /metrics` | 200 with the admin token, `bvp_jobs` present | `BVP_ADMIN_TOKEN` |
+| `evolution instance state` | `open` | the base stack's runbook. **Do not scan a QR** as a first reaction |
+| `evolution webhook` | enabled, pointing at `bvp-orchestrator` | `./up.sh` (§8) |
+| `reviewers file` | parses with the orchestrator's rules and has at least one reviewer | §4 (`user hash`, one space, no colon) |
 | `owner <path>` | `/srv/pipeline`, its five folders, `reviewers.txt` and `teams.csv` are `10001:10001` | the `chown` the row prints |
 | `inbox filesystem` | `/srv/pipeline/inbox` is its own mount, no bigger than `BVP_INBOX_CAP_GB` GiB | §2.3 |
 
@@ -768,54 +488,61 @@ The decisions live in `smoke_checks.py` (stdlib only, plus the repo's
 `shared/reviewers_file.py`), tested in `tests/infra/test_compose_smoke.py`
 with fake `docker`/`curl`/`findmnt`.
 
----
-
-## 13. Backups and restore
+## 12. Backups and restore
 
 `backup.sh` runs nightly from a systemd timer and writes one dated folder
-to `/var/backups/baja/`, keeping the last 14. Install once:
+to `/var/backups/baja/`, keeping the last 14: the jobs DB (SQLite online
+backup), `reviewers.txt`, `teams.csv`. Evolution's data is the base stack's
+to back up.
+
+The unit's `ExecCondition` runs `backup.sh --pipeline-present`, which asks
+Docker for this stack's orchestrator container (running or stopped). After
+`down.sh` removed it, the nightly run is skipped (not failed), so nights
+between events add no copies of an idle DB. Install once:
 
 ```bash
 sudo install -m 644 /opt/baja/infra/vps/systemd/baja-backup.service /opt/baja/infra/vps/systemd/baja-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now baja-backup.timer
-sudo systemctl start baja-backup.service      # one run now, to check
+sudo systemctl start baja-backup.service      # one run now, to check (needs the stack up)
 sudo journalctl -u baja-backup.service -n 30
 ls -l /var/backups/baja/
 ```
 
 What is in each backup, and how to bring it back: [`restore.md`](restore.md).
 
----
+## 13. Moving from the old single compose
+
+Before this layout, one `docker-compose.yml` here (project `baja`) ran
+Evolution, Postgres, Redis, Caddy and the pipeline together. If a VPS
+still runs it, the base stack's runbook moves Evolution and its volumes
+(`baja_postgres_data`, `baja_redis_data`, `baja_evolution_instances`) and
+takes over 80/443. For the pipeline part, after that:
+
+```bash
+sudo docker rm -f baja-orchestrator-1 baja-review-ui-1      # old project's pipeline containers, if still there
+cd /opt/baja && sudo git pull && cd infra/vps
+# .env: drop the Evolution/Postgres/Manager variables, add EVOLUTION_URL and
+# CADDY_PIPELINE_DIR (compare with .env.example)
+sudo ./up.sh
+```
+
+`/srv/pipeline` is reused as it is. The old `baja_caddy_data` volume only
+held certificates; the base Caddy gets its own.
 
 ## 14. References
 
 Evolution API (official docs live at docs.evolutionfoundation.com.br; doc.evolution-api.com redirects there):
 
-* [R1] Releases (v2.3.7 = Latest; 2.4.0-rc1/rc2 pre-release): https://github.com/EvolutionAPI/evolution-api/releases
-* [R2] Docker Hub tags (`v2.3.7` 2025-12-05; `latest` 2026-05-06): https://hub.docker.com/r/evoapicloud/evolution-api/tags
-* [R3] 2.4.0-rc1 notes (license activation, "do not deploy to production"): https://github.com/EvolutionAPI/evolution-api/releases/tag/2.4.0-rc1
-* [R4] Auth-state selection (provider → Redis `SAVE_INSTANCES` → Prisma): https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts (`defineAuthState`)
-* [R5] Prisma auth state: `creds` in `Session`, other keys in Redis hash or `INSTANCE_DIR` files: https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/utils/use-multi-file-auth-state-prisma.ts ; key naming: https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/cache/rediscache.ts , https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/server.module.ts
-* [R6] Instances loaded `WHERE clientName = DATABASE_CONNECTION_CLIENT_NAME`: https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/services/monitor.service.ts
-* [R7] Docs index (no backup/migration page): https://docs.evolutionfoundation.com.br/llms.txt
 * [R8] Webhook delivery (instance vs global, retries, headers only on instance): https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/integrations/event/webhook/webhook.controller.ts
-* [R9] Logout instance: https://docs.evolutionfoundation.com.br/evolution-api/logout-instance.md
-* [R10] Docker install (`evolution_instances:/evolution/instances`): https://docs.evolutionfoundation.com.br/evolution-api/install/docker.md
-* [R11] Env vars (docs): https://docs.evolutionfoundation.com.br/evolution-api/configuration/env.md ; defaults in code: https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/config/env.config.ts ; upstream example: https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/.env.example
-* [R12] Image entrypoint runs DB migrations: https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/Dockerfile
 * [R13] Find webhook / set webhook (docs): https://docs.evolutionfoundation.com.br/evolution-api/get-webhook.md , https://docs.evolutionfoundation.com.br/evolution-api/set-webhook.md
 * [R16] Set-webhook body schema actually validated in v2.3.7: https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/integrations/event/webhook/webhook.schema.ts
-* [R17] Connection state: https://docs.evolutionfoundation.com.br/evolution-api/get-connection-state.md
-* [R18] Send text: https://docs.evolutionfoundation.com.br/evolution-api/send-text-message.md
-* [R19] Fetch instances: https://docs.evolutionfoundation.com.br/evolution-api/fetch-all-instances.md
 * [R20] Webhooks overview (instance vs global): https://docs.evolutionfoundation.com.br/evolution-api/configuration/webhooks.md
-* [R21] Retry settings `WEBHOOK_RETRY_*` and defaults: https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/.env.example
 * [R22] Media buffered when `webhookBase64` is on (`messages.upsert`): https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
 
 Other:
 
 * [R14] Docker and ufw: https://docs.docker.com/engine/network/packet-filtering-firewalls/
-* [R15] Redis: switching RDB → AOF on a live server: https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/
 * [R23] Caddy `forward_auth`: https://caddyserver.com/docs/caddyfile/directives/forward_auth
 * [R24] Caddy `file_server` (`hide`, Range → 206): https://caddyserver.com/docs/caddyfile/directives/file_server ; `basic_auth` (hash cache enabled from the Caddyfile: https://github.com/caddyserver/caddy/blob/v2.11.7/modules/caddyhttp/caddyauth/caddyfile.go): https://caddyserver.com/docs/caddyfile/directives/basic_auth ; `import`: https://caddyserver.com/docs/caddyfile/directives/import
+* GitHub container registry, visibility and authentication: https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry

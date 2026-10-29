@@ -68,8 +68,8 @@ docker build -f review_ui/Dockerfile -t ghcr.io/jbresolin/baja-review-ui:<tag> .
 
 The image is `python:3.12-slim` with uv, runs as non-root user 10001, listens
 on 8001, and has a health check on `/healthz`. In `infra/vps/docker-compose.yml`
-it is the `review-ui` service (profile `orchestrator`, image
-`$REVIEW_UI_IMAGE`).
+it is the `review-ui` service (image `$REVIEW_UI_IMAGE`), reached by the
+base Caddy as `bvp-review-ui:8001` on `baja-edge`.
 
 ## Code map
 

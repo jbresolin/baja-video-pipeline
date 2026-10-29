@@ -366,9 +366,9 @@ Request/response models are in `shared.models`; the YAML has every field.
 
 **Evolution webhook.** The route is exactly **`POST
 /intake/evolution-webhook`** with the header **`X-Webhook-Secret:
-<BVP_WEBHOOK_SECRET>`** (wrong or missing → 401); the VPS Caddyfile routes
-exactly that path from the public site, and it is configured as the Baja
-Bot **instance** webhook (no global webhook; nothing else consumes it).
+<BVP_WEBHOOK_SECRET>`** (wrong or missing → 401); Evolution posts it over
+the VPS's internal Docker network (no public route), and `infra/vps/up.sh`
+configures it as the Baja Bot **instance** webhook (no global webhook; nothing else consumes it).
 Only `event == "messages.upsert"` from others (`fromMe == false`) in a
 private chat is considered: a `remoteJid` ending in `@g.us` or
 `@broadcast`, or a key with a `participant` (group sender), → 200
@@ -484,8 +484,8 @@ tmp/                      proxies, thumbnails, overlays while rendering
 
 ## 9. Reviewers file (`BVP_REVIEWERS_FILE`)
 
-Default `/srv/pipeline/reviewers.txt`. Read by **both** Caddy (the
-Caddyfile `import`s it inside `basic_auth`) and the orchestrator
+Default `/srv/pipeline/reviewers.txt`. Read by **both** the base Caddy
+(`infra/vps/conf.d/pipeline.caddy` `import`s it inside `basic_auth`) and the orchestrator
 (`shared.reviewers_file.load_reviewers_file`), so it has one strict format:
 
 ```
@@ -524,7 +524,7 @@ variables keep the names fixed in design §8.
 | `BVP_PORT` | `8000` | Port uvicorn listens on inside the compose network |
 | `BVP_PUBLIC_BASE_URL` | — (required) | Public 443 site, e.g. `https://baja.example.org` (proxy/thumbnail links) |
 | `BVP_TAILNET_BASE_URL` | — (required) | Caddy tailnet listener, e.g. `http://100.101.102.103:8080`; base of every absolute URL in task offers |
-| `BVP_TRUSTED_PROXY_CIDRS` | `127.0.0.1/32,172.16.0.0/12` | Peers whose `X-Forwarded-For` is trusted (Caddy) |
+| `BVP_TRUSTED_PROXY_CIDRS` | `127.0.0.1/32,10.201.0.0/24,172.16.0.0/12` | Peers whose `X-Forwarded-For` is trusted (Caddy; `10.201.0.0/24` = the VPS's `baja-edge`) |
 | `BVP_ENROLL_RATE_LIMIT_REQUESTS` | `10` | `/enroll` requests allowed per source IP… |
 | `BVP_ENROLL_RATE_LIMIT_WINDOW_S` | `600` | …per this many seconds |
 | `BVP_INBOX_HOLD_GB` | `22` | Soft cap: above it the bot asks senders to hold |

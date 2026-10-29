@@ -1,0 +1,73 @@
+# Caddy config for pipeline-edge, the pipeline's tailnet-only listener
+# (design §13, §20). Mounted as /etc/caddy/Caddyfile in the pipeline-edge
+# container; Docker publishes its port 8080 on ${TAILSCALE_IP}:8080 only.
+#
+# The public routes for PIPELINE_DOMAIN are NOT here: they are
+# conf.d/pipeline.caddy, imported by the base stack's Caddy (README §7).
+# The orchestrator listens on orchestrator:8000 inside the compose network
+# and is never published (design §8 "Ports").
+#
+# Reload after editing this file:
+#   docker compose exec pipeline-edge caddy reload --config /etc/caddy/Caddyfile
+
+# -----------------------------------------------------------------------------
+# Global options
+# -----------------------------------------------------------------------------
+{
+	# Plain HTTP only. No certificates, so no ACME account either.
+	auto_https off
+	# The admin API stays on localhost:2019 INSIDE the container (default).
+	# It is not published, and `caddy reload` above uses it.
+}
+
+# Reusable snippet: request log to stdout (rotated by the Docker json-file driver).
+(access_log) {
+	log {
+		output stdout
+		format console
+	}
+}
+
+# Reusable snippet: static files from /srv/pipeline (BVP_DATA_DIR).
+# file_server answers HTTP Range requests (206), so downloaders can resume
+# with no app process in the byte path.
+# Writers drop in-progress files as dot-files and rename them when complete
+# (design §15). Caddy pretends dot-files don't exist. `*.part` /
+# `*.part.json` (upload staging, docs/api.md §8.2) are hidden too.
+(pipeline_files) {
+	root * /srv/pipeline
+	file_server {
+		hide .* *.part *.part.json
+	}
+}
+
+# -----------------------------------------------------------------------------
+# Tailnet-only worker/studio API.
+#    Plain HTTP (design §13: the tailnet is the network boundary, WireGuard
+#    already encrypts). Identity = per-worker bearer token, checked by the
+#    orchestrator.
+# -----------------------------------------------------------------------------
+http://:8080 {
+	import access_log
+
+	# Raw files waiting for holders (inbox) and fallback clips (outbox).
+	# Caddy serves the bytes. Before each request, forward_auth sends a GET
+	# to the orchestrator's /auth/file, with the worker's original
+	# `Authorization: Bearer …` plus X-Forwarded-Method / X-Forwarded-Uri
+	# (the path being fetched). A 2xx lets the request through, anything
+	# else is returned to the client as-is (design §15).
+	@files path /inbox/* /outbox/*
+	handle @files {
+		forward_auth orchestrator:8000 {
+			uri /auth/file
+			copy_headers X-Worker-Id
+		}
+		import pipeline_files
+	}
+
+	# Everything else on the tailnet = orchestrator API (worker loop,
+	# uploads, clip manifest, /health, /metrics). The app checks the token.
+	handle {
+		reverse_proxy orchestrator:8000
+	}
+}

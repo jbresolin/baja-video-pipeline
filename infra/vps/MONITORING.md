@@ -30,7 +30,7 @@ with `rate()` or `increase()`, which handle that.
 ## Where to scrape
 
 The orchestrator is never published (design §8). Prometheus reaches it the
-same way workers do, through Caddy's **tailnet listener**:
+same way workers do, through `pipeline-edge`, the stack's **tailnet listener**:
 
 ```
 http://<VPS Tailscale IP>:8080/metrics      Authorization: Bearer <BVP_ADMIN_TOKEN>
@@ -43,7 +43,10 @@ device, or a worker PC):
 curl -s -H "Authorization: Bearer $BVP_ADMIN_TOKEN" http://100.x.y.z:8080/metrics | head
 ```
 
-`infra/vps/compose-smoke.sh` also checks this endpoint answers.
+`infra/vps/compose-smoke.sh` also checks this endpoint answers. The
+pipeline stack runs only around events (README §6), so between `down.sh`
+and the next `up.sh` the target is down; expect `up == 0` then, and
+silence alerts outside event weeks.
 
 ## Pointing a Prometheus at it (later, not part of the VPS)
 

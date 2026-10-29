@@ -70,7 +70,7 @@ def restore(backup_file: Path, database: Path) -> int:
     if wal_file.exists():
         raise BackupError(
             f"{wal_file} exists: the orchestrator is probably running. "
-            "Stop it first: docker compose --profile orchestrator stop orchestrator"
+            "Stop it first: docker compose stop orchestrator"
         )
     jobs = check_integrity(backup_file)
     # Keep what was there, in case this was the wrong backup.

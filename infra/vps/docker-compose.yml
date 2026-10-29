@@ -1,14 +1,19 @@
-# Baja staging VPS stack (LIVESTACK-30).
+# Baja video pipeline stack (design §20): orchestrator, review UI and the
+# pipeline's own tailnet-side Caddy. Up only around events, via ./up.sh and
+# ./down.sh (README §6).
 #
-# Services: Evolution API (WhatsApp "Baja Bot") + its Postgres and Redis,
-# Caddy (the ONLY container that publishes ports), and an orchestrator stub.
-# Runbook, memory budget and disk budget: infra/vps/README.md.
+# It hangs off the always-on BASE stack (repo jbresolin/baja-vps), which owns
+# the public Caddy (container `caddy`, host 80/443), Evolution, Postgres,
+# Redis and the external network `baja-edge`. The public routes for
+# PIPELINE_DOMAIN are a conf.d snippet for that Caddy (conf.d/pipeline.caddy,
+# installed by up.sh), not a service here. What this stack expects from the
+# base stack: README §1.
 #
 # Every value comes from ./.env (copy .env.example). Each service gets an
 # explicit `environment:` list instead of the whole .env, so secrets only
 # reach the container that needs them.
 
-name: baja
+name: baja-pipeline
 
 # Cap container logs so they cannot eat the 70 GB disk (3 x 10 MB per service).
 x-logging: &default-logging
@@ -19,234 +24,15 @@ x-logging: &default-logging
 
 services:
   # ---------------------------------------------------------------------------
-  # Evolution API v2 — WhatsApp gateway for the Baja Bot account.
-  # Pinned to the latest STABLE tag. `latest` was moved on 2026-05-06 next to
-  # 2.4.0-rc1, and 2.4.0 adds mandatory license activation (see README §10),
-  # so never use `latest` here.
-  # ---------------------------------------------------------------------------
-  evolution:
-    image: evoapicloud/evolution-api:v2.3.7
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      # --- server ---
-      SERVER_TYPE: http
-      SERVER_PORT: "8080"
-      # Public URL. Evolution puts it in webhook payloads (`server_url`).
-      SERVER_URL: https://${EVO_DOMAIN}
-      TELEMETRY_ENABLED: "false"
-      # Swagger UI is not needed in production. The Manager UI stays on.
-      SERVER_DISABLE_DOCS: "true"
-      CORS_ORIGIN: https://${EVO_DOMAIN}
-      LOG_LEVEL: ERROR,WARN,INFO,LOG
-      LOG_BAILEYS: error
-      # Never auto-delete a disconnected instance. Deleting it would throw away
-      # the WhatsApp session we are migrating.
-      DEL_INSTANCE: "false"
-      # Keep V8's heap under the container limit so Node GCs before the kernel
-      # OOM-kills it (limit 1 GiB, heap 640 MiB, rest = buffers/native).
-      NODE_OPTIONS: --max-old-space-size=640
-
-      # --- database (session creds live in table "Session") ---
-      DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=${EVOLUTION_DB_SCHEMA}
-      # MUST equal the TrueNAS value. Evolution only loads instances whose
-      # "clientName" column matches this.
-      DATABASE_CONNECTION_CLIENT_NAME: ${EVOLUTION_CLIENT_NAME}
-      # MUST stay true. This turns on DB-backed auth state (useMultiFileAuthStatePrisma).
-      DATABASE_SAVE_DATA_INSTANCE: "true"
-      DATABASE_SAVE_DATA_NEW_MESSAGE: ${EVOLUTION_SAVE_NEW_MESSAGE:-true}
-      DATABASE_SAVE_MESSAGE_UPDATE: ${EVOLUTION_SAVE_MESSAGE_UPDATE:-false}
-      DATABASE_SAVE_DATA_CONTACTS: ${EVOLUTION_SAVE_CONTACTS:-true}
-      DATABASE_SAVE_DATA_CHATS: ${EVOLUTION_SAVE_CHATS:-true}
-      DATABASE_SAVE_DATA_LABELS: ${EVOLUTION_SAVE_LABELS:-false}
-      DATABASE_SAVE_DATA_HISTORIC: ${EVOLUTION_SAVE_HISTORIC:-false}
-
-      # --- redis (with Redis enabled, every Signal key EXCEPT creds lives here) ---
-      CACHE_REDIS_ENABLED: "true"
-      # DB index and prefix MUST equal the TrueNAS values, or the migrated
-      # keys are invisible to the new instance.
-      CACHE_REDIS_URI: redis://redis:6379/${EVOLUTION_REDIS_DB}
-      CACHE_REDIS_PREFIX_KEY: ${EVOLUTION_REDIS_PREFIX}
-      CACHE_REDIS_SAVE_INSTANCES: ${EVOLUTION_REDIS_SAVE_INSTANCES:-false}
-      CACHE_REDIS_TTL: "604800"
-      CACHE_LOCAL_ENABLED: "false"
-
-      # --- auth ---
-      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
-      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
-
-      # --- session look on the phone (keep the TrueNAS values) ---
-      CONFIG_SESSION_PHONE_CLIENT: ${EVOLUTION_PHONE_CLIENT:-Evolution API}
-      CONFIG_SESSION_PHONE_NAME: ${EVOLUTION_PHONE_NAME:-Chrome}
-      QRCODE_LIMIT: "30"
-
-      # --- webhooks (README §6) ---
-      # The only consumer is the orchestrator, through the INSTANCE webhook
-      # (stored in Postgres, set via POST /webhook/set). No global webhook.
-      WEBHOOK_GLOBAL_ENABLED: "false"
-      # Upstream retry defaults (10 attempts, backoff up to 300 s, ~20 min
-      # in total). A failed delivery is a lost video, so ride out an
-      # orchestrator restart rather than give up early.
-      WEBHOOK_REQUEST_TIMEOUT_MS: "30000"
-      WEBHOOK_RETRY_MAX_ATTEMPTS: "10"
-      WEBHOOK_RETRY_INITIAL_DELAY_SECONDS: "5"
-      WEBHOOK_RETRY_USE_EXPONENTIAL_BACKOFF: "true"
-      WEBHOOK_RETRY_MAX_DELAY_SECONDS: "300"
-
-      # Media goes NOT to S3 and NOT base64 into webhooks. 2 GB documents
-      # would be buffered in this container's RAM (README §6.3).
-      S3_ENABLED: "false"
-    volumes:
-      # Per-instance auth-key files (used when Redis is off) and other local
-      # instance data. Migrated as-is from TrueNAS.
-      - evolution_instances:/evolution/instances
-    networks:
-      - edge
-      - evolution_db
-    # No `ports:`. Only Caddy reaches it, at evolution:8080 on `edge`.
-    mem_limit: 1024m
-    memswap_limit: 1024m
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
-    logging: *default-logging
-
-  # ---------------------------------------------------------------------------
-  # Postgres for Evolution. Major 15 as in the upstream compose. If TrueNAS
-  # runs a NEWER major, bump this to match before restoring (README §1.3).
-  # ---------------------------------------------------------------------------
-  postgres:
-    image: postgres:15.19-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    # Small-box tuning. Upstream ships max_connections=1000, which costs RAM
-    # for nothing with one Evolution process (Prisma pool ~5).
-    command:
-      - postgres
-      - -c
-      - max_connections=50
-      - -c
-      - shared_buffers=128MB
-      - -c
-      - effective_cache_size=256MB
-      - -c
-      - work_mem=4MB
-      - -c
-      - maintenance_work_mem=64MB
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - evolution_db
-    mem_limit: 512m
-    memswap_limit: 512m
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    logging: *default-logging
-
-  # ---------------------------------------------------------------------------
-  # Redis for Evolution. This holds the WhatsApp Signal keys, so it is a
-  # DATABASE here, not a throwaway cache:
-  #   - appendonly yes: survive restarts.
-  #   - volatile-lru: under memory pressure, evict only keys that have a TTL
-  #     (message caches). Auth-key hashes have no TTL and are never evicted.
-  # Version must be >= the TrueNAS Redis so it can load the copied files.
-  # ---------------------------------------------------------------------------
-  redis:
-    image: redis:8.10.2-alpine
-    restart: unless-stopped
-    command:
-      - redis-server
-      - --appendonly
-      - "yes"
-      - --maxmemory
-      - 160mb
-      - --maxmemory-policy
-      - volatile-lru
-    volumes:
-      - redis_data:/data
-    networks:
-      - evolution_db
-    # 160 MB dataset + headroom for the AOF-rewrite fork (copy-on-write).
-    mem_limit: 320m
-    memswap_limit: 320m
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    logging: *default-logging
-
-  # ---------------------------------------------------------------------------
-  # Caddy — the only container with published ports.
-  #   80/443 on all interfaces: public vhosts (TLS via Let's Encrypt).
-  #   ${TAILSCALE_IP}:8080: tailnet-only worker API (plain HTTP, design §13).
-  #   Binding to the Tailscale IP needs net.ipv4.ip_nonlocal_bind=1 on the
-  #   host (README §2.2). Without it Docker races tailscaled at boot.
-  # ---------------------------------------------------------------------------
-  caddy:
-    image: caddy:2.11.7-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-      - "${TAILSCALE_IP}:8080:8080"
-    environment:
-      ACME_EMAIL: ${ACME_EMAIL}
-      EVO_DOMAIN: ${EVO_DOMAIN}
-      PIPELINE_DOMAIN: ${PIPELINE_DOMAIN}
-      MANAGER_BASIC_AUTH_USER: ${MANAGER_BASIC_AUTH_USER}
-      MANAGER_BASIC_AUTH_HASH: ${MANAGER_BASIC_AUTH_HASH}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-      # BVP_DATA_DIR, read-only. Caddy serves proxies/ and thumbs/ publicly
-      # (behind reviewer auth), and inbox/ and outbox/ only on the tailnet
-      # vhost. It also reads reviewers.txt from here. The directory is
-      # mounted, not the single file, so editors that replace the file
-      # (new inode) are still picked up on `caddy reload`. db/ is never
-      # routed. Docker bind mounts are recursive, so the inbox loop
-      # filesystem is included (it must be mounted before Docker starts,
-      # README §2.3).
-      - /srv/pipeline:/srv/pipeline:ro
-    networks:
-      - edge
-    mem_limit: 192m
-    memswap_limit: 192m
-    logging: *default-logging
-
-  # ---------------------------------------------------------------------------
-  # Orchestrator (LIVESTACK-24). The orchestrator PR provides the image.
-  # Behind the `orchestrator` profile, so the Evolution migration can run
-  # before any orchestrator image exists:
-  #   docker compose --profile orchestrator up -d
-  # Settings are BVP_* (design §15). The API is defined in docs/api.md.
+  # Orchestrator (LIVESTACK-24). Settings are BVP_* (design §15). The API is
+  # defined in docs/api.md.
   # ---------------------------------------------------------------------------
   orchestrator:
-    profiles: ["orchestrator"]
     image: ${ORCHESTRATOR_IMAGE:-ghcr.io/jbresolin/baja-orchestrator:CHANGE-ME}
     restart: unless-stopped
-    depends_on:
-      evolution:
-        condition: service_healthy
-    # Extra BVP_* settings beyond those below (e.g. BVP_TRUSTED_PROXY_CIDRS)
-    # go in orchestrator.env. It's optional, so the stack parses without it.
-    # Never BVP_DEV_MODE: the orchestrator refuses to start with it here.
+    # Extra BVP_* settings beyond those below go in orchestrator.env. It's
+    # optional, so the stack parses without it. Never BVP_DEV_MODE: the
+    # orchestrator refuses to start with it here.
     env_file:
       - path: ./orchestrator.env
         required: false
@@ -258,9 +44,10 @@ services:
       BVP_PROXY_EVICT_MIN_FREE_GB: ${BVP_PROXY_EVICT_MIN_FREE_GB:-10}
       BVP_WEBHOOK_SECRET: ${BVP_WEBHOOK_SECRET}
       BVP_ADMIN_TOKEN: ${BVP_ADMIN_TOKEN}
-      # Same file Caddy imports for reviewer basic auth (design §17: .txt,
-      # it is not htpasswd format).
+      # Same file the base Caddy imports for reviewer basic auth (design §17:
+      # .txt, it is not htpasswd format).
       BVP_REVIEWERS_FILE: /srv/pipeline/reviewers.txt
+      # The base stack's Evolution, on baja-edge.
       BVP_EVOLUTION_URL: http://evolution:8080
       BVP_EVOLUTION_INSTANCE: ${BVP_EVOLUTION_INSTANCE}
       # Canonical name (design §17); the orchestrator also accepts the old
@@ -270,9 +57,14 @@ services:
       BVP_TEAMS_FILE: ${BVP_TEAMS_FILE:-}
       BVP_BAJA_APP_URL: ${BVP_BAJA_APP_URL:-}
       BVP_PUBLIC_BASE_URL: https://${PIPELINE_DOMAIN}
-      # Workers' inbox/outbox download URLs are built from this (Caddy's
-      # tailnet listener, not the orchestrator's own port).
+      # Workers' inbox/outbox download URLs are built from this
+      # (pipeline-edge's tailnet listener, not the orchestrator's own port).
       BVP_TAILNET_BASE_URL: http://${TAILSCALE_IP}:8080
+      # Peers whose X-Forwarded-For is believed for the /enroll rate limit:
+      # baja-edge (10.201.0.0/24, the base Caddy) and this stack's own
+      # `pipeline` network (pipeline-edge). README §9; compose-smoke.sh checks
+      # that baja-edge is covered.
+      BVP_TRUSTED_PROXY_CIDRS: ${BVP_TRUSTED_PROXY_CIDRS:-127.0.0.1/32,10.201.0.0/24,10.202.0.0/24}
       # Enrollment key minting (infra/tailnet/mint_auth_key.md).
       TAILSCALE_OAUTH_CLIENT_ID: ${TAILSCALE_OAUTH_CLIENT_ID:-}
       TAILSCALE_OAUTH_CLIENT_SECRET: ${TAILSCALE_OAUTH_CLIENT_SECRET:-}
@@ -283,8 +75,13 @@ services:
       # and DB rows mean the same thing on the host.
       - /srv/pipeline:/srv/pipeline
     networks:
-      - edge
-    # Listens on 8000 inside `edge`. No published ports, Caddy fronts it.
+      baja-edge:
+        # A name nobody else on the shared network will use. The base Caddy
+        # (/enroll) and Evolution (the instance webhook) reach us by it.
+        aliases: [bvp-orchestrator]
+      pipeline: {}
+    # Listens on 8000. No published ports: the base Caddy and pipeline-edge
+    # front it.
     mem_limit: 768m
     memswap_limit: 768m
     logging: *default-logging
@@ -292,40 +89,70 @@ services:
   # ---------------------------------------------------------------------------
   # Review UI (LIVESTACK-27, -26). Its own service (design §16): it talks to
   # the orchestrator only over the HTTP API, as the reviewer (it forwards the
-  # browser's Authorization header). No database, no volumes. Same profile
-  # as the orchestrator, since it is useless without it.
+  # browser's Authorization header). No database, no volumes.
   # Image: docker build -f review_ui/Dockerfile . (from the repo root).
   # ---------------------------------------------------------------------------
   review-ui:
-    profiles: ["orchestrator"]
     image: ${REVIEW_UI_IMAGE:-ghcr.io/jbresolin/baja-review-ui:CHANGE-ME}
     restart: unless-stopped
     depends_on:
       - orchestrator
     environment:
-      BVP_ORCHESTRATOR_URL: http://orchestrator:8000
+      # The alias, not the bare service name: a plain `orchestrator` from
+      # another stack on baja-edge would be ambiguous.
+      BVP_ORCHESTRATOR_URL: http://bvp-orchestrator:8000
       # Proxy and thumbnail links are built on the public site.
       BVP_PUBLIC_BASE_URL: https://${PIPELINE_DOMAIN}
     networks:
-      - edge
-    # Listens on 8001 inside `edge`. No published ports, Caddy fronts it.
+      baja-edge:
+        # The base Caddy proxies /review* here.
+        aliases: [bvp-review-ui]
+      pipeline: {}
+    # Listens on 8001. No published ports.
     expose:
       - "8001"
     mem_limit: 160m
     memswap_limit: 160m
     logging: *default-logging
 
-volumes:
-  evolution_instances:
-  postgres_data:
-  redis_data:
-  caddy_data:
-  caddy_config:
+  # ---------------------------------------------------------------------------
+  # pipeline-edge: the tailnet-only listener (design §13), Caddyfile.tailnet.
+  # Plain HTTP on ${TAILSCALE_IP}:8080 ONLY: the worker/studio API, and the
+  # inbox/outbox bytes behind forward_auth. Not on baja-edge: it talks only
+  # to the orchestrator, so the base Caddy carries nothing but public routes.
+  # Binding to the Tailscale IP needs net.ipv4.ip_nonlocal_bind=1 on the
+  # host (README §2.2). Without it Docker races tailscaled at boot.
+  # ---------------------------------------------------------------------------
+  pipeline-edge:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    depends_on:
+      - orchestrator
+    ports:
+      - "${TAILSCALE_IP}:8080:8080"
+    volumes:
+      - ./Caddyfile.tailnet:/etc/caddy/Caddyfile:ro
+      # BVP_DATA_DIR, read-only: inbox/ and outbox/ are served from here. The
+      # inbox loop filesystem must be mounted before Docker starts (README
+      # §2.3); Docker bind mounts are recursive, so it is included.
+      - /srv/pipeline:/srv/pipeline:ro
+    networks:
+      - pipeline
+    mem_limit: 128m
+    memswap_limit: 128m
+    logging: *default-logging
 
 networks:
-  # Caddy <-> Evolution <-> orchestrator. Needs internet egress (WhatsApp).
-  edge:
-  # Evolution <-> Postgres/Redis only. `internal` = no egress, unreachable
-  # from Caddy and the orchestrator.
-  evolution_db:
-    internal: true
+  # Owned by the base stack (README §1), which also sets its subnet
+  # (10.201.0.0/24): no subnet here. Egress to the internet (WhatsApp CDN,
+  # Tailscale API) and the base Caddy and Evolution are reached here.
+  baja-edge:
+    external: true
+  # This stack's own: pipeline-edge <-> orchestrator <-> review UI. Not
+  # `internal`, because Docker cannot publish a port from an internal network.
+  # Pinned, so BVP_TRUSTED_PROXY_CIDRS can name it; next to baja-edge's
+  # 10.201.0.0/24 and outside Docker's default 172.17-31.x pool.
+  pipeline:
+    ipam:
+      config:
+        - subnet: 10.202.0.0/24

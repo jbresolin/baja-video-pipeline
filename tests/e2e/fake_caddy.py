@@ -11,7 +11,7 @@ in production:
      X-Forwarded-Uri. Anything but 2xx is returned to the worker as is.
   2. Allowed: serve the file from the orchestrator's data folder, honouring
      "Range: bytes=<start>-" (206), like Caddy's file_server. Dot-files are
-     hidden, as in the Caddyfile.
+     hidden, as in infra/vps/Caddyfile.tailnet.
   3. Any other path: forwarded to the orchestrator unchanged.
 """
 
