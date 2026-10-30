@@ -72,7 +72,7 @@
 		{
 			"src": ["autogroup:admin"],
 			"dst": ["tag:server"],
-			"ip":  ["tcp:22", "tcp:443", "tcp:8080"],
+			"ip":  ["tcp:22", "tcp:443", "tcp:8080", "tcp:8081"],
 		},
 
 		// Intentionally absent: any grant with src tag:server. The VPS never
@@ -91,7 +91,7 @@
 			"accept": ["tag:server:8080", "tag:worker:8710", "tag:studio:8720"],
 			// ...and nothing else: no SSH to the VPS, no studio-only port on
 			// peers, no file-server port on the studio.
-			"deny":   ["tag:server:22", "tag:server:8000", "tag:server:443", "tag:worker:8720", "tag:studio:8710", "tag:worker:22"],
+			"deny":   ["tag:server:22", "tag:server:8000", "tag:server:443", "tag:server:8081", "tag:worker:8720", "tag:studio:8710", "tag:worker:22"],
 		},
 
 		// The studio talks only to the VPS; it never reaches into workers.

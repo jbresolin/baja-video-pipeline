@@ -472,3 +472,18 @@ Pipeline stack as built (`infra/vps/`, follow-up to PR #9):
 * Caddy reload: `docker exec caddy caddy reload --config /etc/caddy/Caddyfile`.
 * Scoring repo must add `set_real_ip_from 10.201.0.0/24` with
   `real_ip_header CF-Connecting-IP` in its staging override.
+
+### §20 addendum 3 — base stack PR #1 (2026-10-29)
+* Evolution Manager/API is tailnet-only on `TAILSCALE_IP:8081` (admins
+  only in the ACL; workers never see it). Pipeline worker API stays on 8080.
+* Scoring staging needs a third `LISTEN_MODE` (plain HTTP behind a
+  TLS-terminating proxy, `https://` links, trusts `X-Forwarded-Proto`);
+  `listen-tls` loops and `listen-http` yields `http://` links. Owned by the
+  scoring-repo override PR.
+* Event days: the scoring staging stack is stopped (T-7) and restarted
+  after; no memory limits added to it.
+* Off-VPS copy of the base-stack backups (rclone to the Google Shared Drive
+  used by the platform backups): later item, not a blocker.
+* Compose project `baja-base` reuses the old `baja_*` volume names so the
+  WhatsApp session and certificates survive the switch.
+
