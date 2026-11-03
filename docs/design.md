@@ -487,3 +487,15 @@ Pipeline stack as built (`infra/vps/`, follow-up to PR #9):
 * Compose project `baja-base` reuses the old `baja_*` volume names so the
   WhatsApp session and certificates survive the switch.
 
+
+### §8 addendum — shared tailnet (2026-11-03)
+Supersedes "Baja tailnet" and `tag:server` above. The pipeline joins the
+**existing** Baja tailnet (platform prod + staging, Uptime Kuma, João's
+devices). Prod and staging stay untagged member devices; the staging VPS is
+addressed by the pre-existing host alias `baja-staging`. Isolation: the
+tailnet's allow-all rule is `autogroup:member → autogroup:member` and tagged
+devices are not members, so `tag:worker`/`tag:studio` nodes reach only what
+`infra/tailnet/acl.hujson` grants (staging:8080, worker:8710, studio:8720)
+and are reached only by admins. The policy's tests assert workers are denied
+prod, staging SSH/443/8081 and the monitor. `acl.hujson` is now the complete
+policy file. Key expiry must be disabled on `baja-teste1` (staging).
