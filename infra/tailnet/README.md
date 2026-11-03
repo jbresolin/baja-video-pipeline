@@ -8,7 +8,7 @@ Files in this folder:
 
 | File | What it is |
 | --- | --- |
-| `acl.hujson` | Policy file: tags, tag owners, grants, ACL tests |
+| `acl.hujson` | The COMPLETE tailnet policy (existing rules + pipeline tags, grants and tests); paste it whole |
 | `mint_auth_key.md` | Spec for the orchestrator: OAuth token exchange and auth-key creation |
 | `worker_join.md` | Spec for the installer: silent MSI, `tailscale up`, how the worker reads its IP and DNS name |
 
@@ -19,17 +19,19 @@ flows and nothing else (Tailscale denies everything by default).
 
 | Port | Host (tag) | Service | Who may connect |
 | --- | --- | --- | --- |
-| 443/tcp | VPS (`tag:server`) | Base stack's Caddy, public side: review UI, proxies, `/enroll` (the pipeline's conf.d routes, `infra/vps/README.md` §7), Evolution. Reached over the internet, not the tailnet | admins (tailnet); public otherwise |
-| 8080/tcp | VPS (`tag:server`), Tailscale IP only | `pipeline-edge` (the pipeline stack's own Caddy): worker/studio API + inbox/outbox static files (plain HTTP; WireGuard encrypts) | `tag:worker`, `tag:studio`, admins |
+| 443/tcp | staging VPS (`baja-staging`, untagged member device) | Base stack's Caddy, public side: review UI, proxies, `/enroll` (the pipeline's conf.d routes, `infra/vps/README.md` §7), Evolution. Reached over the internet, not the tailnet | admins (tailnet); public otherwise |
+| 8080/tcp | staging VPS (`baja-staging`), Tailscale IP only | `pipeline-edge` (the pipeline stack's own Caddy): worker/studio API + inbox/outbox static files (plain HTTP; WireGuard encrypts) | `tag:worker`, `tag:studio`, admins |
 | 8000/tcp | VPS, Docker networks only | Orchestrator (FastAPI). Not published on the host; only the base Caddy, `pipeline-edge` and Evolution's webhook reach it, so no grant | — |
-| 22/tcp | VPS (`tag:server`) | SSH over the tailnet | admins only |
+| 22/tcp | staging VPS (`baja-staging`) | SSH over the tailnet | admins and prod (pre-existing) only |
+| 8081/tcp | staging VPS, Tailscale IP only | Evolution Manager/API (base stack) | admins only |
 | 8710/tcp | each worker (`tag:worker`) | Worker file server (peer raw fetches) | `tag:worker` |
 | 8720/tcp | streaming PC (`tag:studio`) | Studio receiver (clip push) | `tag:worker` |
 | 8700/tcp | every worker and the studio, **127.0.0.1 only** | Worker setup/status page (design §17). Not on the tailnet, so no grant and no firewall rule | the local user only |
 
 | Tag | Applied to | Enrolled by |
 | --- | --- | --- |
-| `tag:server` | Baja staging VPS | Admin, by hand (step 8) |
+| *(none)* | Baja staging VPS | Pre-existing member device `baja-teste1`, addressed by host alias `baja-staging` (step 1) |
+| `tag:monitor` | Uptime Kuma probe | Pre-existing |
 | `tag:studio` | Streaming PC | Admin, by hand the first time (step 9). Later re-installs can go through the installer with a studio enrollment token |
 | `tag:worker` | Master desktop and volunteers' PCs | The installer, with a key minted by the orchestrator (`worker_join.md`) |
 | `tag:enroller` | **No device.** Carried only by the orchestrator's OAuth client | — |
@@ -51,26 +53,23 @@ id>` for workers. `<tailnet>` stands for your tailnet DNS name, e.g.
 
 ---
 
-## 1. Create the tailnet
+## 1. Identify the staging VPS in the tailnet
 
-A tailnet belongs to the identity (account or domain) that signs up first.
-Use a **dedicated identity** for the project, not your personal account. If
-you used your personal account, you would land in your existing personal
-tailnet.
+The pipeline's VPS stacks run on the platform's **staging** VPS, which is
+already in the tailnet as an ordinary device owned by the Baja account
+(`baja-teste1` in **Machines**). `acl.hujson` refers to it through the
+pre-existing host alias `baja-staging` (`100.82.21.71`).
 
-1. Create the identity, for example a new Google account such as
-   `baja-stream-ops@gmail.com`, or a GitHub organization for the team.
-2. In a private browser window, open <https://login.tailscale.com/start>
-   and sign in with that identity. Finish the signup questions. This
-   creates the tailnet, and the identity becomes its **Owner**.
-3. Skip "add your first device" for now.
-4. Optional: invite a second admin (Admin console → **Users** → **Invite
-   users**, role *Admin*), so that losing one login doesn't lock you out.
-
-> Creating extra tailnets under an existing organization is a request-only
-> alpha feature, so signing up with a separate identity is the
-> self-service route.
-> <https://tailscale.com/kb/1509/multiple-tailnets>
+1. Admin console → **Machines** → `baja-teste1` → confirm its Tailscale IPv4
+   is `100.82.21.71`. If it differs, fix the `baja-staging` entry in
+   `acl.hujson` before step 4 (workers are granted that IP; a wrong one
+   fails closed).
+2. Same machine → **…** menu → **Disable key expiry**. Prod already has it;
+   staging does not. If staging's node key expired mid-event, Caddy's
+   tailnet listener would vanish and every worker would lose the
+   orchestrator.
+3. On the VPS, `TAILSCALE_IP` in both `.env` files (base stack and pipeline
+   stack) must be this IP: `tailscale ip -4`.
 
 ## 2. MagicDNS and HTTPS certificates
 
@@ -97,7 +96,7 @@ approval** (manually approve new devices).
 
 With this on, any device someone joins interactively waits in **Machines**
 with a *Needs approval* badge. Workers aren't affected, because their keys
-are pre-authorized (`preauthorized: true`). Turn this on **before** step 8,
+are pre-authorized (`preauthorized: true`). Turn this on **before** step 9,
 so that the **Pre-approved** option appears when you generate keys by hand.
 
 ## 4. Define the tags and upload the policy
@@ -192,57 +191,13 @@ curl -sS -X DELETE "https://api.tailscale.com/api/v2/tailnet/-/keys/<id from res
 A `200` from the keys call proves the scope, the tag ownership and the
 secret are all correct.
 
-## 8. Enroll the VPS as `tag:server` (by hand, once)
+## 8. The VPS needs no enrollment
 
-**8a. Generate a one-off key.** Admin console → **Settings** → **Keys** →
-**Generate auth key…**
-<https://tailscale.com/kb/1085/auth-keys>
-
-* Description: `baja-vps`
-* Reusable: **off**
-* Expiration: **1 day**
-* Ephemeral: **off**
-* Tags: **on**, then add `tag:server`
-* Pre-approved: **on** (appears only if step 3 is done)
-* Click **Generate key** and copy `tskey-auth-…`
-
-**8b. Install Tailscale on the VPS.** These commands assume Ubuntu 24.04
-(noble). For another release, replace `noble` with its codename from
-<https://pkgs.tailscale.com/stable/#linux>.
-
-```sh
-sudo mkdir -p --mode=0755 /usr/share/keyrings
-curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
-curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list
-sudo apt-get update
-sudo apt-get install -y tailscale
-```
-
-**8c. Join.**
-
-```sh
-sudo tailscale up --auth-key='tskey-auth-PASTE' --hostname=baja-vps
-```
-
-<https://tailscale.com/kb/1241/tailscale-up>
-
-The key already carries `tag:server`, so you don't need `--advertise-tags`.
-
-**8d. Let Caddy fetch the `*.ts.net` certificate.** Caddy gets the
-certificate from the local `tailscaled`, with no Caddyfile config beyond
-the site name `baja-vps.<tailnet>`.
-<https://tailscale.com/kb/1190/caddy-certificates>
-
-If Caddy runs on the host as the non-root `caddy` user:
-
-```sh
-echo 'TS_PERMIT_CERT_UID=caddy' | sudo tee -a /etc/default/tailscaled
-sudo systemctl restart tailscaled
-```
-
-If Caddy runs in a container, mount the host's
-`/var/run/tailscale/tailscaled.sock` into it. That belongs to the
-Caddy/compose work in `infra/`, not this folder.
+It is already a member device (step 1). There is no `tag:server`: workers
+reach the VPS by host alias. Caddy's tailnet-side listener binds the VPS's
+Tailscale IP (`infra/vps/`), and the `*.ts.net` certificate is not used —
+that listener is plain HTTP on purpose (design §13: WireGuard already
+encrypts, the tailnet is the boundary).
 
 ## 9. Enroll the streaming PC as `tag:studio` (by hand, first time)
 
@@ -309,8 +264,8 @@ prove the ACL allows a port.
 tailscale status --json | grep -E '"(DNSName|Tags)"'
 ```
 
-`Self.DNSName` should be `baja-vps.<tailnet>.` and the tags
-`["tag:server"]`.
+`Self.DNSName` should be `baja-teste1.<tailnet>.` and `Tags` absent (it is
+an untagged member device).
 
 **Check the ACL with real traffic.** These need the services running, so
 come back to them once the orchestrator and studio receiver are deployed.
