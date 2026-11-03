@@ -76,15 +76,18 @@
 		// outbox fallback pull, through Caddy on 8080.
 		{"src": ["tag:studio"], "dst": ["baja-staging"], "ip": ["tcp:8080"]},
 
-		// Admins' own devices → workers and studio: health checks and the
-		// file servers, for troubleshooting during an event. Admins already
-		// reach the staging VPS (incl. 8080/8081) through the member rule.
-		{"src": ["autogroup:admin"], "dst": ["tag:worker"], "ip": ["tcp:8710"]},
-		{"src": ["autogroup:admin"], "dst": ["tag:studio"], "ip": ["tcp:8720"]},
-
-		// Intentionally absent: any grant with src baja-staging towards
-		// workers. The VPS never opens connections to workers or the studio;
-		// everything it serves is pulled from it.
+		// Intentionally absent: any grant with src baja-staging or baja-prod
+		// towards workers. The VPS never opens connections to workers or the
+		// studio; everything it serves is pulled from it.
+		//
+		// Also intentionally absent: an "autogroup:admin → tag:worker" grant
+		// for troubleshooting. Both VPSs are owned by an admin account, so
+		// such a grant would match them too and break the rule above (the
+		// policy tests caught exactly that). If you need to reach a worker's
+		// file server from your own laptop during an event, add a grant
+		// scoped to that one device, e.g.
+		//   {"src": ["<your-laptop-tailscale-ip>"], "dst": ["tag:worker"], "ip": ["tcp:8710"]},
+		// and remove it afterwards.
 	],
 
 	// Tailscale SSH (pre-existing): members into their own devices, check mode.
