@@ -60,6 +60,12 @@
 		// Monitoring probe -> origin HTTPS only (pre-existing).
 		{"src": ["tag:monitor"], "dst": ["baja-origin"], "ip": ["tcp:443"]},
 
+		// Monitoring probe -> Evolution's tailnet listener on the staging VPS,
+		// so Uptime Kuma can send WhatsApp alerts through the Baja Bot
+		// (notification type "Evolution", URL http://100.82.21.71:8081).
+		// 8081 only: not the pipeline's 8080, not SSH.
+		{"src": ["tag:monitor"], "dst": ["baja-staging"], "ip": ["tcp:8081"]},
+
 		// --- Video pipeline ---------------------------------------------
 		// Workers → staging VPS: orchestrator API and inbox/outbox files,
 		// through Caddy's tailnet-side listener on 8080. Nothing else on
@@ -108,8 +114,8 @@
 		{"src": "baja-staging", "accept": ["baja-prod:22"]},
 		{
 			"src":    "tag:monitor",
-			"accept": ["baja-origin:443"],
-			"deny":   ["baja-prod:22"],
+			"accept": ["baja-origin:443", "baja-staging:8081"],
+			"deny":   ["baja-prod:22", "baja-staging:22", "baja-staging:8080"],
 		},
 
 		// --- Video pipeline ---------------------------------------------
