@@ -122,6 +122,27 @@ def test_every_bundled_module_becomes_a_hidden_import(tmp_path):
     assert hidden == modules
 
 
+def test_the_overlay_theme_files_are_bundled_as_data(tmp_path):
+    # The clip overlay reads its font (TTF) and tokens.css from the package
+    # worker.overlay_theme. PyInstaller only bundles Python modules unless
+    # told, so without --collect-data the frozen worker would crash when
+    # drawing its first overlay.
+    arguments = build.pyinstaller_arguments([], tmp_path / "dist", tmp_path)
+
+    collected = [arguments[i + 1] for i, a in enumerate(arguments) if a == "--collect-data"]
+    assert "worker.overlay_theme" in collected
+
+
+def test_the_overlay_theme_package_really_holds_the_files_to_bundle():
+    # --collect-data copies the package's data files; make sure they are
+    # there (and are not, say, ignored by git), so the bundle gets them.
+    from importlib import resources
+
+    theme = resources.files("worker.overlay_theme")
+    for name in ("tokens.css", "BebasNeue-Regular.ttf", "BebasNeue-LICENSE.txt", "ORIGIN.md"):
+        assert theme.joinpath(name).is_file(), name
+
+
 # --- payload copy and ISCC ------------------------------------------------------
 
 
