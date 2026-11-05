@@ -211,6 +211,14 @@ tests. Therefore:
   say what the test sets up, what it does, and why the assertion proves
   the behaviour.
 * No cleverness that saves lines at the cost of readability.
+* **Test credentials are obvious placeholders in one place.** Every username,
+  password, token or key a test needs comes from
+  `shared/testing/credentials.py`, named and valued so nobody (and no secret
+  scanner) can mistake it for a real one (`PLACEHOLDER_PASSWORD =
+  "placeholder-password-for-tests"`). No inline `password="..."` literals in
+  tests; a test enforces it. `.gitguardian.yaml` ignores `tests/**` and that
+  module for `ggshield`; the GitGuardian GitHub check is set to Neutral for
+  this repo and test findings are dismissed as "test credential".
 
 ## 15. Wave-1 reconciliation (2026-10-25, PRs #1–#3)
 
