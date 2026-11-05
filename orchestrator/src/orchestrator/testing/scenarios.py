@@ -5,6 +5,7 @@ Caddy would), so a test built from them exercises the real service.
 """
 
 import hashlib
+from collections.abc import Callable
 from urllib.parse import urlsplit
 
 import httpx
@@ -36,6 +37,7 @@ def send_video(
     message_id: str | None = None,
     file_name: str = "VID_20261025_101500.mp4",
     sender_phone: str = "5511999999999",
+    reshape: Callable[[dict], dict] | None = None,
 ) -> tuple[httpx.Response, dict]:
     """Encrypt `data` like WhatsApp, put it on the fake CDN and post the webhook.
 
@@ -60,6 +62,8 @@ def send_video(
             sender_phone=sender_phone,
             message_id=message_id,
         )
+    if reshape is not None:
+        payload = reshape(payload)
     response = harness.client.post(
         "/intake/evolution-webhook", json=payload, headers=harness.webhook_headers
     )

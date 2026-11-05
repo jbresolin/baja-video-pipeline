@@ -135,9 +135,9 @@ def _accept_incoming_video(
         # Evolution retries a 413 for ~20 minutes; reply to the sender only once.
         replies = []
         if known is None or known["status"] != REJECTED_INBOX_FULL:
-            replies.append((key.remote_jid, bot_messages.INBOX_FULL_RESEND_LATER))
+            replies.append((key.sender_jid, bot_messages.INBOX_FULL_RESEND_LATER))
         jobs_repo.save_intake_message(
-            connection, key.id, REJECTED_INBOX_FULL, now, sender_jid=key.remote_jid
+            connection, key.id, REJECTED_INBOX_FULL, now, sender_jid=key.sender_jid
         )
         error = ApiError(
             413,
@@ -149,16 +149,16 @@ def _accept_incoming_video(
 
     replies = []
     if low_res:
-        replies.append((key.remote_jid, bot_messages.LOW_RES_RESEND_AS_DOCUMENT))
+        replies.append((key.sender_jid, bot_messages.LOW_RES_RESEND_AS_DOCUMENT))
     if inbox_bytes + incoming_bytes > context.settings.inbox_hold_bytes:
-        replies.append((key.remote_jid, bot_messages.INBOX_NEARLY_FULL_PLEASE_HOLD))
+        replies.append((key.sender_jid, bot_messages.INBOX_NEARLY_FULL_PLEASE_HOLD))
 
-    jobs_repo.save_intake_message(connection, key.id, DOWNLOADING, now, sender_jid=key.remote_jid)
+    jobs_repo.save_intake_message(connection, key.id, DOWNLOADING, now, sender_jid=key.sender_jid)
     download = PendingMediaDownload(
         job_id=new_id(),
         message_id=key.id,
         incoming=incoming,
-        sender_jid=key.remote_jid,
+        sender_jid=key.sender_jid,
         sender_name=webhook.data.push_name,
         raw_extension=raw_extension_for(incoming.media.file_name, incoming.media.mimetype),
         confirm_when_stored=not replies,

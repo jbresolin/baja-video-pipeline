@@ -43,6 +43,36 @@ def encode_whatsapp_binary(value: bytes | None) -> str | None:
     return None if value is None else base64.b64encode(value).decode()
 
 
+def decode_whatsapp_integer(value: Any) -> int | None:
+    """Turn a WhatsApp 64-bit number from the webhook into an int.
+
+    WhatsApp's protocol uses 64-bit integers for sizes and timestamps.
+    JavaScript can't hold every 64-bit value in a plain number, so Baileys
+    sometimes keeps them as a "Long" object: {"low": 14007026, "high": 0,
+    "unsigned": true}, where the value is high * 2**32 + low (low and high
+    are 32-bit halves). Evolution forwards whichever form it has, so we
+    accept a plain number, a string of digits, or that object.
+    """
+    if value is None or isinstance(value, bool):
+        return None if value is None else int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        return int(value)
+    if isinstance(value, dict) and "low" in value and "high" in value:
+        low = int(value["low"]) & 0xFFFFFFFF
+        high = int(value["high"]) & 0xFFFFFFFF
+        combined = (high << 32) | low
+        if not value.get("unsigned", False) and combined >= 2**63:
+            combined -= 2**64  # signed Long: the top bit means negative
+        return combined
+    raise ValueError("expected a number, a string of digits or a {low, high} Long object")
+
+
+# int in Python, from any of the shapes decode_whatsapp_integer accepts.
+WhatsAppInteger = Annotated[int | None, BeforeValidator(decode_whatsapp_integer)]
+
+
 # Raw bytes in Python; written back to JSON as standard base64 text.
 WhatsAppBinary = Annotated[
     bytes | None,
@@ -61,8 +91,24 @@ class EvolutionMessageKey(EvolutionModel):
     # WhatsApp message id; our duplicate-detection key.
     id: str
     # Who inside a group (or broadcast) sent it. Baileys sets it only there,
-    # never in a one-to-one chat.
+    # never in a one-to-one chat (Evolution may send "" there).
     participant: str | None = None
+    # WhatsApp increasingly identifies private senders by an anonymous
+    # "...@lid" id instead of their phone ("...@s.whatsapp.net"). When it
+    # does, Evolution puts the phone JID here (seen on Evolution 2.3.7).
+    remote_jid_alt: str | None = Field(default=None, alias="remoteJidAlt")
+    addressing_mode: str | None = Field(default=None, alias="addressingMode")
+
+    @property
+    def sender_jid(self) -> str:
+        """The sender's phone JID when we can know it, else remote_jid.
+
+        Replies (sendText needs a phone number) and the contacts list use
+        this. The raw remote_jid stays the source for the group check.
+        """
+        if self.remote_jid.endswith("@lid") and self.remote_jid_alt:
+            return self.remote_jid_alt
+        return self.remote_jid
 
     @property
     def is_group_or_broadcast(self) -> bool:
@@ -87,9 +133,9 @@ class EvolutionMediaMessage(EvolutionModel):
     file_enc_sha256: WhatsAppBinary = Field(default=None, alias="fileEncSha256")
     # SHA-256 of the decrypted file: becomes the job's sha256.
     file_sha256: WhatsAppBinary = Field(default=None, alias="fileSha256")
-    # Size of the decrypted file. WhatsApp sends it as a string of digits;
-    # pydantic converts it to int.
-    file_length: int | None = Field(default=None, alias="fileLength")
+    # Size of the decrypted file. Arrives as a number, a string of digits or
+    # a Baileys Long object (see decode_whatsapp_integer).
+    file_length: WhatsAppInteger = Field(default=None, alias="fileLength")
     mimetype: str | None = None
     file_name: str | None = Field(default=None, alias="fileName")
     caption: str | None = None
@@ -119,7 +165,7 @@ class EvolutionMessageData(EvolutionModel):
     push_name: str | None = Field(default=None, alias="pushName")
     message: EvolutionMessage
     message_type: str | None = Field(default=None, alias="messageType")
-    message_timestamp: int | None = Field(default=None, alias="messageTimestamp")
+    message_timestamp: WhatsAppInteger = Field(default=None, alias="messageTimestamp")
 
 
 class EvolutionWebhook(EvolutionModel):

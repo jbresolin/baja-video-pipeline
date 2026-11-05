@@ -13,7 +13,10 @@ from pathlib import Path
 from orchestrator.domain import bot_messages
 from orchestrator.testing.harness import build_harness
 from orchestrator.testing.scenarios import SAMPLE_VIDEO_BYTES, receive_job, send_video
-from shared.testing.evolution_payloads import document_message_payload
+from shared.testing.evolution_payloads import (
+    as_evolution_2_3_7_lid_payload,
+    document_message_payload,
+)
 from shared.testing.whatsapp_media_encrypt import encrypt_bytes
 
 VOLUNTEER_PHONE = "5511977776666"
@@ -91,3 +94,16 @@ def test_the_volunteer_guide_quotes_every_reply_word_for_word():
     guide = VOLUNTEER_GUIDE.read_text(encoding="utf-8")
     missing = [text for text in bot_messages.ALL_REPLIES if text not in guide]
     assert missing == []
+
+
+def test_a_real_2_3_7_lid_document_creates_a_job_and_is_answered_on_the_phone(harness):
+    # Regression for the first real video (2026-11-04): Evolution 2.3.7 sent
+    # the sender as an anonymous "@lid" id, the phone in remoteJidAlt, and
+    # fileLength as a Long object. The orchestrator answered HTTP 400 and no
+    # job was created. Now: the job exists, and the confirmation goes to the
+    # phone number (sendText cannot deliver to a LID).
+    job_id = receive_job(
+        harness, sender_phone=VOLUNTEER_PHONE, reshape=as_evolution_2_3_7_lid_payload
+    )
+    assert job_id
+    assert harness.evolution.texts_to(VOLUNTEER_PHONE) == [bot_messages.RECEIVED_OK]

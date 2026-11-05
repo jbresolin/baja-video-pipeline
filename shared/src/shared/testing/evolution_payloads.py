@@ -6,6 +6,7 @@ fields describe an encrypted file on the WhatsApp CDN (design §15); build
 one with shared.testing.whatsapp_media_encrypt.
 """
 
+import copy
 import time
 import uuid
 from typing import Any
@@ -125,3 +126,33 @@ def _upsert_event(
         "sender": "5511900000000@s.whatsapp.net",
         "server_url": "http://evolution:8080",
     }
+
+
+def as_evolution_2_3_7_lid_payload(
+    payload: dict[str, Any], lid: str = "53880532508775"
+) -> dict[str, Any]:
+    """Reshape a payload the way Evolution 2.3.7 really sent it on 2026-11-04.
+
+    Two differences from the classic shape, both seen in production:
+      * the sender is addressed by an anonymous LID ("...@lid") and the phone
+        JID moves to key.remoteJidAlt (key.participant is an empty string);
+      * WhatsApp's 64-bit numbers are Baileys "Long" objects
+        ({"low", "high", "unsigned"}) instead of plain numbers.
+    Returns a new dict; the input is not changed.
+    """
+    reshaped = copy.deepcopy(payload)
+    key = reshaped["data"]["key"]
+    phone_jid = key["remoteJid"]
+    key.update(
+        {
+            "remoteJid": f"{lid}@lid",
+            "remoteJidAlt": phone_jid,
+            "addressingMode": "lid",
+            "participant": "",
+        }
+    )
+    for media in reshaped["data"]["message"].values():
+        if isinstance(media, dict) and "fileLength" in media:
+            media["fileLength"] = {"low": int(media["fileLength"]), "high": 0, "unsigned": True}
+            media["mediaKeyTimestamp"] = {"low": 1793844688, "high": 0, "unsigned": False}
+    return reshaped
