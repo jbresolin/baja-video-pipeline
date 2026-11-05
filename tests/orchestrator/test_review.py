@@ -169,6 +169,7 @@ def test_team_lookup_endpoint(harness):
         "team_name": "Equipe X",
         "school": None,
         "short_name": "X",
+        "school_short": None,
     }
     missing = harness.client.get("/teams/41", auth=harness.reviewer_auth)
     assert missing.status_code == 404
