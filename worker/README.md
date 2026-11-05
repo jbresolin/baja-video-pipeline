@@ -9,8 +9,10 @@ token, not from the config:
 | `worker` | holds raws it is offered while under its storage cap, makes proxies, renders clips | 8710 peer file server |
 | `studio` | never holds raws; receives pushed clips, pulls outbox clips (`deliver`), keeps `latest.m3u` | 8720 clip receiver |
 
-All roles also serve the setup/status page on `http://127.0.0.1:8700`
-(localhost only).
+All roles also serve the setup/status page and a small JSON API on
+`http://127.0.0.1:8700` (localhost only); the Windows tray icon
+(`BajaWorkerTray.exe`, `worker/tray/`) reads and drives the worker through
+it. See "Status page, pause and the tray icon" below.
 
 The contract it implements is [`docs/api.md`](../docs/api.md) (§5 worker
 loop, §6 transfers, §7.2 worker-hosted endpoints, §8.1/8.3 folder layouts).
@@ -108,7 +110,8 @@ Written by the installer and the setup page. Unknown keys are refused.
 | `listen_address` | `null` = `tailnet_address`, else all interfaces | Address of the 8710/8720 servers. Binding to the Tailscale IP keeps raws off the local LAN. |
 | `file_server_port` | 8710 | Peer file server (master, worker). `0` = any free port (tests); heartbeats report the port really bound. |
 | `receiver_port` | 8720 | Clip receiver (studio). `0` as above. |
-| `setup_page_port` | 8700 | Setup/status page on 127.0.0.1. |
+| `setup_page_port` | 8700 | Setup/status page and localhost JSON API on 127.0.0.1. |
+| `paused` | `false` | Set by "Pausar" / cleared by "Retomar" (tray or status page). While true the worker finishes its current task and takes nothing new. Kept here so it survives a reboot. |
 | `studio_clip_root` | `null` = `<working folder>/box` | Studio only: the folder OBS plays from. |
 
 After enrollment the Tailscale auth key is written to
@@ -209,6 +212,46 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   the orchestrator answers a 4xx that says it no longer applies (404 job
   gone, 409 reprocessed/discarded meanwhile, 422 mismatch); 401/403/408/429
   and network errors keep it for the next round.
+
+### Status page, pause and the tray icon (LIVESTACK-38 item 9)
+
+* **Status page** (`status_page.py`, pt-BR): once enrolled,
+  `http://localhost:8700` shows one big state line in the tray icon's
+  colour, what the worker is doing (video, prova, car), space used vs.
+  cap, held raws (and clips held/archived once item 7 reports them),
+  last contact with the server, the Pausar/Retomar and Desligar buttons,
+  and the technical details (worker id, URLs, version, last error, the
+  free-form notes) folded under "Detalhes".
+* **Local JSON API** (`local_api.py`), localhost only, no login:
+
+  | Method & path | Does | Answer |
+  | --- | --- | --- |
+  | `GET /api/status` | — | the status document: `enrolled`, `enrollment_refused`, `connection_step_pending`, `paused`, `last_contact_at`, `unreachable_for_s`, `tasks[]` (`kind`, `job_id`, `prova`, `car_number`, `percent`), `storage` (`used_bytes`, `cap_bytes`, `near_cap`), `held_raws`, `clips_held`, `clips_archived`, `details` (never the bearer token) |
+  | `POST /api/pause` | "Pausar" | the new status document |
+  | `POST /api/resume` | "Retomar" | the new status document |
+  | `POST /api/stop` | "Desligar": `sc stop BajaWorker` on Windows (exiting would make NSSM restart us), else stops the process | the status document |
+
+  POSTs must have `Content-Type: application/json` and no foreign
+  `Origin`; together with the localhost `Host` check this keeps other web
+  sites in the volunteer's browser from pressing the buttons (a plain
+  HTML form cannot send JSON, and a cross-site `fetch` with JSON needs a
+  CORS preflight we never allow). Anything else → 403.
+* **Pause** (`pause.py`): the dispatcher asks `/next` for nothing while
+  paused; running tasks finish normally; heartbeats go on with
+  `paused: true` (docs/api.md §5); the peer file server keeps serving held
+  raws. No administrator rights needed.
+* **Tray icon** (`tray/`): `state.py` turns the status document and the
+  Windows service state into colour (green working, blue idle, yellow
+  paused/waiting, red problem, grey off), a one-line pt-BR tooltip, the
+  menu (Abrir painel, Pausar/Retomar, Desligar/Ligar o worker, Concluir
+  conexão while the join is pending, Sair do ícone) and the notifications,
+  each raised once (connection step pending, disk near the cap,
+  enrollment refused, service stopped unexpectedly; never per job). It has
+  no GUI imports and is unit-tested on Linux. `service.py` wraps
+  `sc query/start/stop BajaWorker` (the installer lets the Users group
+  start and stop that one service; on "access denied" it falls back to a
+  UAC prompt). `app.py` is the thin pystray layer, polling every 3 s.
+  `pystray` is a Windows-only dependency.
 
 ### Where the bearer token goes
 

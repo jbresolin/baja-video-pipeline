@@ -33,7 +33,7 @@ types**; this page explains the behaviour around them. Design background:
 | 8000 | VPS, compose network only | orchestrator (uvicorn) |
 | 8710 | every master/worker, tailnet | worker file server (`GET /raw/{job_id}`, `GET /clip/{job_id}`) |
 | 8720 | studio, tailnet | studio receiver (`POST /receive/{job_id}`) |
-| 8700 | every worker/studio, 127.0.0.1 only (not on the tailnet) | worker setup/status page |
+| 8700 | every worker/studio, 127.0.0.1 only (not on the tailnet) | worker setup/status page and the localhost JSON API for the tray icon (§7.3) |
 
 ## 2. Authentication
 
@@ -600,6 +600,24 @@ completing chunk the clip is moved into place, `latest.m3u` is rewritten,
 the studio answers `complete: true` to the worker, and then calls
 `POST /jobs/{job_id}/delivered` on the orchestrator (retrying in the
 background until it succeeds; repeating it is harmless).
+
+### 7.3 Localhost-only endpoints (127.0.0.1:8700)
+
+Served by the worker for the volunteer's own PC: the setup/status page and
+a small JSON API that the tray icon (`BajaWorkerTray.exe`) uses. Never on
+the tailnet, no login. Requests whose `Host` is not `localhost`/`127.0.0.1`
+→ 403; POSTs also need `Content-Type: application/json` and no foreign
+`Origin` (so other web sites cannot press the buttons). Details:
+`worker/README.md` ("Status page, pause and the tray icon").
+
+| Method & path | Behaviour |
+| --- | --- |
+| `GET /` | setup form before enrollment, then the pt-BR status page |
+| `POST /setup` | the setup form (before enrollment only) |
+| `GET /api/status` | status document (`enrolled`, `connection_step_pending`, `paused`, `last_contact_at`, `unreachable_for_s`, `tasks`, `storage`, `held_raws`, `clips_held`, `clips_archived`, `details`); never the bearer token |
+| `POST /api/pause` | "Pausar": finish the current task, take nothing new, heartbeat `paused: true` (§5); stored in `worker.json` |
+| `POST /api/resume` | "Retomar" |
+| `POST /api/stop` | "Desligar o worker": stops the Windows service (`sc stop BajaWorker`) |
 
 ## 8. Folder layouts
 

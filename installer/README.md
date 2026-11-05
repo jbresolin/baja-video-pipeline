@@ -105,36 +105,69 @@ cancelar e falar com a equipe antes.
 Iniciar → **Baja Worker - concluir conexão**. O Windows pede permissão de
 administrador de novo; clique em **Sim**.
 
-## 7. O que a página de status mostra
+## 7. O ícone perto do relógio
 
-Depois da conexão, `http://localhost:8700` (menu Iniciar → **Baja
-Worker**) vira uma página de status que se atualiza a cada 5 segundos.
-Não há ícone perto do relógio: o status fica só nessa página.
+Depois de instalar, aparece um **ícone redondo com um "B"** na área de
+notificação do Windows (perto do relógio; se não aparecer, clique na
+setinha **^** para ver os ícones escondidos e arraste-o para fora). Ele
+abre sozinho toda vez que alguém faz login no PC. A **cor** diz como o
+Baja Worker está, sem precisar abrir nada:
+
+> ![Ícone do Baja Worker perto do relógio](docs/img/09-icone.png)
+
+| Cor | Significa | O que fazer |
+| --- | --- | --- |
+| 🟢 **Verde** | Trabalhando: está baixando, preparando ou editando um vídeo | Nada |
+| 🔵 **Azul** | Conectado e esperando vídeos | Nada |
+| 🟡 **Amarelo** | Pausado, ou esperando você: falta concluir a conexão, falta o token, ou está iniciando | Veja a frase ao passar o mouse; se for "conexão não concluída", use **Concluir conexão** no menu do ícone |
+| 🔴 **Vermelho** | Problema: sem conexão com o servidor há mais de 1 minuto, disco quase no limite, token recusado, ou o serviço parou sozinho | Passe o mouse para ver qual; se não resolver em alguns minutos, fale com a equipe Baja |
+| ⚪ **Cinza** | Desligado (o serviço não está rodando) | Se foi sem querer: menu do ícone → **Ligar o worker** |
+
+Passando o mouse sobre o ícone aparece uma frase, por exemplo
+*"Baja Worker: processando 1 vídeo"* ou *"Baja Worker: sem conexão com o
+servidor"*.
+
+**Clique com o botão direito** no ícone para o menu:
+
+> ![Menu do ícone](docs/img/10-menu-icone.png)
+
+| Item | O que faz |
+| --- | --- |
+| **Abrir painel** | Abre a página de status `http://localhost:8700` (clicar duas vezes no ícone faz o mesmo) |
+| **Pausar** / **Retomar** | Pausar: termina o vídeo que está fazendo e não pega nenhum novo, mas continua ligado e ajudando os outros PCs com os vídeos que já guardou. Continua pausado mesmo se o PC reiniciar, até você clicar em **Retomar**. Não pede senha de administrador |
+| **Desligar o worker** / **Ligar o worker** | Desliga ou liga o serviço do Windows de vez. Não pede senha de administrador |
+| **Concluir conexão** | Só aparece enquanto falta o passo 6. Abre a janela de conexão (pede permissão de administrador) |
+| **Sair do ícone** | Fecha só o ícone. **O Baja Worker continua funcionando**; o ícone volta no próximo login, ou pelo menu Iniciar → **Baja Worker - ícone perto do relógio** |
+
+O ícone só mostra **avisos do Windows** para coisas em que você precisa
+agir: falta concluir a conexão, disco quase no limite, token recusado,
+serviço parou sozinho. Nunca um aviso por vídeo.
+
+> ![Aviso do Windows do Baja Worker](docs/img/11-aviso.png)
+
+## 8. A página de status
+
+Menu do ícone → **Abrir painel**, ou menu Iniciar → **Baja Worker**, abre
+`http://localhost:8700`. Ela se atualiza sozinha a cada 5 segundos:
 
 > ![Página de status](docs/img/07-status.png)
 
-| Linha | Significado |
-| --- | --- |
-| **Worker** | O nome deste PC na equipe e o seu número de registro |
-| **Role** | `worker` (voluntário), `master` ou `studio` (PC da transmissão). Quem decide é o token |
-| **orchestrator** | `connected` = falando com o servidor da Baja. `unreachable` = sem conexão no momento |
-| **last heartbeat** | Última vez que o PC falou com o servidor (horário UTC, 3 horas a mais que Brasília). Deve mudar a cada 15 segundos |
-| **accepting new raws** | `yes` = aceita vídeos novos. `no` = está perto do limite de espaço (normal; ele continua editando o que já tem) |
-| **working folder** | A pasta dos vídeos |
-| **Busy** | O que está fazendo agora (baixando, preparando, editando) ou `idle` (parado, esperando trabalho) |
+* uma **faixa grande colorida** com a mesma cor e a mesma frase do ícone;
+* **Agora**: o que está fazendo (por exemplo *"Editando o clipe — Enduro,
+  carro 42"*), ou "Nenhuma tarefa agora";
+* **Espaço usado** do limite que você escolheu, e quantos **vídeos
+  guardados** este PC tem;
+* **Último contato com o servidor** (deve ser "há poucos segundos");
+* os botões **Pausar** / **Retomar** e **Desligar o worker** (os mesmos do
+  ícone);
+* **Detalhes** (clique para abrir): informações técnicas para a equipe
+  Baja, como o número deste PC, endereços, versão e o último erro.
 
-## 8. Como saber se está funcionando
-
-* Na página de status, **orchestrator** diz `connected` e **last
-  heartbeat** muda a cada 15 segundos;
-* o ícone do Tailscale (perto do relógio) está conectado;
-* em **Serviços** do Windows (tecla Windows → digite "Serviços"),
-  **Baja Worker** aparece **Em execução** e **Automático**.
-
-O PC pode ficar com a tela bloqueada ou sem ninguém logado; só não pode
-desligar nem entrar em suspensão durante o evento. Em **Configurações →
-Sistema → Energia**, coloque "Suspender" em **Nunca** enquanto estiver
-emprestando o PC.
+Para saber se está tudo certo: o ícone está **verde** ou **azul**, e o
+"último contato" é de poucos segundos atrás. O PC pode ficar com a tela
+bloqueada ou sem ninguém logado; só não pode desligar nem entrar em
+suspensão durante o evento. Em **Configurações → Sistema → Energia**,
+coloque "Suspender" em **Nunca** enquanto estiver emprestando o PC.
 
 ## 9. Problemas comuns
 
@@ -144,7 +177,9 @@ emprestando o PC.
 | A página diz *"cannot enroll yet … retrying"* | Sem internet ou o servidor está fora do ar. Ele tenta de novo sozinho a cada 30 segundos |
 | A janela preta diz *"Não foi possível entrar na rede Baja"* | Responda `s` para apagar o registro, peça um **novo token** à equipe e repita o passo 5 |
 | A página `http://localhost:8700` não abre | Espere um minuto (o serviço pode estar iniciando). Se continuar, reinicie o PC |
-| **orchestrator** fica `unreachable` | Confira o ícone do Tailscale. Se estiver desconectado, use menu Iniciar → **Baja Worker - concluir conexão** |
+| A página ou o ícone dizem *"Conexão não concluída"* | Falta o passo 6: menu do ícone → **Concluir conexão** (ou menu Iniciar → **Baja Worker - concluir conexão**) |
+| O ícone fica vermelho, *"sem conexão com o servidor"* | Confira o ícone do Tailscale. Se estiver desconectado, use menu Iniciar → **Baja Worker - concluir conexão** |
+| Não vejo o ícone | Clique na setinha **^** perto do relógio. Se não estiver lá: menu Iniciar → **Baja Worker - ícone perto do relógio** |
 
 Se precisar mandar os registros para a equipe: eles ficam em
 `C:\BajaWorker\logs\` (só administradores conseguem abrir essa pasta,
@@ -171,5 +206,5 @@ desinstale-o também em Aplicativos.
 * usa a placa de vídeo (ou o processador) para editar os vídeos;
 * aceita conexões só da rede privada da equipe (Tailscale), nas portas
   8710 e 8720;
-* não lê nada fora da pasta de trabalho e não mostra nada na tela além da
-  página `http://localhost:8700`.
+* não lê nada fora da pasta de trabalho e não mostra nada na tela além do
+  ícone perto do relógio e da página `http://localhost:8700`.
