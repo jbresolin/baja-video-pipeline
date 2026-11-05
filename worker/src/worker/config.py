@@ -78,6 +78,10 @@ class WorkerConfig(BaseModel):
     receiver_port: int = DEFAULT_STUDIO_RECEIVER_PORT
     setup_page_port: int = DEFAULT_SETUP_PAGE_PORT
 
+    # The volunteer clicked "Pausar" (tray icon or status page): finish the
+    # current task, take nothing new. Kept here so it survives a reboot.
+    paused: bool = False
+
     # Studio only: the folder OBS plays from (<prova>/<car>/<passagem>.mp4
     # plus latest.m3u). None = "<working folder>/box".
     studio_clip_root: Path | None = None

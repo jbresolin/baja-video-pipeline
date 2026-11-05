@@ -13,6 +13,9 @@ Which kinds a role asks for:
           stops it. archive_clip: it keeps every finished clip (§11).
   worker  the same three; download_raw only while accepting_new_raws.
   studio  deliver only (it never holds raws, design §13).
+
+While the volunteer has paused the worker (worker.pause), nothing is asked
+for at all: the running tasks finish, no new one starts.
 """
 
 import logging
@@ -23,6 +26,7 @@ from shared.protocol import EMPTY_QUEUE_RETRY_SECONDS
 from worker.api_client import ApiError, OrchestratorClient, OrchestratorUnreachableError
 from worker.heartbeat import Heartbeater
 from worker.leases import LeaseTracker
+from worker.pause import PauseSwitch
 from worker.stages import ClaimedTask, StageRunner
 from worker.storage import Storage
 
@@ -54,6 +58,7 @@ class Dispatcher:
         shutdown: threading.Event,
         stage_freed: threading.Event,
         max_wait_seconds: float | None = None,
+        pause: PauseSwitch | None = None,
     ) -> None:
         """`max_wait_seconds` caps every pause between rounds (the
         orchestrator's retry_after_s, the 10 s after a network error); in-
@@ -67,8 +72,11 @@ class Dispatcher:
         self._shutdown = shutdown
         self._stage_freed = stage_freed
         self._max_wait_seconds = max_wait_seconds
+        self._pause = pause
 
     def kinds_to_ask_for(self) -> list[TaskKind]:
+        if self._pause is not None and self._pause.is_paused:
+            return []
         kinds = []
         for kind in STAGE_KINDS_BY_ROLE[self._role]:
             if not self._stages[kind].is_idle:
