@@ -20,14 +20,13 @@ from shared.models import (
     EnrollmentTokensResponse,
     Event,
     EventsResponse,
-    ImportTeamsRequest,
-    ImportTeamsResponse,
     Prova,
     ProvasResponse,
     ReorderProvasRequest,
+    ResultsSyncReport,
     SaveTeamRequest,
     SettingsResponse,
-    Team,
+    TeamRow,
     TeamsResponse,
     UpdateContactRequest,
     UpdateProvaRequest,
@@ -94,19 +93,19 @@ class AdminClient(OrchestratorClient):
 
     # --- Teams ---
 
-    def teams(self) -> list[Team]:
+    def teams(self) -> list[TeamRow]:
         return self._parse(TeamsResponse, self._request("GET", "/admin/teams")).teams
 
-    def save_team(self, car_number: int, request: SaveTeamRequest) -> Team:
+    def save_team(self, car_number: int, request: SaveTeamRequest) -> TeamRow:
         path = f"/admin/teams/{_segment(car_number)}"
-        return self._parse(Team, self._request("PUT", path, json=_body(request)))
+        return self._parse(TeamRow, self._request("PUT", path, json=_body(request)))
 
     def delete_team(self, car_number: int) -> None:
         self._request("DELETE", f"/admin/teams/{_segment(car_number)}")
 
-    def import_teams(self, request: ImportTeamsRequest) -> ImportTeamsResponse:
-        response = self._request("POST", "/admin/teams/import", json=_body(request))
-        return self._parse(ImportTeamsResponse, response)
+    def sync_from_results_api(self) -> ResultsSyncReport:
+        """Fetch the configured event's provas and teams now (the Sync button)."""
+        return self._parse(ResultsSyncReport, self._request("POST", "/admin/results-sync"))
 
     # --- Enrollment and workers ---
 

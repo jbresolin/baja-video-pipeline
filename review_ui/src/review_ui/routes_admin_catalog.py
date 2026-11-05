@@ -1,4 +1,4 @@
-"""Admin pages: Provas (add, rename, reorder, deactivate) and Equipes (teams table + CSV)."""
+"""Admin pages: Provas and Equipes, both synced from the results API, plus manual rows."""
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, Response
@@ -7,17 +7,14 @@ from review_ui.admin_view import (
     admin_context,
     apply_change,
     audit_lines,
-    error_text,
     form_text,
 )
 from review_ui.forms import read_form
-from review_ui.orchestrator_client import OrchestratorError
 from review_ui.request_context import admin_client_for, render_page
 from shared.models import (
     AdminArea,
-    ImportTeamsRequest,
+    CatalogSource,
     SaveTeamRequest,
-    TeamsImportMode,
     UpdateProvaRequest,
 )
 
@@ -27,13 +24,23 @@ PROVAS_PATH = "/review/admin/provas"
 TEAMS_PATH = "/review/admin/teams"
 
 
+def _sync_status(admin) -> dict:
+    """The configured event and the last sync, for the box above both tables."""
+    page = admin.settings()
+    return {"event_id": page.settings.event_id, "last": page.status.results_sync}
+
+
 # --- Provas ---
 
 
 def _provas_page(request: Request, error: str | None = None, status_code: int = 200):
     admin = admin_client_for(request)
     context = admin_context(
-        request, "provas", provas=admin.provas(), audit=audit_lines(admin.audit(AdminArea.PROVAS))
+        request,
+        "provas",
+        provas=admin.provas(),
+        sync=_sync_status(admin),
+        audit=audit_lines(admin.audit(AdminArea.PROVAS)),
     )
     context["error"] = error
     return render_page(request, "admin/provas.html", context, status_code=status_code)
@@ -71,12 +78,18 @@ def moved(prova_ids: list[int], prova_id: int, direction: str) -> list[int]:
 
 @router.post("/provas/{prova_id}/move")
 def move_prova(request: Request, prova_id: int, form: dict = Depends(read_form)) -> Response:
-    """The ↑/↓ buttons: swap with the neighbour, then save the whole order."""
+    """The ↑/↓ buttons of a manual prova: swap it with the manual neighbour, save the order.
+
+    Synced provas keep the results site's order (each sync rewrites it) and
+    always come first, so only the manual ones are reordered.
+    """
     admin = admin_client_for(request)
-    current = [prova.id for prova in admin.provas()]
-    if prova_id not in current:
-        return _provas_page(request, "Essa prova não existe mais.", 404)
-    new_order = moved(current, prova_id, form.get("direction", "up"))
+    provas = admin.provas()
+    synced = [prova.id for prova in provas if prova.source != CatalogSource.MANUAL]
+    manual = [prova.id for prova in provas if prova.source == CatalogSource.MANUAL]
+    if prova_id not in manual:
+        return _provas_page(request, "Só provas manuais mudam de ordem aqui.", 404)
+    new_order = synced + moved(manual, prova_id, form.get("direction", "up"))
     return apply_change(
         lambda: admin.reorder_provas(new_order),
         PROVAS_PATH,
@@ -108,18 +121,13 @@ def update_prova(request: Request, prova_id: int, form: dict = Depends(read_form
 # --- Equipes ---
 
 
-def _teams_page(
-    request: Request,
-    error: str | None = None,
-    status_code: int = 200,
-    import_result=None,
-):
+def _teams_page(request: Request, error: str | None = None, status_code: int = 200):
     admin = admin_client_for(request)
     context = admin_context(
         request,
         "teams",
         teams=admin.teams(),
-        import_result=import_result,
+        sync=_sync_status(admin),
         audit=audit_lines(admin.audit(AdminArea.TEAMS)),
     )
     context["error"] = error
@@ -137,11 +145,17 @@ def teams_page(request: Request) -> HTMLResponse:
 
 @router.post("/teams/save")
 def save_team(request: Request, form: dict = Depends(read_form)) -> Response:
-    """Add a car (the form above the table) or save an inline edit (a row's form)."""
+    """Add a car (the form above the table) or save a row's inline edit.
+
+    For a synced team the orchestrator keeps the values as a correction
+    that later syncs do not undo.
+    """
     try:
         car_number = int(form.get("car_number", ""))
         body = SaveTeamRequest(
-            team_name=form_text(form, "team_name") or "", school=form_text(form, "school")
+            team_name=form_text(form, "team_name") or "",
+            short_name=form_text(form, "short_name"),
+            school=form_text(form, "school"),
         )
     except ValueError:
         return _teams_page(
@@ -165,22 +179,16 @@ def delete_team(request: Request, car_number: int, form: dict = Depends(read_for
     )
 
 
-@router.post("/teams/import")
-def import_teams(request: Request, form: dict = Depends(read_form)) -> Response:
-    """The CSV arrives as text (js/admin.js copies the chosen file into the textarea).
+# --- Sync with the results API (button on both pages) ---
 
-    The page is shown again (not redirected) so it can list the skipped lines.
-    """
-    try:
-        body = ImportTeamsRequest(
-            csv_text=form.get("csv_text", ""), mode=TeamsImportMode(form.get("mode", "merge"))
-        )
-    except ValueError:
-        return _teams_page(request, "Escolha um arquivo CSV e o modo (substituir ou mesclar).", 400)
-    try:
-        result = admin_client_for(request).import_teams(body)
-    except OrchestratorError as error:
-        if error.status_code in (401, 403):
-            raise
-        return _teams_page(request, error_text(error), error.status_code)
-    return _teams_page(request, import_result=result)
+
+@router.post("/sync")
+def sync_from_results_api(request: Request, form: dict = Depends(read_form)) -> Response:
+    """The Sincronizar button: fetch the event's provas and teams, then back to the page."""
+    back_to_teams = form.get("back") == "teams"
+    return apply_change(
+        lambda: admin_client_for(request).sync_from_results_api(),
+        TEAMS_PATH if back_to_teams else PROVAS_PATH,
+        "synced",
+        _show_teams(request) if back_to_teams else _show_provas(request),
+    )

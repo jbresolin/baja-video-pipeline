@@ -292,3 +292,6 @@ table.admin-table tr.muted td { color: var(--muted); }
 .audit-list li { padding: 0.25rem 0; border-bottom: 1px solid var(--line); }
 .status-list dt { font-weight: 600; margin-top: 0.75rem; }
 .status-list dd { margin: 0.25rem 0 0; }
+.sync-box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 0.5rem 0.8rem; margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
+.sync-box p { margin: 0; }

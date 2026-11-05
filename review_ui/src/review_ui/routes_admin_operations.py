@@ -159,9 +159,15 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
                 form.get("proxy_evict_min_free_gb", "").replace(",", ".")
             ),
             installer_download_url=form.get("installer_download_url", "").strip(),
+            event_id=form.get("event_id", "").strip(),
+            results_api_base_url=form_text(form, "results_api_base_url"),
         )
     except ValueError:
-        return _settings_page(request, "Os limites em GB precisam ser números positivos.", 400)
+        return _settings_page(
+            request,
+            "Os limites em GB precisam ser números positivos, e o evento tem 4 letras ou números.",
+            400,
+        )
     return apply_change(
         lambda: admin_client_for(request).update_settings(body),
         SETTINGS_PATH,

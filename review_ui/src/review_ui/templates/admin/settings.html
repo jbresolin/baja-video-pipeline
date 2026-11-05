@@ -2,6 +2,14 @@
 {% block title %}Configurações{% endblock %}
 {% block admin_content %}
 <form method="post" action="/review/admin/settings" class="stacked settings-form">
+  <label for="event_id">Evento no site de resultados (código de 4 letras/números)</label>
+  <input id="event_id" name="event_id" value="{{ values.event_id }}" maxlength="4" pattern="[A-Za-z0-9]{4}"
+         placeholder="26BR" autocapitalize="characters">
+  <p class="hint">Provas e equipes vêm deste evento: ao mudar o código, ao clicar em “Sincronizar”
+    (páginas Provas e Equipes) e a cada 6 h. Maiúsculas e minúsculas importam (<code>26BR</code>, não <code>26br</code>).</p>
+  <label for="results_api_base_url">Endereço do site de resultados (API)</label>
+  <input id="results_api_base_url" name="results_api_base_url" type="url" maxlength="200"
+         value="{{ values.results_api_base_url }}" required>
   <fieldset class="choices">
     <legend>Quem pode enviar vídeos</legend>
     {% for value, label in intake_modes.items() %}
@@ -45,6 +53,15 @@
       <li><code>{{ name }}</code>: {% if state == "configured" %}configurado{% else %}<strong class="error-text">faltando</strong>{% endif %}</li>
     {% endfor %}
     </ul>
+  </dd>
+  <dt>Sincronização com o site de resultados</dt>
+  <dd>
+    {% if status.results_sync %}
+      {{ status.results_sync.event_id }} · {{ m.time(status.results_sync.at, relative=true) }} ·
+      {% if status.results_sync.ok %}ok: provas +{{ status.results_sync.provas_added }},
+        equipes +{{ status.results_sync.teams_added }}
+      {% else %}<strong class="error-text">falhou</strong>: {{ status.results_sync.error }}{% endif %}
+    {% else %}nunca{% endif %}
   </dd>
   <dt>Disco do servidor</dt>
   <dd>

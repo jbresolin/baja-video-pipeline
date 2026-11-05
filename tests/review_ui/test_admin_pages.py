@@ -238,17 +238,76 @@ def test_teams_add_edit_inline_delete(admin, harness):
     team = harness.client.get("/teams/42", auth=harness.reviewer_auth).json()
     assert (team["team_name"], team["school"]) == ("Trovão Baja", None)
     page = follow(admin, post_form(admin, "/review/admin/teams/42/delete"))
-    assert "Equipe removida." in page.text
+    assert "Equipe removida" in page.text
     assert harness.client.get("/teams/42", auth=harness.reviewer_auth).status_code == 404
 
 
-def test_teams_csv_import_lists_skipped_lines(admin, harness):
-    csv_text = "car_number,team_name,school\n42,Trovão,UFSC\nxx,Sem número,\n"
-    page = post_form(admin, "/review/admin/teams/import", csv_text=csv_text, mode="replace")
-    assert page.status_code == 200
-    assert "CSV importado: 1 equipe(s)" in page.text
-    assert "1 linha(s) ignorada(s)" in page.text
-    assert "line 3: car_number &#39;xx&#39;" in page.text
+def set_event(admin, event_id="26BR"):
+    """Save the event on the Settings page (that also syncs provas and teams)."""
+    return post_form(
+        admin,
+        "/review/admin/settings",
+        event_id=event_id,
+        intake_mode="open",
+        inbox_hold_gb="22",
+        proxy_evict_min_free_gb="10",
+        installer_download_url="",
+    )
+
+
+def test_setting_the_event_fills_provas_and_teams_from_the_results_site(admin):
+    # The fake results API has the docs' 26BR example.
+    page = follow(admin, set_event(admin))
+    assert "Configurações salvas." in page.text
+    assert 'value="26BR"' in page.text
+
+    provas = admin.get("/review/admin/provas").text
+    assert "Evento <code>26BR</code>" in provas
+    assert "site <code>END</code>" in provas
+    teams = admin.get("/review/admin/teams").text
+    assert 'value="Equipe FEI Baja"' in teams and 'value="FEI"' in teams
+
+
+def test_the_sync_button_reports_back_on_the_page_it_was_pressed(admin, harness):
+    set_event(admin)
+    harness.results_api.add_team(3, "Equipe Três", "Três")
+    page = follow(admin, post_form(admin, "/review/admin/sync", back="teams"))
+    assert page.url.path == "/review/admin/teams"
+    assert "Sincronizado com o site de resultados." in page.text
+    assert 'value="Equipe Três"' in page.text
+
+
+def test_a_failed_sync_is_explained_on_the_page(admin, harness):
+    set_event(admin)
+    harness.results_api.rate_limited_for_s = 12
+    page = post_form(admin, "/review/admin/sync", back="provas")
+    assert page.status_code == 503
+    assert "rate limit" in page.text
+
+
+def test_correcting_a_synced_team_is_marked_and_can_be_undone(admin, harness):
+    set_event(admin)
+    follow(
+        admin,
+        post_form(
+            admin,
+            "/review/admin/teams/save",
+            car_number="2",
+            team_name="FEI",
+            short_name="FEI Baja",
+        ),
+    )
+    page = admin.get("/review/admin/teams").text
+    assert "corrigida" in page and "Desfazer correção" in page
+    follow(admin, post_form(admin, "/review/admin/teams/2/delete"))
+    team = harness.client.get("/teams/2", auth=harness.reviewer_auth).json()
+    assert team["team_name"] == "Equipe FEI Baja"
+
+
+def test_without_an_event_the_pages_point_to_the_settings(admin):
+    page = admin.get("/review/admin/provas").text
+    assert "Nenhum evento configurado" in page
+    assert 'href="/review/admin/settings"' in page
 
 
 # --- Cadastro de PCs ---

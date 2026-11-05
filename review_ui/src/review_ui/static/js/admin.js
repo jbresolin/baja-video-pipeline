@@ -1,7 +1,6 @@
 // Admin pages. They are plain HTML forms and work without this script;
 // it only adds conveniences:
 //   [data-copy-from=id]   button copies the text of element #id (the new token)
-//   [data-load-into=id]   file input puts the chosen file's text into textarea #id (teams CSV)
 //   form[data-confirm]    asks before submitting (revoke, remove)
 //   select[data-autosubmit] submits its form when changed (contacts filter)
 
@@ -19,14 +18,6 @@ for (const button of document.querySelectorAll("[data-copy-from]")) {
       window.getSelection().addRange(range);
       button.textContent = "Selecionado: Ctrl+C";
     }
-  });
-}
-
-for (const input of document.querySelectorAll("input[type=file][data-load-into]")) {
-  input.addEventListener("change", async () => {
-    const file = input.files?.[0];
-    const target = document.getElementById(input.dataset.loadInto);
-    if (file && target) target.value = await file.text();
   });
 }
 

@@ -1,68 +1,60 @@
 {% extends "admin/_layout.html" %}
 {% block title %}Equipes{% endblock %}
 {% block admin_content %}
-<p class="hint">O nome da equipe que aparece na revisão e no clipe, pelo número do carro.
-  Carros que não estão aqui ainda são procurados no app do Baja, se configurado.</p>
+<p class="hint">O nome da equipe que aparece na revisão, pelo número do carro, vem do site de resultados.
+  No clipe aparece o nome curto. Corrija aqui o que estiver errado: a correção vale até ser desfeita,
+  mesmo depois de novas sincronizações. Carros que não estão no site podem ser adicionados à mão.</p>
 
-{% if import_result %}
-<div class="banner ok" role="status">
-  CSV importado: {{ import_result.imported }} equipe(s); a tabela tem agora {{ import_result.total_teams }}.
-  {% if import_result.problems %}
-  <details open><summary>{{ import_result.problems|length }} linha(s) ignorada(s)</summary>
-    <ul>{% for problem in import_result.problems %}<li><code>{{ problem }}</code></li>{% endfor %}</ul>
-  </details>
-  {% endif %}
-</div>
-{% endif %}
-
-<h2>Adicionar carro</h2>
-<form method="post" action="/review/admin/teams/save" class="inline-fields">
-  <label>Carro <input name="car_number" type="number" min="0" max="9999" required inputmode="numeric"></label>
-  <label>Equipe <input name="team_name" required maxlength="100"></label>
-  <label>Escola <input name="school" maxlength="100"></label>
-  <button type="submit" class="primary">Adicionar</button>
-</form>
+{% with back = "teams" %}{% include "admin/_sync_box.html" %}{% endwith %}
 
 {% if teams %}
 <table class="admin-table">
-  <thead><tr><th>Carro</th><th>Equipe</th><th>Escola</th><th></th></tr></thead>
+  <thead><tr><th>Carro</th><th>Equipe</th><th>Nome curto (clipe)</th><th>Escola</th><th>Origem</th><th></th></tr></thead>
   <tbody>
   {% for t in teams %}
     {% set form_id = "team-" ~ t.car_number %}
-    <tr>
+    <tr {% if not t.in_source %}class="muted"{% endif %}>
       <td><strong>{{ t.car_number }}</strong></td>
       <td><input name="team_name" form="{{ form_id }}" value="{{ t.team_name }}" required maxlength="100" aria-label="Equipe do carro {{ t.car_number }}"></td>
+      <td><input name="short_name" form="{{ form_id }}" value="{{ t.short_name or '' }}" maxlength="60" aria-label="Nome curto do carro {{ t.car_number }}"></td>
       <td><input name="school" form="{{ form_id }}" value="{{ t.school or '' }}" maxlength="100" aria-label="Escola do carro {{ t.car_number }}"></td>
+      <td>
+        {% if t.source == "manual" %}manual
+        {% else %}site{% if t.overridden %} · <span class="badge flag" title="No site: {{ t.synced_team_name }} / {{ t.synced_short_name or '—' }}">corrigida</span>{% endif %}
+        {% if not t.in_source %} · <span class="small">fora do evento</span>{% endif %}
+        {% endif %}
+      </td>
       <td class="row-actions">
         <form id="{{ form_id }}" method="post" action="/review/admin/teams/save" class="inline-form">
           <input type="hidden" name="car_number" value="{{ t.car_number }}">
-          <button type="submit">Salvar</button>
+          <button type="submit">{{ "Salvar correção" if t.source != "manual" else "Salvar" }}</button>
         </form>
+        {% if t.source == "manual" %}
         <form method="post" action="/review/admin/teams/{{ t.car_number }}/delete" class="inline-form"
               data-confirm="Remover o carro {{ t.car_number }} ({{ t.team_name }})?">
           <button type="submit" class="danger">Remover</button>
         </form>
+        {% elif t.overridden %}
+        <form method="post" action="/review/admin/teams/{{ t.car_number }}/delete" class="inline-form"
+              data-confirm="Desfazer a correção do carro {{ t.car_number }} e voltar ao nome do site?">
+          <button type="submit">Desfazer correção</button>
+        </form>
+        {% endif %}
       </td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 {% else %}
-<p class="empty">Nenhuma equipe ainda. Adicione acima ou envie um CSV abaixo.</p>
+<p class="empty">Nenhuma equipe ainda. Configure o evento e sincronize.</p>
 {% endif %}
 
-<h2>Enviar CSV</h2>
-<p class="hint">Uma linha por carro: <code>car_number,team_name,school</code> (cabeçalho opcional;
-  “Salvar como CSV UTF-8” no Excel funciona). Linhas com problema são ignoradas e listadas.</p>
-<form method="post" action="/review/admin/teams/import" class="stacked">
-  <label>Arquivo <input type="file" accept=".csv,text/csv" data-load-into="csv_text"></label>
-  <label for="csv_text">Conteúdo (preenchido ao escolher o arquivo, ou cole aqui)</label>
-  <textarea id="csv_text" name="csv_text" rows="6" required></textarea>
-  <fieldset class="choices">
-    <legend>O que fazer com as equipes que já estão na tabela</legend>
-    <label><input type="radio" name="mode" value="merge" checked> Mesclar: adiciona e atualiza, mantém os carros que não estão no arquivo</label>
-    <label><input type="radio" name="mode" value="replace"> Substituir: a tabela fica exatamente igual ao arquivo</label>
-  </fieldset>
-  <button type="submit" class="primary">Importar</button>
+<h2>Adicionar carro que não está no site</h2>
+<form method="post" action="/review/admin/teams/save" class="inline-fields">
+  <label>Carro <input name="car_number" type="number" min="0" max="9999" required inputmode="numeric"></label>
+  <label>Equipe <input name="team_name" required maxlength="100"></label>
+  <label>Nome curto <input name="short_name" maxlength="60"></label>
+  <label>Escola <input name="school" maxlength="100"></label>
+  <button type="submit" class="primary">Adicionar</button>
 </form>
 {% endblock %}
