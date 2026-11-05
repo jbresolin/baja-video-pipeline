@@ -19,7 +19,7 @@ import pytest
 from orchestrator.domain import bot_messages
 from orchestrator.domain.contacts import normalize_phone, phone_from_jid
 from orchestrator.testing.scenarios import ensure_prova, job_id_for_message, send_video
-from shared.testing.evolution_payloads import text_message_payload
+from shared.testing.evolution_payloads import as_evolution_2_3_7_lid_payload, text_message_payload
 
 PHONE = "5511987654321"
 
@@ -96,6 +96,69 @@ def test_group_messages_are_not_recorded(harness):
     payload["data"]["key"]["remoteJid"] = "120363040000000000@g.us"
     harness.client.post("/intake/evolution-webhook", json=payload, headers=harness.webhook_headers)
     assert contacts(harness) == []
+
+
+# --- Evolution 2.3.7 "@lid" senders ---
+#
+# Since Evolution 2.3.7 a private sender may arrive as an anonymous id
+# ("53880532508775@lid") with the phone JID in key.remoteJidAlt. The
+# contact must be the PHONE: that is what the admin sees, types and
+# allows, and what the bot replies to. The @lid id is never a key.
+
+
+def lid_video_from(harness, phone=PHONE) -> tuple[str | None, dict]:
+    """Send a video in the Evolution 2.3.7 @lid shape (phone only in remoteJidAlt)."""
+    response, payload = send_video(
+        harness, sender_phone=phone, reshape=as_evolution_2_3_7_lid_payload
+    )
+    assert payload["data"]["key"]["remoteJid"].endswith("@lid")  # the shape under test
+    return job_id_for_message(harness, payload["data"]["key"]["id"]), response.json()
+
+
+def test_a_lid_sender_is_recorded_under_the_phone_number(harness):
+    lid_video_from(harness)
+
+    [contact] = contacts(harness)
+    # The phone from remoteJidAlt, not the anonymous @lid number.
+    assert contact["phone"] == PHONE
+    assert "53880532508775" not in str(contacts(harness))
+
+
+def test_a_lid_sender_and_a_classic_one_are_the_same_contact(harness):
+    # The same person, once in each shape: one contact, not two.
+    video_from(harness)
+    lid_video_from(harness)
+    assert [contact["phone"] for contact in contacts(harness)] == [PHONE]
+
+
+def test_a_blocked_phone_is_refused_when_it_writes_through_a_lid(harness):
+    # The admin blocked the phone number; the video comes in the @lid shape.
+    harness.client.post(
+        "/admin/contacts", json={"phone": PHONE, "status": "blocked"}, auth=harness.admin_auth
+    )
+    job_id, answer = lid_video_from(harness)
+    assert job_id is None
+    assert answer["ignored"] is True
+    assert harness.evolution.sent == []
+
+
+def test_an_allowed_phone_gets_through_allowlist_mode_through_a_lid(harness):
+    # Allowlist mode: only the phone the admin allowed may send. Matching on
+    # the @lid id instead would refuse a person the admin approved.
+    harness.client.post(
+        "/admin/contacts", json={"phone": PHONE, "status": "allowed"}, auth=harness.admin_auth
+    )
+    set_intake_mode(harness, "allowlist")
+
+    job_id, _ = lid_video_from(harness)
+
+    assert job_id is not None
+    # And a phone that is not allowed is refused, with the reply sent to
+    # the phone (sendText needs a number, not a lid).
+    other = "5511900002222"
+    refused, _ = lid_video_from(harness, phone=other)
+    assert refused is None
+    assert harness.evolution.texts_to(other) == [bot_messages.SENDER_NOT_AUTHORIZED]
 
 
 # The six combinations of the table in the module docstring:
