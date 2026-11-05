@@ -28,10 +28,10 @@ types**; this page explains the behaviour around them. Design background:
 
 | Port | Where | What |
 | --- | --- | --- |
-| 443 | VPS, public | Caddy: review UI, `/proxies/*`, `/thumbs/*`, `POST /enroll`, `POST /intake/evolution-webhook` |
+| 443 | VPS, public | Caddy: review UI, `/proxies/*`, `/thumbs/*`, `/clip-downloads/*` (outbox clips for reviewers), `POST /enroll`, `POST /intake/evolution-webhook` |
 | 8080 | VPS, Tailscale IP only, plain HTTP | Caddy: the worker/studio API and `/inbox/*`, `/outbox/*` files |
 | 8000 | VPS, compose network only | orchestrator (uvicorn) |
-| 8710 | every master/worker, tailnet | worker file server (`GET /raw/{job_id}`) |
+| 8710 | every master/worker, tailnet | worker file server (`GET /raw/{job_id}`, `GET /clip/{job_id}`) |
 | 8720 | studio, tailnet | studio receiver (`POST /receive/{job_id}`) |
 | 8700 | every worker/studio, 127.0.0.1 only (not on the tailnet) | worker setup/status page |
 
@@ -94,7 +94,8 @@ or `GET /outbox/{id}` byte endpoint. Before serving, Caddy calls
 
 Rules: `/inbox/<job_id>.<ext>` is allowed while the caller holds a
 `download_raw` lease on that job; `/outbox/<job_id>.mp4` is allowed for
-studio workers only; any other path, a dot-file, `..`, or a method other
+studio workers, and for the master while it holds an `archive_clip` lease
+on that job; any other path, a dot-file, `..`, or a method other
 than GET/HEAD → 403. Workers never build these URLs themselves: task offers
 carry the absolute `download_url` (§5).
 
@@ -262,6 +263,7 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
 | `make_proxy` | a confirmed holder | Probe (`shared.media_probe`), render thumbnail and proxy with `tone_map_hdr=info.is_hdr`; `PUT …/media-info` (when the task has `media_info_upload_url`), `PUT …/thumbnail`, then chunked `POST …/proxy` | completing chunk of `…/proxy` |
 | `process` | a confirmed holder | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
 | `deliver` | studio only | GET `download_url` (Caddy outbox) with your bearer, verify SHA-256, store at `clip_relative_path`, rewrite `latest.m3u` | `POST /outbox/{id}/ack` |
+| `archive_clip` | master only, lowest priority (after backfill) | Keep one clip version in the archive at `archive_relative_path`: move your own kept copy, else GET the first working `download_urls` entry (peers' `:8710/clip/{job_id}?sha256=…` without token, the Caddy outbox with it), verify SHA-256 | `POST /jobs/{id}/clip-archived` |
 
 **Failures.** `POST /jobs/{id}/failed {lease_id, message, exit_code, scope}`
 ends the lease, and that worker is never offered that task on that job
@@ -279,6 +281,33 @@ review) it cannot fail, so it keeps its state. Whenever the job does not
 fail, `Job.failure` and `waiting_reason` are set, and a `claimed` job whose
 process task failed with scope `worker` goes back to `ready` for another
 holder.
+
+**Clips are kept and archived** (contract 1.2.0; design §11 as amended).
+After a verified delivery the rendering worker keeps its clip
+(`clips/<job_id>.<sha256>.mp4`, §8.3), lists it in every heartbeat's
+`held_clips` and serves it on `:8710 GET /clip/{job_id}`. Every clip that
+reaches the outbox or the studio is a **clip version** of its job
+(`Job.clip_versions`; a reprocess adds version 2, 3, …, never replaces).
+The master is offered `archive_clip` for every version it does not have
+yet, of any job not discarded, after every other task it accepts
+(including raw backfill); sources are the master itself (empty
+`download_urls`), online workers that keep that clip (the renderer first),
+then the outbox while it has that exact clip. A version with no reachable
+source is skipped; one whose copy the master reported failed
+(`POST …/failed`) waits 10 minutes, without any exclusion and without
+touching the job. The heartbeat answer's `archived_clip_sha256s` lists the
+held clips the master has; only those may be evicted, only near the cap
+(under 4 GB free), oldest first. **Outbox copies** are deleted only when
+the studio ACKed **and** the master archived that clip, or once
+`BVP_OUTBOX_KEEP_UNARCHIVED_HOURS` (72) passed since the ACK; a job is
+`done` at the ACK either way.
+
+**Where the clip is** (for the review UI): `Job.clip.in_outbox` says the
+VPS outbox has the current clip, and `Job.clip.download_url`
+(`/clip-downloads/<job_id>.mp4`, relative to the public base URL, reviewer
+auth like proxies) is where a reviewer downloads it; `ManifestEntry` and
+`JobSummary.clip_download_url` carry the same. `ClipVersion.archived_at`
+says whether the master has each version.
 
 **Delivery decision.** Every `process` offer (and claim answer) carries
 `delivery: {mode, studio_url}`. The orchestrator says `direct`, with
@@ -392,6 +421,7 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `POST /jobs/{job_id}/proxy` | chunk (+ `Frame-Rate`) → `ChunkAccepted` | ends make_proxy lease; sets `Job.frame_rate` |
 | `POST /jobs/{job_id}/clip` | chunk → `ChunkAccepted` | outbox route; claimed → uploaded |
 | `POST /jobs/{job_id}/delivered` | `DeliveredRequest` → `JobStateResponse` | studio; direct route |
+| `POST /jobs/{job_id}/clip-archived` | `ClipArchivedRequest` → `JobStateResponse` | master, `archive_clip` lease; 422 `hash_mismatch` if the sha256 is no version of the job; state unchanged |
 | `GET /review/queue?state=…&limit=…` | → `ReviewQueueResponse` | default `awaiting_review`, oldest first |
 | `GET /jobs/{job_id}` | → `Job` | |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
@@ -548,6 +578,7 @@ boundary (design §15); short-lived fetch tokens are a later hardening item.
 | --- | --- | --- | --- |
 | 8710 | `GET /health` | master, worker | `{"status":"ok","worker_id":…,"role":…}` |
 | 8710 | `GET /raw/{job_id}` | master, worker | The held raw, with Range (§6.1). 404 if not held. |
+| 8710 | `GET /clip/{job_id}[?sha256=…]` | master, worker | A kept clip (§5 "Clips are kept and archived"), with Range: exactly that version, or the newest. 404 if not kept. |
 | 8720 | `GET /health` | studio | as above |
 | 8720 | `POST /receive/{job_id}` | studio | Chunked upload (§6.2) plus `Clip-Relative-Path`. |
 
@@ -578,7 +609,10 @@ slug, so its clips stay in the same folder; a prova name not in the table
 M3U from `render_latest_playlist`: `#EXTM3U`, then per clip
 `#EXTINF:-1,<Prova> - carro <car> [<team>] - passagem <n>` and the
 relative path. Both are written as dot-files and renamed, so OBS never
-sees half a file. A reprocessed clip replaces the old one at the same path.
+sees half a file. A reprocessed clip replaces the old one at the same path
+on the box; the master's archive keeps both (`<passagem>.v2.mp4`, built by
+`shared.layout.archive_relative_path`), and `ManifestEntry.version` says
+which version is current.
 
 ### 8.2 VPS (`BVP_DATA_DIR`, default `/srv/pipeline`)
 
@@ -586,7 +620,10 @@ sees half a file. A reprocessed clip replaces the old one at the same path.
 inbox/<job_id>.<ext>      raws until 2 holders confirm; Caddy :8080 /inbox/*
 proxies/<job_id>.mp4      Caddy :443 /proxies/<job_id>.mp4 (forward_auth → /auth/media)
 thumbs/<job_id>.jpg       Caddy :443 /thumbs/<job_id>.jpg (forward_auth → /auth/media)
-outbox/<job_id>.mp4       fallback clips, deleted on studio ACK; Caddy :8080 /outbox/*
+outbox/<job_id>.mp4       fallback clips; deleted after studio ACK + master archive (or 72 h
+                          after the ACK); Caddy :8080 /outbox/* (studio, archiving master)
+                          and :443 /clip-downloads/* (signed-in users: the Download button;
+                          forward_auth → /auth/media)
 db/bvp.sqlite3            jobs DB (WAL mode)
 reviewers.txt             optional: imported into the users table on a first start (§9)
 ```
@@ -600,7 +637,10 @@ public base URL.
 
 ```
 raws/<job_id>.<ext>       held raws (served on :8710, never evicted, deleted on discard)
-clips/<job_id>.mp4        rendered clips until delivered
+clips/<job_id>.mp4        the clip being rendered/delivered (+ .json sidecar)
+clips/<job_id>.<sha256>.mp4   delivered clips, kept until archived by the master
+                          (served on :8710 /clip; evicted near the cap only once archived)
+clips/<prova>/<car>/<passagem>[.vN].mp4   master only: the archive of every clip version
 tmp/                      proxies, thumbnails, overlays while rendering
 ```
 
@@ -656,6 +696,7 @@ variables keep the names fixed in design §8.
 | `BVP_EVENT_ID` | empty | Results API event (e.g. `26BR`). First-start default |
 | `BVP_RESULTS_API_URL` | `https://api.bajasaebrasil.net` | Results API base. First-start default |
 | `BVP_DISCARD_GRACE_HOURS` | `24` | How long a discarded job's raws are kept (holders and inbox) so `restore` works (§4). First-start default |
+| `BVP_OUTBOX_KEEP_UNARCHIVED_HOURS` | `72` | An outbox clip the studio ACKed but the master has not archived is kept this long (master offline). First-start default |
 | `BVP_WHATSAPP_MEDIA_BASE_URL` | `https://mmg.whatsapp.net` | Only media URLs under this are fetched (dev: the fake CDN) |
 | `BVP_EVOLUTION_URL` | `http://evolution:8080` | Evolution API, for `sendText` replies |
 | `BVP_EVOLUTION_API_KEY` | — (required) | Evolution API key (`BVP_EVOLUTION_INSTANCE_TOKEN` is accepted as an alias) |

@@ -127,9 +127,13 @@ runs Tailscale itself.
 ├── raws/<job_id>.<ext>          held raws: served on :8710, never evicted, deleted only when
 │                                the orchestrator lists the job in deletable_job_ids
 ├── raws/.<job_id>.<ext>.part    a download in progress (resumed after a crash or restart)
-├── clips/<job_id>.mp4           a rendered clip until it is delivered
+├── clips/<job_id>.mp4           the clip being rendered/delivered right now
 ├── clips/<job_id>.json          the inputs it was rendered from (cuts, fields): lets a
 │                                restarted worker reuse it instead of rendering again
+├── clips/<job_id>.<sha256>.mp4  every clip this worker delivered, KEPT after delivery
+│                                (served on :8710 GET /clip/{job_id}); see "Clips" below
+├── clips/<prova>/<car>/<passagem>[.vN].mp4
+│                                master only: the clip archive (every clip, every version)
 ├── tmp/                         proxy, thumbnail, overlay PNG, render in progress;
 │                                emptied at every start
 ├── pending_acks.json            studio only: delivered ACKs not yet accepted by the
@@ -141,6 +145,29 @@ runs Tailscale itself.
 ├── .playlist-index.json         what latest.m3u is built from (hidden)
 └── <prova>/<car>/<passagem>.mp4
 ```
+
+### Clips are kept after delivery (where they go)
+
+Processed clips are the event's archive (design §11, as amended in
+LIVESTACK-38). After a verified upload to the outbox or push to the studio
+the worker does **not** delete its clip: it moves it to
+`clips/<job_id>.<sha256>.mp4`, lists it in every heartbeat (`held_clips`)
+and serves it on `:8710` so the master can copy it. Where a finished clip
+is, at any moment:
+
+* on the **studio box** (`<prova>/<car>/<passagem>.mp4`), once delivered;
+* in the **VPS outbox** while the studio is offline, and after its ACK
+  until the master archived it (at most 72 h);
+* on **the worker that rendered it**, until the master archived it *and*
+  the worker runs short of space;
+* on the **master**, in `clips/<prova>/<car>/<passagem>.mp4` (and
+  `.v2.mp4`, … for reprocessed passes), for good.
+
+Kept clips count against the storage cap. Near the cap (under 4 GB free)
+the worker deletes kept clips **the orchestrator says the master has
+archived** (`archived_clip_sha256s` in the heartbeat answer), oldest
+first, until there is room again; an unarchived clip is never deleted.
+The master never evicts its archive.
 
 Everything under `raws/`, `clips/` and `tmp/` counts against the cap,
 partial files included. A partial raw is kept whenever a download stops
@@ -163,6 +190,11 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
 * **make_proxy** probes the rendered proxy and sends its frame rate as the
   `Frame-Rate` header on every proxy chunk (e.g. `29.97`); left out when
   ffprobe cannot tell.
+* **archive_clip** (master only, lowest priority): copies one finished
+  clip version into the archive tree: its own kept copy is moved; others
+  are downloaded from the worker that keeps it (`:8710/clip/…`, no token)
+  or the VPS outbox (with the token), hash-checked, then confirmed with
+  `POST /jobs/{id}/clip-archived`.
 * **process** delivers the clip the way the offer's `delivery` says (the
   orchestrator decides; the worker never looks at `GET /workers`):
   `outbox` → chunked upload to the outbox; `direct` → push to

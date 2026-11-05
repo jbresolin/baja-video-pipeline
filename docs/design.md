@@ -165,7 +165,18 @@ received → proxy_ready → awaiting_review → ready → claimed (lease) → u
 
 ## 11. After the event
 
-* Raw archive = copy the master worker's folder to TrueNAS, unhurried.
+* ~~Raw archive = copy the master worker's folder to TrueNAS, unhurried.~~
+  Superseded 2026-11-04 (LIVESTACK-38, decision by João): **processed
+  clips are the archive; raws are deleted by hand after the event.**
+* Workers keep every clip they render (`clips/<job>.<sha256>.mp4`) and
+  evict one only after the master archived that exact clip, near the cap,
+  oldest first. The master keeps a copy of **every** finished clip
+  (task `archive_clip`, lowest priority), every version of a reprocessed
+  pass (`<passagem>.mp4`, `<passagem>.v2.mp4`, …), in
+  `clips/<prova-slug>/<car>/` like the box. Outbox copies go only after
+  the studio ACK and the archive (or 72 h after the ACK).
+* Post-event archive = copy the master's `clips/` folder to TrueNAS
+  (`infra/vps/EVENT_DAY.md` "After the event"), then delete the raws.
 
 ## 12. Open questions (non-blocking)
 

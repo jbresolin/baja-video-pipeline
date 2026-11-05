@@ -204,8 +204,11 @@ cause, not the cap:
 * Proxies are evicted automatically, oldest completed jobs first, when
   free space drops below `BVP_PROXY_EVICT_MIN_FREE_GB`. Any holder
   re-renders one on request ("Re-render proxy" on the job page).
-* Outbox clips are deleted after the studio's ACK. A growing outbox means
-  the studio is offline: bring it back, it pulls them.
+* Outbox clips are deleted once the studio has ACKed them **and** the
+  master has archived them (or 72 h after the ACK if the master stays
+  offline). A growing outbox means the studio or the master is offline:
+  bring it back, it pulls them. The clips page offers each outbox clip for
+  download meanwhile.
 * Never delete files in `inbox/` by hand while jobs are live: that raw
   may have only one holder yet.
 * Safe extras: `sudo docker image prune -f`, `sudo journalctl --vacuum-size=200M`,
@@ -254,23 +257,34 @@ os vídeos que estão no seu PC esperam ele voltar.*
 
 ## After the event
 
-### 1. Wait for the master to hold everything
+**What is archived (decision of 2026-11-04, LIVESTACK-38):** the
+**processed clips** are the archive, every version of every pass. The raws
+are deleted by hand once the clips are safe (step 4). The master keeps a
+copy of every finished clip in `clips/<prova>/<car>/<passagem>.mp4`
+(reprocessed passes as `<passagem>.v2.mp4`, …), mirroring the studio box.
 
-The master backfills every raw it does not hold, at the lowest priority,
-after the live work. On the fleet page its held-raws count should reach
-the number of non-discarded jobs, and its "Doing" column should go idle:
+### 1. Wait for the master to have every clip
+
+The master archives every clip it does not have yet, at the lowest
+priority, after the live work. On the fleet page the **Clip archive
+(master)** card must read **N / N** (all clips archived) and its "Doing"
+column should go idle. Keep the volunteers' PCs online until then: the
+clips they rendered and kept on their disks are the archive's sources
+once the VPS outbox copy is gone.
+
+The master also still backfills raws (it holds every raw while the event
+runs). Its held-raws count reaching the number of non-discarded jobs is
+nice to have, no longer required:
 
 ```bash
 curl -s -H "$ADMIN" "$API/metrics" | grep '^bvp_jobs'    # add up all states except discarded
 ```
 
-Keep the volunteers' PCs online until then: they are the backfill's sources
-once the VPS inbox copy is gone.
+### 2. Keep the job list with the clips
 
-### 2. Keep the job list with the raws
-
-Raws are named `<job_id>.<ext>`; only the jobs DB says which pass each
-one is (`jobs` table: id, prova, car_number, passagem, sha256, sender).
+Clips are named by pass; the jobs DB says which job each one came from,
+who sent it and every version's SHA-256 (`jobs` and `clip_versions`
+tables).
 Take a fresh backup and copy its DB next to the archive. From an admin
 device on the tailnet (the master is `tag:worker`, which may not SSH to the
 VPS):
@@ -281,18 +295,21 @@ ssh root@<vps-tailscale-ip> 'ls -1 /var/backups/baja/ | tail -1'           # →
 scp root@<vps-tailscale-ip>:/var/backups/baja/<stamp>/bvp.sqlite3 ./event-<YYYY-MM-DD>-bvp.sqlite3
 ```
 
-Put that file in the same TrueNAS folder as the raws (step 3).
+Put that file in the same TrueNAS folder as the clips (step 3).
 
-### 3. Archive the master's folder to TrueNAS
+### 3. Archive the master's clips to TrueNAS
 
 TrueNAS is not on the tailnet (design §2); copy over the home LAN, from
 João's desktop. The source is the master's **working folder** chosen on
-its setup page (shown on `http://127.0.0.1:8700`); `raws\` is what matters.
+its setup page (shown on `http://127.0.0.1:8700`); `clips\` is what
+matters (its `<prova>\<car>\…` sub-folders; the flat
+`<job_id>.<sha256>.mp4` files there are copies not archived yet, and there
+should be none left after step 1).
 
 From Windows (PowerShell or cmd), to the TrueNAS SMB share:
 
 ```bat
-robocopy "D:\Baja\master\raws" "\\truenas\baja-archive\<YYYY-MM-DD event>\raws" /E /Z /COPY:DAT /DCOPY:T /R:3 /W:10 /MT:8 /XF .* *.part /LOG:"%USERPROFILE%\Desktop\baja-archive.log" /TEE
+robocopy "D:\Baja\master\clips" "\\truenas\baja-archive\<YYYY-MM-DD event>\clips" /E /Z /COPY:DAT /DCOPY:T /R:3 /W:10 /MT:8 /XF .* *.part /LOG:"%USERPROFILE%\Desktop\baja-archive.log" /TEE
 ```
 
 (`D:\Baja\master` stands for the master's working folder. `/Z` resumes
@@ -303,20 +320,23 @@ Or from WSL/Linux with rsync over SSH to TrueNAS:
 
 ```bash
 rsync -a --info=progress2 --exclude='.*' --exclude='*.part' \
-  /mnt/d/Baja/master/raws/ truenas:/mnt/tank/baja-archive/<YYYY-MM-DD-event>/raws/
+  /mnt/d/Baja/master/clips/ truenas:/mnt/tank/baja-archive/<YYYY-MM-DD-event>/clips/
 ```
 
 Verify before deleting anything: the file count matches, and robocopy's
 summary shows `FAILED 0` (or rsync exits 0). For a checksum check, compare
-with the DB (each raw's SHA-256 is in the `jobs` table):
+with the DB (each clip version's SHA-256 is in the `clip_versions` table):
 
 ```powershell
-Get-FileHash -Algorithm SHA256 \\truenas\baja-archive\<event>\raws\* | Export-Csv "$HOME\Desktop\archive-hashes.csv"
+Get-ChildItem -Recurse -Filter *.mp4 \\truenas\baja-archive\<event>\clips | Get-FileHash -Algorithm SHA256 | Export-Csv "$HOME\Desktop\archive-hashes.csv"
 ```
 
-### 4. Prune the VPS
+### 4. Delete the raws, prune the VPS
 
-Only after step 3 is verified:
+Only after step 3 is verified. **Raws are not archived**: delete them by
+hand on the master and on the volunteers' PCs: stop the worker first
+("Desligar o worker" on its tray icon), then empty the `raws\` folder of
+its working folder. Then on the VPS:
 
 ```bash
 sudo find /srv/pipeline/proxies /srv/pipeline/thumbs -type f -delete   # review copies; holders can re-render
