@@ -57,7 +57,7 @@ def render_inputs(task: ProcessTask) -> dict:
     """Everything that changes the rendered picture or sound."""
     fields = (
         "raw_sha256", "cut_in_s", "cut_out_s", "prova", "car_number",
-        "team_name", "passagem", "show_pass", "has_audio",
+        "team_name", "school_short", "passagem", "show_pass", "has_audio",
     )  # fmt: skip
     return {name: getattr(task, name) for name in fields}
 
@@ -94,6 +94,7 @@ def _reuse_or_render(
             team_name=task.team_name,
             passagem=task.passagem,
             show_pass=task.show_pass,
+            school_short=task.school_short,
         )
         render_overlay_png(overlay_path, overlay, final_frame_width(info.width, info.height))
         env.media.render_final(

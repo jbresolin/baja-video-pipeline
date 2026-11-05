@@ -5176,6 +5176,11 @@ components:
           - type: string
           - type: 'null'
           title: Team Name
+        school_short:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: School Short
         passagem:
           type: integer
           maximum: 999.0
