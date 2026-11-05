@@ -62,6 +62,18 @@ def render_inputs(task: ProcessTask) -> dict:
     return {name: getattr(task, name) for name in fields}
 
 
+def overlay_text_for(task: ProcessTask) -> OverlayText:
+    """What the clip overlay shows, straight from the orchestrator's task."""
+    return OverlayText(
+        prova=task.prova,
+        car_number=task.car_number,
+        team_name=task.team_name,
+        passagem=task.passagem,
+        show_pass=task.show_pass,
+        school_short=task.school_short,
+    )
+
+
 def _sidecar_matches(sidecar_path: Path, task: ProcessTask) -> bool:
     if not sidecar_path.exists():
         return False
@@ -88,14 +100,7 @@ def _reuse_or_render(
         # Unreadable raw → scope "job"; a failing ffmpeg render
         # (MediaToolError) → scope "worker" (worker.failures).
         info = probe_input(env.media, raw_path)
-        overlay = OverlayText(
-            prova=task.prova,
-            car_number=task.car_number,
-            team_name=task.team_name,
-            passagem=task.passagem,
-            show_pass=task.show_pass,
-            school_short=task.school_short,
-        )
+        overlay = overlay_text_for(task)
         render_overlay_png(overlay_path, overlay, final_frame_width(info.width, info.height))
         env.media.render_final(
             raw_path,

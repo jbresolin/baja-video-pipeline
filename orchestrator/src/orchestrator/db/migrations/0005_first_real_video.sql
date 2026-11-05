@@ -7,7 +7,7 @@ ALTER TABLE jobs ADD COLUMN media_info_json TEXT;
 
 -- While state is "discarded": the state it was discarded from
 -- (awaiting_review, ready or failed), so "restore" can undo the discard,
--- and until when its raws are kept (discard time + BVP_DISCARD_GRACE_HOURS,
+-- and until when its raws are kept (discard time + the Settings page's discard_grace_hours,
 -- fixed at discard time). Both NULL in every other state.
 ALTER TABLE jobs ADD COLUMN discarded_from TEXT;
 ALTER TABLE jobs ADD COLUMN discard_grace_ends_at TEXT;

@@ -225,6 +225,7 @@ def _sync_teams(
             team_name=api_team.name,
             short_name=api_team.short_name,
             school=api_team.school,
+            school_short=api_team.school_short,
         )
         before = teams_repo.get_team_row(connection, team.car_number)
         if before is None:
@@ -232,8 +233,13 @@ def _sync_teams(
         elif (
             before["source"] != CatalogSource.RESULTS_API
             or not before["in_source"]
-            or (before["team_name"], before["short_name"], before["school"])
-            != (team.team_name, team.short_name, team.school)
+            or (
+                before["team_name"],
+                before["short_name"],
+                before["school"],
+                before["school_short"],
+            )
+            != (team.team_name, team.short_name, team.school, team.school_short)
         ):
             updated += 1
         teams_repo.save_synced_team(connection, team, now)

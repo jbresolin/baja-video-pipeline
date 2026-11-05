@@ -13,11 +13,15 @@ from PIL import Image, ImageChops
 
 from worker.overlay import OverlayText, render_overlay_png
 
-GOLDEN_PATH = Path(__file__).parent / "golden" / "overlay-car42-1080p.png"
+GOLDEN_PATH = Path(__file__).parent / "golden" / "overlay-car1-1080p.png"
+# Exactly what the orchestrator sends for car 1 of the fake results API
+# (BAJA UFMG: short name "Baja UFMG", school_short "UFMG"), Enduro pass 3.
+# tests/orchestrator/test_results_sync.py checks that the render task really
+# produces this text, so the golden image is the synced data, end to end.
 GOLDEN_TEXT = OverlayText(
     prova="Enduro",
-    car_number=42,
-    team_name="Equipe Baja Universidade Federal de Minas Gerais",
+    car_number=1,
+    team_name="Baja UFMG",
     passagem=3,
     show_pass=True,
     school_short="UFMG",

@@ -5486,6 +5486,12 @@ components:
             maxLength: 100
           - type: 'null'
           title: School
+        school_short:
+          anyOf:
+          - type: string
+            maxLength: 30
+          - type: 'null'
+          title: School Short
       additionalProperties: false
       type: object
       required:
@@ -5610,6 +5616,11 @@ components:
           - type: string
           - type: 'null'
           title: Short Name
+        school_short:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: School Short
       additionalProperties: false
       type: object
       required:
@@ -5637,6 +5648,11 @@ components:
           - type: string
           - type: 'null'
           title: School
+        school_short:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: School Short
         source:
           $ref: '#/components/schemas/CatalogSource'
         in_source:
@@ -5662,6 +5678,11 @@ components:
           - type: string
           - type: 'null'
           title: Synced School
+        synced_school_short:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Synced School Short
       additionalProperties: false
       type: object
       required:

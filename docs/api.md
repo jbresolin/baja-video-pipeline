@@ -483,6 +483,9 @@ its slug), and marks rows the API no longer lists inactive; it never
 deletes. A manual prova with the same clip folder as a new synced one is
 adopted. `ProcessTask.team_name` (the overlay text) is the team's
 `short_name` when it has one; `Job.team_name` keeps the full name.
+`ProcessTask.school_short` (the overlay's role pill, "UFMG") is the API's
+`school_short`, or an admin's correction on the Teams page; both are
+copied onto the job when the car number is set.
 
 **Evolution webhook.** The route is exactly **`POST
 /intake/evolution-webhook`** with the header **`X-Webhook-Secret:

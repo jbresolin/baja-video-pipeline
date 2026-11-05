@@ -39,6 +39,7 @@ def save_team(
         team_name=request.team_name.strip(),
         short_name=_clean(request.short_name),
         school=_clean(request.school),
+        school_short=_clean(request.school_short),
     )
     now = context.clock.now()
     with context.database.transaction() as connection:

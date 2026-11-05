@@ -1,6 +1,7 @@
 """SQL for the teams table: car number → team, synced from the results API or typed.
 
-For a synced team (source results_api) team_name / short_name / school are
+For a synced team (source results_api) team_name / short_name / school /
+school_short are
 the API's values and override_* hold an admin's correction, which the sync
 never touches. For a manual team the plain columns are the admin's values.
 What lookups answer is the override when there is one, else the plain value.
@@ -28,15 +29,17 @@ def count_teams(connection: sqlite3.Connection) -> int:
 def save_manual_team(connection: sqlite3.Connection, team: Team, now: datetime) -> None:
     """Insert or replace a manual team (a car the results API does not list)."""
     connection.execute(
-        "INSERT INTO teams (car_number, team_name, short_name, school, updated_at, source)"
-        " VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (car_number) DO UPDATE SET"
-        " team_name = excluded.team_name, short_name = excluded.short_name,"
-        " school = excluded.school, updated_at = excluded.updated_at",
+        "INSERT INTO teams (car_number, team_name, short_name, school, school_short,"
+        " updated_at, source) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (car_number) DO UPDATE"
+        " SET team_name = excluded.team_name, short_name = excluded.short_name,"
+        " school = excluded.school, school_short = excluded.school_short,"
+        " updated_at = excluded.updated_at",
         (
             team.car_number,
             team.team_name,
             team.short_name,
             team.school,
+            team.school_short,
             to_db_time(now),
             str(CatalogSource.MANUAL),
         ),
@@ -46,16 +49,18 @@ def save_manual_team(connection: sqlite3.Connection, team: Team, now: datetime) 
 def save_synced_team(connection: sqlite3.Connection, team: Team, now: datetime) -> None:
     """Insert or update a team from the API. Overrides are left alone."""
     connection.execute(
-        "INSERT INTO teams (car_number, team_name, short_name, school, updated_at, source,"
-        " in_source) VALUES (?, ?, ?, ?, ?, ?, 1) ON CONFLICT (car_number) DO UPDATE SET"
+        "INSERT INTO teams (car_number, team_name, short_name, school, school_short,"
+        " updated_at, source, in_source) VALUES (?, ?, ?, ?, ?, ?, ?, 1)"
+        " ON CONFLICT (car_number) DO UPDATE SET"
         " team_name = excluded.team_name, short_name = excluded.short_name,"
-        " school = excluded.school, updated_at = excluded.updated_at,"
-        " source = excluded.source, in_source = 1",
+        " school = excluded.school, school_short = excluded.school_short,"
+        " updated_at = excluded.updated_at, source = excluded.source, in_source = 1",
         (
             team.car_number,
             team.team_name,
             team.short_name,
             team.school,
+            team.school_short,
             to_db_time(now),
             str(CatalogSource.RESULTS_API),
         ),
@@ -66,10 +71,14 @@ def set_override(
     connection: sqlite3.Connection, car_number: int, team: Team | None, now: datetime
 ) -> None:
     """Store (or with None, clear) an admin's correction of a synced team."""
-    values = (team.team_name, team.short_name, team.school) if team else (None, None, None)
+    values = (
+        (team.team_name, team.short_name, team.school, team.school_short)
+        if team
+        else (None, None, None, None)
+    )
     connection.execute(
         "UPDATE teams SET override_team_name = ?, override_short_name = ?, override_school = ?,"
-        " updated_at = ? WHERE car_number = ?",
+        " override_school_short = ?, updated_at = ? WHERE car_number = ?",
         (*values, to_db_time(now), car_number),
     )
 
@@ -103,6 +112,7 @@ def team_from_row(row: sqlite3.Row) -> Team:
         team_name=row["override_team_name"] or row["team_name"],
         short_name=row["override_short_name"] or row["short_name"],
         school=row["override_school"] or row["school"],
+        school_short=row["override_school_short"] or row["school_short"],
     )
 
 
@@ -114,12 +124,14 @@ def team_row_from_row(row: sqlite3.Row) -> TeamRow:
         team_name=effective.team_name,
         short_name=effective.short_name,
         school=effective.school,
+        school_short=effective.school_short,
         source=CatalogSource(row["source"]),
         in_source=bool(row["in_source"]) if synced else True,
         overridden=row["override_team_name"] is not None,
         synced_team_name=row["team_name"] if synced else None,
         synced_short_name=row["short_name"] if synced else None,
         synced_school=row["school"] if synced else None,
+        synced_school_short=row["school_short"] if synced else None,
     )
 
 

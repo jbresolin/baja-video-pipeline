@@ -54,6 +54,8 @@ class Team(ApiModel):
     school: str | None = None
     # The API's short name ("FEI" for "Equipe FEI Baja"), used on the clip overlay.
     short_name: str | None = None
+    # The school's short name ("UFMG"), shown in the overlay's role pill.
+    school_short: str | None = None
 
 
 class ReviewQueueFilter(ApiModel):

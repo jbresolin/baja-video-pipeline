@@ -192,7 +192,8 @@ def test_a_far_too_long_name_shrinks_to_75_percent_then_ends_with_an_ellipsis():
 
 
 def test_the_overlay_matches_the_golden_image(tmp_path):
-    # Car 42, a long team name, prova, passagem and school, at 1920x1080.
+    # Car 1 as synced from the results API (team short name, prova,
+    # passagem and school short name), at 1920x1080.
     rendered = render_golden(tmp_path / "overlay.png")
     golden = Image.open(GOLDEN_PATH)
     assert rendered.size == golden.size

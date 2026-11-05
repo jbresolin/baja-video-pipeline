@@ -2,14 +2,14 @@
 {% block title %}Equipes{% endblock %}
 {% block admin_content %}
 <p class="hint">O nome da equipe que aparece na revisão, pelo número do carro, vem do site de resultados.
-  No clipe aparece o nome curto. Corrija aqui o que estiver errado: a correção vale até ser desfeita,
+  No clipe aparecem o nome curto e a sigla da escola. Corrija aqui o que estiver errado: a correção vale até ser desfeita,
   mesmo depois de novas sincronizações. Carros que não estão no site podem ser adicionados à mão.</p>
 
 {% with back = "teams" %}{% include "admin/_sync_box.html" %}{% endwith %}
 
 {% if teams %}
 <table class="admin-table">
-  <thead><tr><th>Carro</th><th>Equipe</th><th>Nome curto (clipe)</th><th>Escola</th><th>Origem</th><th></th></tr></thead>
+  <thead><tr><th>Carro</th><th>Equipe</th><th>Nome curto (clipe)</th><th>Escola</th><th>Sigla (clipe)</th><th>Origem</th><th></th></tr></thead>
   <tbody>
   {% for t in teams %}
     {% set form_id = "team-" ~ t.car_number %}
@@ -18,6 +18,7 @@
       <td><input name="team_name" form="{{ form_id }}" value="{{ t.team_name }}" required maxlength="100" aria-label="Equipe do carro {{ t.car_number }}"></td>
       <td><input name="short_name" form="{{ form_id }}" value="{{ t.short_name or '' }}" maxlength="60" aria-label="Nome curto do carro {{ t.car_number }}"></td>
       <td><input name="school" form="{{ form_id }}" value="{{ t.school or '' }}" maxlength="100" aria-label="Escola do carro {{ t.car_number }}"></td>
+      <td><input name="school_short" form="{{ form_id }}" value="{{ t.school_short or '' }}" maxlength="30" size="8" aria-label="Sigla da escola do carro {{ t.car_number }}"></td>
       <td>
         {% if t.source == "manual" %}manual
         {% else %}site{% if t.overridden %} · <span class="badge flag" title="No site: {{ t.synced_team_name }} / {{ t.synced_short_name or '—' }}">corrigida</span>{% endif %}
@@ -55,6 +56,7 @@
   <label>Equipe <input name="team_name" required maxlength="100"></label>
   <label>Nome curto <input name="short_name" maxlength="60"></label>
   <label>Escola <input name="school" maxlength="100"></label>
+  <label>Sigla da escola <input name="school_short" maxlength="30" size="8"></label>
   <button type="submit" class="primary">Adicionar</button>
 </form>
 {% endblock %}

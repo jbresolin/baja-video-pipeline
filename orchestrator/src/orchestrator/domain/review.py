@@ -52,13 +52,18 @@ CLEARED_FAILURE_COLUMNS = {
 
 
 def _team_names(connection: sqlite3.Connection, car_number: int) -> dict[str, str | None]:
-    """team_name (full, for the review UI and latest.m3u) and overlay_team_name
-    (the short name when the results API has one: the clip overlay shows it).
-    An unknown car leaves both empty (design §18)."""
+    """team_name (full, for the review UI and latest.m3u), overlay_team_name
+    (the short name when the results API has one: the clip overlay shows it)
+    and overlay_school_short (the overlay's role pill, LIVESTACK-38).
+    An unknown car leaves all three empty (design §18)."""
     team = teams_repo.get_team(connection, car_number)
     if team is None:
-        return {"team_name": None, "overlay_team_name": None}
-    return {"team_name": team.team_name, "overlay_team_name": team.short_name or team.team_name}
+        return {"team_name": None, "overlay_team_name": None, "overlay_school_short": None}
+    return {
+        "team_name": team.team_name,
+        "overlay_team_name": team.short_name or team.team_name,
+        "overlay_school_short": team.school_short,
+    }
 
 
 def _check_action_allowed(state: JobState, action: ReviewAction) -> None:

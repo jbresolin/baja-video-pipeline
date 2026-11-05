@@ -80,9 +80,9 @@ class ProcessTask(ApiModel):
     # The name the overlay shows for the team (the orchestrator picks the
     # short name when it knows one); None when the car is unknown.
     team_name: str | None
-    # The school's short name for the overlay's role pill, e.g. "UFMG".
-    # Filled by the orchestrator from the teams table once LIVESTACK-37's
-    # teams sync exists; None today (the overlay then leaves it out).
+    # The school's short name for the overlay's role pill, e.g. "UFMG": the
+    # teams table's school_short (results API, or an admin's correction).
+    # None when unknown; the overlay then leaves it out.
     school_short: str | None = None
     passagem: PassNumber
     show_pass: bool

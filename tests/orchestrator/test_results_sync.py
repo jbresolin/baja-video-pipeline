@@ -19,7 +19,9 @@ from orchestrator.testing.scenarios import (
     receive_job,
     review_to_ready,
 )
-from shared.models import TaskKind, WorkerRole
+from shared.models import ProcessTask, TaskKind, WorkerRole
+from tests.worker.overlay_golden import GOLDEN_TEXT
+from worker.tasks.process import overlay_text_for
 
 
 def set_event(harness, event_id="26BR"):
@@ -200,3 +202,41 @@ def test_the_overlay_uses_the_teams_short_name(harness):
     # ...and the render task's overlay text is the short one.
     offer = ask_next(harness, master, [TaskKind.PROCESS])
     assert offer["team_name"] == "FEI"
+
+
+def test_the_overlay_role_pill_gets_the_schools_short_name(harness):
+    # LIVESTACK-38 item 8: the role pill reads "ENDURO · PASSAGEM 3 · UFMG".
+    # The school's short name comes from the API's `school_short` (car 1
+    # is BAJA UFMG in the fake API) and is synced into the teams table.
+    set_event(harness)
+    teams = harness.client.get("/admin/teams", auth=harness.admin_auth).json()["teams"]
+    assert next(t for t in teams if t["car_number"] == 1)["school_short"] == "UFMG"
+    master = harness.enroll(WorkerRole.MASTER, "master")
+    job_id = receive_job(harness)
+    hold_raw(harness, master, job_id)
+    make_proxy(harness, master, job_id)
+    review_to_ready(harness, job_id, prova="Enduro", car_number=1, passagem=3)
+
+    # The render task carries it to the worker, which draws it.
+    offer = ask_next(harness, master, [TaskKind.PROCESS])
+    assert offer["school_short"] == "UFMG"
+    # And what the worker draws from this task is exactly the golden
+    # image's text (tests/worker/overlay_golden.py), so the approved
+    # picture is what a synced team really looks like on a clip.
+    task = ProcessTask.model_validate(offer)
+    assert overlay_text_for(task) == GOLDEN_TEXT
+
+
+def test_a_car_without_a_school_short_name_renders_without_one(harness):
+    # A team the API lists without `school_short`: the pill shows prova and
+    # passagem only, instead of an empty "·" at the end.
+    harness.results_api.add_team(77, "Equipe Sem Sigla")
+    set_event(harness)  # setting the event runs the first sync
+    master = harness.enroll(WorkerRole.MASTER, "master")
+    job_id = receive_job(harness)
+    hold_raw(harness, master, job_id)
+    make_proxy(harness, master, job_id)
+    review_to_ready(harness, job_id, prova="Enduro", car_number=77)
+
+    offer = ask_next(harness, master, [TaskKind.PROCESS])
+    assert offer["school_short"] is None
