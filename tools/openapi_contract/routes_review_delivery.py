@@ -119,7 +119,7 @@ def regenerate_proxy(job_id: str) -> RegenerateProxyResponse:
 @router.get(
     "/teams/{car_number}",
     tags=["review"],
-    summary="Team for a car number, from the Baja app",
+    summary="Team for a car number, from the teams table (results API sync + corrections)",
     response_model=Team,
     dependencies=_reviewer_only,
     responses=error_responses(401, 404, 503),

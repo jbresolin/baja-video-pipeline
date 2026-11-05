@@ -1,7 +1,7 @@
 """The one module that lists provas (admin page brief: "leave a seam").
 
-Today the list is the `provas` table, edited on the admin Provas page.
-Later it may come from the Baja app; then only this module changes.
+The list is the `provas` table: provas synced from the Baja results API
+(domain/results_sync.py) plus manual ones from the admin Provas page.
 Everything else (the review form's select, review validation, clip
 folder names) asks these functions and nothing else.
 

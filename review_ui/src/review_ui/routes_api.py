@@ -4,7 +4,7 @@ The browser cannot reach the orchestrator's API (Caddy only routes /review*
 to this service), so these endpoints relay the calls, as the same reviewer.
 
 Every endpoint that changes something requires a JSON body. Browsers send
-Basic credentials automatically, even on requests started by another site;
+the session cookie on same-site requests only (SameSite=Lax), and
 a plain HTML form on another site cannot send `Content-Type:
 application/json` without a CORS preflight, which we never allow. That
 stops cross-site request forgery without tokens.
@@ -76,6 +76,6 @@ async def regenerate_proxy(request: Request, job_id: str) -> JSONResponse:
 def get_team(request: Request, car_number: int = Path(ge=0, le=9999)) -> JSONResponse:
     team = orchestrator_for(request).get_team(car_number)
     if team is None:
-        message = f"car {car_number} is not in the Baja app"
+        message = f"car {car_number} is not in the teams list"
         raise UiRequestError(404, "not_found", message)
     return JSONResponse(team.model_dump(mode="json"))

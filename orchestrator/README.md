@@ -14,9 +14,10 @@ uv run python -m orchestrator.testing.dev_server
 
 This starts the real service on <http://127.0.0.1:8000> with in-process
 fakes for Evolution (bot replies are printed), Tailscale (`/enroll` mints
-fake keys) and the Baja app (car `n` belongs to "Equipe n"). Its data goes
-to `.scratch/bvp-dev/`. Credentials: admin token `dev-admin`, webhook
-secret `dev-secret`, reviewer `ana` / `ana`. Any `BVP_*` variable you set
+fake keys) and the Baja results API (the docs' event `26BR`: set it in
+Admin → Configurações). Its data goes to `.scratch/bvp-dev/`. Credentials:
+admin token `dev-admin`, webhook secret `dev-secret`, users `ana` / `ana`
+(admin) and `bruno` / `bruno`. Any `BVP_*` variable you set
 overrides these defaults.
 
 Send it a "WhatsApp" video from another terminal. The fake poster encrypts
@@ -116,9 +117,9 @@ sudo install -d -o 10001 -g 10001 /srv/pipeline/{inbox,proxies,thumbs,outbox,db}
 | `app.py`, `__main__.py` | wiring (`build_context`, `create_app`) and `python -m orchestrator` |
 | `db/` | SQLite in WAL mode, numbered `migrations/*.sql` applied at startup |
 | `repositories/` | plain SQL, one module per table group |
-| `domain/` | the rules: intake, enrollment, `task_rules` (who gets what, delivery plan), `worker_loop` (`/next` order incl. the master's backfill), `task_results` (failure scopes), leases, uploads, review, delivery, fleet, `event_log`, `/auth/file` |
-| `clients/` | Evolution `sendText`, Tailscale key minting, team lookup (`teams.py`: `BVP_TEAMS_FILE` CSV first, then the Baja app, cached) |
-| `api/` | FastAPI routes, the four auth schemes, the error shape |
+| `domain/` | the rules: sessions, users/contacts/provas/teams admin, `results_sync`, `first_start` imports, intake, enrollment, `task_rules` (who gets what, delivery plan), `worker_loop` (`/next` order incl. the master's backfill), `task_results` (failure scopes), leases, uploads, review, delivery, fleet, `event_log`, `/auth/file` |
+| `clients/` | Evolution `sendText` and instance status, Tailscale key minting, the Baja results API (`results_api.py`), the old teams CSV parser |
+| `api/` | FastAPI routes, the auth schemes and roles, rate limits, the error shape |
 | `background/` | lease expiry, inbox cleanup, proxy eviction, outbox cleanup |
 | `testing/` | fakes, harness, scenarios, the dev server |
 
@@ -136,6 +137,9 @@ Every state change goes through `domain/transitions.move_job`, which asks
   `download_raw` for every done or failed job it does not hold.
 * **Delivery plan.** Process offers say `direct` (with the studio's receive
   URL) when a studio heartbeated within 45 s, else `outbox`.
-* **Teams.** `BVP_TEAMS_FILE` (CSV `car_number,team_name,school`, reloaded
-  on change) first, then `BVP_BAJA_APP_URL`; both optional. Unknown cars
-  answer 404 and leave `team_name` empty.
+* **Provas and teams** are synced from the Baja results API for the event
+  set on the admin Settings page (`domain/results_sync.py`); manual provas
+  and team corrections live alongside. Unknown cars answer 404 and leave
+  `team_name` empty.
+* **Users** sign in with `POST /auth/login` (`domain/sessions.py`); review
+  routes take any session, `/admin/*` an admin session or the admin token.

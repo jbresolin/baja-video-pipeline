@@ -1331,7 +1331,7 @@ paths:
     get:
       tags:
       - review
-      summary: Team for a car number, from the Baja app
+      summary: Team for a car number, from the teams table (results API sync + corrections)
       operationId: get_team_teams__car_number__get
       security:
       - sessionBearer: []

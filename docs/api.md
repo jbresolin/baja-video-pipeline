@@ -41,15 +41,23 @@ types**; this page explains the behaviour around them. Design background:
 | --- | --- | --- | --- |
 | `workerBearer` | `Authorization: Bearer <token>` | master, worker, studio | issued by `POST /enroll`, one per worker |
 | `adminBearer` | `Authorization: Bearer <token>` | João / scripts | `BVP_ADMIN_TOKEN` |
-| `reviewerBasic` | `Authorization: Basic …` | review UI in the browser | `BVP_REVIEWERS_FILE` (§9), shared with Caddy |
+| `sessionBearer` | `Authorization: Bearer <session token>` | review UI, for the signed-in user | `POST /auth/login` (§9); users in the orchestrator's DB, role `reviewer` or `admin` |
+| `sessionCookie` | `Cookie: bvp_session=<session token>` | the browser, via Caddy `forward_auth` | the cookie the review UI sets; read only by `GET /auth/media` |
 | `webhookSecret` | `X-Webhook-Secret: <secret>` | Evolution | `BVP_WEBHOOK_SECRET`, set as a custom header in Evolution's instance webhook |
 
-* The orchestrator checks all four itself, so everything is testable
-  locally without Caddy or Tailscale. Bearer and Basic share the
-  `Authorization` header and are told apart by scheme.
-* Reviewers: Caddy asks for Basic auth on `/review*`, `/proxies/*` and
-  `/thumbs/*` from the same reviewers file and forwards `Authorization`
-  to the orchestrator, which checks it again for the API routes.
+* The orchestrator checks all of them itself, so everything is testable
+  locally without Caddy or Tailscale. The three bearer kinds share the
+  `Authorization` header; each route tries the kinds it accepts.
+* Users sign in on the review UI's own page (`/review/login`). The UI keeps
+  the session in an httpOnly, Secure, SameSite=Lax cookie `bvp_session`
+  (path `/`) and sends it to the orchestrator as `sessionBearer`. A session
+  ends at logout, after **12 h without a request**, or when an admin
+  disables the user or sets a new password.
+* Caddy asks for no password. For `/proxies/*` and `/thumbs/*` it calls
+  `GET /auth/media` (`forward_auth`, §2.1) with the browser's headers.
+* **Roles.** Review routes accept a session of a `reviewer` or an `admin`.
+  `/admin/*` routes accept an `admin` session or the admin token (scripts);
+  a reviewer's session gets **403** `forbidden`.
 * Bearer tokens are worker identity. `/workers/{worker_id}/…` with someone
   else's id → 403. Studio-only endpoints called by another role → 403.
 * Open endpoints: `GET /health`, and `POST /enroll` (the one-time token in
@@ -58,11 +66,13 @@ types**; this page explains the behaviour around them. Design background:
 | Endpoint group | Auth |
 | --- | --- |
 | `POST /intake/evolution-webhook` | webhookSecret |
-| `POST /intake/test-upload`, `POST /admin/enrollment-tokens` | adminBearer |
+| `POST /auth/login` | none (the password is the credential; 20 per source IP per 600 s) |
+| `/admin/*`, `POST /intake/test-upload`, `GET /metrics` | sessionBearer (role admin) **or** adminBearer |
 | worker loop, `/workers`, `/auth/file`, `/outbox/{id}/ack` | workerBearer |
-| `/review/queue`, `PATCH …/review`, `…/regenerate-proxy`, `/teams/*` | reviewerBasic |
-| `GET /jobs/{job_id}`, `GET /manifest` | reviewerBasic **or** workerBearer |
-| `GET /fleet`, `GET /jobs/{job_id}/events`, `GET /events` | reviewerBasic **or** adminBearer |
+| `/review/queue`, `PATCH …/review`, `…/regenerate-proxy`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
+| `GET /auth/media` | sessionCookie |
+| `GET /jobs/{job_id}`, `GET /manifest` | sessionBearer **or** workerBearer |
+| `GET /fleet`, `GET /jobs/{job_id}/events`, `GET /events`, `GET /provas` | sessionBearer **or** adminBearer |
 
 ### 2.1 File serving: `GET /auth/file` (Caddy `forward_auth`)
 
@@ -87,6 +97,12 @@ Rules: `/inbox/<job_id>.<ext>` is allowed while the caller holds a
 studio workers only; any other path, a dot-file, `..`, or a method other
 than GET/HEAD → 403. Workers never build these URLs themselves: task offers
 carry the absolute `download_url` (§5).
+
+**`GET /auth/media`** (public side, `/proxies/*` and `/thumbs/*`): the
+same pattern for browsers. Caddy's `forward_auth` passes the browser's own
+headers, so the `bvp_session` cookie arrives; a live session → 204, else
+401, which Caddy returns to the browser. The session's last-seen time is
+written at most once a minute, so the player's Range requests stay cheap.
 
 ### 2.2 Rate limit on `POST /enroll`
 
@@ -114,8 +130,8 @@ Branch on `error.code`, never on `message`.
 | --- | --- | --- |
 | 400 | `validation_error` | Body/headers/query do not match the model |
 | 401 | `unauthenticated` | Missing or wrong credentials |
-| 401 | `enrollment_token_invalid` | Unknown, used or expired enrollment token |
-| 403 | `forbidden` | Wrong worker id, wrong role, or (`/auth/file`) not your file |
+| 401 | `enrollment_token_invalid` | Unknown, used, expired or revoked enrollment token |
+| 403 | `forbidden` | Wrong worker id, wrong role (a reviewer on an admin route), or (`/auth/file`) not your file |
 | 404 | `not_found` | No such job/worker/team |
 | 409 | `illegal_transition` | The state machine forbids it (`details.current`, `details.requested`) |
 | 409 | `already_claimed` | Someone else holds the lease for that task |
@@ -123,13 +139,16 @@ Branch on `error.code`, never on `message`.
 | 409 | `lease_lost` | Lease expired or revoked; stop the task |
 | 409 | `version_conflict` | `expected_version` is stale (`details.current_version`) |
 | 409 | `upload_offset_mismatch` | Chunk at the wrong offset (`details.expected_offset`) |
+| 409 | `already_exists` | Admin pages: that username, phone, prova name or clip folder is taken |
+| 409 | `conflict` | Admin pages: not possible now (last enabled admin, revoking a used token, renaming a synced prova) |
 | 413 | `upload_too_large` | Upload over the declared length or the size limit |
 | 413 | `inbox_full` | VPS inbox above `BVP_INBOX_CAP_GB` |
 | 422 | `hash_mismatch` | SHA-256 of the received/held file is wrong |
 | 422 | `missing_review_fields` | `ready`/`reprocess` without all fields (`details.missing`) |
-| 429 | `rate_limited` | `/enroll` over its per-IP limit; see `Retry-After` |
+| 422 | `unknown_prova` | `ready`/`reprocess`/`retry`→ready with a prova that is not in `GET /provas` |
+| 429 | `rate_limited` | `/enroll` or `/auth/login` over its per-IP limit; see `Retry-After` |
 | 503 | `dev_mode_disabled` | `/intake/test-upload` without `BVP_DEV_MODE=1` |
-| 503 | `upstream_error` | Tailscale API, Evolution or Baja app failed |
+| 503 | `upstream_error` | Tailscale API, Evolution or the Baja results API failed |
 
 Caddy itself answers 416 for an unsatisfiable Range on `/inbox/*` and
 `/outbox/*` (plain HTTP semantics, no JSON body).
@@ -356,13 +375,51 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `GET /jobs/{job_id}` | → `Job` | |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
 | `POST /jobs/{job_id}/regenerate-proxy` | → 202 `RegenerateProxyResponse` | no state change |
-| `GET /teams/{car_number}` | → `Team` | `BVP_TEAMS_FILE`, then the Baja app; 404 unknown car |
+| `GET /teams/{car_number}` | → `Team` | the teams table (results API sync + admin corrections); 404 unknown car |
+| `GET /provas` | → `ProvasResponse` | synced provas first, then manual; inactive ones flagged |
 | `GET /manifest?since=…&prova=…` | → `ManifestResponse` | newest first, latest per prova/car/passagem |
 | `POST /outbox/{job_id}/ack` | `OutboxAckRequest` → `JobStateResponse` | studio; uploaded → delivered → done |
 | `GET /fleet` | → `FleetResponse` | workers, stats, disk, leases, job counts |
 | `GET /jobs/{job_id}/events` | → `EventsResponse` | that job's event log, oldest first; 404 unknown job |
 | `GET /events?worker_id=…&since=…&limit=…` | → `EventsResponse` | event log, oldest first; without `since` the newest `limit` (default 100, max 1000) |
 | `GET /metrics` | → Prometheus text 0.0.4 | admin only; see below |
+| `POST /auth/login` | `LoginRequest` → `LoginResponse` | session token; 401 for any wrong detail; 429 per IP |
+| `POST /auth/logout` | → 204 | ends the session |
+| `GET /auth/me` | → `CurrentUser` | username and role |
+| `GET /auth/media` | cookie → 204 / 401 | Caddy forward_auth (§2.1) |
+
+**Admin routes** (role admin or the admin token; every change is written to
+the event log with `details: {before, after}`, readable at `GET
+/admin/audit?area=…`, newest first):
+
+| Method & path | Body → response | Notes |
+| --- | --- | --- |
+| `GET/POST /admin/users`, `PATCH /admin/users/{username}` | `CreateUserRequest`/`UpdateUserRequest` → `User` | never deleted, only disabled; disable or new password ends sessions; 409 for the last admin |
+| `GET/POST /admin/contacts`, `PATCH /admin/contacts/{phone}` | `CreateContactRequest`/`UpdateContactRequest` → `Contact` | see "Contacts" below; null clears name, default prova, notes |
+| `POST /admin/provas`, `PATCH /admin/provas/{prova_id}`, `PUT /admin/provas/order` | → `Prova` / `ProvasResponse` | manual provas; synced ones only (de)activate |
+| `GET /admin/teams`, `PUT/DELETE /admin/teams/{car_number}` | `SaveTeamRequest` → `TeamRow` | on a synced team PUT stores a correction kept across syncs, DELETE removes it |
+| `POST /admin/results-sync` | → `ResultsSyncReport` | see "Results API" below; 422 unknown event, 503 API down/limited |
+| `GET /admin/enrollment-tokens`, `POST …/{token_id}/revoke` | → `EnrollmentTokensResponse` / `EnrollmentTokenInfo` | unused/used/expired/revoked; 409 for a used one |
+| `POST /admin/workers/{worker_id}/revoke` | → `Worker` | its token answers 401, leases end, holder rows dropped |
+| `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing |
+| `GET /admin/audit?area=&limit=` | → `EventsResponse` | newest first |
+
+**Contacts.** Every sender of a private message is recorded (status
+`unknown`, display name from `pushName`). For a video: `blocked` → 200
+ignored, no reply; in intake mode `allowlist`, not `allowed` → 200 ignored
+and `SENDER_NOT_AUTHORIZED` at most once per 24 h; otherwise the job is
+created with the contact's default prova filled in.
+
+**Results API.** Provas and teams come from the Baja results API
+(`GET {base}/resultados/evento.php?evt=` and `equipes.php?evt=`; contract:
+`docs/results-api.md` in `baja-sae-brasil-online`) for the event id set in
+Settings: on change, `POST /admin/results-sync`, and every 6 h (15 min
+after a failure). Provas are keyed by the API's prova id, teams by car
+number. A sync adds and renames (a renamed prova relabels its jobs and keeps
+its slug), and marks rows the API no longer lists inactive; it never
+deletes. A manual prova with the same clip folder as a new synced one is
+adopted. `ProcessTask.team_name` (the overlay text) is the team's
+`short_name` when it has one; `Job.team_name` keeps the full name.
 
 **Evolution webhook.** The route is exactly **`POST
 /intake/evolution-webhook`** with the header **`X-Webhook-Secret:
@@ -451,8 +508,12 @@ background until it succeeds; repeating it is harmless).
     e.g. enduro/42/3.mp4, suspensao/7/1.mp4
 ```
 
-Built only by `shared.layout.clip_relative_path` (prova slug: lowercase
-ASCII, accents removed, other characters → `-`). `latest.m3u` is extended
+Built from the prova's **stored slug** (`provas.slug`, made by
+`shared.layout.slugify_prova` when the prova was created: lowercase ASCII,
+accents removed, other characters → `-`) with
+`shared.layout.clip_relative_path_in_folder`. A renamed prova keeps its
+slug, so its clips stay in the same folder; a prova name not in the table
+(older jobs) falls back to the slug of the name. `latest.m3u` is extended
 M3U from `render_latest_playlist`: `#EXTM3U`, then per clip
 `#EXTINF:-1,<Prova> - carro <car> [<team>] - passagem <n>` and the
 relative path. Both are written as dot-files and renamed, so OBS never
@@ -462,11 +523,11 @@ sees half a file. A reprocessed clip replaces the old one at the same path.
 
 ```
 inbox/<job_id>.<ext>      raws until 2 holders confirm; Caddy :8080 /inbox/*
-proxies/<job_id>.mp4      Caddy :443 /proxies/<job_id>.mp4 (reviewer Basic auth)
-thumbs/<job_id>.jpg       Caddy :443 /thumbs/<job_id>.jpg (reviewer Basic auth)
+proxies/<job_id>.mp4      Caddy :443 /proxies/<job_id>.mp4 (forward_auth → /auth/media)
+thumbs/<job_id>.jpg       Caddy :443 /thumbs/<job_id>.jpg (forward_auth → /auth/media)
 outbox/<job_id>.mp4       fallback clips, deleted on studio ACK; Caddy :8080 /outbox/*
 db/bvp.sqlite3            jobs DB (WAL mode)
-reviewers.txt             default BVP_REVIEWERS_FILE (§9)
+reviewers.txt             optional: imported into the users table on a first start (§9)
 ```
 
 `<ext>` is the original extension lowercased (`.mp4`, `.mov`), else
@@ -482,32 +543,28 @@ clips/<job_id>.mp4        rendered clips until delivered
 tmp/                      proxies, thumbnails, overlays while rendering
 ```
 
-## 9. Reviewers file (`BVP_REVIEWERS_FILE`)
+## 9. Users and the reviewers file
 
-Default `/srv/pipeline/reviewers.txt`. Read by **both** the base Caddy
-(`infra/vps/conf.d/pipeline.caddy` `import`s it inside `basic_auth`) and the orchestrator
-(`shared.reviewers_file.load_reviewers_file`), so it has one strict format:
+Users (username, bcrypt hash, role `reviewer`/`admin`, disabled) live in
+the orchestrator's DB and are managed on the admin Users page. On the first
+start with an **empty** users table, `BVP_REVIEWERS_FILE` (default
+`/srv/pipeline/reviewers.txt`) is imported if present: each line becomes a
+reviewer with the same password (the hashes are reused) and the user named
+in `BVP_BOOTSTRAP_ADMIN` becomes an admin. Afterwards the file is ignored
+(logged on every start). Without a file, create the first admin with
+`POST /admin/users` and the admin token.
+
+The file keeps its old strict format, parsed by
+`shared.reviewers_file.load_reviewers_file`:
 
 ```
 # Baja review team — one reviewer per line
 ana $2a$14$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
-bruno $2y$05$GSNSWdsjEMHlNpC4bm6t1.u9AYqnyN9YhH8lkHrQV8.mcbv7JJ1Wa
 ```
 
-* One `username bcrypt-hash` pair per line, separated by **one space**.
-* A line whose first non-blank character is `#` is a comment; blank lines
-  are ignored; whitespace at either end of a line (and `\r`) is ignored.
-* Usernames: letters, digits and `. _ @ -`. Hashes: bcrypt
-  `$2a$`/`$2b$`/`$2y$` (`caddy hash-password`, or `htpasswd -nbB user pw`
-  keeping only the part after the colon).
-* Real htpasswd `user:hash` lines are **refused** (Caddy cannot import
-  them), as are tabs, extra words or trailing comments, plain-text
-  passwords and duplicate usernames. Each error names the line number.
-* The username becomes `Job.reviewed_by`. After editing, reload Caddy;
-  the orchestrator re-reads the file by itself when its modification time
-  or size changes (checked on every reviewer login, like `BVP_TEAMS_FILE`).
-  A deleted file means no reviewers; a file that no longer parses is
-  logged and the previous version stays in force.
+One `username bcrypt-hash` pair per line, one space; `#` comments; htpasswd
+`user:hash` lines, tabs, extra words and duplicates are refused with the
+line number, and a file that does not parse stops that first start.
 
 ## 10. Orchestrator environment
 
@@ -517,7 +574,10 @@ variables keep the names fixed in design §8.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `BVP_DATA_DIR` | `/srv/pipeline` | Root of the VPS layout (§8.2) |
-| `BVP_REVIEWERS_FILE` | `/srv/pipeline/reviewers.txt` | Reviewer credentials (§9) |
+| `BVP_REVIEWERS_FILE` | `/srv/pipeline/reviewers.txt` | Imported into an empty users table on the first start (§9) |
+| `BVP_BOOTSTRAP_ADMIN` | empty | The imported user who becomes admin |
+| `BVP_PASSWORD_HASH_ROUNDS` | `12` | bcrypt cost for passwords set on the admin page |
+| `BVP_LOGIN_RATE_LIMIT_REQUESTS` / `_WINDOW_S` | `20` / `600` | `/auth/login` attempts per source IP per window |
 | `BVP_ADMIN_TOKEN` | — (required) | `adminBearer` token |
 | `BVP_WEBHOOK_SECRET` | — (required) | Expected `X-Webhook-Secret` value |
 | `BVP_DEV_MODE` | `0` | `1` enables `/intake/test-upload` and serves `/inbox/*`, `/outbox/*`, `/proxies/*`, `/thumbs/*` from the orchestrator (Caddy's rules, Range; not in the OpenAPI document). Refused at startup unless `BVP_PUBLIC_BASE_URL` is localhost |
@@ -527,16 +587,18 @@ variables keep the names fixed in design §8.
 | `BVP_TRUSTED_PROXY_CIDRS` | `127.0.0.1/32,10.201.0.0/24,172.16.0.0/12` | Peers whose `X-Forwarded-For` is trusted (Caddy; `10.201.0.0/24` = the VPS's `baja-edge`) |
 | `BVP_ENROLL_RATE_LIMIT_REQUESTS` | `10` | `/enroll` requests allowed per source IP… |
 | `BVP_ENROLL_RATE_LIMIT_WINDOW_S` | `600` | …per this many seconds |
-| `BVP_INBOX_HOLD_GB` | `22` | Soft cap: above it the bot asks senders to hold |
+| `BVP_INBOX_HOLD_GB` | `22` | Soft cap: above it the bot asks senders to hold. First-start default of the Settings page |
 | `BVP_INBOX_CAP_GB` | `25` | Hard cap: above it intake answers 413 `inbox_full` |
-| `BVP_PROXY_EVICT_MIN_FREE_GB` | `10` | Evict oldest completed proxies when free disk drops below this |
+| `BVP_PROXY_EVICT_MIN_FREE_GB` | `10` | Evict oldest completed proxies when free disk drops below this. First-start default |
+| `BVP_INTAKE_MODE` | `open` | `open` or `allowlist`. First-start default |
+| `BVP_INSTALLER_DOWNLOAD_URL` | the repo's `releases/latest` page | Shown with new enrollment tokens. First-start default |
+| `BVP_EVENT_ID` | empty | Results API event (e.g. `26BR`). First-start default |
+| `BVP_RESULTS_API_URL` | `https://api.bajasaebrasil.net` | Results API base. First-start default |
 | `BVP_WHATSAPP_MEDIA_BASE_URL` | `https://mmg.whatsapp.net` | Only media URLs under this are fetched (dev: the fake CDN) |
 | `BVP_EVOLUTION_URL` | `http://evolution:8080` | Evolution API, for `sendText` replies |
 | `BVP_EVOLUTION_API_KEY` | — (required) | Evolution API key (`BVP_EVOLUTION_INSTANCE_TOKEN` is accepted as an alias) |
 | `BVP_EVOLUTION_INSTANCE` | `baja-bot` | Evolution instance name |
-| `BVP_TEAMS_FILE` | empty | Optional CSV `car_number,team_name,school` (header optional), reloaded when it changes. Asked first by `/teams/{car_number}` |
-| `BVP_BAJA_APP_URL` | empty | Optional Baja app base URL (`GET /api/teams/{car}`), asked when the file does not know the car. Neither source set → every car is unknown |
-| `BVP_BAJA_APP_TOKEN` | empty | Token for the Baja app, if it needs one |
+| `BVP_TEAMS_FILE` | empty | Optional old CSV `car_number,team_name,school`, imported once into an empty teams table on the first start |
 | `TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`, `TAILSCALE_TAILNET`, `TAILSCALE_API_BASE` | see design §8 | Auth-key minting for `/enroll` (`infra/tailnet/mint_auth_key.md`) |
 
 ## 11. Dev tools

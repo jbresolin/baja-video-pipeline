@@ -507,3 +507,42 @@ devices are not members, so `tag:worker`/`tag:studio` nodes reach only what
 and are reached only by admins. The policy's tests assert workers are denied
 prod, staging SSH/443/8081 and the monitor. `acl.hujson` is now the complete
 policy file. Key expiry must be disabled on `baja-teste1` (staging).
+
+## 21. Admin page (LIVESTACK-37, 2026-11-05)
+
+Everything the operator used to configure by editing files on the VPS or
+by curl is a page under `/review/admin/` (pt-BR, admins only). Only
+secrets are edited on the server. **Supersedes** §15 "Reviewer auth", §17
+"Team lookup" and the `reviewers.txt`/`teams.csv` reload rule of §19.
+
+* **Login in the app.** Users (bcrypt hash, role `reviewer`/`admin`,
+  disabled flag) live in the orchestrator's DB. `POST /auth/login` issues a
+  session (only its SHA-256 stored, 12 h idle timeout); the review UI keeps
+  it in the `bvp_session` cookie (httpOnly, Secure, SameSite=Lax, path `/`)
+  and forwards it as `sessionBearer`. Caddy has no `basic_auth`;
+  `/proxies/*` and `/thumbs/*` use `forward_auth` to `GET /auth/media`.
+  `reviewers.txt` is imported once into an empty users table
+  (`BVP_BOOTSTRAP_ADMIN` becomes admin), then ignored. Contract 2.0.0.
+* **Bare domain.** `redir /review/ 302` was parsed as matcher `/review/`
+  and target `302`, so `/` got an empty 200; now `redir * /review/ 302`.
+* **Contacts.** Every DM sender is recorded (`unknown`). Intake mode
+  `open`/`allowlist`; blocked senders get nothing, unallowed ones in
+  allowlist mode one `SENDER_NOT_AUTHORIZED` per 24 h (videos only). A
+  contact's default prova is filled into their jobs.
+* **Provas and teams from the Baja results API** (brief amendment
+  2026-11-04), for the event id set in Settings: on change, on the Sync
+  button, every 6 h. Keyed by API prova id / car number; adds and renames,
+  never deletes (missing rows become inactive). Manual provas stay, listed
+  after synced ones; a manual correction of a synced team is an override
+  kept across syncs. A prova's slug is fixed at creation, so a rename keeps
+  the clip folder; `ready`/`reprocess` need a prova from the table
+  (`unknown_prova`). The overlay uses the team's `short_name`. The
+  `BVP_BAJA_APP_URL` adapter and any teams CSV upload are gone.
+* **Settings** (intake mode, inbox soft cap, proxy eviction threshold,
+  installer URL, event id, results API URL) are stored in the DB; `.env`
+  gives first-start defaults only. Secrets show as configured/missing.
+* **Enrollment and workers.** Tokens are listed (unused/used/expired/
+  revoked) and unused ones revoked; a revoked worker's token answers 401,
+  its leases end and its holder rows are dropped. Tailnet removal is manual.
+* **Audit.** Every admin change is an event with `details: {before,
+  after}`; each page shows its latest changes (`GET /admin/audit`).

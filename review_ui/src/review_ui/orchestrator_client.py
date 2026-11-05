@@ -145,7 +145,7 @@ class OrchestratorClient:
         return self._parse(RegenerateProxyResponse, response)
 
     def get_team(self, car_number: int) -> Team | None:
-        """The team for a car number, or None when the Baja app does not know it."""
+        """The team for a car number, or None when the teams table does not know it."""
         try:
             response = self._request("GET", f"/teams/{_path_segment(car_number)}")
         except OrchestratorError as error:
