@@ -1,4 +1,6 @@
 // Helpers shared by the page scripts. Plain ES modules, no build step.
+import { clockText, relativeTimeText } from "./format.js";
+import { t } from "./text.js";
 
 // True while the reviewer is typing in a field, so single-key shortcuts
 // (i, o, j, k, ...) do not fire in the middle of a word.
@@ -8,29 +10,17 @@ export function isTyping(event) {
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
-function relativeText(milliseconds) {
-  const seconds = Math.max(0, Math.round(milliseconds / 1000));
-  if (seconds < 60) return `${seconds} s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
-  return `${Math.floor(seconds / 86400)} d ago`;
-}
-
-// Rewrite every <time data-local> (rendered in UTC by the server) into the
-// browser's local time. "relative" ones show "5 min ago (14:03)".
+// Refresh every <time data-local>. The server already wrote it the same way
+// (São Paulo time, macros.html); this keeps "relative" ones ("há 5 min (09:18)")
+// current between refreshes, whatever time zone the laptop is set to.
 export function localizeTimes(root = document) {
-  const now = Date.now();
+  const now = new Date();
   for (const element of root.querySelectorAll("time[data-local]")) {
     const date = new Date(element.getAttribute("datetime"));
     if (Number.isNaN(date.getTime())) continue;
-    const clock = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    element.title = date.toLocaleString();
-    if (element.dataset.local === "relative") {
-      element.textContent = `${relativeText(now - date.getTime())} (${clock.slice(0, 5)})`;
-    } else {
-      const day = date.toLocaleDateString([], { day: "2-digit", month: "2-digit" });
-      element.textContent = `${day} ${clock}`;
-    }
+    element.title = clockText(date);
+    element.textContent =
+      element.dataset.local === "relative" ? relativeTimeText(date, now) : clockText(date);
   }
 }
 
@@ -56,9 +46,11 @@ export async function sendJson(url, method, body) {
   }
 }
 
+// What to tell the reviewer when a call failed. The UI's JSON errors carry
+// the sentence to show in "text" (errors.py), already in pt-BR.
 export function errorMessage(result) {
-  if (result.status === 0) return "No connection to the server. Check the network and try again.";
-  return result.data?.error?.message ?? `Request failed (HTTP ${result.status}).`;
+  if (result.status === 0) return t("script.error.no_connection");
+  return result.data?.text ?? t("script.error.http", { status: result.status });
 }
 
 // --- Flash messages: one line at the top of the page, optionally kept

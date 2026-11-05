@@ -1,84 +1,76 @@
 {% extends "admin/_layout.html" %}
-{% block title %}Configurações{% endblock %}
+{% block title %}{{ t("admin.section.settings") }}{% endblock %}
 {% block admin_content %}
 <form method="post" action="/review/admin/settings" class="stacked settings-form">
-  <label for="event_id">Evento no site de resultados (código de 4 letras/números)</label>
+  <label for="event_id">{{ t("settings.event_id") }}</label>
   <input id="event_id" name="event_id" value="{{ values.event_id }}" maxlength="4" pattern="[A-Za-z0-9]{4}"
          placeholder="26BR" autocapitalize="characters">
-  <p class="hint">Provas e equipes vêm deste evento: ao mudar o código, ao clicar em “Sincronizar”
-    (páginas Provas e Equipes) e a cada 6 h. Maiúsculas e minúsculas importam (<code>26BR</code>, não <code>26br</code>).</p>
-  <label for="results_api_base_url">Endereço do site de resultados (API)</label>
+  <p class="hint">{{ t("settings.event_id.hint") }}</p>
+  <label for="results_api_base_url">{{ t("settings.results_api") }}</label>
   <input id="results_api_base_url" name="results_api_base_url" type="url" maxlength="200"
          value="{{ values.results_api_base_url }}" required>
   <fieldset class="choices">
-    <legend>Quem pode enviar vídeos</legend>
+    <legend>{{ t("settings.intake_mode") }}</legend>
     {% for value, label in intake_modes.items() %}
     <label><input type="radio" name="intake_mode" value="{{ value }}" {% if values.intake_mode == value %}checked{% endif %}> {{ label }}</label>
     {% endfor %}
-    <p class="hint">Em “só permitidos”, quem não está permitido em Contatos recebe uma vez por dia:
-      “Este número não está autorizado a enviar vídeos. Fale com a organização.”</p>
+    <p class="hint">{{ t("settings.intake_mode.hint") }}</p>
   </fieldset>
-  <label for="inbox_hold_gb">Fila quase cheia a partir de (GB)</label>
+  {# Input values keep the decimal point (HTML number fields need it); shown numbers use a comma. #}
+  <label for="inbox_hold_gb">{{ t("settings.inbox_hold") }}</label>
   <input id="inbox_hold_gb" name="inbox_hold_gb" type="number" step="0.1" min="0.1" max="{{ status.inbox_cap_gb }}"
          value="{{ '%g'|format(values.inbox_hold_gb) }}" required>
-  <p class="hint">Acima disso o bot pede para esperar. O limite máximo ({{ '%g'|format(status.inbox_cap_gb) }} GB,
-    tamanho do disco da fila) só muda no servidor.</p>
-  <label for="proxy_evict_min_free_gb">Apagar proxies antigos quando o disco tiver menos de (GB livres)</label>
+  <p class="hint">{{ t("settings.inbox_hold.hint", cap=status.inbox_cap_gb|number) }}</p>
+  <label for="proxy_evict_min_free_gb">{{ t("settings.proxy_evict") }}</label>
   <input id="proxy_evict_min_free_gb" name="proxy_evict_min_free_gb" type="number" step="0.1" min="0"
          value="{{ '%g'|format(values.proxy_evict_min_free_gb) }}" required>
-  <label for="discard_grace_hours">Prazo para restaurar um vídeo descartado (horas)</label>
+  <label for="discard_grace_hours">{{ t("settings.discard_grace") }}</label>
   <input id="discard_grace_hours" name="discard_grace_hours" type="number" step="1" min="0" max="720"
          value="{{ '%g'|format(values.discard_grace_hours) }}" required>
-  <p class="hint">Durante esse prazo o vídeo original fica guardado e “Restaurar” funciona. Vale para os
-    próximos descartes; quem já foi descartado mantém o prazo que tinha.</p>
-  <label for="outbox_keep_unarchived_hours">Guardar na caixa de saída, esperando o arquivo do mestre (horas)</label>
+  <p class="hint">{{ t("settings.discard_grace.hint") }}</p>
+  <label for="outbox_keep_unarchived_hours">{{ t("settings.outbox_keep") }}</label>
   <input id="outbox_keep_unarchived_hours" name="outbox_keep_unarchived_hours" type="number" step="1" min="0" max="720"
          value="{{ '%g'|format(values.outbox_keep_unarchived_hours) }}" required>
-  <p class="hint">Depois que o estúdio recebeu o clipe, a cópia do servidor espera o mestre arquivá-lo
-    por no máximo esse tempo (para o caso de o mestre estar desligado).</p>
-  <label for="installer_download_url">Link do instalador (mostrado junto com cada token novo)</label>
+  <p class="hint">{{ t("settings.outbox_keep.hint") }}</p>
+  <label for="installer_download_url">{{ t("settings.installer_url") }}</label>
   <input id="installer_download_url" name="installer_download_url" type="url" maxlength="500"
          value="{{ values.installer_download_url }}" placeholder="https://github.com/…/releases/…">
-  <button type="submit" class="primary">Salvar</button>
+  <button type="submit" class="primary">{{ t("admin.save") }}</button>
 </form>
 
-<h2>Situação</h2>
+<h2>{{ t("settings.status") }}</h2>
 <dl class="status-list">
-  <dt>WhatsApp (Evolution, instância <code>{{ status.evolution.instance }}</code>)</dt>
+  <dt>{{ t("settings.evolution", instance=status.evolution.instance) }}</dt>
   <dd>
-    {% if status.evolution.state == "open" %}<span class="badge contact-allowed">Conectado</span>
-    {% elif status.evolution.state %}<span class="badge token-revoked">{{ status.evolution.state }}</span>
-    {% else %}<span class="badge token-revoked">Sem resposta</span>{% endif %}
-    {% if status.evolution.error %}<span class="small">{{ status.evolution.error }}</span>{% endif %}
+    {% if status.evolution.state == "open" %}<span class="badge contact-allowed">{{ t("settings.connected") }}</span>
+    {% elif status.evolution.state %}<span class="badge token-revoked"><code>{{ status.evolution.state }}</code></span>
+    {% else %}<span class="badge token-revoked">{{ t("settings.no_answer") }}</span>{% endif %}
+    {% if status.evolution.error %}{{ m.english(status.evolution.error, class="small") }}{% endif %}
   </dd>
-  <dt>Webhook</dt>
+  <dt>{{ t("settings.webhook") }}</dt>
   <dd>
-    {% if status.evolution.webhook_enabled %}ligado{% elif status.evolution.webhook_enabled is false %}<strong>desligado</strong>{% else %}?{% endif %}
+    {% if status.evolution.webhook_enabled %}{{ t("settings.webhook.on") }}{% elif status.evolution.webhook_enabled is false %}<strong>{{ t("settings.webhook.off") }}</strong>{% else %}{{ t("unknown_value") }}{% endif %}
     {% if status.evolution.webhook_url %}· <code>{{ status.evolution.webhook_url }}</code>{% endif %}
   </dd>
-  <dt>Segredos (no arquivo <code>.env</code> do servidor; nunca mostrados aqui)</dt>
+  <dt>{{ t("settings.secrets") }}</dt>
   <dd>
     <ul class="plain">
     {% for name, state in status.secrets.items() %}
-      <li><code>{{ name }}</code>: {% if state == "configured" %}configurado{% else %}<strong class="error-text">faltando</strong>{% endif %}</li>
+      <li><code>{{ name }}</code>: {% if state == "configured" %}{{ t("settings.secret.configured") }}{% else %}<strong class="error-text">{{ t("settings.secret.missing") }}</strong>{% endif %}</li>
     {% endfor %}
     </ul>
   </dd>
-  <dt>Sincronização com o site de resultados</dt>
+  <dt>{{ t("settings.results_sync") }}</dt>
   <dd>
     {% if status.results_sync %}
       {{ status.results_sync.event_id }} · {{ m.time(status.results_sync.at, relative=true) }} ·
-      {% if status.results_sync.ok %}ok: provas +{{ status.results_sync.provas_added }},
-        equipes +{{ status.results_sync.teams_added }}
-      {% else %}<strong class="error-text">falhou</strong>: {{ status.results_sync.error }}{% endif %}
-    {% else %}nunca{% endif %}
+      {% if status.results_sync.ok %}{{ t("settings.results_sync.ok", provas=status.results_sync.provas_added, teams=status.results_sync.teams_added) }}
+      {% else %}<strong class="error-text">{{ t("settings.results_sync.failed") }}</strong>: {{ m.english(status.results_sync.error) }}{% endif %}
+    {% else %}{{ t("settings.results_sync.never") }}{% endif %}
   </dd>
-  <dt>Disco do servidor</dt>
+  <dt>{{ t("settings.server_disk") }}</dt>
   <dd>
-    Fila {{ status.server_disk.inbox_bytes|bytes }} de {{ status.server_disk.inbox_cap_bytes|bytes }}
-    · proxies {{ status.server_disk.proxy_bytes|bytes }}
-    · saída {{ status.server_disk.outbox_bytes|bytes }}
-    · livre {{ status.server_disk.free_bytes|bytes }}
+    {{ t("settings.server_disk.usage", inbox=status.server_disk.inbox_bytes|bytes, cap=status.server_disk.inbox_cap_bytes|bytes, proxies=status.server_disk.proxy_bytes|bytes, outbox=status.server_disk.outbox_bytes|bytes, free=status.server_disk.free_bytes|bytes) }}
   </dd>
 </dl>
 {% endblock %}

@@ -1,37 +1,37 @@
-{% import "macros.html" as m %}
+{% import "macros.html" as m with context %}
 {% set disk = fleet.server_disk %}
 <section class="cards">
   <div class="card">
-    <h2>Workers online</h2>
+    <h2>{{ t("fleet.workers_online") }}</h2>
     <p class="big">{{ online_count }} <span class="of">/ {{ fleet.workers|length }}</span></p>
   </div>
   <div class="card">
-    <h2>VPS inbox</h2>
+    <h2>{{ t("fleet.inbox") }}</h2>
     {# Bar against the hard cap, with a tick at the soft "hold" limit. #}
     <div class="meter {% if disk.inbox_bytes >= disk.inbox_hold_bytes %}warn{% endif %}"
-         role="img" aria-label="Inbox {{ percent(disk.inbox_bytes, disk.inbox_cap_bytes) }}% of the cap">
+         role="img" aria-label="{{ t('fleet.inbox.meter', percent=percent(disk.inbox_bytes, disk.inbox_cap_bytes)) }}">
       <span class="meter-fill" style="width: {{ percent(disk.inbox_bytes, disk.inbox_cap_bytes) }}%"></span>
-      <span class="meter-mark" style="left: {{ percent(disk.inbox_hold_bytes, disk.inbox_cap_bytes) }}%" title="hold limit"></span>
+      <span class="meter-mark" style="left: {{ percent(disk.inbox_hold_bytes, disk.inbox_cap_bytes) }}%" title="{{ t('fleet.inbox.hold_mark') }}"></span>
     </div>
-    <p class="small">{{ disk.inbox_bytes|bytes }} of {{ disk.inbox_cap_bytes|bytes }} · senders asked to hold at {{ disk.inbox_hold_bytes|bytes }}</p>
+    <p class="small">{{ t("fleet.inbox.usage", used=disk.inbox_bytes|bytes, cap=disk.inbox_cap_bytes|bytes, hold=disk.inbox_hold_bytes|bytes) }}</p>
   </div>
   <div class="card">
-    <h2>VPS disk</h2>
+    <h2>{{ t("fleet.disk") }}</h2>
     <dl class="kv">
-      <dt>Proxies</dt><dd>{{ disk.proxy_bytes|bytes }}</dd>
-      <dt>Outbox</dt><dd>{{ disk.outbox_bytes|bytes }}</dd>
-      <dt>Free</dt><dd>{{ disk.free_bytes|bytes }}</dd>
+      <dt>{{ t("fleet.disk.proxies") }}</dt><dd>{{ disk.proxy_bytes|bytes }}</dd>
+      <dt>{{ t("fleet.disk.outbox") }}</dt><dd>{{ disk.outbox_bytes|bytes }}</dd>
+      <dt>{{ t("fleet.disk.free") }}</dt><dd>{{ disk.free_bytes|bytes }}</dd>
     </dl>
   </div>
   <div class="card">
-    <h2>Clip archive (master)</h2>
+    <h2>{{ t("fleet.archive") }}</h2>
     <p class="big">{{ fleet.clip_archive.archived }} <span class="of">/ {{ fleet.clip_archive.total }}</span></p>
-    <p class="small">every finished clip and version, kept on the master</p>
+    <p class="small">{{ t("fleet.archive.hint") }}</p>
   </div>
 </section>
 
 <section>
-  <h2>Jobs by state</h2>
+  <h2>{{ t("fleet.jobs_by_state") }}</h2>
   <ul class="state-counts">
     {% for state, count in job_counts %}
     <li class="{{ 'zero' if count == 0 else '' }}">{{ m.state_badge(state) }} <b>{{ count }}</b></li>
@@ -40,14 +40,14 @@
 </section>
 
 <section>
-  <h2>Workers</h2>
+  <h2>{{ t("fleet.workers") }}</h2>
   {% if worker_rows %}
   <div class="table-wrap">
     <table class="data fleet">
       <thead>
         <tr>
-          <th>Worker</th><th>Status</th><th class="num">Held raws</th><th>Storage used of cap</th>
-          <th class="num">Download</th><th class="num">Process</th><th class="num">Upload</th><th>Doing</th>
+          <th>{{ t("fleet.col.worker") }}</th><th>{{ t("fleet.col.status") }}</th><th class="num">{{ t("fleet.col.held_raws") }}</th><th>{{ t("fleet.col.storage") }}</th>
+          <th class="num">{{ t("fleet.col.download") }}</th><th class="num">{{ t("fleet.col.process") }}</th><th class="num">{{ t("fleet.col.upload") }}</th><th>{{ t("fleet.col.doing") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -56,49 +56,50 @@
         {% set worker = entry.worker %}
         <tr class="{{ 'offline' if not entry.online else '' }}">
           <td>
-            <strong>{{ worker.name }}</strong> <span class="badge role role-{{ worker.role }}">{{ worker.role }}</span>
-            <div class="small">{{ worker.capabilities.video_encoder }}{% if worker.capabilities.gpu_name %} · {{ worker.capabilities.gpu_name }}{% endif %}</div>
+            <strong>{{ worker.name }}</strong> <span class="badge role role-{{ worker.role }}">{{ t("worker_role." ~ worker.role) }}</span>
+            {# Encoder and GPU names are the machine's own data. #}
+            <div class="small"><code>{{ worker.capabilities.video_encoder }}</code>{% if worker.capabilities.gpu_name %} · <code>{{ worker.capabilities.gpu_name }}</code>{% endif %}</div>
           </td>
           <td>
-            <span class="dot {{ 'online' if entry.online else 'offline' }}"></span>{{ "online" if entry.online else "offline" }}
+            <span class="dot {{ 'online' if entry.online else 'offline' }}"></span>{{ t("worker.online") if entry.online else t("worker.offline") }}
             {# Paused by the volunteer (tray icon): heartbeats, serves held raws, takes no tasks. #}
-            {% if entry.paused %}<span class="badge paused" title="no new tasks; still serves held raws">pausado</span>{% endif %}
-            <div class="small">heartbeat {{ age(worker.last_heartbeat, now) }}</div>
+            {% if entry.paused %}<span class="badge paused" title="{{ t('fleet.paused.title') }}">{{ t("fleet.paused") }}</span>{% endif %}
+            <div class="small">{{ t("fleet.last_contact", age=age(worker.last_heartbeat, now)) }}</div>
           </td>
           <td class="num">{{ entry.held_job_count }}<div class="small">{{ entry.held_bytes|bytes }}</div>
             {# Clips: what a worker keeps (and how many the master has, so it may evict
                them); on the master, the whole archive (design §11 as amended). #}
             {% if worker.role == "master" %}
-            <div class="small" data-clip-archive>{{ fleet.clip_archive.archived }} of {{ fleet.clip_archive.total }} clips archived</div>
+            <div class="small" data-clip-archive>{{ t("fleet.master_archive", archived=fleet.clip_archive.archived, total=fleet.clip_archive.total) }}</div>
             {% elif worker.role == "worker" %}
-            <div class="small" data-worker-clips>{{ entry.clips_held }} clips kept · {{ entry.clips_archived }} archived</div>
+            <div class="small" data-worker-clips>{{ t("fleet.worker_clips", held=entry.clips_held, archived=entry.clips_archived) }}</div>
             {% endif %}</td>
           <td>
             <div class="meter {{ 'warn' if not entry.accepting_new_raws else '' }}"><span class="meter-fill" style="width: {{ row.used_percent }}%"></span></div>
-            <div class="small">{{ row.used_bytes|bytes }} of {{ worker.storage_cap_bytes|bytes }} · {{ worker.free_bytes|bytes }} free
-              {% if not entry.accepting_new_raws %}· <strong>near cap, no new raws</strong>{% endif %}</div>
+            <div class="small">{{ t("fleet.storage", used=row.used_bytes|bytes, cap=worker.storage_cap_bytes|bytes, free=worker.free_bytes|bytes) }}
+              {% if not entry.accepting_new_raws %}· <strong>{{ t("fleet.near_cap") }}</strong>{% endif %}</div>
           </td>
           <td class="num">{{ worker.stats.download_mbps|rate("Mbps") }}</td>
           <td class="num">{{ worker.stats.process_s_per_gb|rate("s/GB") }}</td>
           <td class="num">{{ worker.stats.upload_mbps|rate("Mbps") }}</td>
-          <td>{% for text in row.lease_texts %}<div class="small"><code>{{ text }}</code></div>{% else %}<span class="small muted">idle</span>{% endfor %}</td>
+          <td>{% for text in row.lease_texts %}<div class="small">{{ text }}</div>{% else %}<span class="small muted">{{ t("fleet.idle") }}</span>{% endfor %}</td>
         </tr>
         {# The worker's latest events (GET /events?worker_id=…), newest first, under its row.
-           The actor is shown only when it is not the worker itself (e.g. "system"). #}
+           The actor is shown only when it is not the worker itself (e.g. "sistema"). #}
         <tr class="worker-events {{ 'offline' if not entry.online else '' }}" data-worker-id="{{ worker.id }}">
           <td colspan="8">
             {% if row.recent_events is none %}
-            <span class="small muted">Recent events unavailable.</span>
+            <span class="small muted">{{ t("fleet.events_unavailable") }}</span>
             {% elif not row.recent_events %}
-            <span class="small muted">No events yet.</span>
+            <span class="small muted">{{ t("fleet.no_events") }}</span>
             {% else %}
             <ol class="mini-log">
               {% for line in row.recent_events %}
               <li>{{ m.time(line.at, relative=true) }}
                 {% if line.actor != worker.name %}<strong class="actor">{{ line.actor }}</strong>{% endif %}
-                {{ line.what }}
+                {% if line.what_is_kind_name %}<code>{{ line.what }}</code>{% else %}{{ line.what }}{% endif %}
                 {%- if line.job_id %} · <a href="/review/jobs/{{ line.job_id }}"><code>{{ line.job_id|short_id }}</code></a>{% endif %}
-                {%- if line.reason %} <span class="muted">— {{ line.reason }}</span>{% endif %}</li>
+                {%- if line.reason %} <span class="muted">— {{ m.english(line.reason) }}</span>{% endif %}</li>
               {% endfor %}
             </ol>
             {% endif %}
@@ -109,6 +110,6 @@
     </table>
   </div>
   {% else %}
-  <p class="empty">No workers enrolled yet.</p>
+  <p class="empty">{{ t("fleet.empty") }}</p>
   {% endif %}
 </section>

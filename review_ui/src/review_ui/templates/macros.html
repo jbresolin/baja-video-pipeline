@@ -1,9 +1,10 @@
 {# Small pieces used by several templates. #}
 
-{# A time the browser rewrites into local time (js/common.js). Until then
-   it shows UTC, so the page is still correct without JavaScript. #}
+{# A time, in São Paulo time: "05/11/2026 09:23:41", or "há 5 min (09:18)"
+   when relative. js/common.js keeps relative ones current; both sides
+   format the same way (formatting.py, js/format.js). #}
 {% macro time(moment, relative=false) -%}
-<time datetime="{{ moment|iso }}" data-local="{{ 'relative' if relative else 'clock' }}">{{ moment|clock }}</time>
+<time datetime="{{ moment|iso }}" data-local="{{ 'relative' if relative else 'clock' }}" title="{{ moment|clock }}">{{ relative_time(moment, now) if relative else moment|clock }}</time>
 {%- endmacro %}
 
 {% macro state_badge(state) -%}
@@ -12,5 +13,16 @@
 
 {# Car number 0 is a real number, so test for none instead of truthiness. #}
 {% macro or_unknown(value) -%}
-{{ value if value is not none else "?" }}
+{{ value if value is not none else t("unknown_value") }}
+{%- endmacro %}
+
+{# Words from the orchestrator or a worker (a failure message, a reason):
+   English, shown as they came and marked so for screen readers. #}
+{% macro english(words, class="") -%}
+<span lang="en"{% if class %} class="{{ class }}"{% endif %}>{{ words }}</span>
+{%- endmacro %}
+
+{# Job.waiting_reason: pt-BR when it is a reason we know, else the orchestrator's words. #}
+{% macro waiting(reason) -%}
+{% set described = waiting_reason(reason) %}{{ described.text }}{% if described.detail %} {{ english(described.detail) }}{% endif %}
 {%- endmacro %}

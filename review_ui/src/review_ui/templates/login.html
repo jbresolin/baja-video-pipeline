@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Entrar{% endblock %}
+{% block title %}{{ t("login.title") }}{% endblock %}
 {% block content %}
 <section class="login">
-  <h1>Entrar</h1>
-  <p class="hint">Use o usuário e a senha que a organização passou para você.</p>
+  <h1>{{ t("login.title") }}</h1>
+  <p class="hint">{{ t("login.hint") }}</p>
   {% if error %}<p class="banner error" role="alert">{{ error }}</p>{% endif %}
   <form method="post" action="/review/login" class="stacked">
     <input type="hidden" name="next" value="{{ next_path }}">
-    <label for="username">Usuário</label>
+    <label for="username">{{ t("login.username") }}</label>
     <input id="username" name="username" autocomplete="username" autocapitalize="none" required autofocus>
-    <label for="password">Senha</label>
+    <label for="password">{{ t("login.password") }}</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required>
-    <button type="submit" class="primary">Entrar</button>
+    <button type="submit" class="primary">{{ t("login.submit") }}</button>
   </form>
 </section>
 {% endblock %}

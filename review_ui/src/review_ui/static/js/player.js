@@ -3,6 +3,7 @@
 // Times are seconds from the start of the video. The proxy is rendered at
 // a constant frame rate, so a time in the proxy is the same time in the raw
 // (docs/api.md §1) and the marks can be sent to the orchestrator as-is.
+import { formatTimecode } from "./format.js";
 
 // Used when the page carries no frame rate; phone footage is ~30 fps.
 // The server already falls back to 30 (job_view.frame_rate_for_stepping),
@@ -14,13 +15,6 @@ const DEFAULT_FRAME_RATE = 30;
 function frameSecondsOf(jobElement) {
   const rate = Number(jobElement.dataset.frameRate);
   return 1 / (rate > 0 ? rate : DEFAULT_FRAME_RATE);
-}
-
-function formatTimecode(seconds) {
-  if (!Number.isFinite(seconds)) return "—";
-  const minutes = Math.floor(seconds / 60);
-  const rest = (seconds - minutes * 60).toFixed(3).padStart(6, "0");
-  return `${minutes}:${rest}`;
 }
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));

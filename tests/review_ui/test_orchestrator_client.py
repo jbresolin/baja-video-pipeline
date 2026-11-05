@@ -95,9 +95,11 @@ def test_unreachable_orchestrator_shows_a_502_page():
 
     # The page explains the problem; the page script gets the JSON shape.
     assert page.status_code == 502
-    assert "Orchestrator unreachable" in page.text
+    assert "Orquestrador fora do ar" in page.text
     assert api.status_code == 502
     assert api.json()["error"]["code"] == "upstream_error"
+    # The sentence the page script shows is pt-BR ("text"); the code stays English.
+    assert api.json()["text"].startswith("O orquestrador não respondeu.")
 
 
 # --- Event log calls ---

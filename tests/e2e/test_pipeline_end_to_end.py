@@ -171,4 +171,4 @@ def test_a_whatsapp_video_reaches_the_studio_through_the_real_services(system):
     ]
     assert {"holder_confirmed", "lease_acquired"} <= {event["kind"] for event in events}
     # The review UI's job page shows that same log.
-    assert "awaiting review" in system.review_ui.get(f"/review/jobs/{job_id}").text
+    assert "aguardando revisão" in system.review_ui.get(f"/review/jobs/{job_id}").text

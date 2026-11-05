@@ -1,44 +1,42 @@
 {% extends "admin/_layout.html" %}
-{% block title %}Equipes{% endblock %}
+{% block title %}{{ t("admin.section.teams") }}{% endblock %}
 {% block admin_content %}
-<p class="hint">O nome da equipe que aparece na revisão, pelo número do carro, vem do site de resultados.
-  No clipe aparecem o nome curto e a sigla da escola. Corrija aqui o que estiver errado: a correção vale até ser desfeita,
-  mesmo depois de novas sincronizações. Carros que não estão no site podem ser adicionados à mão.</p>
+<p class="hint">{{ t("teams.hint") }}</p>
 
 {% with back = "teams" %}{% include "admin/_sync_box.html" %}{% endwith %}
 
 {% if teams %}
 <table class="admin-table">
-  <thead><tr><th>Carro</th><th>Equipe</th><th>Nome curto (clipe)</th><th>Escola</th><th>Sigla (clipe)</th><th>Origem</th><th></th></tr></thead>
+  <thead><tr><th>{{ t("teams.col.car") }}</th><th>{{ t("teams.col.team") }}</th><th>{{ t("teams.col.short_name") }}</th><th>{{ t("teams.col.school") }}</th><th>{{ t("teams.col.school_short") }}</th><th>{{ t("teams.col.source") }}</th><th></th></tr></thead>
   <tbody>
-  {% for t in teams %}
-    {% set form_id = "team-" ~ t.car_number %}
-    <tr {% if not t.in_source %}class="muted"{% endif %}>
-      <td><strong>{{ t.car_number }}</strong></td>
-      <td><input name="team_name" form="{{ form_id }}" value="{{ t.team_name }}" required maxlength="100" aria-label="Equipe do carro {{ t.car_number }}"></td>
-      <td><input name="short_name" form="{{ form_id }}" value="{{ t.short_name or '' }}" maxlength="60" aria-label="Nome curto do carro {{ t.car_number }}"></td>
-      <td><input name="school" form="{{ form_id }}" value="{{ t.school or '' }}" maxlength="100" aria-label="Escola do carro {{ t.car_number }}"></td>
-      <td><input name="school_short" form="{{ form_id }}" value="{{ t.school_short or '' }}" maxlength="30" size="8" aria-label="Sigla da escola do carro {{ t.car_number }}"></td>
+  {% for team in teams %}
+    {% set form_id = "team-" ~ team.car_number %}
+    <tr {% if not team.in_source %}class="muted"{% endif %}>
+      <td><strong>{{ team.car_number }}</strong></td>
+      <td><input name="team_name" form="{{ form_id }}" value="{{ team.team_name }}" required maxlength="100" aria-label="{{ t('teams.team_of', car=team.car_number) }}"></td>
+      <td><input name="short_name" form="{{ form_id }}" value="{{ team.short_name or '' }}" maxlength="60" aria-label="{{ t('teams.short_name_of', car=team.car_number) }}"></td>
+      <td><input name="school" form="{{ form_id }}" value="{{ team.school or '' }}" maxlength="100" aria-label="{{ t('teams.school_of', car=team.car_number) }}"></td>
+      <td><input name="school_short" form="{{ form_id }}" value="{{ team.school_short or '' }}" maxlength="30" size="8" aria-label="{{ t('teams.school_short_of', car=team.car_number) }}"></td>
       <td>
-        {% if t.source == "manual" %}manual
-        {% else %}site{% if t.overridden %} · <span class="badge flag" title="No site: {{ t.synced_team_name }} / {{ t.synced_short_name or '—' }}">corrigida</span>{% endif %}
-        {% if not t.in_source %} · <span class="small">fora do evento</span>{% endif %}
+        {% if team.source == "manual" %}{{ t("source.manual") }}
+        {% else %}{{ t("source.site") }}{% if team.overridden %} · <span class="badge flag" title="{{ t('teams.on_site', team=team.synced_team_name, short=team.synced_short_name or t('no_value')) }}">{{ t("teams.overridden") }}</span>{% endif %}
+        {% if not team.in_source %} · <span class="small">{{ t("teams.not_in_event") }}</span>{% endif %}
         {% endif %}
       </td>
       <td class="row-actions">
         <form id="{{ form_id }}" method="post" action="/review/admin/teams/save" class="inline-form">
-          <input type="hidden" name="car_number" value="{{ t.car_number }}">
-          <button type="submit">{{ "Salvar correção" if t.source != "manual" else "Salvar" }}</button>
+          <input type="hidden" name="car_number" value="{{ team.car_number }}">
+          <button type="submit">{{ t("teams.save_override") if team.source != "manual" else t("admin.save") }}</button>
         </form>
-        {% if t.source == "manual" %}
-        <form method="post" action="/review/admin/teams/{{ t.car_number }}/delete" class="inline-form"
-              data-confirm="Remover o carro {{ t.car_number }} ({{ t.team_name }})?">
-          <button type="submit" class="danger">Remover</button>
+        {% if team.source == "manual" %}
+        <form method="post" action="/review/admin/teams/{{ team.car_number }}/delete" class="inline-form"
+              data-confirm="{{ t('teams.remove.confirm', car=team.car_number, team=team.team_name) }}">
+          <button type="submit" class="danger">{{ t("teams.remove") }}</button>
         </form>
-        {% elif t.overridden %}
-        <form method="post" action="/review/admin/teams/{{ t.car_number }}/delete" class="inline-form"
-              data-confirm="Desfazer a correção do carro {{ t.car_number }} e voltar ao nome do site?">
-          <button type="submit">Desfazer correção</button>
+        {% elif team.overridden %}
+        <form method="post" action="/review/admin/teams/{{ team.car_number }}/delete" class="inline-form"
+              data-confirm="{{ t('teams.undo_override.confirm', car=team.car_number) }}">
+          <button type="submit">{{ t("teams.undo_override") }}</button>
         </form>
         {% endif %}
       </td>
@@ -47,16 +45,16 @@
   </tbody>
 </table>
 {% else %}
-<p class="empty">Nenhuma equipe ainda. Configure o evento e sincronize.</p>
+<p class="empty">{{ t("teams.empty") }}</p>
 {% endif %}
 
-<h2>Adicionar carro que não está no site</h2>
+<h2>{{ t("teams.add") }}</h2>
 <form method="post" action="/review/admin/teams/save" class="inline-fields">
-  <label>Carro <input name="car_number" type="number" min="0" max="9999" required inputmode="numeric"></label>
-  <label>Equipe <input name="team_name" required maxlength="100"></label>
-  <label>Nome curto <input name="short_name" maxlength="60"></label>
-  <label>Escola <input name="school" maxlength="100"></label>
-  <label>Sigla da escola <input name="school_short" maxlength="30" size="8"></label>
-  <button type="submit" class="primary">Adicionar</button>
+  <label>{{ t("teams.car") }} <input name="car_number" type="number" min="0" max="9999" required inputmode="numeric"></label>
+  <label>{{ t("teams.team") }} <input name="team_name" required maxlength="100"></label>
+  <label>{{ t("teams.short_name") }} <input name="short_name" maxlength="60"></label>
+  <label>{{ t("teams.school") }} <input name="school" maxlength="100"></label>
+  <label>{{ t("teams.school_short") }} <input name="school_short" maxlength="30" size="8"></label>
+  <button type="submit" class="primary">{{ t("admin.add") }}</button>
 </form>
 {% endblock %}

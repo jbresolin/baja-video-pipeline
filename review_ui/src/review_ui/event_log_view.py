@@ -3,32 +3,18 @@
 Used by the job page (one job's whole history, GET /jobs/{id}/events) and
 the fleet page (each worker's latest events, GET /events?worker_id=…).
 Plain functions over shared.models.Event, so they are easy to test.
+
+The event kinds stored in the DB stay English; only how they are shown is
+pt-BR (catalog keys "event.<kind>"). The reason is the orchestrator's own
+words and is shown as it came.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 
+from review_ui.catalog import has_text, text
 from review_ui.formatting import short_id, state_label
 from shared.models import Event
-
-# Wording for the common event kinds (shared/models/events.py lists them).
-# A kind not listed here still shows up, as its name with spaces.
-KIND_TEXTS: dict[str, str] = {
-    "lease_acquired": "started a task",
-    "lease_ended": "finished a task",
-    "lease_revoked": "task taken away",
-    "lease_expired": "task timed out (no heartbeat)",
-    "holder_confirmed": "confirmed its copy of the raw",
-    "holder_rejected": "copy of the raw rejected",
-    "holder_lost": "no longer holds the raw",
-    "task_failed": "task failed",
-    "proxy_requested": "proxy requested",
-    "worker_enrolled": "worker enrolled",
-    "enrollment_token_created": "enrollment token created",
-}
-
-# Who "evolution" is: the WhatsApp gateway that delivers the raws.
-EVOLUTION_LABEL = "WhatsApp"
 
 
 @dataclass(frozen=True)
@@ -36,10 +22,12 @@ class EventLine:
     """One event, with every part already in words."""
 
     at: datetime
-    # Who did it: a worker name, a reviewer's user name, "system", ...
+    # Who did it: a worker name, a reviewer's user name, "sistema", ...
     actor: str
-    # What happened: "awaiting review → ready", "task failed", ...
+    # What happened: "aguardando revisão → pronto", "tarefa falhou", ...
     what: str
+    # True when `what` is a kind this UI has no words for (shown as code).
+    what_is_kind_name: bool
     # The orchestrator's own words (e.g. a failure message), or None.
     reason: str | None
     # The worker the event is about, when that is not the actor itself
@@ -52,7 +40,7 @@ class EventLine:
 
 def worker_label(worker_id: str, worker_names: dict[str, str]) -> str:
     """The worker's name when the fleet told us, else a short id."""
-    return worker_names.get(worker_id) or f"worker {short_id(worker_id)}"
+    return worker_names.get(worker_id) or text("actor.worker_id", id=short_id(worker_id))
 
 
 def actor_label(actor: str, worker_names: dict[str, str]) -> str:
@@ -60,34 +48,49 @@ def actor_label(actor: str, worker_names: dict[str, str]) -> str:
     kind, _, identity = actor.partition(":")
     if kind == "worker" and identity:
         return worker_label(identity, worker_names)
-    if kind == "reviewer" and identity:
+    if kind in ("reviewer", "admin") and identity:
         return identity
+    if actor == "admin":
+        # The static admin token, not a person.
+        return text("actor.admin_token")
     if actor == "evolution":
-        return EVOLUTION_LABEL
-    # "system", "admin", or a kind of actor this UI does not know yet.
+        # The WhatsApp gateway that delivers the raws.
+        return text("actor.evolution")
+    if actor == "system":
+        return text("actor.system")
+    # A kind of actor this UI does not know yet.
     return actor
 
 
-def describe_kind(event: Event) -> str:
-    """What happened, in words. State changes show both states."""
+def kind_text(kind: str) -> str | None:
+    """An event kind in words, or None when the catalog has none for it."""
+    key = f"event.{kind}"
+    return text(key) if has_text(key) else None
+
+
+def describe_kind(event: Event) -> tuple[str, bool]:
+    """What happened, in words, and whether that is just the kind's name."""
     if event.kind == "state_changed" and event.to_state is not None:
         if event.from_state is None:
             # The very first state of a new job.
-            return f"created as {state_label(event.to_state)}"
-        return f"{state_label(event.from_state)} → {state_label(event.to_state)}"
-    return KIND_TEXTS.get(event.kind, event.kind.replace("_", " "))
+            return text("events.created_as", state=state_label(event.to_state)), False
+        return f"{state_label(event.from_state)} → {state_label(event.to_state)}", False
+    words = kind_text(event.kind)
+    return (words, False) if words is not None else (event.kind, True)
 
 
 def describe_event(event: Event, worker_names: dict[str, str]) -> EventLine:
     about_worker = None
     # Name the worker only when the actor is someone else; "maria-notebook:
-    # task failed · maria-notebook" would say the same name twice.
+    # tarefa falhou · maria-notebook" would say the same name twice.
     if event.worker_id and event.actor != f"worker:{event.worker_id}":
         about_worker = worker_label(event.worker_id, worker_names)
+    what, what_is_kind_name = describe_kind(event)
     return EventLine(
         at=event.at,
         actor=actor_label(event.actor, worker_names),
-        what=describe_kind(event),
+        what=what,
+        what_is_kind_name=what_is_kind_name,
         reason=event.reason,
         about_worker=about_worker,
         job_id=event.job_id,

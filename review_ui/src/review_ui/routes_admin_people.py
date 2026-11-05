@@ -12,6 +12,7 @@ from review_ui.admin_view import (
     form_int,
     form_text,
 )
+from review_ui.catalog import text
 from review_ui.forms import read_form
 from review_ui.request_context import admin_client_for, render_page
 from shared.models import (
@@ -67,7 +68,7 @@ def create_user(request: Request, form: dict = Depends(read_form)) -> Response:
     except ValueError:
         return _users_page(
             request,
-            "Nome: letras, números e . _ @ - (sem espaços). Senha: de 8 a 72 caracteres.",
+            text("users.invalid"),
             400,
         )
     return apply_change(
@@ -87,7 +88,7 @@ def update_user(request: Request, username: str, form: dict = Depends(read_form)
     try:
         body = UpdateUserRequest(**changes)
     except ValueError:
-        return _users_page(request, "A nova senha precisa ter de 8 a 72 caracteres.", 400)
+        return _users_page(request, text("users.password_length"), 400)
     return apply_change(
         lambda: admin_client_for(request).update_user(username, body),
         USERS_PATH,
@@ -132,7 +133,7 @@ def create_contact(request: Request, form: dict = Depends(read_form)) -> Respons
             notes=form_text(form, "notes"),
         )
     except ValueError:
-        return _contacts_page(request, "Número inválido: use DDI + DDD + número.", 400)
+        return _contacts_page(request, text("contacts.invalid_phone"), 400)
     return apply_change(
         lambda: admin_client_for(request).create_contact(body),
         CONTACTS_PATH,
@@ -154,7 +155,7 @@ def update_contact(request: Request, phone: str, form: dict = Depends(read_form)
     try:
         body = UpdateContactRequest(**changes)
     except ValueError:
-        return _contacts_page(request, "Algum campo está inválido.", 400)
+        return _contacts_page(request, text("error.validation_error"), 400)
     return apply_change(
         lambda: admin_client_for(request).update_contact(phone, body),
         CONTACTS_PATH,

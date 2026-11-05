@@ -30,7 +30,7 @@ def test_clips_are_listed_newest_first_with_their_studio_paths(ui):
     # Each path has a copy button holding exactly that path.
     assert 'data-copy="enduro/42/3.mp4"' in html
     assert "Equipe Cerrado" in html
-    assert "2 delivered clips" in html
+    assert "2 clipes entregues" in html
 
 
 def test_clips_can_be_filtered_by_prova_ignoring_accents(ui):
@@ -44,7 +44,7 @@ def test_clips_can_be_filtered_by_prova_ignoring_accents(ui):
 def test_clips_page_says_when_nothing_matches(ui):
     html = ui.get("/review/clips?prova=Aceleracao").text
 
-    assert "No delivered clips for Aceleracao yet." in html
+    assert "Nenhum clipe entregue para Aceleracao ainda." in html
 
 
 def test_copy_path_uses_the_studio_clip_root_when_configured(fake_orchestrator):
@@ -70,8 +70,8 @@ def test_fleet_lists_workers_master_first_with_role_and_status(ui):
     assert '1 <span class="of">/ 2</span>' in html  # 1 of 2 workers online
     # Online/offline plus how long ago the last heartbeat was (relative to
     # "now", which is the real clock here, so we only check the words).
-    assert "online" in html and "offline" in html
-    assert "heartbeat" in html
+    assert "Online" in html and "Offline" in html
+    assert "último contato" in html
 
 
 def test_fleet_shows_held_raws_storage_and_stats(ui):
@@ -79,30 +79,30 @@ def test_fleet_shows_held_raws_storage_and_stats(ui):
 
     # Master: 12 held raws (6 GB); 200 GB used of a 500 GB cap.
     assert ">12<" in html.replace(" ", "")
-    assert "200.0 GB of 500.0 GB" in html
+    assert "200,0 GB de 500,0 GB" in html
     # Rolling stats, and dashes for a worker not measured yet.
-    assert "92.5 Mbps" in html
-    assert "41.0 s/GB" in html
+    assert "92,5 Mbps" in html
+    assert "41,0 s/GB" in html
     assert "—" in html
     # The volunteer is near its cap, so it takes no new raws.
-    assert "near cap, no new raws" in html
+    assert "perto do limite, sem originais novos" in html
     # What the master is doing right now (its lease).
-    assert "process · job-clai" in html
+    assert "renderizando o clipe · job-clai" in html
 
 
 def test_fleet_shows_vps_disk_and_job_counts(ui):
     html = ui.get("/review/fleet").text
 
-    assert "3.0 GB of 25.0 GB" in html  # inbox against the hard cap
-    assert "senders asked to hold at 22.0 GB" in html
-    assert "40.0 GB" in html  # free disk
+    assert "3,0 GB de 25,0 GB" in html  # inbox against the hard cap
+    assert "quem envia é avisado para esperar a partir de 22,0 GB" in html
+    assert "40,0 GB" in html  # free disk
     # Job counts in pipeline order, including states with zero jobs. Each
     # count is a badge with a class named after its state.
     awaiting = html.index('state-awaiting_review">')
     ready = html.index('state-ready">')
     done = html.index('state-done">')
     assert awaiting < ready < done
-    assert 'state-claimed">claimed</span> <b>0</b>' in html
+    assert 'state-claimed">em processamento</span> <b>0</b>' in html
 
 
 def test_fleet_refresh_fragment(ui):
@@ -143,15 +143,15 @@ def test_fleet_shows_recent_events_newest_first_under_each_worker(ui):
     # The master has 7 events; only the newest 5 are shown, newest on top:
     # "claimed → uploaded" (T0+18 min) before "started a task" (T0+11 min).
     assert master.count("<li>") == 5
-    assert master.index("claimed → uploaded") < master.index("started a task")
+    assert master.index("em processamento → enviado") < master.index("começou uma tarefa")
     # Its oldest events (enrollment two days ago) did not make the cut.
-    assert "worker enrolled" not in master
+    assert "worker cadastrado" not in master
 
     volunteer = events_row(html, VOLUNTEER_ID)
     # An event by someone else (the system) names that actor; the reason
     # is shown too.
-    assert '<strong class="actor">system</strong>' in volunteer
-    assert "task timed out (no heartbeat)" in volunteer
+    assert '<strong class="actor">sistema</strong>' in volunteer
+    assert "tarefa expirou (o worker parou de dar sinal)" in volunteer
     assert "no heartbeat for 45 s" in volunteer
 
 
@@ -159,7 +159,7 @@ def test_fleet_refresh_fragment_has_the_recent_events_too(ui):
     # The 10 s refresh swaps in this fragment, so it must carry the events.
     html = ui.get("/review/partials/fleet").text
 
-    assert "claimed → uploaded" in events_row(html, MASTER_ID)
+    assert "em processamento → enviado" in events_row(html, MASTER_ID)
 
 
 def test_fleet_still_works_when_the_event_log_fails(ui, fake_orchestrator):
@@ -171,7 +171,7 @@ def test_fleet_still_works_when_the_event_log_fails(ui, fake_orchestrator):
     # The workers table is still there; each row says its events are missing.
     assert response.status_code == 200
     assert "joao-desktop" in response.text
-    assert response.text.count("Recent events unavailable.") == 2
+    assert response.text.count("Eventos recentes indisponíveis.") == 2
     # After the first failure the UI stops asking: one failed call, not one
     # per worker, so a broken log cannot slow every refresh down.
     assert len(fake_orchestrator.requests_to("GET", "/events")) == 1
@@ -188,8 +188,8 @@ def test_fleet_page_shows_kept_clips_and_the_masters_archive(ui, fake_orchestrat
 
     html = ui.get("/review/fleet").text
 
-    assert "3 clips kept · 2 archived" in html
-    assert "5 of 6 clips archived" in html
+    assert "3 clipes guardados · 2 arquivados" in html
+    assert "5 de 6 clipes arquivados" in html
 
 
 def test_fleet_says_pausado_for_a_worker_the_volunteer_paused(ui, fake_orchestrator):

@@ -2,25 +2,24 @@
    Needs `sync` ({event_id, last}) and `back` ("provas" or "teams"). #}
 <div class="sync-box">
   {% if sync.event_id %}
-  <p>Evento <code>{{ sync.event_id }}</code> no site de resultados.
+  <p>{{ t("sync.event", event_id=sync.event_id) }}
     {% if sync.last %}
-      Última sincronização: {{ m.time(sync.last.at, relative=true) }}
+      {{ t("sync.last", time=m.time(sync.last.at, relative=true)) }}
       {% if sync.last.ok %}
-        <span class="badge contact-allowed">ok</span>
+        <span class="badge contact-allowed">{{ t("sync.ok") }}</span>
       {% else %}
-        <span class="badge token-revoked">falhou</span> <span class="small">{{ sync.last.error }}</span>
+        <span class="badge token-revoked">{{ t("sync.failed") }}</span> {{ m.english(sync.last.error, class="small") }}
       {% endif %}
     {% else %}
-      Ainda não sincronizado.
+      {{ t("sync.never") }}
     {% endif %}
-    <span class="small">(automática a cada 6 h e quando o evento muda)</span>
+    <span class="small">{{ t("sync.schedule") }}</span>
   </p>
   <form method="post" action="/review/admin/sync" class="inline-form">
     <input type="hidden" name="back" value="{{ back }}">
-    <button type="submit" class="primary">Sincronizar agora</button>
+    <button type="submit" class="primary">{{ t("sync.now") }}</button>
   </form>
   {% else %}
-  <p>Nenhum evento configurado. Defina o código do evento (ex.: <code>26BR</code>) em
-    <a href="/review/admin/settings">Configurações</a> para trazer provas e equipes do site de resultados.</p>
+  <p>{{ t("sync.no_event") }}</p>
   {% endif %}
 </div>

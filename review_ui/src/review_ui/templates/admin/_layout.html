@@ -1,12 +1,11 @@
-{# Every admin page: pt-BR, the admin sub-navigation, the result of the last
+{# Every admin page: the admin sub-navigation, the result of the last
    change, and the latest changes of this page (the audit log). #}
 {% extends "base.html" %}
-{% import "macros.html" as m %}
-{% block lang %}pt-BR{% endblock %}
+{% import "macros.html" as m with context %}
 {% block content %}
 <div class="page-head">
-  <h1>Administração</h1>
-  <nav class="subnav" aria-label="Páginas de administração">
+  <h1>{{ t("admin.heading") }}</h1>
+  <nav class="subnav" aria-label="{{ t('admin.subnav') }}">
     {% for path, label in sections %}
     <a href="/review/admin/{{ path }}" {% if path == section %}aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
@@ -17,16 +16,17 @@
 
 {% block admin_content %}{% endblock %}
 
-<section class="audit" aria-label="Últimas alterações">
-  <h2>Últimas alterações</h2>
+<section class="audit" aria-label="{{ t('admin.audit') }}">
+  <h2>{{ t("admin.audit") }}</h2>
   {% if audit %}
   <ul class="audit-list">
     {% for line in audit %}
-    <li>{{ m.time(line.at) }} · <strong>{{ line.who }}</strong> · {{ line.text }}</li>
+    <li>{{ m.time(line.at) }} · <strong>{{ line.who }}</strong> · {% if line.what_is_kind_name %}<code>{{ line.what }}</code>{% else %}{{ line.what }}{% endif %}
+      {%- if line.detail %} · {{ m.english(line.detail, class="small") }}{% endif %}</li>
     {% endfor %}
   </ul>
   {% else %}
-  <p class="hint">Nenhuma alteração ainda.</p>
+  <p class="hint">{{ t("admin.audit.empty") }}</p>
   {% endif %}
 </section>
 {% endblock %}

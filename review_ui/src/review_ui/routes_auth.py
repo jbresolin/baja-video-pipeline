@@ -11,6 +11,8 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
+from review_ui.catalog import text
+from review_ui.errors import error_markup
 from review_ui.forms import read_form
 from review_ui.orchestrator_client import OrchestratorError, OrchestratorUnavailableError
 from review_ui.request_context import orchestrator_for, render_page
@@ -23,12 +25,12 @@ from review_ui.session import (
 
 router = APIRouter()
 
-# What the login page says when signing in did not work (pt-BR, like the admin pages).
+# What the login page says when signing in did not work.
 LOGIN_ERRORS = {
-    401: "Usuário ou senha incorretos (ou usuário desativado).",
-    429: "Muitas tentativas deste endereço. Espere alguns minutos e tente de novo.",
+    401: text("login.wrong_password"),
+    429: text("login.too_many_attempts"),
 }
-UNAVAILABLE = "O orquestrador não respondeu. Tente de novo em instantes."
+UNAVAILABLE = text("login.unavailable")
 
 
 def _login_page(request: Request, next_path: str, error: str | None, status_code: int = 200):
@@ -50,7 +52,7 @@ def login(request: Request, form: dict = Depends(read_form)) -> Response:
     except ValidationError:  # empty username or password
         return _login_page(request, next_path, LOGIN_ERRORS[401], status_code=401)
     except OrchestratorError as error:
-        message = LOGIN_ERRORS.get(error.status_code, error.message)
+        message = LOGIN_ERRORS.get(error.status_code) or error_markup(error.code, error.message)
         return _login_page(request, next_path, message, status_code=error.status_code)
     except OrchestratorUnavailableError:
         return _login_page(request, next_path, UNAVAILABLE, status_code=502)

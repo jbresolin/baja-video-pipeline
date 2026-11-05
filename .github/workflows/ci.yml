@@ -18,6 +18,12 @@ jobs:
       - name: Install Python and dependencies
         run: uv sync --locked
 
+      # The review UI's date/number tests run js/format.js in Node too.
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Ruff lint
         run: uv run ruff check .
 

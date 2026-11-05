@@ -12,7 +12,9 @@ page script gets the JSON error and tells the user to sign in again.
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response
+from markupsafe import Markup
 
+from review_ui.catalog import has_text, text
 from review_ui.orchestrator_client import OrchestratorError, OrchestratorUnavailableError
 from review_ui.request_context import is_api_request, render_page
 from review_ui.session import clear_session_cookie, login_redirect_target
@@ -21,18 +23,38 @@ from review_ui.session import clear_session_cookie, login_redirect_target
 # and tells the reviewer, instead of letting them retry the same request.
 RELOAD_ON_CODES = {"version_conflict", "illegal_transition"}
 
-# Friendlier page titles for the statuses a reviewer may run into.
-PAGE_TITLES = {
-    401: "Sign-in needed",
-    403: "Not allowed",
-    404: "Not found",
-    409: "Changed by someone else",
-    502: "Orchestrator unreachable",
-}
+
+def page_title(status_code: int) -> str:
+    """Friendlier page titles for the statuses a reviewer may run into."""
+    key = f"error_page.title.{status_code}"
+    return text(key) if has_text(key) else text("error_page.title.other")
+
+
+def code_text(code: str) -> str:
+    """An API error code in words (the code itself is never translated)."""
+    key = f"error.{code}"
+    return text(key) if has_text(key) else text("error.other")
+
+
+def error_text(code: str, message: str) -> str:
+    """What a person reads about a refusal: the code in words, then the orchestrator's details.
+
+    The orchestrator's message is English and names what was wrong (which
+    field, which user...), so it is kept, in parentheses.
+    """
+    return f"{code_text(code)} ({message})"
+
+
+def error_markup(code: str, message: str) -> Markup:
+    """The same for an HTML page: the orchestrator's sentence is marked as English."""
+    return Markup('{} (<span lang="en">{}</span>)').format(code_text(code), message)
 
 
 class UiRequestError(Exception):
-    """A request the UI itself rejects before calling the orchestrator."""
+    """A request the UI itself rejects before calling the orchestrator.
+
+    Unlike the orchestrator's, its message is already pt-BR (from the catalog).
+    """
 
     def __init__(self, status_code: int, code: str, message: str) -> None:
         super().__init__(message)
@@ -42,11 +64,21 @@ class UiRequestError(Exception):
 
 
 def error_response(
-    request: Request, status_code: int, code: str, message: str, details: dict | None = None
+    request: Request,
+    status_code: int,
+    code: str,
+    message: str,
+    details: dict | None = None,
+    *,
+    people_text: str | None = None,
 ) -> Response:
+    """people_text: the pt-BR sentence to show. None means "the code in words,
+    plus the orchestrator's (English) message as details"."""
     if is_api_request(request):
         body = {
             "error": {"code": code, "message": message, "details": details or {}},
+            # What the page script shows (pt-BR).
+            "text": people_text or error_text(code, message),
             # Tells the page script to reload the job (see RELOAD_ON_CODES).
             "reload": code in RELOAD_ON_CODES,
         }
@@ -57,10 +89,12 @@ def error_response(
         clear_session_cookie(response, request.app.state.settings.session_cookie_secure)
         return response
     context = {
-        "title": PAGE_TITLES.get(status_code, "Something went wrong"),
+        "title": page_title(status_code),
         "status_code": status_code,
         "code": code,
-        "message": message,
+        "explanation": people_text or code_text(code),
+        # The orchestrator's own words, shown as details (marked English).
+        "detail": None if people_text else message,
     }
     return render_page(request, "error.html", context, status_code=status_code)
 
@@ -78,7 +112,9 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(UiRequestError)
     def _ui_request_error(request: Request, error: UiRequestError) -> Response:
-        return error_response(request, error.status_code, error.code, error.message)
+        return error_response(
+            request, error.status_code, error.code, error.message, people_text=error.message
+        )
 
     @app.exception_handler(RequestValidationError)
     def _validation_error(request: Request, error: RequestValidationError) -> Response:

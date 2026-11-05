@@ -4,6 +4,7 @@ import { errorMessage, isTyping, localizeTimes, sendJson, showFlash } from "./co
 import { setupPlayer } from "./player.js";
 import { parseFragment, startPolling } from "./poll.js";
 import { setupReviewForm } from "./review_form.js";
+import { t } from "./text.js";
 
 const jobElement = document.getElementById("job");
 const form = document.getElementById("review-form");
@@ -46,9 +47,9 @@ for (const button of document.querySelectorAll("[data-regenerate-proxy]")) {
     if (!result.ok) {
       showFlash(errorMessage(result), "error");
     } else if (result.data.waiting_reason) {
-      showFlash(`Proxy requested. ${result.data.waiting_reason}`, "warning");
+      showFlash(t("script.proxy_requested_waiting", { reason: result.data.waiting_text }), "warning");
     } else {
-      showFlash("Proxy requested. This page shows it once a holder has uploaded it.", "success");
+      showFlash(t("script.proxy_requested"), "success");
     }
   });
 }

@@ -41,7 +41,7 @@ def test_save_relays_fields_and_expected_version_to_the_orchestrator(ui, fake_or
     assert answer["job"]["prova"] == "Enduro"
     # The fake resolves car 42 to its team, like the real orchestrator.
     assert answer["job"]["team_name"] == "Equipe Cerrado"
-    assert answer["message"] == "Saved."
+    assert answer["message"] == "Salvo."
 
 
 def test_ready_moves_the_job_to_ready(ui, fake_orchestrator):
@@ -59,7 +59,7 @@ def test_ready_moves_the_job_to_ready(ui, fake_orchestrator):
 
     assert response.status_code == 200
     assert fake_orchestrator.jobs["job-awaiting-1"].state == JobState.READY
-    assert "Marked ready" in response.json()["message"]
+    assert "Marcado como pronto" in response.json()["message"]
 
 
 def test_stale_version_gives_409_and_tells_the_page_to_reload(ui, fake_orchestrator):
@@ -152,7 +152,7 @@ def test_discard_sends_only_the_version_and_action(ui, fake_orchestrator):
 
     assert response.status_code == 200
     assert fake_orchestrator.jobs["job-failed-1"].state == JobState.DISCARDED
-    assert response.json()["message"].startswith("Discarded.")
+    assert response.json()["message"].startswith("Descartado.")
 
 
 def test_retry_sends_a_failed_job_back_to_ready_and_clears_the_failure(ui, fake_orchestrator):

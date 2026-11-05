@@ -6,6 +6,7 @@ for review), "job-failed-1" (a worker failed rendering it) and "job-done-1"
 as "maria-notebook".
 """
 
+from review_ui.job_view import NO_HOLDER_ONLINE_REASON
 from shared.models import JobState
 from tests.review_ui.sample_data import make_job
 
@@ -63,9 +64,10 @@ def test_status_strip_explains_a_failure_with_the_worker_name(ui):
     html = ui.get("/review/jobs/job-failed-1").text
 
     # The worker id in Job.failure is turned into the name from the fleet.
-    assert "maria-notebook failed rendering the clip (exit code 1)" in html
-    assert "moov atom not found" in html
-    assert "Choose Retry or Discard" in html
+    assert "maria-notebook falhou ao renderizar o clipe (código de saída 1):" in html
+    # The worker's own message follows, marked as English.
+    assert '<span lang="en">ffmpeg exited: moov atom not found</span>' in html
+    assert "Escolha “Tentar de novo” ou “Descartar”" in html
 
 
 def test_status_strip_repeats_the_orchestrators_waiting_reason(ui, fake_orchestrator):
@@ -75,8 +77,34 @@ def test_status_strip_repeats_the_orchestrators_waiting_reason(ui, fake_orchestr
 
     html = ui.get("/review/jobs/job-stuck").text
 
-    assert "no holder online for 12 min" in html
-    assert "Waiting for a holder to claim the processing" in html
+    # A reason the UI has no words for is shown as it came, marked English.
+    assert '<span lang="en">no holder online for 12 min</span>' in html
+    assert "Esperando um worker com o original pegar o processamento" in html
+
+
+def test_the_orchestrators_known_waiting_reasons_are_shown_in_pt_br(ui, fake_orchestrator):
+    # Setup: the two reasons the orchestrator writes itself (no holder
+    # online; a task failed on one worker and the job carries on).
+    fake_orchestrator.add_job(
+        make_job("job-no-holder", JobState.READY, waiting_reason=NO_HOLDER_ONLINE_REASON)
+    )
+    fake_orchestrator.add_job(
+        make_job(
+            "job-retrying",
+            JobState.READY,
+            waiting_reason="process failed on maria-notebook: ffmpeg exited",
+        )
+    )
+
+    no_holder = ui.get("/review/jobs/job-no-holder").text
+    retrying = ui.get("/review/jobs/job-retrying").text
+
+    # The whole first sentence is translated; nothing English is left.
+    assert "Esperando um worker com o original voltar a ficar online" in no_holder
+    assert NO_HOLDER_ONLINE_REASON not in no_holder
+    # The second: the task and worker in pt-BR, the worker's message as it came.
+    assert "Falhou ao renderizar o clipe em maria-notebook:" in retrying
+    assert '<span lang="en">ffmpeg exited</span>' in retrying
 
 
 def test_missing_proxy_offers_to_request_one(ui, fake_orchestrator):
@@ -87,7 +115,7 @@ def test_missing_proxy_offers_to_request_one(ui, fake_orchestrator):
     # No <video>; instead a button that calls regenerate-proxy.
     assert "<video" not in html
     assert "data-regenerate-proxy" in html
-    assert "The proxy is not on the VPS" in html
+    assert "O proxy não está no servidor" in html
 
 
 def prova_options(html: str) -> list[str]:
@@ -103,7 +131,7 @@ def test_the_prova_is_picked_from_the_active_provas_in_the_admins_order(ui, fake
     # The list comes from GET /provas. "Lama" is deactivated, so it is not
     # offered; the first option is the empty "choose" one.
     assert fake_orchestrator.requests_to("GET", "/provas")
-    assert prova_options(html) == ["Choose a prova…", "Enduro", "Suspensão"]
+    assert prova_options(html) == ["Escolha uma prova…", "Enduro", "Suspensão"]
 
 
 def test_a_jobs_prova_that_is_no_longer_active_is_still_shown(ui, fake_orchestrator):
@@ -125,10 +153,10 @@ def test_event_log_comes_from_the_orchestrators_log_newest_first(ui, fake_orches
     # The page asked the orchestrator for this job's log.
     assert fake_orchestrator.requests_to("GET", "/jobs/job-done-1/events")
     # Each line is one Event from sample_events.make_events(), in words.
-    done = log.index("delivered → done")  # T0+21 min, by the system
-    reviewed = log.index('<strong class="actor">ana</strong> awaiting review → ready')  # T0+10
-    confirmed = log.index("joao-desktop</strong> confirmed its copy of the raw")  # T0+2
-    created = log.index("WhatsApp</strong> created as received")  # T0
+    done = log.index("entregue → concluído")  # T0+21 min, by the system
+    reviewed = log.index('<strong class="actor">ana</strong> aguardando revisão → pronto')  # T0+10
+    confirmed = log.index("joao-desktop</strong> confirmou sua cópia do original")  # T0+2
+    created = log.index("WhatsApp</strong> criado como recebido")  # T0
     # Newest first.
     assert done < reviewed < confirmed < created
     # The orchestrator's reason is shown with the line.
@@ -140,10 +168,10 @@ def test_event_log_shows_worker_names_and_failure_reasons(ui):
     log = html[html.index('id="event-log"') :]
 
     # "worker:w-volunteer-0002" is shown as the name from the fleet.
-    assert "maria-notebook</strong> task failed" in log
+    assert "maria-notebook</strong> tarefa falhou" in log
     assert "ffmpeg exited: moov atom not found" in log
     # Only this job's events: the volunteer's lease on another job is not here.
-    assert "timed out" not in log
+    assert "tarefa expirou" not in log
 
 
 def test_event_log_failure_does_not_break_the_page(ui, fake_orchestrator):
@@ -157,17 +185,17 @@ def test_event_log_failure_does_not_break_the_page(ui, fake_orchestrator):
     # player and the form are what the reviewer needs, the log is extra.
     assert page.status_code == 200
     assert 'id="review-form"' in page.text
-    assert "Event log unavailable" in page.text
+    assert "Histórico indisponível" in page.text
     # The refresh says so too, and the status strip is still fresh.
     assert panel.status_code == 200
-    assert "Event log unavailable" in panel.text
+    assert "Histórico indisponível" in panel.text
     assert 'id="status-strip"' in panel.text
 
 
 def test_page_head_says_who_sent_the_raw_and_how(ui):
     html = ui.get("/review/jobs/job-awaiting-1").text
 
-    assert "From Bruno as a WhatsApp document (VID_0042.mp4)" in html
+    assert "De Bruno, como documento do WhatsApp (VID_0042.mp4)" in html
 
 
 def test_frame_step_uses_the_jobs_frame_rate(ui, fake_orchestrator):
@@ -196,15 +224,16 @@ def test_page_still_works_when_the_fleet_cannot_be_read(ui, fake_orchestrator):
     response = ui.get("/review/jobs/job-failed-1")
 
     assert response.status_code == 200
-    assert "worker w-volunt failed rendering the clip" in response.text
+    assert "worker w-volunt falhou ao renderizar o clipe" in response.text
 
 
 def test_unknown_job_shows_a_404_page(ui):
     response = ui.get("/review/jobs/does-not-exist")
 
-    # The orchestrator's 404 is passed on, rendered as a readable page.
+    # The orchestrator's 404 is passed on, rendered as a readable page: the
+    # code in pt-BR words, and the orchestrator's own sentence as details.
     assert response.status_code == 404
-    assert "Not found" in response.text
+    assert "<h1>Não encontrado</h1>" in response.text
     assert "does-not-exist" in response.text
 
 

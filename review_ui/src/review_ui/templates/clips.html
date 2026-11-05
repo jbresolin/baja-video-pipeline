@@ -1,55 +1,54 @@
 {% extends "base.html" %}
-{% import "macros.html" as m %}
-{% block title %}Clips{% endblock %}
+{% import "macros.html" as m with context %}
+{% block title %}{{ t("clips.title") }}{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>Clips</h1>
+  <h1>{{ t("clips.title") }}</h1>
   <p class="hint">
-    {{ total_count }} delivered clip{{ "" if total_count == 1 else "s" }}, newest first ·
-    manifest from {{ m.time(generated_at) }}
-    {% if not settings.studio_clip_root %}· paths are relative to the studio's clip folder{% endif %}
+    {{ tn("clips.hint", total_count, time=m.time(generated_at)) }}
+    {% if not settings.studio_clip_root %}{{ t("clips.relative_paths") }}{% endif %}
   </p>
 </div>
 
 <form class="filters" method="get" action="/review/clips" id="clips-filters">
-  <label class="field-inline">Prova
+  <label class="field-inline">{{ t("filter.prova") }}
     <select name="prova">
-      <option value="">Any</option>
+      <option value="">{{ t("filter.any_prova") }}</option>
       {% if chosen_prova and chosen_prova not in prova_options %}<option selected>{{ chosen_prova }}</option>{% endif %}
       {% for prova in prova_options %}
       <option {% if prova == chosen_prova %}selected{% endif %}>{{ prova }}</option>
       {% endfor %}
     </select>
   </label>
-  <noscript><button type="submit">Apply</button></noscript>
+  <noscript><button type="submit">{{ t("filter.apply") }}</button></noscript>
 </form>
 
 {% if outbox_waiting %}
-<h2>Na caixa de saída do servidor (estúdio offline)</h2>
+<h2>{{ t("clips.outbox_heading") }}</h2>
 <div class="table-wrap">
   <table class="data clips">
-    <thead><tr><th>Prova</th><th class="num">Car</th><th class="num">Pass</th><th></th></tr></thead>
+    <thead><tr><th>{{ t("clips.col.prova") }}</th><th class="num">{{ t("clips.col.car") }}</th><th class="num">{{ t("clips.col.pass") }}</th><th></th></tr></thead>
     <tbody>
       {% for item in outbox_waiting %}
       <tr>
         <td>{{ item.prova }}</td>
         <td class="num">{{ m.or_unknown(item.car_number) }}</td>
         <td class="num">{{ m.or_unknown(item.passagem) }}</td>
-        <td><a class="button" href="{{ media_url(item.clip_download_url) }}" download>Download</a>
-            <a href="/review/jobs/{{ item.id }}" title="Open the job">job</a></td>
+        <td><a class="button" href="{{ media_url(item.clip_download_url) }}" download>{{ t("clips.download") }}</a>
+            <a href="/review/jobs/{{ item.id }}" title="{{ t('clips.open_job.title') }}">{{ t("clips.open_job") }}</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
-<h2>Entregues ao estúdio</h2>
+<h2>{{ t("clips.delivered_heading") }}</h2>
 {% endif %}
 
 {% if rows %}
 <div class="table-wrap">
   <table class="data clips">
     <thead>
-      <tr><th>Delivered</th><th>Prova</th><th class="num">Car</th><th>Team</th><th class="num">Pass</th><th>Studio path</th><th>Download</th></tr>
+      <tr><th>{{ t("clips.col.delivered") }}</th><th>{{ t("clips.col.prova") }}</th><th class="num">{{ t("clips.col.car") }}</th><th>{{ t("clips.col.team") }}</th><th class="num">{{ t("clips.col.pass") }}</th><th>{{ t("clips.col.studio_path") }}</th><th>{{ t("clips.col.download") }}</th></tr>
     </thead>
     <tbody>
       {% for clip, path in rows %}
@@ -57,23 +56,25 @@
         <td>{{ m.time(clip.delivered_at) }}</td>
         <td>{{ clip.prova }}</td>
         <td class="num">{{ clip.car_number }}</td>
-        <td>{{ clip.team_name or "—" }}</td>
+        <td>{{ clip.team_name or t("no_value") }}</td>
         <td class="num">{{ clip.passagem }}</td>
         <td>
           <span class="path">
             <code>{{ path }}</code>
-            <button type="button" class="copy" data-copy="{{ path }}">Copy</button>
-            <a href="/review/jobs/{{ clip.job_id }}" title="Open the job">job</a>
+            <button type="button" class="copy" data-copy="{{ path }}">{{ t("clips.copy") }}</button>
+            <a href="/review/jobs/{{ clip.job_id }}" title="{{ t('clips.open_job.title') }}">{{ t("clips.open_job") }}</a>
           </span>
         </td>
-        <td>{% if clip.download_url %}<a class="button" href="{{ media_url(clip.download_url) }}" download>Download</a>{% if clip.version > 1 %} <span class="hint">v{{ clip.version }}</span>{% endif %}{% else %}<span class="hint" title="Only clips still in the VPS outbox can be downloaded here">—</span>{% endif %}</td>
+        <td>{% if clip.download_url %}<a class="button" href="{{ media_url(clip.download_url) }}" download>{{ t("clips.download") }}</a>{% if clip.version > 1 %} <span class="hint">v{{ clip.version }}</span>{% endif %}{% else %}<span class="hint" title="{{ t('clips.only_outbox_downloads') }}">{{ t("no_value") }}</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+{% elif chosen_prova %}
+<p class="empty">{{ t("clips.empty_for_prova", prova=chosen_prova) }}</p>
 {% else %}
-<p class="empty">No delivered clips{% if chosen_prova %} for {{ chosen_prova }}{% endif %} yet.</p>
+<p class="empty">{{ t("clips.empty") }}</p>
 {% endif %}
 {% endblock %}
 {% block scripts %}<script type="module" src="{{ static('js/clips.js') }}"></script>{% endblock %}

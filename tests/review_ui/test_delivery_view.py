@@ -94,4 +94,4 @@ def test_the_clips_page_lists_outbox_clips_with_a_download_button(ui, fake_orche
     fake_orchestrator.add_job(uploaded_job())
     html = ui.get("/review/clips").text
     assert "Na caixa de saída do servidor (estúdio offline)" in html
-    assert 'href="/clip-downloads/job-outbox-1.mp4" download>Download</a>' in html
+    assert 'href="/clip-downloads/job-outbox-1.mp4" download>Baixar</a>' in html

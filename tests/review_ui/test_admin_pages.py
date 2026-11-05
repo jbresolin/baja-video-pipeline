@@ -39,10 +39,10 @@ def test_every_admin_page_opens_for_an_admin_in_portuguese(admin, page):
 @pytest.mark.parametrize("page", ADMIN_PAGES)
 def test_a_reviewer_gets_403_on_every_admin_page(reviewer, page):
     # The UI does not decide this; the orchestrator answers 403 and the UI
-    # shows its "Not allowed" page.
+    # shows its "Sem permissão" (not allowed) page.
     response = reviewer.get(f"/review/admin/{page}")
     assert response.status_code == 403
-    assert "Not allowed" in response.text
+    assert "Sem permissão" in response.text
 
 
 def test_the_admin_link_is_shown_to_admins_only(admin, reviewer):
