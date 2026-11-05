@@ -1,5 +1,7 @@
 """Enrollment: admin issues a one-time token; the worker exchanges it at POST /enroll.
 
+Listing and revoking tokens, and revoking workers, is domain/workers_admin.py.
+
 The exchange mints a Tailscale auth key first and spends the token only
 after that succeeded (infra/tailnet/mint_auth_key.md), so a Tailscale
 outage does not burn a volunteer's token.
@@ -9,6 +11,7 @@ from datetime import timedelta
 
 from orchestrator.clients.tailscale import TailscaleError
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain.audit import AdminActor, record_admin_change
 from orchestrator.errors import ApiError, upstream_error
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import workers as workers_repo
@@ -23,9 +26,16 @@ from shared.models import (
 )
 from shared.protocol import HEARTBEAT_INTERVAL_SECONDS, LEASE_TTL_SECONDS
 
+# EnrollmentTokenInfo.token_id: this many hex characters of the token's SHA-256.
+TOKEN_ID_LENGTH = 16
+
+
+def token_id_for(token_sha256_hex: str) -> str:
+    return token_sha256_hex[:TOKEN_ID_LENGTH]
+
 
 def create_enrollment_token(
-    context: OrchestratorContext, request: CreateEnrollmentTokenRequest
+    context: OrchestratorContext, request: CreateEnrollmentTokenRequest, actor: AdminActor
 ) -> EnrollmentTokenCreated:
     now = context.clock.now()
     token = new_secret_token()
@@ -38,18 +48,26 @@ def create_enrollment_token(
     )
     with context.database.transaction() as connection:
         workers_repo.insert_enrollment_token(connection, record)
-        events_repo.record_event(
+        record_admin_change(
             connection,
             now,
-            actor="admin",
-            kind="enrollment_token_created",
-            reason=f"{request.role} token for {request.volunteer_name}",
+            actor,
+            "enrollment_token_created",
+            f"{request.role} token for {request.volunteer_name}",
+            after={
+                "token_id": token_id_for(record.token_sha256),
+                "volunteer_name": record.volunteer_name,
+                "role": str(record.role),
+                "expires_at": record.expires_at.isoformat(),
+            },
         )
     return EnrollmentTokenCreated(
         token=token,
+        token_id=token_id_for(record.token_sha256),
         volunteer_name=record.volunteer_name,
         role=record.role,
         expires_at=record.expires_at,
+        installer_download_url=context.admin_settings.current.installer_download_url or None,
     )
 
 
@@ -70,7 +88,12 @@ def enroll_worker(context: OrchestratorContext, request: EnrollRequest) -> Enrol
     with context.database.transaction() as connection:
         token = workers_repo.get_enrollment_token(connection, hashed)
     now = context.clock.now()
-    if token is None or token.used_at is not None or token.expires_at <= now:
+    if (
+        token is None
+        or token.used_at is not None
+        or token.revoked_at is not None
+        or token.expires_at <= now
+    ):
         raise invalid_token_error()
 
     # Network call outside any DB transaction.

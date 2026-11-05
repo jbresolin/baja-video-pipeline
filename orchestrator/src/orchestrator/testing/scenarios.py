@@ -167,6 +167,22 @@ def upload_in_chunks(
         offset = response.json()["received_bytes"]
 
 
+def ensure_prova(harness: OrchestratorHarness, name: str) -> dict:
+    """Add the prova to the provas list (admin token) unless it is there already.
+
+    A job only becomes ready with a prova from the list (unknown_prova otherwise).
+    """
+    listed = harness.client.get("/provas", headers=harness.admin_headers).json()["provas"]
+    for prova in listed:
+        if prova["name"] == name:
+            return prova
+    response = harness.client.post(
+        "/admin/provas", json={"name": name}, headers=harness.admin_headers
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
 def review_to_ready(
     harness: OrchestratorHarness,
     job_id: str,
@@ -177,6 +193,8 @@ def review_to_ready(
     cut_in_s: float = 1.0,
     cut_out_s: float = 5.0,
 ) -> dict:
+    """Review the job as the reviewer ana and mark it ready (adds the prova if needed)."""
+    ensure_prova(harness, prova)
     job = harness.job(job_id)
     response = harness.client.patch(
         f"/jobs/{job_id}/review",

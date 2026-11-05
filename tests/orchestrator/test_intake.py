@@ -169,13 +169,13 @@ def test_test_upload_in_dev_mode_creates_a_job_synchronously(tmp_path):
     assert job["state"] == "received"
     assert job["low_res"] is True  # received_as=video simulates a low_res intake
     assert job["sha256"] == hashlib.sha256(SAMPLE_VIDEO_BYTES).hexdigest()
-    # Admin token required: a reviewer cannot use it.
+    # Admin required: a signed-in reviewer is refused (403, known but not allowed).
     refused = harness.client.post(
         "/intake/test-upload",
         files={"file": ("clip.mp4", b"x", "video/mp4")},
         auth=harness.reviewer_auth,
     )
-    assert refused.status_code == 401
+    assert refused.status_code == 403
 
 
 def post_real_video(harness, payload_changes: dict) -> tuple[dict, dict]:

@@ -10,7 +10,8 @@ printed instead of sent; /enroll mints fake Tailscale keys; car numbers
 
 Defaults (override any with the usual BVP_* variables):
     data dir  .scratch/bvp-dev        admin token  dev-admin
-    webhook   dev-secret              reviewer     ana / ana
+    webhook   dev-secret              users        ana / ana (admin), bruno / bruno
+                                      (imported from reviewers.txt on the first start)
     BVP_DEV_MODE=1 (POST /intake/test-upload enabled)
 """
 
@@ -72,8 +73,9 @@ def main() -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
     reviewers_file = data_dir / "reviewers.txt"
     if not reviewers_file.exists():
-        write_reviewers_file(reviewers_file, {"ana": "ana"})
+        write_reviewers_file(reviewers_file, {"ana": "ana", "bruno": "bruno"})
     os.environ.setdefault("BVP_REVIEWERS_FILE", str(reviewers_file))
+    os.environ.setdefault("BVP_BOOTSTRAP_ADMIN", "ana")
 
     settings = load_settings()
     baja_app = FakeBajaApp(teams={number: f"Equipe {number}" for number in range(1, 100)})

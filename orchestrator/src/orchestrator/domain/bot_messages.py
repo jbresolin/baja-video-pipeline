@@ -8,6 +8,7 @@ quote them and a wording change is one edit. When each one is sent:
     INBOX_NEARLY_FULL_PLEASE_HOLD  accepted, but the VPS inbox is above BVP_INBOX_HOLD_GB
     INBOX_FULL_RESEND_LATER        refused: the inbox is above BVP_INBOX_CAP_GB
     DOWNLOAD_FAILED_PLEASE_RESEND  the download or a hash check failed; no job exists
+    SENDER_NOT_AUTHORIZED          allowlist mode, sender not allowed: no job (once per 24 h)
 """
 
 # A document arrived and was verified; the job exists. Not sent for a
@@ -38,10 +39,15 @@ INBOX_FULL_RESEND_LATER = (
     "Por favor, espere alguns minutos e envie de novo."
 )
 
+# Intake mode "allowlist" and the sender is not marked allowed on the admin
+# Contacts page: the video is ignored. Sent at most once per 24 h per sender.
+SENDER_NOT_AUTHORIZED = "Este número não está autorizado a enviar vídeos. Fale com a organização."
+
 ALL_REPLIES = (
     RECEIVED_OK,
     LOW_RES_RESEND_AS_DOCUMENT,
     DOWNLOAD_FAILED_PLEASE_RESEND,
     INBOX_NEARLY_FULL_PLEASE_HOLD,
     INBOX_FULL_RESEND_LATER,
+    SENDER_NOT_AUTHORIZED,
 )

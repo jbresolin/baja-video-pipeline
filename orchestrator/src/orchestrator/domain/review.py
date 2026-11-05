@@ -7,6 +7,7 @@ from typing import Any
 from orchestrator.clients.baja_app import BajaAppError
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import to_db_time
+from orchestrator.domain import provas_catalog
 from orchestrator.domain.job_view import load_job, require_job_row
 from orchestrator.domain.raw_copies import drop_inbox_copy
 from orchestrator.domain.transitions import move_job, revoke_job_leases
@@ -99,7 +100,8 @@ def _check_cuts(job_row: sqlite3.Row, merged: dict[str, Any]) -> None:
         )
 
 
-def _check_required_fields(merged: dict[str, Any]) -> None:
+def _check_ready_to_render(connection: sqlite3.Connection, merged: dict[str, Any]) -> None:
+    """Before a job becomes ready: every field set, and a prova from the provas table."""
     missing = [name for name in REQUIRED_REVIEW_FIELDS if merged[name] is None]
     if missing:
         raise ApiError(
@@ -107,6 +109,13 @@ def _check_required_fields(merged: dict[str, Any]) -> None:
             ErrorCode.MISSING_REVIEW_FIELDS,
             "these fields must be set: " + ", ".join(missing),
             {"missing": missing},
+        )
+    if not provas_catalog.is_known_prova(connection, merged["prova"]):
+        raise ApiError(
+            422,
+            ErrorCode.UNKNOWN_PROVA,
+            f"prova '{merged['prova']}' is not in the provas list; pick one from the list",
+            {"prova": merged["prova"]},
         )
 
 
@@ -161,7 +170,7 @@ def _apply_action(
         events_repo.record_event(connection, now, actor=actor, kind="review_saved", job_id=job_id)
         return
     if action == ReviewAction.READY:
-        _check_required_fields(merged)
+        _check_ready_to_render(connection, merged)
         move_job(
             connection,
             job_row,
@@ -173,7 +182,7 @@ def _apply_action(
         )
         return
     if action == ReviewAction.REPROCESS:
-        _check_required_fields(merged)
+        _check_ready_to_render(connection, merged)
         revoke_job_leases(
             connection,
             job_id,
@@ -218,7 +227,7 @@ def _apply_action(
     failed_from = JobState(job_row["failed_from"] or JobState.CLAIMED)
     target = retry_target_for(failed_from)
     if target == JobState.READY:
-        _check_required_fields(merged)
+        _check_ready_to_render(connection, merged)
     leases_repo.clear_task_exclusions(connection, job_id)
     move_job(
         connection,

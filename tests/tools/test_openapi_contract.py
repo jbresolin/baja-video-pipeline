@@ -50,11 +50,42 @@ REQUIRED_ENDPOINTS = {
     ("get", "/events"),
     # Operations (wave 3): Prometheus scrape target, admin only
     ("get", "/metrics"),
+    # Sign-in and the media check for Caddy (admin page, LIVESTACK-37)
+    ("post", "/auth/login"),
+    ("post", "/auth/logout"),
+    ("get", "/auth/me"),
+    ("get", "/auth/media"),
+    # The provas list for the review form, and the admin pages
+    ("get", "/provas"),
+    ("get", "/admin/users"),
+    ("post", "/admin/users"),
+    ("patch", "/admin/users/{username}"),
+    ("get", "/admin/contacts"),
+    ("post", "/admin/contacts"),
+    ("patch", "/admin/contacts/{phone}"),
+    ("post", "/admin/provas"),
+    ("put", "/admin/provas/order"),
+    ("patch", "/admin/provas/{prova_id}"),
+    ("get", "/admin/teams"),
+    ("post", "/admin/teams/import"),
+    ("put", "/admin/teams/{car_number}"),
+    ("delete", "/admin/teams/{car_number}"),
+    ("get", "/admin/enrollment-tokens"),
+    ("post", "/admin/enrollment-tokens/{token_id}/revoke"),
+    ("post", "/admin/workers/{worker_id}/revoke"),
+    ("get", "/admin/settings"),
+    ("patch", "/admin/settings"),
+    ("get", "/admin/audit"),
 }
 
-# Routes that must work without an auth header: the health check, and
-# /enroll, where the one-time token in the body is the credential.
-OPEN_ENDPOINTS = {("get", "/health"), ("post", "/enroll")}
+# Routes that must work without an auth header: the health check, /enroll
+# (the one-time token in the body is the credential) and /auth/login (the
+# password in the body is).
+OPEN_ENDPOINTS = {("get", "/health"), ("post", "/enroll"), ("post", "/auth/login")}
+
+# What an admin-only route lists under "security": an admin session or the
+# admin token (either one).
+ADMIN_SECURITY = [{"sessionBearer": []}, {"adminBearer": []}]
 
 
 def load_committed_contract() -> dict:
@@ -103,9 +134,49 @@ def test_every_endpoint_except_the_open_ones_requires_auth():
     assert unprotected == OPEN_ENDPOINTS
 
 
-def test_all_four_auth_schemes_are_declared():
+def test_all_auth_schemes_are_declared_and_basic_auth_is_gone():
+    # Reviewers sign in through POST /auth/login now; Caddy's Basic auth
+    # (reviewerBasic) was removed with the admin page (LIVESTACK-37).
     schemes = load_committed_contract()["components"]["securitySchemes"]
-    assert set(schemes) == {"workerBearer", "adminBearer", "reviewerBasic", "webhookSecret"}
+    assert set(schemes) == {
+        "workerBearer",
+        "adminBearer",
+        "sessionBearer",
+        "sessionCookie",
+        "webhookSecret",
+    }
+    assert (schemes["sessionCookie"]["in"], schemes["sessionCookie"]["name"]) == (
+        "cookie",
+        "bvp_session",
+    )
+
+
+def test_every_admin_route_takes_an_admin_session_or_the_admin_token():
+    # The brief: admin routes require role admin; the static admin token
+    # keeps working for scripts. Role is checked by the orchestrator (403
+    # for a reviewer's session); the contract lists the two credentials.
+    paths = load_committed_contract()["paths"]
+    for path, operations in paths.items():
+        if path.startswith("/admin/"):
+            for method, operation in operations.items():
+                assert operation["security"] == ADMIN_SECURITY, (method, path)
+
+
+def test_the_media_check_reads_the_session_cookie_only():
+    # Caddy's forward_auth for /proxies/* and /thumbs/* passes the browser's
+    # cookie on; 204 lets Caddy serve the file, 401 is shown to the browser.
+    media = load_committed_contract()["paths"]["/auth/media"]["get"]
+    assert media["security"] == [{"sessionCookie": []}]
+    assert {"204", "401"} <= set(media["responses"])
+
+
+def test_review_routes_take_a_session_and_ready_can_fail_with_unknown_prova():
+    paths = load_committed_contract()["paths"]
+    assert paths["/review/queue"]["get"]["security"] == [{"sessionBearer": []}]
+    assert paths["/jobs/{job_id}/review"]["patch"]["security"] == [{"sessionBearer": []}]
+    assert (
+        "unknown_prova" in load_committed_contract()["components"]["schemas"]["ErrorCode"]["enum"]
+    )
 
 
 def test_error_responses_use_the_standard_error_shape():
@@ -173,7 +244,7 @@ def test_event_log_routes_accept_a_reviewer_or_the_admin_only():
     paths = load_committed_contract()["paths"]
     for path in ("/jobs/{job_id}/events", "/events"):
         security = paths[path]["get"]["security"]
-        assert security == [{"reviewerBasic": []}, {"adminBearer": []}]
+        assert security == [{"sessionBearer": []}, {"adminBearer": []}]
     query_names = {p["name"] for p in paths["/events"]["get"]["parameters"]}
     assert query_names == {"worker_id", "since", "limit"}
 
@@ -203,9 +274,10 @@ def test_enroll_answer_names_the_tailnet_base_url():
 
 def test_metrics_is_prometheus_text_for_the_admin_only():
     # /metrics is scraped by an external Prometheus with the admin token
-    # (infra/vps/MONITORING.md). Reviewers and workers may not read it.
+    # (infra/vps/MONITORING.md); an admin session works too. Reviewers
+    # (403) and workers may not read it.
     metrics = load_committed_contract()["paths"]["/metrics"]["get"]
-    assert metrics["security"] == [{"adminBearer": []}]
+    assert metrics["security"] == ADMIN_SECURITY
     # The success body is Prometheus' text format, not JSON...
     assert list(metrics["responses"]["200"]["content"]) == ["text/plain; version=0.0.4"]
     # ...but a refusal is still the standard JSON error shape.

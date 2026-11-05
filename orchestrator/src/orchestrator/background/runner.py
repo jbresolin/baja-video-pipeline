@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from orchestrator.background import sweepers
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain.sessions import delete_idle_sessions
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,12 @@ PERIODIC_TASKS = [
     PeriodicTask("inbox-cleanup", 30, sweepers.clean_inbox_once),
     PeriodicTask("proxy-eviction", 60, sweepers.evict_proxies_once),
     PeriodicTask("outbox-cleanup", 60, sweepers.clean_outbox_once),
+    # Expired sessions are already refused when used; this only tidies the table.
+    PeriodicTask(
+        "idle-session-cleanup",
+        3600,
+        lambda context: delete_idle_sessions(context, context.clock.now()),
+    ),
 ]
 
 

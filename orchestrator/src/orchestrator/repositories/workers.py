@@ -114,6 +114,7 @@ def worker_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Worker:
         receiver_port=row["receiver_port"],
         enrolled_at=from_db_time(row["enrolled_at"]),
         last_heartbeat=from_db_time(row["last_heartbeat"]),
+        revoked_at=from_db_time(row["revoked_at"]),
     )
 
 
@@ -200,7 +201,48 @@ def get_enrollment_token(
         expires_at=from_db_time(row["expires_at"]),
         used_at=from_db_time(row["used_at"]),
         used_by_worker_id=row["used_by_worker_id"],
+        revoked_at=from_db_time(row["revoked_at"]),
     )
+
+
+def list_enrollment_token_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Every token, newest first, with the name of the worker that used it."""
+    return connection.execute(
+        "SELECT enrollment_tokens.*, workers.name AS worker_name FROM enrollment_tokens"
+        " LEFT JOIN workers ON workers.id = enrollment_tokens.used_by_worker_id"
+        " ORDER BY enrollment_tokens.created_at DESC, enrollment_tokens.token_sha256"
+    ).fetchall()
+
+
+def find_enrollment_token_rows_by_prefix(
+    connection: sqlite3.Connection, token_id: str
+) -> list[sqlite3.Row]:
+    """Tokens whose SHA-256 starts with token_id (normally exactly one)."""
+    return connection.execute(
+        "SELECT * FROM enrollment_tokens WHERE substr(token_sha256, 1, ?) = ?",
+        (len(token_id), token_id),
+    ).fetchall()
+
+
+def revoke_enrollment_token(
+    connection: sqlite3.Connection, token_sha256: str, now: datetime
+) -> bool:
+    """Revoke an unused token. False if it was used or revoked meanwhile."""
+    cursor = connection.execute(
+        "UPDATE enrollment_tokens SET revoked_at = ?"
+        " WHERE token_sha256 = ? AND used_at IS NULL AND revoked_at IS NULL",
+        (to_db_time(now), token_sha256),
+    )
+    return cursor.rowcount == 1
+
+
+def revoke_worker(connection: sqlite3.Connection, worker_id: str, now: datetime) -> bool:
+    """Mark the worker revoked (its bearer token stops working). False if it already was."""
+    cursor = connection.execute(
+        "UPDATE workers SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+        (to_db_time(now), worker_id),
+    )
+    return cursor.rowcount == 1
 
 
 def mark_enrollment_token_used(
@@ -210,10 +252,10 @@ def mark_enrollment_token_used(
     tailscale_key_id: str | None,
     now: datetime,
 ) -> bool:
-    """Spend the token. False if somebody else spent it first (a race)."""
+    """Spend the token. False if somebody else spent (or an admin revoked) it first."""
     cursor = connection.execute(
         "UPDATE enrollment_tokens SET used_at = ?, used_by_worker_id = ?, tailscale_key_id = ?"
-        " WHERE token_sha256 = ? AND used_at IS NULL",
+        " WHERE token_sha256 = ? AND used_at IS NULL AND revoked_at IS NULL",
         (to_db_time(now), worker_id, tailscale_key_id, token_sha256),
     )
     return cursor.rowcount == 1

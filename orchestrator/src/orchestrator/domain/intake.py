@@ -1,6 +1,9 @@
 """Intake: Evolution webhook → background download + decrypt → inbox → job (docs/api.md §7.1).
 
-The webhook answers within milliseconds (Evolution retries slow or failed
+Every private message first records its sender on the admin Contacts page
+(domain/contacts.py), which also decides whether that sender's videos are
+accepted (blocked senders and, in allowlist mode, senders not allowed are
+not). The webhook answers within milliseconds (Evolution retries slow or failed
 deliveries). The actual work happens in run_media_download(), started in
 the background, and the job only exists once the media is downloaded,
 decrypted and every hash checked. Bot replies are sent outside any DB
@@ -17,7 +20,7 @@ from pydantic import ValidationError
 
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import to_db_time
-from orchestrator.domain import bot_messages
+from orchestrator.domain import bot_messages, contacts
 from orchestrator.errors import ApiError
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
@@ -60,6 +63,8 @@ class PendingMediaDownload:
     # webhook already answered (low_res resend request, inbox hold notice),
     # so each video gets one "received" message, not two.
     confirm_when_stored: bool = True
+    # The sender's default prova (admin Contacts page), filled into the job.
+    default_prova: str | None = None
 
 
 @dataclass
@@ -101,11 +106,26 @@ def handle_webhook(context: OrchestratorContext, payload: Any) -> WebhookOutcome
         # must never post into a group it happens to be in.
         return ignored("group or broadcast chat; videos are accepted by DM only", key.id)
     incoming = find_incoming_video(webhook.data.message)
-    if incoming is None:
-        return ignored("not a video document or video message", key.id)
-
     with context.database.transaction() as connection:
-        return _accept_incoming_video(context, connection, webhook, incoming)
+        now = context.clock.now()
+        # Everyone who writes is recorded, so the admin can allow or block
+        # them with one click instead of typing numbers.
+        contact_row = contacts.record_sender(
+            connection, key.sender_jid, webhook.data.push_name, now
+        )
+        if incoming is None:
+            return ignored("not a video document or video message", key.id)
+        decision = contacts.intake_decision(
+            connection, contact_row, context.admin_settings.current.intake_mode, now
+        )
+        if not decision.accept:
+            outcome = ignored(decision.reason, key.id)
+            if decision.send_refusal:
+                outcome.replies.append((key.sender_jid, bot_messages.SENDER_NOT_AUTHORIZED))
+            return outcome
+        return _accept_incoming_video(
+            context, connection, webhook, incoming, decision.default_prova
+        )
 
 
 def _accept_incoming_video(
@@ -113,6 +133,7 @@ def _accept_incoming_video(
     connection: sqlite3.Connection,
     webhook: EvolutionWebhook,
     incoming: IncomingMedia,
+    default_prova: str | None,
 ) -> WebhookOutcome:
     now = context.clock.now()
     key = webhook.data.key
@@ -150,7 +171,7 @@ def _accept_incoming_video(
     replies = []
     if low_res:
         replies.append((key.sender_jid, bot_messages.LOW_RES_RESEND_AS_DOCUMENT))
-    if inbox_bytes + incoming_bytes > context.settings.inbox_hold_bytes:
+    if inbox_bytes + incoming_bytes > context.admin_settings.inbox_hold_bytes:
         replies.append((key.sender_jid, bot_messages.INBOX_NEARLY_FULL_PLEASE_HOLD))
 
     jobs_repo.save_intake_message(connection, key.id, DOWNLOADING, now, sender_jid=key.sender_jid)
@@ -162,6 +183,7 @@ def _accept_incoming_video(
         sender_name=webhook.data.push_name,
         raw_extension=raw_extension_for(incoming.media.file_name, incoming.media.mimetype),
         confirm_when_stored=not replies,
+        default_prova=default_prova,
     )
     response = IntakeResponse(job_id=None, message_id=key.id, accepted=True, low_res=low_res)
     return WebhookOutcome(status_code=202, response=response, download=download, replies=replies)
@@ -211,6 +233,7 @@ def run_media_download(context: OrchestratorContext, pending: PendingMediaDownlo
             size_bytes=media.size_bytes,
             raw_extension=pending.raw_extension,
             actor=EVOLUTION_ACTOR,
+            prova=pending.default_prova,
         )
     # Confirm only now that the file is verified and the job exists.
     if pending.confirm_when_stored:
@@ -233,8 +256,13 @@ def create_received_job(
     size_bytes: int,
     raw_extension: str,
     actor: str,
+    prova: str | None = None,
 ) -> None:
-    """Insert a job in state `received` (its raw is already in the inbox)."""
+    """Insert a job in state `received` (its raw is already in the inbox).
+
+    `prova` is the sender's default prova, if they have one; the reviewer
+    sees it filled in and can change it.
+    """
     jobs_repo.insert_job(
         connection,
         {
@@ -252,6 +280,7 @@ def create_received_job(
             "sha256": sha256,
             "size_bytes": size_bytes,
             "raw_extension": raw_extension,
+            "prova": prova,
         },
     )
     jobs_repo.save_intake_message(connection, message_id, DONE, now, job_id=job_id)

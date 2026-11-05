@@ -65,8 +65,21 @@ class FakeEvolutionApi:
     def __init__(self) -> None:
         self.sent: list[SentText] = []
         self._lock = threading.Lock()
+        # What GET /instance/connectionState and /webhook/find answer (Settings page).
+        self.connection_state = "open"
+        self.webhook = {
+            "enabled": True,
+            "url": "http://bvp-orchestrator:8000/intake/evolution-webhook",
+        }
 
     def handle(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path.startswith("/instance/connectionState/"):
+            instance = request.url.path.rsplit("/", 1)[-1]
+            return httpx.Response(
+                200, json={"instance": {"instanceName": instance, "state": self.connection_state}}
+            )
+        if request.method == "GET" and request.url.path.startswith("/webhook/find/"):
+            return httpx.Response(200, json=self.webhook)
         match = re.fullmatch(r"/message/sendText/([^/]+)", request.url.path)
         if request.method != "POST" or match is None:
             return httpx.Response(404)

@@ -50,6 +50,14 @@ def remove_holder(connection: sqlite3.Connection, job_id: str, worker_id: str) -
     )
 
 
+def list_holder_job_ids_for_worker(connection: sqlite3.Connection, worker_id: str) -> list[str]:
+    """Every job the worker holds or is assigned to hold."""
+    rows = connection.execute(
+        "SELECT job_id FROM holders WHERE worker_id = ? ORDER BY job_id", (worker_id,)
+    ).fetchall()
+    return [row["job_id"] for row in rows]
+
+
 def list_confirmed_job_ids_for_worker(connection: sqlite3.Connection, worker_id: str) -> list[str]:
     rows = connection.execute(
         "SELECT job_id FROM holders WHERE worker_id = ? AND status = ?",

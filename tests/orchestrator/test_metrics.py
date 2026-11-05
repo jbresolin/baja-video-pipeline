@@ -33,8 +33,9 @@ def read_metrics(harness) -> dict[str, float]:
 
 def test_only_the_admin_token_may_read_metrics(harness):
     worker = harness.enroll(WorkerRole.WORKER, "pc")
-    # A reviewer and a worker are both refused; nobody anonymous either.
-    assert harness.client.get("/metrics", auth=harness.reviewer_auth).status_code == 401
+    # A signed-in reviewer is known but not an admin (403); a worker token
+    # is not an admin credential at all (401); nobody anonymous either.
+    assert harness.client.get("/metrics", auth=harness.reviewer_auth).status_code == 403
     assert harness.client.get("/metrics", headers=worker.headers).status_code == 401
     assert harness.client.get("/metrics").status_code == 401
     # The admin gets Prometheus' text format (version 0.0.4), not JSON.

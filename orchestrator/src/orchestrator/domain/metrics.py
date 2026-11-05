@@ -95,7 +95,7 @@ def _disk_metrics(context: OrchestratorContext) -> list[Metric]:
     hold = Metric(
         "bvp_inbox_hold_bytes", "gauge", "Soft inbox cap: above it the bot asks senders to hold."
     )
-    hold.add(settings.inbox_hold_bytes)
+    hold.add(context.admin_settings.inbox_hold_bytes)
     cap = Metric("bvp_inbox_cap_bytes", "gauge", "Hard inbox cap: above it intake answers 413.")
     cap.add(settings.inbox_cap_bytes)
     return [used, free, hold, cap]

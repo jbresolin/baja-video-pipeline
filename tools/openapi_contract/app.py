@@ -3,13 +3,19 @@
 from fastapi import FastAPI
 
 from tools.openapi_contract import (
+    routes_admin_catalog,
+    routes_admin_operations,
+    routes_admin_people,
+    routes_auth,
     routes_intake_enrollment,
     routes_metrics,
     routes_review_delivery,
     routes_worker_loop,
 )
 
-CONTRACT_VERSION = "1.1.0"
+# 2.0.0: reviewerBasic replaced by sessionBearer (POST /auth/login) and the
+# admin routes added (admin page, LIVESTACK-37).
+CONTRACT_VERSION = "2.0.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from
@@ -29,4 +35,8 @@ def build_contract_app() -> FastAPI:
     app.include_router(routes_worker_loop.router)
     app.include_router(routes_review_delivery.router)
     app.include_router(routes_metrics.router)
+    app.include_router(routes_auth.router)
+    app.include_router(routes_admin_people.router)
+    app.include_router(routes_admin_catalog.router)
+    app.include_router(routes_admin_operations.router)
     return app

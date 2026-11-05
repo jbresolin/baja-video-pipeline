@@ -1,8 +1,10 @@
 """SQL for the append-only events log (who did what, when and why)."""
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from orchestrator.db.database import from_db_time, to_db_time
 
@@ -17,6 +19,14 @@ def reviewer_actor(username: str) -> str:
     return f"reviewer:{username}"
 
 
+# The static BVP_ADMIN_TOKEN (scripts); a signed-in admin is "admin:<username>".
+ADMIN_TOKEN_ACTOR = "admin"
+
+
+def admin_actor(username: str) -> str:
+    return f"admin:{username}"
+
+
 @dataclass(frozen=True)
 class Event:
     id: int
@@ -28,6 +38,7 @@ class Event:
     from_state: str | None
     to_state: str | None
     reason: str | None
+    details: dict[str, Any] | None = None
 
 
 def record_event(
@@ -41,11 +52,22 @@ def record_event(
     from_state: str | None = None,
     to_state: str | None = None,
     reason: str | None = None,
+    details: dict[str, Any] | None = None,
 ) -> None:
     connection.execute(
-        "INSERT INTO events (at, job_id, worker_id, actor, kind, from_state, to_state, reason)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (to_db_time(now), job_id, worker_id, actor, kind, from_state, to_state, reason),
+        "INSERT INTO events (at, job_id, worker_id, actor, kind, from_state, to_state, reason,"
+        " details_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            to_db_time(now),
+            job_id,
+            worker_id,
+            actor,
+            kind,
+            from_state,
+            to_state,
+            reason,
+            json.dumps(details, ensure_ascii=False) if details is not None else None,
+        ),
     )
 
 
@@ -96,6 +118,25 @@ def list_events(
     return events
 
 
+def list_admin_events(
+    connection: sqlite3.Connection, kinds: list[str] | None, limit: int
+) -> list[Event]:
+    """The newest `limit` admin changes (actor "admin" or "admin:<name>"), newest first.
+
+    `kinds` narrows it to those event kinds (one admin page's changes).
+    """
+    conditions = ["(actor = ? OR actor LIKE 'admin:%')"]
+    parameters: list = [ADMIN_TOKEN_ACTOR]
+    if kinds:
+        conditions.append(f"kind IN ({', '.join('?' for _ in kinds)})")
+        parameters += kinds
+    rows = connection.execute(
+        f"SELECT * FROM events WHERE {' AND '.join(conditions)} ORDER BY id DESC LIMIT ?",
+        [*parameters, limit],
+    ).fetchall()
+    return [_event_from_row(row) for row in rows]
+
+
 def _event_from_row(row: sqlite3.Row) -> Event:
     return Event(
         id=row["id"],
@@ -107,4 +148,5 @@ def _event_from_row(row: sqlite3.Row) -> Event:
         from_state=row["from_state"],
         to_state=row["to_state"],
         reason=row["reason"],
+        details=json.loads(row["details_json"]) if row["details_json"] else None,
     )

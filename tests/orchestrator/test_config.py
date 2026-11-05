@@ -38,8 +38,13 @@ def test_defaults_match_docs_api_section_10():
     settings = load_settings(**REQUIRED)
     # Values straight from the table in docs/api.md §10.
     assert str(settings.data_dir) == "/srv/pipeline"
-    assert settings.inbox_hold_bytes == 22_000_000_000
+    # BVP_INBOX_HOLD_GB is only the first-start default of the Settings page.
+    assert settings.inbox_hold_gb == 22
     assert settings.inbox_cap_bytes == 25_000_000_000
+    assert settings.intake_mode == "open"
+    assert settings.password_hash_rounds == 12
+    assert settings.login_rate_limit_requests == 20
+    assert settings.bootstrap_admin == ""
     assert settings.enroll_rate_limit_requests == 10
     assert settings.enroll_rate_limit_window_s == 600
     assert settings.tailscale_tailnet == "-"

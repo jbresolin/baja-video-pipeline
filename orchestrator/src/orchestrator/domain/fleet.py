@@ -26,16 +26,22 @@ def build_fleet(context: OrchestratorContext) -> FleetResponse:
                 )
             )
         jobs_by_state = jobs_repo.count_jobs_by_state(connection)
+    return FleetResponse(
+        workers=fleet_workers, server_disk=server_disk(context), jobs_by_state=jobs_by_state
+    )
+
+
+def server_disk(context: OrchestratorContext) -> ServerDisk:
+    """VPS disk use and caps (fleet page and admin Settings page)."""
     layout = context.layout
-    disk = ServerDisk(
+    return ServerDisk(
         inbox_bytes=layout.inbox_bytes(),
-        inbox_hold_bytes=context.settings.inbox_hold_bytes,
+        inbox_hold_bytes=context.admin_settings.inbox_hold_bytes,
         inbox_cap_bytes=context.settings.inbox_cap_bytes,
         proxy_bytes=layout.proxy_bytes(),
         outbox_bytes=layout.outbox_bytes(),
         free_bytes=layout.free_bytes(),
     )
-    return FleetResponse(workers=fleet_workers, server_disk=disk, jobs_by_state=jobs_by_state)
 
 
 def list_peers(context: OrchestratorContext) -> PeersResponse:

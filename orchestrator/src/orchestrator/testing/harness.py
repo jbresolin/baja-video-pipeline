@@ -10,7 +10,7 @@ ManualClock, and background tasks do not run by themselves; call
 orchestrator.background.sweepers.* to run one pass.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import bcrypt
@@ -40,6 +40,9 @@ ADMIN_TOKEN = "test-admin-token"
 WEBHOOK_SECRET = "test-webhook-secret"
 REVIEWER_NAME = "ana"
 REVIEWER_PASSWORD = "senha-da-ana"
+# Made admin on the first-start import (BVP_BOOTSTRAP_ADMIN).
+ADMIN_NAME = "joao"
+ADMIN_PASSWORD = "senha-do-joao"
 PUBLIC_BASE_URL = "https://review.example.test"
 # Dev mode is refused with a public URL (config.LOCAL_HOSTNAMES), so a
 # dev-mode harness defaults to this one.
@@ -57,6 +60,41 @@ def write_reviewers_file(path: Path, passwords: dict[str, str]) -> Path:
         lines.append(f"{username} {password_hash}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
+
+
+class SessionLogin(httpx.Auth):
+    """httpx auth that signs in with POST /auth/login and sends the session as a bearer.
+
+    It signs in on first use, and again after a 401 (e.g. a test moved the
+    clock past the 12 h idle timeout), so tests can keep using one object.
+    """
+
+    requires_response_body = True
+
+    def __init__(self, username: str, password: str) -> None:
+        self.username = username
+        self.password = password
+        self.session_token: str | None = None
+
+    def _login_request(self, request: httpx.Request) -> httpx.Request:
+        return httpx.Request(
+            "POST",
+            request.url.copy_with(path="/auth/login", query=None),
+            json={"username": self.username, "password": self.password},
+        )
+
+    def auth_flow(self, request: httpx.Request):
+        for attempt in range(2):
+            if self.session_token is None or attempt == 1:
+                login = yield self._login_request(request)
+                self.session_token = (
+                    login.json()["session_token"] if login.status_code == 200 else None
+                )
+            if self.session_token is not None:
+                request.headers["Authorization"] = f"Bearer {self.session_token}"
+            response = yield request
+            if response.status_code != 401 or self.session_token is None:
+                return
 
 
 @dataclass(frozen=True)
@@ -80,9 +118,15 @@ class OrchestratorHarness:
     tailscale: FakeTailscaleApi
     baja_app: FakeBajaApp
 
+    # The static admin token (scripts), and two signed-in users.
     admin_headers = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
     webhook_headers = {WEBHOOK_SECRET_HEADER: WEBHOOK_SECRET}
-    reviewer_auth = httpx.BasicAuth(REVIEWER_NAME, REVIEWER_PASSWORD)
+    reviewer_auth: SessionLogin = field(
+        default_factory=lambda: SessionLogin(REVIEWER_NAME, REVIEWER_PASSWORD)
+    )
+    admin_auth: SessionLogin = field(
+        default_factory=lambda: SessionLogin(ADMIN_NAME, ADMIN_PASSWORD)
+    )
 
     def enroll(
         self,
@@ -132,13 +176,19 @@ class OrchestratorHarness:
 
 def build_harness(data_dir: Path, **setting_overrides) -> OrchestratorHarness:
     data_dir.mkdir(parents=True, exist_ok=True)
+    # Imported into the users table on the first start (domain/first_start.py).
     reviewers_file = write_reviewers_file(
-        data_dir / "reviewers.txt", {REVIEWER_NAME: REVIEWER_PASSWORD}
+        data_dir / "reviewers.txt",
+        {REVIEWER_NAME: REVIEWER_PASSWORD, ADMIN_NAME: ADMIN_PASSWORD},
     )
     settings = load_settings(
         **{
             "data_dir": data_dir,
             "reviewers_file": reviewers_file,
+            "bootstrap_admin": ADMIN_NAME,
+            # Cheap bcrypt, and no sign-in limit getting in the way of many tests.
+            "password_hash_rounds": 4,
+            "login_rate_limit_requests": 10_000,
             "admin_token": ADMIN_TOKEN,
             "webhook_secret": WEBHOOK_SECRET,
             "public_base_url": (
