@@ -60,10 +60,12 @@ services:
       # Canonical name (design §17); the orchestrator also accepts the old
       # BVP_EVOLUTION_INSTANCE_TOKEN.
       BVP_EVOLUTION_API_KEY: ${BVP_EVOLUTION_API_KEY}
-      # Team names: the teams table (admin page), then the Baja app. The CSV
-      # is imported once into an empty table, then ignored.
+      # Provas and teams: synced from the Baja results API for this event
+      # (first-start defaults; the admin Settings page afterwards). An old
+      # teams CSV is imported once into an empty table, then ignored.
+      BVP_EVENT_ID: ${BVP_EVENT_ID:-}
+      BVP_RESULTS_API_URL: ${BVP_RESULTS_API_URL:-https://api.bajasaebrasil.net}
       BVP_TEAMS_FILE: ${BVP_TEAMS_FILE:-}
-      BVP_BAJA_APP_URL: ${BVP_BAJA_APP_URL:-}
       BVP_PUBLIC_BASE_URL: https://${PIPELINE_DOMAIN}
       # Workers' inbox/outbox download URLs are built from this
       # (pipeline-edge's tailnet listener, not the orchestrator's own port).

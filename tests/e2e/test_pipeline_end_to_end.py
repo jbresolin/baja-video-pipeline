@@ -32,6 +32,19 @@ def job_of(system, job_id: str) -> dict:
     return system.harness.job(job_id)
 
 
+def submit(browser, path: str, **fields) -> None:
+    """Post an admin form like a browser; success is a 303 back to the page."""
+    response = browser.post(
+        path, data=fields, headers={"Content-Type": "application/x-www-form-urlencoded"}
+    )
+    assert response.status_code == 303, response.text
+
+
+def admin_api(system, path: str) -> dict:
+    """Read the orchestrator directly with the admin token (to look up ids)."""
+    return system.harness.client.get(path, headers=system.harness.admin_headers).json()
+
+
 def test_a_whatsapp_video_reaches_the_studio_through_the_real_services(system):
     # --- Setup: the studio first, so it is online (heartbeat within 45 s)
     # when the render is offered and the orchestrator chooses a direct push.
@@ -39,13 +52,38 @@ def test_a_whatsapp_video_reaches_the_studio_through_the_real_services(system):
     master = system.start_worker(WorkerRole.MASTER, "master.test")
     volunteer = system.start_worker(WorkerRole.WORKER, "volunteer.test")
     master_id, volunteer_id = master.config.worker_id, volunteer.config.worker_id
-    system.harness.add_team(42, "Equipe Mangue Baja")
+
+    # --- 0. The admin prepares the event on the admin pages (plain HTML
+    # forms, like a browser): a prova, the team of car 42, an allowed
+    # contact whose videos default to that prova, and "allowlist" intake.
+    admin = system.admin_ui
+    submit(admin, "/review/admin/provas/create", name="Enduro")
+    submit(admin, "/review/admin/teams/save", car_number="42", team_name="Equipe Mangue Baja")
+    enduro_id = next(p["id"] for p in admin_api(system, "/provas")["provas"])
+    submit(
+        admin,
+        "/review/admin/contacts/create",
+        phone="+55 81 99876-5432",
+        display_name="Maria (filmagem)",
+        status="allowed",
+        default_prova_id=str(enduro_id),
+    )
+    submit(
+        admin,
+        "/review/admin/settings",
+        intake_mode="allowlist",
+        inbox_hold_gb="22",
+        proxy_evict_min_free_gb="10",
+        installer_download_url="",
+    )
 
     # --- 1. Intake: the fake CDN serves the encrypted file and a fake
-    # Evolution webhook announces it. The orchestrator decrypts it into the
-    # inbox and creates the job.
-    job_id = receive_job(system.harness, SAMPLE_VIDEO_BYTES)
+    # Evolution webhook announces it, from that contact. The orchestrator
+    # decrypts it into the inbox and creates the job, with the contact's
+    # default prova already filled in.
+    job_id = receive_job(system.harness, SAMPLE_VIDEO_BYTES, sender_phone="5581998765432")
     inbox_file = system.harness.context.layout.inbox_path(job_id, ".mp4")
+    assert job_of(system, job_id)["prova"] == "Enduro"
 
     # --- 2. Holders and proxy happen on their own: both workers download
     # the raw through "Caddy", the first holder renders and uploads the

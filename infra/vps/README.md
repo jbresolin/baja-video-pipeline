@@ -67,8 +67,10 @@ Files in this directory:
   Evolution accepts for that instance's own routes.
 * **Only secrets are edited on the server.** Reviewer logins, WhatsApp
   senders, provas, teams, enrollment tokens and the intake settings are pages
-  of the review UI under `/review/admin/` (admins only). `.env` keeps the
-  secrets and a few first-start defaults (§3, §4).
+  of the review UI under `/review/admin/` (admins only). Provas and teams come
+  from the Baja results API (`https://api.bajasaebrasil.net`) for the event
+  set on the Settings page, synced every 6 h; the VPS needs outbound HTTPS to
+  it. `.env` keeps the secrets and a few first-start defaults (§3, §4).
 
 ---
 
