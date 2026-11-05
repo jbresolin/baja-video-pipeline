@@ -1,4 +1,4 @@
-"""Words and small helpers for the admin pages (pt-BR: the operator and reviewers are Brazilian).
+"""Labels and small helpers for the admin pages (words from the pt-BR catalog).
 
 Admin pages are plain HTML forms. After a successful change the browser is
 redirected back to the page with `?feito=<key>`, and the page shows the
@@ -12,74 +12,56 @@ from datetime import datetime
 
 from fastapi import Request
 from fastapi.responses import RedirectResponse, Response
+from markupsafe import Markup
 
+from review_ui.catalog import text
+from review_ui.errors import error_markup
+from review_ui.event_log_view import kind_text
 from review_ui.orchestrator_client import OrchestratorError
-from shared.models import Event
+from shared.models import Event, UserRole, WorkerRole
 
-# The admin sub-navigation: (path under /review/admin/, label, area for the audit).
-SECTIONS = [
-    ("users", "Usuários"),
-    ("contacts", "Contatos"),
-    ("provas", "Provas"),
-    ("teams", "Equipes"),
-    ("enrollment", "Cadastro de PCs"),
-    ("workers", "Workers"),
-    ("settings", "Configurações"),
-]
+# The admin sub-navigation: (path under /review/admin/, label).
+SECTION_PATHS = ["users", "contacts", "provas", "teams", "enrollment", "workers", "settings"]
+SECTIONS = [(path, text(f"admin.section.{path}")) for path in SECTION_PATHS]
 
-ROLE_LABELS = {"reviewer": "Revisor", "admin": "Admin"}
-CONTACT_STATUS_LABELS = {
-    "allowed": "Permitido",
-    "blocked": "Bloqueado",
-    "unknown": "Desconhecido",
-}
-TOKEN_STATUS_LABELS = {
-    "unused": "Não usado",
-    "used": "Usado",
-    "expired": "Expirado",
-    "revoked": "Revogado",
-}
-WORKER_ROLE_LABELS = {"master": "Master", "worker": "Worker", "studio": "Estúdio"}
-INTAKE_MODE_LABELS = {
-    "open": "Aberto (todos, menos bloqueados)",
-    "allowlist": "Só permitidos",
-}
 
-# ?feito=<key> → what the page says after a successful change.
-DONE_MESSAGES = {
-    "user_created": "Usuário criado.",
-    "user_updated": "Usuário atualizado.",
-    "contact_created": "Contato adicionado.",
-    "contact_updated": "Contato atualizado.",
-    "prova_created": "Prova adicionada.",
-    "prova_updated": "Prova atualizada.",
-    "provas_reordered": "Ordem das provas salva.",
-    "team_saved": "Equipe salva.",
-    "team_deleted": "Equipe removida (ou correção desfeita).",
-    "synced": "Sincronizado com o site de resultados.",
-    "token_revoked": "Token revogado.",
-    "worker_revoked": "Worker revogado. Remova o PC do tailnet no console do Tailscale.",
-    "settings_updated": "Configurações salvas.",
-}
+def _labels(prefix: str, values) -> dict[str, str]:
+    """{value: catalog text of "<prefix>.<value>"} for each value, in order."""
+    return {str(value): text(f"{prefix}.{value}") for value in values}
 
-# Orchestrator error codes in words. The orchestrator's own English
-# sentence is added after it, for details (which user, which prova...).
-ERROR_TEXTS = {
-    "already_exists": "Já existe.",
-    "conflict": "Não é possível agora.",
-    "not_found": "Não encontrado (talvez alguém removeu agora).",
-    "validation_error": "Algum campo está inválido.",
-    "forbidden": "Só administradores podem fazer isso.",
+
+ROLE_LABELS = _labels("role", [role.value for role in UserRole])
+CONTACT_STATUS_LABELS = _labels("contact_status", ["allowed", "blocked", "unknown"])
+TOKEN_STATUS_LABELS = _labels("token_status", ["unused", "used", "expired", "revoked"])
+WORKER_ROLE_LABELS = _labels("worker_role", [role.value for role in WorkerRole])
+INTAKE_MODE_LABELS = _labels("intake_mode", ["open", "allowlist"])
+
+# ?feito=<key> → what the page says after a successful change (catalog "done.<key>").
+DONE_KEYS = {
+    "user_created",
+    "user_updated",
+    "contact_created",
+    "contact_updated",
+    "prova_created",
+    "prova_updated",
+    "provas_reordered",
+    "team_saved",
+    "team_deleted",
+    "synced",
+    "token_revoked",
+    "worker_revoked",
+    "settings_updated",
 }
 
 
 def done_message(key: str | None) -> str | None:
-    return DONE_MESSAGES.get(key or "")
+    """The fixed sentence for a ?feito= key; never text taken from the URL."""
+    return text(f"done.{key}") if key in DONE_KEYS else None
 
 
-def error_text(error: OrchestratorError) -> str:
-    words = ERROR_TEXTS.get(error.code, "O orquestrador recusou a alteração.")
-    return f"{words} ({error.message})"
+def orchestrator_error_text(error: OrchestratorError) -> Markup:
+    """The refusal in words, with the orchestrator's sentence (which user, which prova...)."""
+    return error_markup(error.code, error.message)
 
 
 def redirect_done(path: str, key: str) -> RedirectResponse:
@@ -106,7 +88,7 @@ def apply_change(
     except OrchestratorError as error:
         if error.status_code in (401, 403):
             raise
-        return show_page(error_text(error), error.status_code)
+        return show_page(orchestrator_error_text(error), error.status_code)
     return redirect_done(done_path, done_key)
 
 
@@ -130,7 +112,12 @@ def form_int(form: dict[str, str], name: str) -> int | None:
 class AuditLine:
     at: datetime
     who: str
-    text: str
+    # The kind of change in words ("usuário alterado"), or the kind's own
+    # name when the catalog has no words for it.
+    what: str
+    what_is_kind_name: bool
+    # The orchestrator's description of the change (English), or None.
+    detail: str | None
 
 
 def audit_lines(events: list[Event]) -> list[AuditLine]:
@@ -139,8 +126,17 @@ def audit_lines(events: list[Event]) -> list[AuditLine]:
     for event in events:
         who = event.actor.removeprefix("admin:")
         if event.actor == "admin":
-            who = "token de admin"
-        lines.append(AuditLine(at=event.at, who=who, text=event.reason or event.kind))
+            who = text("actor.admin_token")
+        words = kind_text(event.kind)
+        lines.append(
+            AuditLine(
+                at=event.at,
+                who=who,
+                what=words or event.kind,
+                what_is_kind_name=words is None,
+                detail=event.reason,
+            )
+        )
     return lines
 
 

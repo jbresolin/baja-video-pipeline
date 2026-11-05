@@ -47,7 +47,7 @@ def test_the_job_page_shows_restore_and_how_long_the_raw_is_kept(ui, fake_orches
     html = ui.get("/review/jobs/job-discarded-1").text
 
     assert 'data-action="restore"' in html
-    assert "Restore puts the job back to ready" in html
+    assert "até lá “Restaurar” volta o vídeo para pronto" in html
 
 
 def test_after_the_grace_period_the_page_warns_that_the_raw_may_be_gone():
@@ -55,7 +55,7 @@ def test_after_the_grace_period_the_page_warns_that_the_raw_may_be_gone():
     note = discard_note(job, utc_now())
     # A warning, saying restore needs a holder that still has the raw.
     assert note.level == "warning"
-    assert "only while a holder still has it" in note.text
+    assert "só funciona enquanto algum worker ainda tiver uma cópia" in note.text
 
 
 def test_no_discard_note_on_other_jobs():

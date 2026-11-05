@@ -6,6 +6,8 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 
 from review_ui import __version__, formatting
+from review_ui.catalog import SCRIPT_TEXT, markup, markup_plural
+from review_ui.job_view import describe_waiting_reason
 from review_ui.settings import ReviewUiSettings
 
 PACKAGE_DIR = Path(__file__).parent
@@ -43,14 +45,23 @@ def build_templates(settings: ReviewUiSettings) -> Jinja2Templates:
         duration=formatting.format_duration,
         short_id=formatting.short_id,
         iso=formatting.iso_utc,
-        clock=formatting.clock_utc,
+        clock=formatting.clock_text,
         rate=formatting.format_rate,
         state_label=formatting.state_label,
+        # '%g' with a decimal comma: 29.97 → "29,97" (shown numbers, never input values).
+        number=formatting.short_number,
     )
     templates.env.globals.update(
         static=static_url,
         media_url=partial(media_url, settings.public_base_url),
         percent=formatting.percent,
         age=formatting.age_text,
+        relative_time=formatting.relative_time_text,
+        waiting_reason=describe_waiting_reason,
+        # Every text a person reads comes from the catalog (review_ui/catalog/).
+        t=markup,
+        tn=markup_plural,
+        # The scripts' part of the catalog, embedded in every page (base.html).
+        script_text=SCRIPT_TEXT,
     )
     return templates

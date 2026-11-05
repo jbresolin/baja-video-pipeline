@@ -51,8 +51,11 @@ def event(**changes) -> Event:
         ("reviewer:ana", "ana"),
         # "evolution" is the WhatsApp gateway; people know it as WhatsApp.
         ("evolution", "WhatsApp"),
-        ("system", "system"),
-        ("admin", "admin"),
+        # The orchestrator itself, and the static admin token (not a person).
+        ("system", "sistema"),
+        ("admin", "token de admin"),
+        # An admin who signed in is shown by their user name.
+        ("admin:joao", "joao"),
         # A kind of actor added to the API later still shows, unchanged.
         ("robot:7", "robot:7"),
     ],
@@ -64,31 +67,40 @@ def test_actor_label(actor, expected):
 # --- What happened ---
 
 
+# describe_kind returns (words, is_the_kind_name): the second part is True
+# only when the UI has no words for the kind and shows its raw name.
+
+
 def test_state_change_shows_both_states_in_words():
-    # Underscores become spaces, and an arrow joins the old and new state.
-    assert describe_kind(event()) == "proxy ready → awaiting review"
+    # Both states get their pt-BR labels, joined by an arrow.
+    assert describe_kind(event()) == ("proxy pronto → aguardando revisão", False)
 
 
 def test_first_state_of_a_new_job_says_created():
     # A brand-new job has no previous state (from_state is None).
     assert describe_kind(event(from_state=None, to_state=JobState.RECEIVED)) == (
-        "created as received"
+        "criado como recebido",
+        False,
     )
 
 
 def test_known_kinds_get_friendly_words():
     assert describe_kind(event(kind="lease_expired", from_state=None, to_state=None)) == (
-        "task timed out (no heartbeat)"
+        "tarefa expirou (o worker parou de dar sinal)",
+        False,
     )
     assert describe_kind(event(kind="holder_confirmed", from_state=None, to_state=None)) == (
-        "confirmed its copy of the raw"
+        "confirmou sua cópia do original",
+        False,
     )
 
 
-def test_unknown_kind_is_still_shown_readably():
-    # The list of kinds is open; a new one must not crash or vanish.
+def test_unknown_kind_is_still_shown_as_its_name():
+    # The list of kinds is open; a new one must not crash or vanish. It is
+    # shown as its stored name (the template puts it in <code>), flagged True.
     assert describe_kind(event(kind="studio_went_fishing", from_state=None, to_state=None)) == (
-        "studio went fishing"
+        "studio_went_fishing",
+        True,
     )
 
 
@@ -102,7 +114,7 @@ def test_line_names_the_worker_when_someone_else_acted_on_it():
         event(kind="lease_expired", worker_id=MASTER_ID, from_state=None, to_state=None), NAMES
     )
 
-    assert line.actor == "system"
+    assert line.actor == "sistema"
     assert line.about_worker == "joao-desktop"
 
 

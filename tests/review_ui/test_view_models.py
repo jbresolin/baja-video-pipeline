@@ -68,7 +68,7 @@ def test_every_action_is_available_in_some_state():
 def test_status_strip_for_a_low_res_job_mentions_the_resend_request():
     notes = explain_status(make_job(low_res=True), {})
 
-    assert any("resend it as a document" in note.text for note in notes)
+    assert any("mandar de novo como documento" in note.text for note in notes)
 
 
 def test_status_strip_names_workers_with_active_leases():
@@ -88,7 +88,7 @@ def test_status_strip_names_workers_with_active_leases():
 
     notes = explain_status(job, {MASTER_ID: "joao-desktop"})
 
-    assert any(note.text == "joao-desktop is rendering the clip." for note in notes)
+    assert any(note.text == "joao-desktop está renderizando o clipe." for note in notes)
 
 
 def test_status_strip_says_when_no_worker_has_a_copy_yet():
@@ -97,9 +97,9 @@ def test_status_strip_says_when_no_worker_has_a_copy_yet():
     notes = explain_status(job, {})
 
     texts = [note.text for note in notes]
-    assert "No worker has a verified copy of the raw yet." in texts
+    assert "Nenhum worker tem ainda uma cópia verificada do original." in texts
     # A job still in "received" has no proxy by design: no eviction warning.
-    assert not any("evicted" in text for text in texts)
+    assert not any("liberar disco" in text for text in texts)
 
 
 def test_failure_note_is_an_error():
@@ -124,7 +124,7 @@ def test_delivered_job_shows_where_the_clip_is():
 
 def test_intake_text_says_who_sent_the_raw_and_how():
     # The sample job came from "Bruno" as a WhatsApp document named VID_0042.mp4.
-    assert intake_text(make_job()) == "Bruno as a WhatsApp document (VID_0042.mp4)"
+    assert intake_text(make_job()) == "Bruno, como documento do WhatsApp (VID_0042.mp4)"
 
 
 def test_intake_text_without_sender_or_filename():
@@ -132,7 +132,7 @@ def test_intake_text_without_sender_or_filename():
     source = job.source.model_copy(update={"sender_name": None, "original_filename": None})
 
     assert intake_text(job.model_copy(update={"source": source})) == (
-        "an unknown sender as a WhatsApp document"
+        "remetente desconhecido, como documento do WhatsApp"
     )
 
 
@@ -201,9 +201,9 @@ def test_worker_rows_carry_their_recent_events_newest_first():
     master, volunteer = rows
     # Newest first: the volunteer's last event is the system expiring its
     # lease (T0+35 min); its first is its enrollment by the admin.
-    assert volunteer.recent_events[0].what == "task timed out (no heartbeat)"
-    assert volunteer.recent_events[0].actor == "system"
-    assert volunteer.recent_events[-1].what == "worker enrolled"
+    assert volunteer.recent_events[0].what == "tarefa expirou (o worker parou de dar sinal)"
+    assert volunteer.recent_events[0].actor == "sistema"
+    assert volunteer.recent_events[-1].what == "worker cadastrado"
     # Actors that are workers are shown by name, from the fleet itself.
     assert master.recent_events[0].actor == "joao-desktop"
 
@@ -233,15 +233,19 @@ def test_job_counts_include_zero_states_and_keep_unknown_ones():
 
 
 def test_formatting_helpers():
+    # Brazilian format: decimal comma. Dates are covered in test_formats.py.
     assert formatting.format_bytes(None) == "—"
     assert formatting.format_bytes(999) == "999 B"
-    assert formatting.format_bytes(1_500_000_000) == "1.5 GB"
-    assert formatting.format_timecode(62.5) == "1:02.500"
+    assert formatting.format_bytes(1_500_000_000) == "1,5 GB"
+    assert formatting.format_timecode(62.5) == "1:02,500"
     assert formatting.format_duration(62.5) == "1:02"
     assert formatting.iso_utc(T0) == "2026-10-25T14:00:00Z"
-    assert formatting.age_text(T0 - timedelta(seconds=30), T0) == "30 s ago"
-    assert formatting.age_text(T0 - timedelta(hours=2), T0) == "2 h ago"
-    assert formatting.age_text(None, T0) == "never"
+    assert formatting.age_text(T0 - timedelta(seconds=30), T0) == "há 30 s"
+    assert formatting.age_text(T0 - timedelta(hours=2), T0) == "há 2 h"
+    assert formatting.age_text(None, T0) == "nunca"
     assert formatting.percent(30, 0) == 0
     assert formatting.percent(150, 100) == 100
-    assert formatting.state_label("awaiting_review") == "awaiting review"
+    # The API value stays English; people read the pt-BR label.
+    assert formatting.state_label("awaiting_review") == "aguardando revisão"
+    # A state this UI does not know yet still shows, as its name with spaces.
+    assert formatting.state_label("brand_new_state") == "brand new state"

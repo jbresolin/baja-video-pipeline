@@ -114,10 +114,11 @@ CASES = {
     "_fleet_body.html": fleet_context,
     "login.html": lambda: {"next_path": "/review/", "error": "Usuário ou senha incorretos."},
     "error.html": lambda: {
-        "title": "Not found",
+        "title": "Não encontrado",
         "status_code": 404,
         "code": "not_found",
-        "message": "no job x",
+        "explanation": "Não encontrado (talvez alguém removeu agora).",
+        "detail": "no job x",
     },
 }
 
@@ -182,7 +183,7 @@ def test_car_number_zero_is_shown_not_treated_as_missing():
     job = make_job(prova="Enduro", car_number=0, passagem=1)
     html = render("_queue_rows.html", {**queue_context(), "items": [JobSummary.from_job(job)]})
 
-    assert "car 0 · pass 1" in html
+    assert "carro 0 · passagem 1" in html
 
 
 # --- Event log and frame rate ---
@@ -191,17 +192,18 @@ def test_car_number_zero_is_shown_not_treated_as_missing():
 def test_job_event_log_shows_actor_change_and_reason():
     html = render("_job_events.html", job_context(delivered_job()))
 
-    # One line per event: who (bold), what, and the orchestrator's reason.
-    assert '<strong class="actor">ana</strong> awaiting review → ready' in html
-    assert "joao-desktop</strong> received → proxy ready" in html
-    assert '<span class="reason">proxy uploaded</span>' in html
+    # One line per event: who (bold), what (pt-BR state labels), and the
+    # orchestrator's reason, shown as it came and marked as English.
+    assert '<strong class="actor">ana</strong> aguardando revisão → pronto' in html
+    assert "joao-desktop</strong> recebido → proxy pronto" in html
+    assert '<span lang="en" class="reason">proxy uploaded</span>' in html
 
 
 def test_job_event_log_says_when_it_could_not_be_loaded():
     # event_lines is None when GET /jobs/{id}/events failed.
     html = render("_job_events.html", {**job_context(make_job()), "event_lines": None})
 
-    assert "Event log unavailable" in html
+    assert "Histórico indisponível" in html
     assert "<ol>" not in html
 
 
@@ -209,8 +211,8 @@ def test_job_event_log_says_when_there_are_no_events_yet():
     # An empty list (the call worked, nothing happened yet) is not a failure.
     html = render("_job_events.html", {**job_context(make_job()), "event_lines": []})
 
-    assert "No events recorded for this job yet." in html
-    assert "unavailable" not in html
+    assert "Nenhum evento registrado para este vídeo ainda." in html
+    assert "indisponível" not in html
 
 
 def test_event_reasons_are_escaped():
@@ -231,7 +233,8 @@ def test_job_page_carries_the_frame_rate_for_the_player():
 
     assert 'data-frame-rate="29.97"' in html
     # The shortcut list says which rate a frame step uses.
-    assert "one frame back / forward (29.97 fps)" in html
+    # (with a decimal comma: shown to people, unlike the data attribute)
+    assert "um quadro para trás / para a frente (29,97 fps)" in html
 
 
 def test_job_page_frame_rate_falls_back_to_30():
@@ -239,7 +242,7 @@ def test_job_page_frame_rate_falls_back_to_30():
     html = render("job.html", job_context(make_job()))
 
     assert 'data-frame-rate="30.0"' in html
-    assert "one frame back / forward (30 fps)" in html
+    assert "um quadro para trás / para a frente (30 fps)" in html
 
 
 def test_fleet_rows_show_recent_events_or_that_they_are_unavailable():
@@ -254,10 +257,10 @@ def test_fleet_rows_show_recent_events_or_that_they_are_unavailable():
     # event by someone else (the admin who enrolled it) names them...
     master_events = html[html.index(f'data-worker-id="{master_row.entry.worker.id}"') :]
     master_events = master_events[: master_events.index("</tr>")]
-    assert "claimed → uploaded" in master_events
+    assert "em processamento → enviado" in master_events
     assert '<strong class="actor">joao-desktop</strong>' not in master_events
-    assert '<strong class="actor">admin</strong>' in master_events
+    assert '<strong class="actor">token de admin</strong>' in master_events
     # ...and each event links to its job.
     assert '<a href="/review/jobs/job-done-1"><code>job-done</code></a>' in master_events
     # The volunteer's row says its events could not be loaded.
-    assert "Recent events unavailable." in html
+    assert "Eventos recentes indisponíveis." in html

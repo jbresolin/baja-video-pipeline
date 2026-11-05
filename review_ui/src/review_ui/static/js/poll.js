@@ -1,6 +1,7 @@
 // Auto-refresh: fetch an HTML fragment every few seconds and hand it to the
 // page. Pauses while the tab is hidden (an idle laptop does not keep the
 // VPS busy) and refreshes at once when the tab comes back.
+import { t } from "./text.js";
 
 const liveStatus = () => document.getElementById("live-status");
 
@@ -33,13 +34,13 @@ export function startPolling(container, onFragment) {
       const response = await fetch(url, { credentials: "same-origin", headers: { Accept: "text/html" } });
       if (response.ok) {
         onFragment(await response.text());
-        setLive("live", "ok");
+        setLive(t("script.live.ok"), "ok");
       } else {
         // Keep showing the last good data; say so instead of going blank.
-        setLive(`refresh failed (HTTP ${response.status})`, "error");
+        setLive(t("script.live.failed", { status: response.status }), "error");
       }
     } catch {
-      setLive("offline, retrying", "error");
+      setLive(t("script.live.offline"), "error");
     } finally {
       busy = false;
     }
@@ -49,6 +50,6 @@ export function startPolling(container, onFragment) {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refresh();
   });
-  setLive("live", "ok");
+  setLive(t("script.live.ok"), "ok");
   return { refresh };
 }

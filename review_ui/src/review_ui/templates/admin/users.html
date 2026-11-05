@@ -1,33 +1,32 @@
 {% extends "admin/_layout.html" %}
-{% block title %}Usuários{% endblock %}
+{% block title %}{{ t("admin.section.users") }}{% endblock %}
 {% block admin_content %}
-<p class="hint">Quem entra na revisão. Revisores revisam vídeos; administradores também abrem estas páginas.
-  Usuários não são apagados: desative quem não deve mais entrar.</p>
+<p class="hint">{{ t("users.hint") }}</p>
 
 <table class="admin-table">
-  <thead><tr><th>Usuário</th><th>Papel</th><th>Ativo</th><th>Nova senha</th><th></th></tr></thead>
+  <thead><tr><th>{{ t("users.col.username") }}</th><th>{{ t("users.col.role") }}</th><th>{{ t("users.col.active") }}</th><th>{{ t("users.col.new_password") }}</th><th></th></tr></thead>
   <tbody>
   {% for u in users %}
     <tr {% if u.disabled %}class="muted"{% endif %}>
       <td><strong>{{ u.username }}</strong></td>
       <td>
-        <select name="role" form="user-{{ loop.index }}" aria-label="Papel de {{ u.username }}">
+        <select name="role" form="user-{{ loop.index }}" aria-label="{{ t('users.role_of', username=u.username) }}">
           {% for value, label in role_labels.items() %}
           <option value="{{ value }}" {% if u.role == value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </td>
       <td>
-        <select name="disabled" form="user-{{ loop.index }}" aria-label="Situação de {{ u.username }}">
-          <option value="0" {% if not u.disabled %}selected{% endif %}>Ativo</option>
-          <option value="1" {% if u.disabled %}selected{% endif %}>Desativado</option>
+        <select name="disabled" form="user-{{ loop.index }}" aria-label="{{ t('users.status_of', username=u.username) }}">
+          <option value="0" {% if not u.disabled %}selected{% endif %}>{{ t("users.active") }}</option>
+          <option value="1" {% if u.disabled %}selected{% endif %}>{{ t("users.disabled") }}</option>
         </select>
       </td>
       <td><input name="password" type="password" form="user-{{ loop.index }}" autocomplete="new-password"
-                 minlength="8" maxlength="72" placeholder="deixe vazio para manter" aria-label="Nova senha de {{ u.username }}"></td>
+                 minlength="8" maxlength="72" placeholder="{{ t('users.keep_password') }}" aria-label="{{ t('users.new_password_of', username=u.username) }}"></td>
       <td>
         <form id="user-{{ loop.index }}" method="post" action="/review/admin/users/{{ u.username|urlencode }}">
-          <button type="submit">Salvar</button>
+          <button type="submit">{{ t("admin.save") }}</button>
         </form>
       </td>
     </tr>
@@ -35,15 +34,15 @@
   </tbody>
 </table>
 
-<h2>Adicionar usuário</h2>
+<h2>{{ t("users.add") }}</h2>
 <form method="post" action="/review/admin/users/create" class="inline-fields">
-  <label>Usuário <input name="username" required pattern="[A-Za-z0-9._@\-]+" maxlength="64" autocomplete="off"></label>
-  <label>Senha <input name="password" type="password" required minlength="8" maxlength="72" autocomplete="new-password"></label>
-  <label>Papel
+  <label>{{ t("users.username") }} <input name="username" required pattern="[A-Za-z0-9._@\-]+" maxlength="64" autocomplete="off"></label>
+  <label>{{ t("users.password") }} <input name="password" type="password" required minlength="8" maxlength="72" autocomplete="new-password"></label>
+  <label>{{ t("users.role") }}
     <select name="role">
       {% for value, label in role_labels.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
     </select>
   </label>
-  <button type="submit" class="primary">Adicionar</button>
+  <button type="submit" class="primary">{{ t("admin.add") }}</button>
 </form>
 {% endblock %}

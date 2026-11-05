@@ -1,17 +1,13 @@
 {% extends "admin/_layout.html" %}
-{% block title %}Provas{% endblock %}
+{% block title %}{{ t("admin.section.provas") }}{% endblock %}
 {% block admin_content %}
-<p class="hint">A lista que os revisores escolhem no formulário: primeiro as provas do site de resultados
-  (na ordem de lá), depois as manuais, para categorias de clipe que não são provas (“Abertura”, “Pódio”).
-  Desativar esconde a prova do formulário sem afetar vídeos que já a têm. Renomear (só manuais; as do site
-  são renomeadas pela sincronização) muda o nome em todos os vídeos, mas os clipes continuam na mesma pasta
-  do estúdio (coluna <em>Pasta</em>, fixa desde a criação).</p>
+<p class="hint">{{ t("provas.hint") }}</p>
 
 {% with back = "provas" %}{% include "admin/_sync_box.html" %}{% endwith %}
 
 {% if provas %}
 <table class="admin-table">
-  <thead><tr><th>Ordem</th><th>Nome</th><th>Origem</th><th>Pasta</th><th>Situação</th></tr></thead>
+  <thead><tr><th>{{ t("provas.col.order") }}</th><th>{{ t("provas.col.name") }}</th><th>{{ t("provas.col.source") }}</th><th>{{ t("provas.col.folder") }}</th><th>{{ t("provas.col.status") }}</th></tr></thead>
   <tbody>
   {% for p in provas %}
     <tr {% if not p.active %}class="muted"{% endif %}>
@@ -20,31 +16,31 @@
         {% if p.source == "manual" %}
         <form method="post" action="/review/admin/provas/{{ p.id }}/move" class="inline-form">
           <input type="hidden" name="direction" value="up">
-          <button type="submit" aria-label="Subir {{ p.name }}">↑</button>
+          <button type="submit" aria-label="{{ t('provas.move_up', name=p.name) }}">↑</button>
         </form>
         <form method="post" action="/review/admin/provas/{{ p.id }}/move" class="inline-form">
           <input type="hidden" name="direction" value="down">
-          <button type="submit" {% if loop.last %}disabled{% endif %} aria-label="Descer {{ p.name }}">↓</button>
+          <button type="submit" {% if loop.last %}disabled{% endif %} aria-label="{{ t('provas.move_down', name=p.name) }}">↓</button>
         </form>
         {% else %}{{ loop.index }}{% endif %}
       </td>
       <td>
         {% if p.source == "manual" %}
         <form method="post" action="/review/admin/provas/{{ p.id }}" class="inline-fields">
-          <input name="name" value="{{ p.name }}" required maxlength="64" aria-label="Nome da prova {{ p.name }}">
-          <button type="submit">Renomear</button>
+          <input name="name" value="{{ p.name }}" required maxlength="64" aria-label="{{ t('provas.name_of', name=p.name) }}">
+          <button type="submit">{{ t("provas.rename") }}</button>
         </form>
         {% else %}
         <strong>{{ p.name }}</strong>
         {% endif %}
       </td>
-      <td>{% if p.source == "manual" %}manual{% else %}site <code>{{ p.external_id }}</code>{% endif %}</td>
+      <td>{% if p.source == "manual" %}{{ t("source.manual") }}{% else %}{{ t("source.site") }} <code>{{ p.external_id }}</code>{% endif %}</td>
       <td><code>{{ p.slug }}/</code></td>
       <td>
         <form method="post" action="/review/admin/provas/{{ p.id }}" class="inline-form">
           <input type="hidden" name="active" value="{{ '0' if p.active else '1' }}">
-          <span>{{ "Ativa" if p.active else "Inativa" }}</span>
-          <button type="submit">{{ "Desativar" if p.active else "Reativar" }}</button>
+          <span>{{ t("provas.active") if p.active else t("provas.inactive") }}</span>
+          <button type="submit">{{ t("provas.deactivate") if p.active else t("provas.reactivate") }}</button>
         </form>
       </td>
     </tr>
@@ -52,12 +48,12 @@
   </tbody>
 </table>
 {% else %}
-<p class="empty">Nenhuma prova ainda. Configure o evento e sincronize, ou adicione uma manual abaixo.</p>
+<p class="empty">{{ t("provas.empty") }}</p>
 {% endif %}
 
-<h2>Adicionar prova manual</h2>
+<h2>{{ t("provas.add") }}</h2>
 <form method="post" action="/review/admin/provas/create" class="inline-fields">
-  <label>Nome <input name="name" required maxlength="64" placeholder="Ex.: Abertura, Bastidores, Pódio"></label>
-  <button type="submit" class="primary">Adicionar</button>
+  <label>{{ t("provas.name") }} <input name="name" required maxlength="64" placeholder="{{ t('provas.name.placeholder') }}"></label>
+  <button type="submit" class="primary">{{ t("admin.add") }}</button>
 </form>
 {% endblock %}

@@ -83,7 +83,7 @@ def test_the_header_shows_the_signed_in_user_and_a_logout_button(ui, fake_orches
 
     # The name comes from GET /auth/me (the orchestrator), never from a header.
     assert fake_orchestrator.requests_to("GET", "/auth/me")
-    assert 'title="Signed in as ana (reviewer)"' in html
+    assert 'title="Conectado como ana (Revisor)"' in html
     assert 'action="/review/logout"' in html
     # Ana is a reviewer: no Admin link for her.
     assert 'href="/review/admin/"' not in html

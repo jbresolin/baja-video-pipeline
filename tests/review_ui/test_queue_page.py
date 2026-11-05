@@ -40,9 +40,10 @@ def test_queue_row_shows_thumbnail_sender_and_failure_message(ui):
     assert 'src="/thumbs/job-awaiting-1.jpg"' in html
     # The sender's WhatsApp name helps reviewers recognise who sent it.
     assert "Bruno" in html
-    # A failed job shows the worker's error right in the list.
-    assert "ffmpeg exited: moov atom not found" in html
-    # The received time is a <time> element the browser turns into local time.
+    # A failed job shows the worker's error right in the list, marked as
+    # English (it is the worker's own words, not the UI's).
+    assert '<span lang="en">ffmpeg exited: moov atom not found</span>' in html
+    # The received time is a <time> element the page script keeps current.
     assert '<time datetime="2026-10-25T14:00:00Z"' in html
 
 
@@ -53,7 +54,7 @@ def test_low_res_jobs_get_a_badge(ui, fake_orchestrator):
     html = ui.get("/review/").text
 
     # Exactly one badge: the low_res job has it, the others do not.
-    assert html.count(">low-res</span>") == 1
+    assert html.count(">baixa qualidade</span>") == 1
 
 
 def test_state_filter_is_passed_to_the_orchestrator(ui, fake_orchestrator):
@@ -135,4 +136,4 @@ def test_empty_queue_says_so(ui, fake_orchestrator):
 
     html = ui.get("/review/").text
 
-    assert "Nothing here" in html
+    assert "Nada aqui" in html

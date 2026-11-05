@@ -3,8 +3,9 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from review_ui.catalog import text
 from review_ui.event_log_view import EventLine, event_lines_newest_first
-from review_ui.formatting import percent
+from review_ui.formatting import percent, short_id
 from review_ui.queue_view import STATES_IN_PIPELINE_ORDER, same_prova
 from shared.models import Event, FleetResponse, FleetWorker, ManifestEntry, WorkerRole
 
@@ -68,7 +69,14 @@ def build_worker_rows(
         worker = entry.worker
         cap = worker.storage_cap_bytes
         used = max(0, cap - worker.free_bytes)
-        leases = [f"{lease.task_kind.value} · {lease.job_id[:8]}" for lease in entry.leases]
+        leases = [
+            text(
+                "fleet.lease",
+                task=text(f"task.doing.{lease.task_kind.value}"),
+                job=short_id(lease.job_id),
+            )
+            for lease in entry.leases
+        ]
         events = events_by_worker.get(worker.id)
         recent = None if events is None else event_lines_newest_first(events, worker_names)
         rows.append(WorkerRow(entry, used, percent(used, cap), leases, recent))

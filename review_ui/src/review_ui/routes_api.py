@@ -17,33 +17,28 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from review_ui.catalog import text
 from review_ui.errors import UiRequestError
+from review_ui.job_view import describe_waiting_reason
 from review_ui.request_context import orchestrator_for
 from shared.models import ReviewAction, ReviewUpdate
 
 router = APIRouter(prefix="/review/api")
 
 # What the page says after each successful action.
-SUCCESS_MESSAGES = {
-    ReviewAction.SAVE: "Saved.",
-    ReviewAction.READY: "Marked ready. A holder will render the clip.",
-    ReviewAction.REPROCESS: "Sent back to ready; the clip will be rendered again.",
-    ReviewAction.RETRY: "Retrying: the job is back to ready.",
-    ReviewAction.DISCARD: "Discarded. The raw is kept for a while; Restore undoes this.",
-    ReviewAction.RESTORE: "Restored: the job is back where it was before the discard.",
-}
+SUCCESS_MESSAGES = {action: text(f"action_done.{action.value}") for action in ReviewAction}
 
 
 async def _read_json_body(request: Request) -> dict:
     content_type = request.headers.get("content-type", "")
     if content_type.split(";")[0].strip().lower() != "application/json":
-        raise UiRequestError(415, "validation_error", "send the body as application/json")
+        raise UiRequestError(415, "validation_error", text("error.send_as_json"))
     try:
         body = json.loads(await request.body() or b"{}")
     except json.JSONDecodeError as error:
-        raise UiRequestError(400, "validation_error", f"body is not valid JSON: {error}") from error
+        raise UiRequestError(400, "validation_error", text("error.body_not_json")) from error
     if not isinstance(body, dict):
-        raise UiRequestError(400, "validation_error", "body must be a JSON object")
+        raise UiRequestError(400, "validation_error", text("error.body_not_object"))
     return body
 
 
@@ -55,8 +50,10 @@ async def update_review(request: Request, job_id: str) -> JSONResponse:
     except ValidationError as error:
         # Checked here too so an obviously bad request (e.g. out <= in)
         # gets a clear message without a round trip.
+        # Pydantic's sentences are English: they go after the pt-BR words.
         messages = "; ".join(item["msg"] for item in error.errors())
-        raise UiRequestError(400, "validation_error", messages) from error
+        people_text = f"{text('error.validation_error')} ({messages})"
+        raise UiRequestError(400, "validation_error", people_text) from error
     orchestrator = orchestrator_for(request)
     # The orchestrator call blocks, so it runs in a worker thread.
     job = await run_in_threadpool(orchestrator.update_review, job_id, update)
@@ -70,13 +67,18 @@ async def regenerate_proxy(request: Request, job_id: str) -> JSONResponse:
     await _read_json_body(request)
     orchestrator = orchestrator_for(request)
     answer = await run_in_threadpool(orchestrator.regenerate_proxy, job_id)
-    return JSONResponse(answer.model_dump(mode="json"), status_code=202)
+    body = answer.model_dump(mode="json")
+    if answer.waiting_reason:
+        # The orchestrator's reason is English; the page shows this instead.
+        described = describe_waiting_reason(answer.waiting_reason)
+        body["waiting_text"] = " ".join(part for part in (described.text, described.detail) if part)
+    return JSONResponse(body, status_code=202)
 
 
 @router.get("/teams/{car_number}")
 def get_team(request: Request, car_number: int = Path(ge=0, le=9999)) -> JSONResponse:
     team = orchestrator_for(request).get_team(car_number)
     if team is None:
-        message = f"car {car_number} is not in the teams list"
+        message = text("error.car_not_in_teams", car_number=car_number)
         raise UiRequestError(404, "not_found", message)
     return JSONResponse(team.model_dump(mode="json"))

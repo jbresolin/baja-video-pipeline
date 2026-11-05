@@ -3,23 +3,19 @@
 With no studio online the clip goes to the VPS outbox; the studio later
 pulls it; the worker that rendered it keeps a copy, and the master
 archives every version. Nothing in the UI said so, so reviewers could not
-tell whether a clip "went anywhere". These sentences (pt-BR, as the
-operators asked) appear in the job page's status strip and the clips page.
+tell whether a clip "went anywhere". These sentences (catalog keys
+"delivery.*") appear in the job page's status strip and the clips page.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 
+from review_ui.catalog import text
 from shared.models import DeliveryRoute, Job, JobSummary
 
-IN_OUTBOX_STUDIO_OFFLINE = "Clipe na caixa de saída do servidor (estúdio offline)."
-OUTBOX_COPY_UNTIL_ARCHIVED = (
-    "Uma cópia continua na caixa de saída do servidor até o mestre arquivar o clipe."
-)
-ROUTE_TEXT = {
-    DeliveryRoute.DIRECT: "enviado direto pelo worker",
-    DeliveryRoute.OUTBOX: "buscado pelo estúdio na caixa de saída",
-}
+IN_OUTBOX_STUDIO_OFFLINE = text("delivery.in_outbox_studio_offline")
+OUTBOX_COPY_UNTIL_ARCHIVED = text("delivery.outbox_copy_until_archived")
+ROUTE_TEXT = {route: text(f"delivery.route.{route.value}") for route in DeliveryRoute}
 
 
 @dataclass(frozen=True)
@@ -27,7 +23,7 @@ class DeliveryNote:
     # "info", "success" or "warning" (the status strip's colours).
     level: str
     text: str
-    # A time to show after the text, in the browser's local time (m.time).
+    # A time to show after the text, as a São Paulo time (m.time).
     at: datetime | None = None
 
 
@@ -45,7 +41,7 @@ def delivery_notes(job: Job) -> list[DeliveryNote]:
         notes.append(
             DeliveryNote(
                 "success",
-                f"Entregue ao estúdio ({route}, {clip.relative_path}) às",
+                text("delivery.delivered_at", route=route, path=clip.relative_path),
                 at=clip.delivered_at,
             )
         )
@@ -62,24 +58,19 @@ def archive_notes(job: Job) -> list[DeliveryNote]:
         notes = [
             DeliveryNote(
                 "success",
-                f"Arquivado no mestre ({current.archive_relative_path}) às",
+                text("delivery.archived_at", path=current.archive_relative_path),
                 at=current.archived_at,
             )
         ]
     else:
-        notes = [
-            DeliveryNote(
-                "info",
-                "Ainda não arquivado no mestre (o worker que renderizou guarda uma cópia).",
-            )
-        ]
+        notes = [DeliveryNote("info", text("delivery.not_archived"))]
     older = [v for v in job.clip_versions if current is None or v.version != current.version]
     if older:
         archived_older = sum(1 for v in older if v.archived_at is not None)
         notes.append(
             DeliveryNote(
                 "info",
-                f"Versões anteriores no arquivo do mestre: {archived_older} de {len(older)}.",
+                text("delivery.older_versions", archived=archived_older, total=len(older)),
             )
         )
     return notes

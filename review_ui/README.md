@@ -7,8 +7,8 @@ session: the `/review/login` page signs in through the orchestrator and keeps
 the token in the `bvp_session` cookie (httpOnly, Secure, SameSite=Lax), which
 every page sends on as `Authorization: Bearer …`. The orchestrator checks it
 and records the reviewer in `Job.reviewed_by`. Admins also get the pages
-under `/review/admin/` (pt-BR): users, contacts, provas, teams, enrollment,
-workers, settings.
+under `/review/admin/`: users, contacts, provas, teams, enrollment,
+workers, settings. The whole UI is in pt-BR (see "Language" below).
 
 ```
 browser ──443──▶ Caddy ──/review*──▶ review-ui:8001 ──HTTP API──▶ orchestrator:8000
@@ -41,6 +41,35 @@ Every action sends the version of the job the page was loaded with
 (`expected_version`). If someone else changed the job first, the
 orchestrator answers 409. The page then reloads and says so, listing the
 values the reviewer had typed.
+
+## Language (pt-BR, LIVESTACK-39)
+
+Every text a person reads is pt-BR and lives in **one catalog**, the
+`catalog/` package (split into modules by area only to keep files short;
+a key may be defined once). Keys are English (`queue.title`,
+`state.awaiting_review`, `error.not_found`); no sentence is written inline
+in a template, a view or a script.
+
+* Views call `text(key, **values)`; templates call `t(key, ...)` and
+  `tn(key, count)` (plurals: `<key>.one` / `<key>.other`). Entries may hold
+  a little HTML (`<kbd>`, `<code>`, links); the values filled in are escaped.
+* The scripts get the `script.*` entries as JSON in every page
+  (`<script id="ui-text">` in `base.html`), read by `static/js/text.js`.
+  Same `{name}` placeholders on both sides.
+* API values stay English (job states, actions, error codes, event kinds in
+  the DB); only their labels are translated. Text from the orchestrator or a
+  worker (failure messages, event reasons, refusal details) is shown as it
+  came, inside `lang="en"`. The two waiting reasons the orchestrator writes
+  itself are recognised and shown in pt-BR.
+* Dates: `05/11/2026 09:23:41`, 24-hour clock, America/Sao_Paulo, whatever
+  the laptop's zone; relative ones read `há 5 min (09:18)`. Numbers shown to
+  people use a decimal comma (`1,5 GB`, `29,97 fps`, `1:02,500`); form input
+  values keep the point HTML needs. `formatting.py` and `static/js/format.js`
+  are tested with the same cases (`tests/review_ui/test_formats.py`, Node).
+* Guards: `test_pt_br_guard.py` renders every page and partial and fails on
+  common English UI words (allowlist for WhatsApp, proxy, HDR, codec names…);
+  it also checks the scripts' string literals. `test_catalog.py` checks that
+  every state, action, task, error code and event kind has a text.
 
 ## Settings
 
@@ -86,4 +115,6 @@ base Caddy as `bvp-review-ui:8001` on `baja-edge`.
 | `errors.py` | Error page for browsers, JSON errors for scripts, 401 sign-in challenge |
 | `job_view.py`, `queue_view.py`, `clips_and_fleet_view.py` | Plain functions that turn API data into what the pages show |
 | `event_log_view.py` | Orchestrator events (`Event`) in words: actor names, state changes, reasons; used by the job and fleet pages |
-| `templates/`, `static/` | Jinja2 templates; CSS and small ES modules (no build step) |
+| `catalog/` | Every pt-BR text the UI shows, by English key (see "Language") |
+| `formatting.py` | Dates (São Paulo time) and numbers (decimal comma) for the templates |
+| `templates/`, `static/` | Jinja2 templates; CSS and small ES modules (no build step); `js/text.js` and `js/format.js` mirror the two above |

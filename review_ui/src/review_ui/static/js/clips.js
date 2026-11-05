@@ -1,16 +1,17 @@
 // Clips page: copy buttons for studio paths, and the prova filter.
 import { autoSubmit, copyText } from "./common.js";
+import { t } from "./text.js";
 
 for (const button of document.querySelectorAll("[data-copy]")) {
   button.addEventListener("click", async () => {
     try {
       await copyText(button.dataset.copy);
-      button.textContent = "Copied";
+      button.textContent = t("script.copied");
     } catch {
-      button.textContent = "Copy failed";
+      button.textContent = t("script.copy_failed");
     }
     setTimeout(() => {
-      button.textContent = "Copy";
+      button.textContent = t("script.copy");
     }, 1500);
   });
 }

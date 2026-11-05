@@ -1,6 +1,6 @@
 [project]
 name = "review-ui"
-version = "0.2.0"
+version = "0.3.0"
 description = "Reviewer web UI (queue, cut marks, clips, fleet) that talks to the orchestrator over HTTP"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -8,6 +8,8 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
     "jinja2>=3.1",
+    # Time zone data for America/Sao_Paulo when the OS has none (slim images).
+    "tzdata>=2024.1",
 ]
 
 [tool.uv.sources]

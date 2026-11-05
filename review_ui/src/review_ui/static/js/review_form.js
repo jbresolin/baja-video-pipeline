@@ -5,6 +5,7 @@
 // orchestrator answers 409; we then reload the page and tell the reviewer,
 // listing the values they had typed so nothing is silently lost.
 import { errorMessage, flashAfterReload, sendJson, showFlash } from "./common.js";
+import { t } from "./text.js";
 
 // The action Ctrl+Enter triggers: whichever "move it forward" button exists.
 const PRIMARY_ACTIONS = ["ready", "reprocess", "retry"];
@@ -41,13 +42,13 @@ export function setupReviewForm({ form, jobElement }) {
     return body;
   }
 
+  // "Os valores que você tinha digitado: prova Enduro, carro 42." (or nothing).
   function describeValues(body) {
     const parts = [];
-    for (const [key, label] of [["prova", "prova"], ["car_number", "car"], ["passagem", "pass"],
-      ["cut_in_s", "in"], ["cut_out_s", "out"]]) {
-      if (body[key] !== undefined) parts.push(`${label} ${body[key]}`);
+    for (const key of ["prova", "car_number", "passagem", "cut_in_s", "cut_out_s"]) {
+      if (body[key] !== undefined) parts.push(t(`script.value.${key}`, { value: body[key] }));
     }
-    return parts.length ? ` Your values were: ${parts.join(", ")}.` : "";
+    return parts.length ? ` ${t("script.your_values", { values: parts.join(", ") })}` : "";
   }
 
   function markMissing(fields) {
@@ -62,7 +63,7 @@ export function setupReviewForm({ form, jobElement }) {
 
   async function run(action) {
     if (busy || !form.querySelector(`[data-action="${action}"]`)) return;
-    if (action === "discard" && !window.confirm("Discard this video? You can restore it from “Descartados”.")) return;
+    if (action === "discard" && !window.confirm(t("script.confirm_discard"))) return;
     // Discard and restore need no fields; sending none keeps them from failing on a half-typed one.
     const withoutFields = action === "discard" || action === "restore";
     const body = withoutFields ? { expected_version: version, action } : collect(action);
@@ -76,7 +77,7 @@ export function setupReviewForm({ form, jobElement }) {
       unsavedChanges = false;
       markMissing([]);
       if (action === "save") {
-        showFlash(`${result.data.message} (v${version})`, "success");
+        showFlash(t("script.saved_version", { message: result.data.message, version }), "success");
       } else {
         // The state changed, so the buttons and status do too: reload.
         flashAfterReload(result.data.message, "success");
@@ -87,9 +88,12 @@ export function setupReviewForm({ form, jobElement }) {
     if (result.data?.reload) {
       // 409: the page is out of date. Reload with the current job and say why.
       const current = result.data.error.details?.current_version;
-      const why = result.data.error.code === "version_conflict"
-        ? `Someone else changed this job${current ? ` (now v${current})` : ""}; the page was reloaded with their version.`
-        : `That action is no longer possible (${result.data.error.message}); the page was reloaded.`;
+      let why = t("script.no_longer_possible");
+      if (result.data.error.code === "version_conflict") {
+        why = current
+          ? t("script.version_conflict_now", { version: current })
+          : t("script.version_conflict");
+      }
       flashAfterReload(why + describeValues(body), "warning");
       unsavedChanges = false;
       window.location.reload();
@@ -109,7 +113,7 @@ export function setupReviewForm({ form, jobElement }) {
       teamText.textContent = "";
       return;
     }
-    teamText.textContent = "Looking up the team…";
+    teamText.textContent = t("script.team_looking_up");
     const result = await sendJson(`/review/api/teams/${carNumber}`, "GET");
     // Ignore a late answer for a number the reviewer already changed.
     if (numberOrNull(form.elements.car_number.value, (t) => parseInt(t, 10)) !== carNumber) return;
@@ -118,11 +122,11 @@ export function setupReviewForm({ form, jobElement }) {
       const school = result.data.school ? ` (${result.data.school})` : "";
       const name = document.createElement("strong");
       name.textContent = result.data.team_name;
-      teamText.append("Team: ", name, school);
+      teamText.append(t("script.team"), name, school);
     } else if (result.status === 404) {
-      teamText.textContent = `Car ${carNumber} is not in the Baja app. Check the number.`;
+      teamText.textContent = t("script.team_not_found", { car: carNumber });
     } else {
-      teamText.textContent = `Team lookup unavailable: ${errorMessage(result)}`;
+      teamText.textContent = t("script.team_lookup_failed", { error: errorMessage(result) });
     }
   }
   form.elements.car_number.addEventListener("input", () => {

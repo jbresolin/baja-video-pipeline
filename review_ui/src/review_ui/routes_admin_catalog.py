@@ -9,6 +9,7 @@ from review_ui.admin_view import (
     audit_lines,
     form_text,
 )
+from review_ui.catalog import text
 from review_ui.forms import read_form
 from review_ui.request_context import admin_client_for, render_page
 from shared.models import (
@@ -88,7 +89,7 @@ def move_prova(request: Request, prova_id: int, form: dict = Depends(read_form))
     synced = [prova.id for prova in provas if prova.source != CatalogSource.MANUAL]
     manual = [prova.id for prova in provas if prova.source == CatalogSource.MANUAL]
     if prova_id not in manual:
-        return _provas_page(request, "Só provas manuais mudam de ordem aqui.", 404)
+        return _provas_page(request, text("provas.only_manual_move"), 404)
     new_order = synced + moved(manual, prova_id, form.get("direction", "up"))
     return apply_change(
         lambda: admin.reorder_provas(new_order),
@@ -109,7 +110,7 @@ def update_prova(request: Request, prova_id: int, form: dict = Depends(read_form
     try:
         body = UpdateProvaRequest(**changes)
     except ValueError:
-        return _provas_page(request, "O nome precisa ter de 1 a 64 caracteres.", 400)
+        return _provas_page(request, text("provas.name_length"), 400)
     return apply_change(
         lambda: admin_client_for(request).update_prova(prova_id, body),
         PROVAS_PATH,
@@ -159,9 +160,7 @@ def save_team(request: Request, form: dict = Depends(read_form)) -> Response:
             school_short=form_text(form, "school_short"),
         )
     except ValueError:
-        return _teams_page(
-            request, "Número do carro (0 a 9999) e nome da equipe são obrigatórios.", 400
-        )
+        return _teams_page(request, text("teams.required"), 400)
     return apply_change(
         lambda: admin_client_for(request).save_team(car_number, body),
         TEAMS_PATH,

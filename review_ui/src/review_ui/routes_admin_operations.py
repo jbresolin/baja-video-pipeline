@@ -10,9 +10,10 @@ from review_ui.admin_view import (
     admin_context,
     apply_change,
     audit_lines,
-    error_text,
     form_text,
+    orchestrator_error_text,
 )
+from review_ui.catalog import text
 from review_ui.forms import read_form
 from review_ui.orchestrator_client import OrchestratorError
 from review_ui.request_context import admin_client_for, render_page
@@ -30,7 +31,7 @@ WORKERS_PATH = "/review/admin/workers"
 SETTINGS_PATH = "/review/admin/settings"
 
 # The validity choices offered for a new token, in hours.
-VALIDITY_CHOICES = [(24, "1 dia"), (72, "3 dias"), (168, "7 dias"), (720, "30 dias")]
+VALIDITY_CHOICES = [(hours, text(f"enrollment.validity.{hours}")) for hours in (24, 72, 168, 720)]
 
 
 # --- Cadastro de PCs (enrollment tokens) ---
@@ -71,13 +72,13 @@ def create_token(request: Request, form: dict = Depends(read_form)) -> Response:
             valid_for_hours=int(form.get("valid_for_hours", "72")),
         )
     except ValueError:
-        return _enrollment_page(request, "Informe o nome do voluntário.", 400)
+        return _enrollment_page(request, text("enrollment.name_required"), 400)
     try:
         created = admin_client_for(request).create_enrollment_token(body)
     except OrchestratorError as error:
         if error.status_code in (401, 403):
             raise
-        return _enrollment_page(request, error_text(error), error.status_code)
+        return _enrollment_page(request, orchestrator_error_text(error), error.status_code)
     response = _enrollment_page(request, created=created)
     # The token is in this page: keep it out of the browser cache and history.
     response.headers["Cache-Control"] = "no-store"
@@ -175,8 +176,7 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
     except ValueError:
         return _settings_page(
             request,
-            "Os limites em GB precisam ser números positivos, os prazos em horas números"
-            " de 0 a 720, e o evento tem 4 letras ou números.",
+            text("settings.invalid"),
             400,
         )
     return apply_change(

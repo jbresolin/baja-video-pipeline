@@ -3,20 +3,21 @@
 //   [data-copy-from=id]   button copies the text of element #id (the new token)
 //   form[data-confirm]    asks before submitting (revoke, remove)
 //   select[data-autosubmit] submits its form when changed (contacts filter)
+import { t } from "./text.js";
 
 for (const button of document.querySelectorAll("[data-copy-from]")) {
   button.addEventListener("click", async () => {
     const text = document.getElementById(button.dataset.copyFrom)?.textContent ?? "";
     try {
       await navigator.clipboard.writeText(text.trim());
-      button.textContent = "Copiado ✓";
+      button.textContent = t("script.copied");
     } catch {
       // Clipboard blocked (e.g. not HTTPS): select the text so Ctrl+C works.
       const range = document.createRange();
       range.selectNodeContents(document.getElementById(button.dataset.copyFrom));
       window.getSelection().removeAllRanges();
       window.getSelection().addRange(range);
-      button.textContent = "Selecionado: Ctrl+C";
+      button.textContent = t("script.selected_press_ctrl_c");
     }
   });
 }

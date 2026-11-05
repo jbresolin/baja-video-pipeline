@@ -3,14 +3,17 @@
 Everything here is computed from the Job record alone (plus worker names
 from the fleet, when available), so it is plain functions that are easy to
 test without a server. The event log lines live in event_log_view.py.
+Every sentence comes from the pt-BR catalog (review_ui/catalog/).
 """
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
+from review_ui.catalog import text
 from review_ui.delivery_view import delivery_notes
 from review_ui.event_log_view import worker_label
-from review_ui.formatting import clock_utc
+from review_ui.formatting import clock_text, state_label
 from shared.models import Job, JobState, ReceivedAs, ReviewAction, TaskKind, utc_now
 from shared.state_machine import (
     DISCARDABLE_STATES,
@@ -19,32 +22,20 @@ from shared.state_machine import (
     RETRYABLE_STATES,
 )
 
-# One sentence per state: what is going on and what happens next.
+# One sentence per state: what is going on and what happens next. Built from
+# the catalog for every state, so a state without a sentence fails at import.
 STATE_EXPLANATIONS: dict[JobState, str] = {
-    JobState.RECEIVED: "Raw received. Waiting for a holder to download it and render the proxy.",
-    JobState.PROXY_READY: "Proxy uploaded; the job is entering the review queue.",
-    JobState.AWAITING_REVIEW: "Waiting for review: set the cut and the fields, then Ready.",
-    JobState.READY: "Reviewed. Waiting for a holder to claim the processing.",
-    JobState.CLAIMED: "A holder is rendering the clip.",
-    JobState.UPLOADED: "Clip rendered and sent. Waiting for the studio to confirm it.",
-    JobState.DELIVERED: "The studio confirmed the clip; cleanup is finishing.",
-    JobState.DONE: "Done: the clip is on the studio box.",
-    JobState.FAILED: "A worker could not process this job. Choose Retry or Discard.",
-    JobState.DISCARDED: "Discarded. Nothing more will happen to this job unless it is restored.",
+    state: text(f"explain.{state.value}") for state in JobState
 }
 
-# How a task reads in a sentence: "<worker> is <doing>".
+# How a task reads in a sentence: "<worker> está <doing>." and "falhou ao <verb>".
 TASK_DESCRIPTIONS: dict[TaskKind, str] = {
-    TaskKind.DOWNLOAD_RAW: "downloading the raw",
-    TaskKind.MAKE_PROXY: "rendering the proxy",
-    TaskKind.PROCESS: "rendering the clip",
-    TaskKind.DELIVER: "delivering the clip to the studio",
+    kind: text(f"task.doing.{kind.value}") for kind in TaskKind
 }
+TASK_VERBS: dict[TaskKind, str] = {kind: text(f"task.verb.{kind.value}") for kind in TaskKind}
 
 RECEIVED_AS_LABELS: dict[ReceivedAs, str] = {
-    ReceivedAs.DOCUMENT: "a WhatsApp document",
-    ReceivedAs.VIDEO: "a WhatsApp video (recompressed)",
-    ReceivedAs.TEST_UPLOAD: "a test upload",
+    received_as: text(f"received_as.{received_as.value}") for received_as in ReceivedAs
 }
 
 # Phone footage is about 30 fps; used when the job has no frame rate yet.
@@ -52,13 +43,17 @@ DEFAULT_FRAME_RATE = 30.0
 
 # Button text for each action, in the order the buttons appear.
 ACTION_LABELS: dict[ReviewAction, str] = {
-    ReviewAction.SAVE: "Save",
-    ReviewAction.READY: "Ready",
-    ReviewAction.REPROCESS: "Reprocess",
-    ReviewAction.RETRY: "Retry",
-    ReviewAction.DISCARD: "Discard",
-    ReviewAction.RESTORE: "Restore",
+    action: text(f"action.{action.value}") for action in ReviewAction
 }
+
+# Job.waiting_reason is an English sentence written by the orchestrator
+# (domain/review_queue.py and domain/task_results.py). The two kinds it
+# writes are put in pt-BR here; any other reason is shown as it came, marked
+# as English. A test keeps the first one equal to the orchestrator's.
+NO_HOLDER_ONLINE_REASON = "waiting for a holder of the raw to come back online (or be resumed)"
+_TASK_FAILED_ON = re.compile(
+    r"^(?P<kind>[a-z_]+) failed on (?P<worker>.+?): (?P<message>.*)$", re.DOTALL
+)
 
 
 @dataclass(frozen=True)
@@ -66,8 +61,32 @@ class StatusNote:
     # "info", "success", "warning" or "error": picks the colour in the strip.
     level: str
     text: str
-    # Shown after the text in the browser's local time (delivery notes).
+    # Shown after the text, as a São Paulo time (delivery notes).
     at: datetime | None = None
+    # The orchestrator's or a worker's own words (English, e.g. an ffmpeg
+    # error), shown after the text and marked lang="en". None when there are none.
+    detail: str | None = None
+
+
+@dataclass(frozen=True)
+class WaitingReason:
+    """Job.waiting_reason for people: pt-BR text, plus the English part we cannot translate."""
+
+    text: str
+    detail: str | None
+
+
+def describe_waiting_reason(reason: str) -> WaitingReason:
+    """Put the orchestrator's waiting reason in pt-BR when it is one we know."""
+    if reason == NO_HOLDER_ONLINE_REASON:
+        return WaitingReason(text("waiting.no_holder_online"), None)
+    match = _TASK_FAILED_ON.match(reason)
+    if match and match["kind"] in {kind.value for kind in TaskKind}:
+        task = TASK_VERBS[TaskKind(match["kind"])]
+        return WaitingReason(
+            text("waiting.task_failed_on", task=task, worker=match["worker"]), match["message"]
+        )
+    return WaitingReason("", reason)
 
 
 def available_actions(state: JobState) -> list[ReviewAction]:
@@ -97,23 +116,16 @@ def _state_level(state: JobState) -> str:
 
 
 def discard_note(job: Job, now: datetime) -> StatusNote | None:
-    """What "Restore" will do for a discarded job: within or past the grace period."""
+    """What "Restaurar" will do for a discarded job: within or past the grace period."""
     if job.state != JobState.DISCARDED:
         return None
-    back_to = (job.discarded_from or JobState.AWAITING_REVIEW).value.replace("_", " ")
+    back_to = state_label(job.discarded_from or JobState.AWAITING_REVIEW)
     ends_at = job.discard_grace_ends_at
     if ends_at is not None and now < ends_at:
         return StatusNote(
-            "info",
-            f"The raw is kept until {clock_utc(ends_at)}; until then Restore puts the job "
-            f"back to {back_to}.",
+            "info", text("explain.discard_grace", until=clock_text(ends_at), state=back_to)
         )
-    return StatusNote(
-        "warning",
-        "The grace period is over: holders may have deleted the raw. Restore works only "
-        "while a holder still has it (one that was offline, for example); otherwise the "
-        "video must be sent again.",
-    )
+    return StatusNote("warning", text("explain.discard_grace_over"))
 
 
 def explain_status(
@@ -126,42 +138,37 @@ def explain_status(
         notes.append(discarded)
 
     if job.waiting_reason:
-        # The orchestrator's own words for why the job is stuck.
-        notes.append(StatusNote("warning", job.waiting_reason))
+        # Why the job is stuck, in the orchestrator's words when we do not know them.
+        waiting = describe_waiting_reason(job.waiting_reason)
+        notes.append(StatusNote("warning", waiting.text, detail=waiting.detail))
 
     if job.failure:
         failure = job.failure
-        exit_text = f" (exit code {failure.exit_code})" if failure.exit_code is not None else ""
+        exit_code = (
+            text("explain.exit_code", code=failure.exit_code)
+            if failure.exit_code is not None
+            else ""
+        )
         who = worker_label(failure.worker_id, worker_names)
-        doing = TASK_DESCRIPTIONS[failure.task_kind]
-        notes.append(StatusNote("error", f"{who} failed {doing}{exit_text}: {failure.message}"))
+        task = TASK_VERBS[failure.task_kind]
+        sentence = text("explain.task_failed", who=who, task=task, exit_code=exit_code)
+        notes.append(StatusNote("error", sentence, detail=failure.message))
 
     if job.low_res:
-        notes.append(
-            StatusNote(
-                "warning",
-                "Arrived as a WhatsApp video, so it is recompressed (lower quality). "
-                "The bot asked the sender to resend it as a document.",
-            )
-        )
+        notes.append(StatusNote("warning", text("explain.low_res")))
 
     proxy_expected = job.state not in {JobState.RECEIVED, JobState.DISCARDED}
     if proxy_expected and not job.proxy_available:
-        notes.append(
-            StatusNote(
-                "warning",
-                "The proxy is not on the VPS (evicted to free disk). "
-                "Use “Request proxy” to have a holder render it again.",
-            )
-        )
+        notes.append(StatusNote("warning", text("explain.proxy_evicted")))
 
     confirmed = [h for h in job.holders if h.confirmed_at is not None]
     if job.state != JobState.DISCARDED and not confirmed:
-        notes.append(StatusNote("info", "No worker has a verified copy of the raw yet."))
+        notes.append(StatusNote("info", text("explain.no_verified_copy")))
 
     for lease in job.leases:
         who = worker_label(lease.worker_id, worker_names)
-        notes.append(StatusNote("info", f"{who} is {TASK_DESCRIPTIONS[lease.task_kind]}."))
+        doing = TASK_DESCRIPTIONS[lease.task_kind]
+        notes.append(StatusNote("info", text("explain.task_running", who=who, doing=doing)))
 
     # Where the clip is: studio, outbox, master archive (delivery_view.py).
     for note in delivery_notes(job):
@@ -170,11 +177,17 @@ def explain_status(
 
 
 def intake_text(job: Job) -> str:
-    """Who sent the raw and how: "Bruno as a WhatsApp document (VID_0042.mp4)"."""
-    sender = job.source.sender_name or "an unknown sender"
+    """Who sent the raw and how: "Bruno, como documento do WhatsApp (VID_0042.mp4)"."""
+    sender = job.source.sender_name or text("intake.unknown_sender")
     received_as = RECEIVED_AS_LABELS[job.source.received_as]
-    filename = f" ({job.source.original_filename})" if job.source.original_filename else ""
-    return f"{sender} as {received_as}{filename}"
+    if job.source.original_filename:
+        return text(
+            "intake.with_filename",
+            sender=sender,
+            received_as=received_as,
+            filename=job.source.original_filename,
+        )
+    return text("intake.text", sender=sender, received_as=received_as)
 
 
 def frame_rate_for_stepping(job: Job) -> float:

@@ -1,46 +1,43 @@
 {% extends "admin/_layout.html" %}
-{% block title %}Contatos{% endblock %}
+{% block title %}{{ t("admin.section.contacts") }}{% endblock %}
 {% block admin_content %}
-<p class="hint">Todo número que escreve para o bot aparece aqui como <em>Desconhecido</em>.
-  Permita ou bloqueie com um clique. No modo “só permitidos” (Configurações), só números
-  permitidos geram vídeos. Bloqueados nunca geram vídeo nem recebem resposta.
-  Com uma prova padrão, os vídeos do contato já chegam com ela preenchida.</p>
+<p class="hint">{{ t("contacts.hint") }}</p>
 
 <form method="get" class="filters">
-  <label>Mostrar
+  <label>{{ t("contacts.show") }}
     <select name="status" data-autosubmit>
-      <option value="" {% if not chosen_status %}selected{% endif %}>Todos</option>
+      <option value="" {% if not chosen_status %}selected{% endif %}>{{ t("contacts.all") }}</option>
       {% for value, label in status_labels.items() %}
       <option value="{{ value }}" {% if chosen_status == value %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
   </label>
-  <noscript><button type="submit">Filtrar</button></noscript>
+  <noscript><button type="submit">{{ t("admin.filter") }}</button></noscript>
 </form>
 
 {% if contacts %}
 <table class="admin-table">
-  <thead><tr><th>Número</th><th>Situação</th><th>Nome</th><th>Prova padrão</th><th>Notas</th><th>Última mensagem</th><th></th></tr></thead>
+  <thead><tr><th>{{ t("contacts.col.phone") }}</th><th>{{ t("contacts.col.status") }}</th><th>{{ t("contacts.col.name") }}</th><th>{{ t("contacts.col.default_prova") }}</th><th>{{ t("contacts.col.notes") }}</th><th>{{ t("contacts.col.last_message") }}</th><th></th></tr></thead>
   <tbody>
   {% for c in contacts %}
     {% set form_id = "contact-" ~ loop.index %}
     <tr>
-      <td><code>{{ c.phone }}</code>{% if c.push_name and c.push_name != c.display_name %}<br><span class="small">WhatsApp: {{ c.push_name }}</span>{% endif %}</td>
+      <td><code>{{ c.phone }}</code>{% if c.push_name and c.push_name != c.display_name %}<br><span class="small">{{ t("contacts.whatsapp_name", name=c.push_name) }}</span>{% endif %}</td>
       <td>
         <span class="badge contact-{{ c.status }}">{{ status_labels[c.status] }}</span>
         <div class="quick-actions">
           {% if c.status != "allowed" %}
-          <form method="post" action="/review/admin/contacts/{{ c.phone }}"><input type="hidden" name="status" value="allowed"><button type="submit">Permitir</button></form>
+          <form method="post" action="/review/admin/contacts/{{ c.phone }}"><input type="hidden" name="status" value="allowed"><button type="submit">{{ t("contacts.allow") }}</button></form>
           {% endif %}
           {% if c.status != "blocked" %}
-          <form method="post" action="/review/admin/contacts/{{ c.phone }}"><input type="hidden" name="status" value="blocked"><button type="submit" class="danger">Bloquear</button></form>
+          <form method="post" action="/review/admin/contacts/{{ c.phone }}"><input type="hidden" name="status" value="blocked"><button type="submit" class="danger">{{ t("contacts.block") }}</button></form>
           {% endif %}
         </div>
       </td>
-      <td><input name="display_name" form="{{ form_id }}" value="{{ c.display_name or '' }}" maxlength="100" aria-label="Nome de {{ c.phone }}"></td>
+      <td><input name="display_name" form="{{ form_id }}" value="{{ c.display_name or '' }}" maxlength="100" aria-label="{{ t('contacts.name_of', phone=c.phone) }}"></td>
       <td>
-        <select name="default_prova_id" form="{{ form_id }}" aria-label="Prova padrão de {{ c.phone }}">
-          <option value="">—</option>
+        <select name="default_prova_id" form="{{ form_id }}" aria-label="{{ t('contacts.default_prova_of', phone=c.phone) }}">
+          <option value="">{{ t("no_value") }}</option>
           {% for p in provas %}
           {% if p.active or p.id == c.default_prova_id %}
           <option value="{{ p.id }}" {% if p.id == c.default_prova_id %}selected{% endif %}>{{ p.name }}</option>
@@ -48,34 +45,34 @@
           {% endfor %}
         </select>
       </td>
-      <td><input name="notes" form="{{ form_id }}" value="{{ c.notes or '' }}" maxlength="500" aria-label="Notas de {{ c.phone }}"></td>
-      <td>{% if c.last_seen_at %}{{ m.time(c.last_seen_at, relative=true) }}{% else %}<span class="muted">nunca escreveu</span>{% endif %}</td>
-      <td><form id="{{ form_id }}" method="post" action="/review/admin/contacts/{{ c.phone }}"><button type="submit">Salvar</button></form></td>
+      <td><input name="notes" form="{{ form_id }}" value="{{ c.notes or '' }}" maxlength="500" aria-label="{{ t('contacts.notes_of', phone=c.phone) }}"></td>
+      <td>{% if c.last_seen_at %}{{ m.time(c.last_seen_at, relative=true) }}{% else %}<span class="muted">{{ t("contacts.never_wrote") }}</span>{% endif %}</td>
+      <td><form id="{{ form_id }}" method="post" action="/review/admin/contacts/{{ c.phone }}"><button type="submit">{{ t("admin.save") }}</button></form></td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 {% else %}
-<p class="empty">Nenhum contato{% if chosen_status %} com essa situação{% endif %} ainda.</p>
+<p class="empty">{{ t("contacts.empty_with_status") if chosen_status else t("contacts.empty") }}</p>
 {% endif %}
 
-<h2>Adicionar contato</h2>
-<p class="hint">Para liberar alguém antes de a pessoa escrever (modo “só permitidos”).</p>
+<h2>{{ t("contacts.add") }}</h2>
+<p class="hint">{{ t("contacts.add.hint") }}</p>
 <form method="post" action="/review/admin/contacts/create" class="inline-fields">
-  <label>Número (com DDI e DDD) <input name="phone" required placeholder="55 11 98765-4321" inputmode="tel"></label>
-  <label>Nome <input name="display_name" maxlength="100"></label>
-  <label>Situação
+  <label>{{ t("contacts.phone") }} <input name="phone" required placeholder="55 11 98765-4321" inputmode="tel"></label>
+  <label>{{ t("contacts.name") }} <input name="display_name" maxlength="100"></label>
+  <label>{{ t("contacts.status") }}
     <select name="status">
       {% for value, label in status_labels.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
     </select>
   </label>
-  <label>Prova padrão
+  <label>{{ t("contacts.default_prova") }}
     <select name="default_prova_id">
-      <option value="">—</option>
+      <option value="">{{ t("no_value") }}</option>
       {% for p in provas if p.active %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
     </select>
   </label>
-  <label>Notas <input name="notes" maxlength="500"></label>
-  <button type="submit" class="primary">Adicionar</button>
+  <label>{{ t("contacts.notes") }} <input name="notes" maxlength="500"></label>
+  <button type="submit" class="primary">{{ t("admin.add") }}</button>
 </form>
 {% endblock %}
