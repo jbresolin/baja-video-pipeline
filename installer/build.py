@@ -104,7 +104,13 @@ def validate_enroll_url(url: str | None) -> str | None:
         return None
     if not re.match(r"^https?://[^/\s]+", url):
         raise BuildError(f"--enroll-url must be an http(s) URL, not {url!r}")
-    return url.rstrip("/")
+    # The worker appends "/enroll" itself. Accept the endpoint spelling too
+    # ("https://site/enroll"), which is what people tend to paste into the
+    # repository variable, and stamp the bare site.
+    site = url.rstrip("/")
+    if site.endswith("/enroll"):
+        site = site[: -len("/enroll")]
+    return site
 
 
 def build_info_source(version: str, enroll_url: str | None, modules: list[str]) -> str:

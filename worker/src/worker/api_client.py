@@ -103,7 +103,7 @@ class OrchestratorClient:
     # --- Enrollment (no bearer yet; the one-time token is in the body) ---
 
     def enroll(self, enroll_base_url: str, request: EnrollRequest) -> EnrollResponse:
-        url = enroll_base_url.rstrip("/") + "/enroll"
+        url = enroll_endpoint(enroll_base_url)
         response = self._send("POST", url, json=request.model_dump(mode="json"), auth=False)
         return EnrollResponse.model_validate(response.json())
 
@@ -173,3 +173,18 @@ class OrchestratorClient:
         if response.status_code >= 400:
             raise ApiError.from_response(response)
         return response
+
+
+def enroll_endpoint(enroll_base_url: str) -> str:
+    """The full POST /enroll URL for a configured enroll base.
+
+    The base is meant to be the public site ("https://live.example.org"), and
+    "/enroll" is appended here. People naturally write the endpoint itself
+    ("https://live.example.org/enroll") instead; that used to produce
+    ".../enroll/enroll", which the server answers with a bare 404. Accept
+    both spellings, with or without a trailing slash.
+    """
+    base = enroll_base_url.rstrip("/")
+    if base.endswith("/enroll"):
+        base = base[: -len("/enroll")]
+    return base + "/enroll"

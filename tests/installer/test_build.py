@@ -82,6 +82,10 @@ def test_build_info_without_an_enroll_url_stores_none():
     [
         ("https://pipeline.example.org", "https://pipeline.example.org"),
         ("https://pipeline.example.org/", "https://pipeline.example.org"),
+        # The endpoint spelling is accepted and reduced to the site, because
+        # the worker appends "/enroll" itself (otherwise: /enroll/enroll, 404).
+        ("https://pipeline.example.org/enroll", "https://pipeline.example.org"),
+        ("https://pipeline.example.org/enroll/", "https://pipeline.example.org"),
         ("", None),
         (None, None),
     ],
