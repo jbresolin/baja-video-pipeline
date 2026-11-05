@@ -29,6 +29,7 @@ from starlette.routing import Route
 from shared.models import (
     ClaimRequest,
     ClaimResponse,
+    ClipArchivedRequest,
     DeliveredRequest,
     EnrollRequest,
     EnrollResponse,
@@ -85,6 +86,10 @@ class FakeOrchestrator:
         self.holder_confirms: list[tuple[str, HolderConfirmRequest]] = []
         self.failures: list[tuple[str, FailedRequest]] = []
         self.thumbnails: dict[str, bytes] = {}
+        # Clips "the master has archived": answered back in heartbeats.
+        self.archived_clip_sha256s: set[str] = set()
+        # POST /jobs/{id}/clip-archived bodies (job id, request).
+        self.clip_archived: list[tuple[str, ClipArchivedRequest]] = []
         # PUT /jobs/{id}/media-info bodies, as received, by job id.
         self.media_infos: dict[str, ProbeReport] = {}
         self.upload_log: list[tuple[str, int, int]] = []  # (endpoint, status, offset)
@@ -136,6 +141,7 @@ class FakeOrchestrator:
             Route("/jobs/{job_id}/clip", self._chunk_endpoint("outbox"), methods=["POST"]),
             Route("/jobs/{job_id}/failed", self._failed, methods=["POST"]),
             Route("/jobs/{job_id}/delivered", self._delivered, methods=["POST"]),
+            Route("/jobs/{job_id}/clip-archived", self._clip_archived, methods=["POST"]),
             Route("/outbox/{job_id}/ack", self._outbox_ack, methods=["POST"]),
             Route("/inbox/{name}", self._file_endpoint(self.inbox), methods=["GET"]),
             Route("/outbox/{name}", self._file_endpoint(self.outbox), methods=["GET"]),
@@ -188,6 +194,9 @@ class FakeOrchestrator:
             heartbeat_interval_s=15,
             accepting_new_raws=self.accepting_new_raws,
             deletable_job_ids=[j for j in self.deletable_job_ids if j in body.held_job_ids],
+            archived_clip_sha256s=sorted(
+                {c.sha256 for c in body.held_clips} & self.archived_clip_sha256s
+            ),
         )
         return JSONResponse(answer.model_dump(mode="json"))
 
@@ -295,6 +304,14 @@ class FakeOrchestrator:
             if lease.job_id == job_id:
                 self._end_lease(lease.lease_id)
         return JSONResponse({"job_id": job_id, "state": "done"})
+
+    async def _clip_archived(self, request: Request) -> Response:
+        body = ClipArchivedRequest.model_validate(await request.json())
+        if not self._lease_is_alive(body.lease_id):
+            return error(409, "lease_lost")
+        self.clip_archived.append((request.path_params["job_id"], body))
+        self._end_lease(body.lease_id)
+        return JSONResponse({"job_id": request.path_params["job_id"], "state": "done"})
 
     async def _outbox_ack(self, request: Request) -> Response:
         body = OutboxAckRequest.model_validate(await request.json())

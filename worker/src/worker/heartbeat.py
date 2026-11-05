@@ -6,7 +6,9 @@ lease renews it), which raws we hold, and what we measured since the last
 beat. The answer tells us:
   * lease_status: `lost` → the task under that lease must stop;
   * accepting_new_raws: false → do not ask for download_raw (near the cap);
-  * deletable_job_ids: raws of discarded jobs we may delete.
+  * deletable_job_ids: raws of discarded jobs we may delete;
+  * archived_clip_sha256s: kept clips the master has archived; near the
+    cap we evict those (oldest first), never any other (worker.clip_store).
 """
 
 import logging
@@ -51,6 +53,8 @@ class Heartbeater:
         self._receiver_port = receiver_port
         self._fixed_interval_seconds = fixed_interval_seconds
         self.interval_seconds: float = fixed_interval_seconds or HEARTBEAT_INTERVAL_SECONDS
+        # How many of our kept clips the master has archived (status page).
+        self.clips_archived_by_master = 0
         # Until the first answer arrives, assume we may take new raws.
         self._accepting_new_raws = threading.Event()
         self._accepting_new_raws.set()
@@ -79,6 +83,7 @@ class Heartbeater:
             current_lease_ids=self._leases.ids(),
             held_job_ids=[] if is_studio else self._storage.held_job_ids(),
             measurements=self._measurements.drain(),
+            held_clips=[] if is_studio else self._storage.clips.held_clips(),
         )
 
     def beat_once(self) -> HeartbeatResponse | None:
@@ -112,6 +117,9 @@ class Heartbeater:
         self._status.set("accepting new raws", "yes" if answer.accepting_new_raws else "no")
         for job_id in answer.deletable_job_ids:
             self._storage.delete_raw(job_id)
+        archived = set(answer.archived_clip_sha256s)
+        self._storage.clips.evict_archived(archived, self._storage.free_bytes_under_cap)
+        self.clips_archived_by_master = len(archived)
         return answer
 
     def run_forever(self, shutdown: threading.Event) -> None:

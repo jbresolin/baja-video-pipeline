@@ -7,9 +7,10 @@ docs/api.md §5:
   * `task: null` → wait retry_after_s (or until a stage frees up).
 
 Which kinds a role asks for:
-  master  download_raw, make_proxy, process. download_raw is asked for
-          even when the heartbeat said accepting_new_raws=false: the
-          master holds every raw (design §4); only real disk space stops it.
+  master  download_raw, make_proxy, process, archive_clip. download_raw is
+          asked for even when the heartbeat said accepting_new_raws=false:
+          the master holds every raw (design §4); only real disk space
+          stops it. archive_clip: it keeps every finished clip (§11).
   worker  the same three; download_raw only while accepting_new_raws.
   studio  deliver only (it never holds raws, design §13).
 """
@@ -28,7 +29,12 @@ from worker.storage import Storage
 logger = logging.getLogger(__name__)
 
 STAGE_KINDS_BY_ROLE = {
-    WorkerRole.MASTER: [TaskKind.DOWNLOAD_RAW, TaskKind.MAKE_PROXY, TaskKind.PROCESS],
+    WorkerRole.MASTER: [
+        TaskKind.DOWNLOAD_RAW,
+        TaskKind.MAKE_PROXY,
+        TaskKind.PROCESS,
+        TaskKind.ARCHIVE_CLIP,
+    ],
     WorkerRole.WORKER: [TaskKind.DOWNLOAD_RAW, TaskKind.MAKE_PROXY, TaskKind.PROCESS],
     WorkerRole.STUDIO: [TaskKind.DELIVER],
 }

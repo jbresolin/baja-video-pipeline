@@ -14,6 +14,7 @@ import httpx
 from shared.models import (
     ClaimRequest,
     ClaimResponse,
+    ClipArchivedRequest,
     DeliveredRequest,
     EnrollRequest,
     EnrollResponse,
@@ -138,6 +139,10 @@ class OrchestratorClient:
     def upload_media_info(self, url: str, lease_id: str, report: ProbeReport) -> None:
         headers = {LEASE_ID_HEADER: lease_id, "Content-Type": "application/json"}
         self._send("PUT", url, content=report.model_dump_json().encode(), headers=headers)
+
+    def clip_archived(self, job_id: str, request: ClipArchivedRequest) -> JobStateResponse:
+        response = self._post_json(f"/jobs/{job_id}/clip-archived", request)
+        return JobStateResponse.model_validate(response.json())
 
     def delivered(self, job_id: str, request: DeliveredRequest) -> JobStateResponse:
         response = self._post_json(f"/jobs/{job_id}/delivered", request)

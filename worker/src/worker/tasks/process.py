@@ -9,6 +9,10 @@ The finished clip waits in clips/<job_id>.mp4 next to a small JSON
 after rendering and is offered the same job again with the same inputs,
 it skips the render and resumes the upload. A lost lease (the reviewer
 changed the cut, or the lease expired) deletes the clip.
+
+After a verified delivery the clip is *kept* (design §11 as amended:
+processed clips are the archive) as clips/<job_id>.<sha256>.mp4, until
+the master has archived it (worker.clip_store).
 """
 
 import json
@@ -37,7 +41,7 @@ def run_process(
     with env.storage.pin(task.job_id):
         try:
             clip_path = _reuse_or_render(env, task, raw_path, cancel)
-            deliver_clip(env, lease, task, clip_path, cancel)
+            clip_sha256 = deliver_clip(env, lease, task, clip_path, cancel)
         except TaskCancelledError as cancelled:
             if cancelled.lease_lost:
                 # Docs §5: on lost, discard partial output. (After a
@@ -45,7 +49,8 @@ def run_process(
                 # handles itself without raising.)
                 env.storage.delete_clip(task.job_id)
             raise
-    env.storage.delete_clip(task.job_id)
+    env.storage.clips.keep(clip_path, task.job_id, clip_sha256)
+    env.storage.delete_clip(task.job_id)  # only the sidecar is left by now
 
 
 def render_inputs(task: ProcessTask) -> dict:

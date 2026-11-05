@@ -2,7 +2,9 @@
 
     <working folder>/
         raws/<job_id>.<ext>   held raws: served to peers, never evicted
-        clips/<job_id>.mp4    rendered clips until delivered (+ a .json sidecar)
+        clips/<job_id>.mp4    the clip being rendered/delivered (+ a .json sidecar)
+        clips/<job_id>.<sha256>.mp4   delivered clips, kept (worker.clip_store)
+        clips/<prova>/<car>/<passagem>[.vN].mp4   the master's clip archive
         tmp/                  proxies, thumbnails, overlays while rendering
         logs/worker.log
 
@@ -22,6 +24,8 @@ from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+
+from worker.clip_store import ClipStore
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +70,8 @@ class Storage:
         self.tmp_dir = root / TMP_FOLDER
         for folder in (self.raws_dir, self.clips_dir, self.tmp_dir):
             folder.mkdir(parents=True, exist_ok=True)
+        # Delivered clips the worker keeps, and the master's archive.
+        self.clips = ClipStore(self.clips_dir)
         # Jobs whose raw a task is using right now, with a count because
         # make_proxy and process may use the same raw at the same time.
         self._pinned_job_ids: Counter[str] = Counter()
