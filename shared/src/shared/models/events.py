@@ -6,6 +6,7 @@ what each worker did recently.
 """
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import Field
 
@@ -21,18 +22,24 @@ class Event(ApiModel):
     at: datetime
     job_id: str | None = None
     worker_id: str | None = None
-    # "system", "worker:<id>", "reviewer:<username>", "admin" or "evolution".
+    # "system", "worker:<id>", "reviewer:<username>", "admin:<username>",
+    # "admin" (the static admin token) or "evolution".
     actor: str
     # What happened. Not a closed list; the common ones are state_changed,
     # lease_acquired, lease_ended, lease_revoked, lease_expired,
     # holder_confirmed, holder_rejected, holder_lost, task_failed,
-    # proxy_requested, worker_enrolled, enrollment_token_created.
+    # proxy_requested, worker_enrolled, enrollment_token_created, and the
+    # admin changes listed under `details`.
     kind: str
     # Set for state_changed only.
     from_state: JobState | None = None
     to_state: JobState | None = None
     # Human words, e.g. "proxy uploaded" or the worker's failure message.
     reason: str | None = None
+    # Admin changes only (kinds user_*, contact_*, prova_*, team*, settings_*,
+    # enrollment_token_revoked, worker_revoked): {"before": ..., "after": ...},
+    # each the changed record as JSON (None when it did not exist).
+    details: dict[str, Any] | None = None
 
 
 class EventsResponse(ApiModel):

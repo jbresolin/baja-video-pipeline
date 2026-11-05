@@ -54,6 +54,8 @@ class Worker(ApiModel):
     receiver_port: int | None = Field(default=None, ge=1, le=65535)
     enrolled_at: datetime
     last_heartbeat: datetime | None = None
+    # Set when an admin revoked the worker: its bearer token stopped working.
+    revoked_at: datetime | None = None
 
 
 class EnrollmentToken(ApiModel):
@@ -70,3 +72,4 @@ class EnrollmentToken(ApiModel):
     expires_at: datetime
     used_at: datetime | None = None
     used_by_worker_id: str | None = None
+    revoked_at: datetime | None = None

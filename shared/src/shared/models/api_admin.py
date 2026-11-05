@@ -47,9 +47,13 @@ class CreateEnrollmentTokenRequest(ApiModel):
 class EnrollmentTokenCreated(ApiModel):
     # Shown exactly once. The orchestrator keeps only its hash.
     token: str
+    # Public id for the token list and revocation (EnrollmentTokenInfo.token_id).
+    token_id: str
     volunteer_name: str
     role: WorkerRole
     expires_at: datetime
+    # Where the volunteer downloads the installer (admin setting); None if unset.
+    installer_download_url: str | None = None
 
 
 class EnrollRequest(ApiModel):

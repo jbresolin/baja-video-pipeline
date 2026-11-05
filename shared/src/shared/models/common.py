@@ -42,6 +42,8 @@ class ErrorCode(StrEnum):
     UPLOAD_OFFSET_MISMATCH = "upload_offset_mismatch"
     UPLOAD_TOO_LARGE = "upload_too_large"
     MISSING_REVIEW_FIELDS = "missing_review_fields"
+    # ready/reprocess/retry with a prova that is not in the provas table.
+    UNKNOWN_PROVA = "unknown_prova"
     UNSUPPORTED_MESSAGE = "unsupported_message"
     # 401 / 403
     UNAUTHENTICATED = "unauthenticated"
@@ -56,6 +58,11 @@ class ErrorCode(StrEnum):
     LEASE_LOST = "lease_lost"
     VERSION_CONFLICT = "version_conflict"
     NO_HOLDER_ONLINE = "no_holder_online"
+    # Admin pages: a user, prova, contact... with that name or key exists.
+    ALREADY_EXISTS = "already_exists"
+    # Admin pages: the change is not possible right now (e.g. disabling the
+    # last admin, revoking a token that was already used).
+    CONFLICT = "conflict"
     # 413 / 507
     INBOX_FULL = "inbox_full"
     # 429 (POST /enroll, per source IP)

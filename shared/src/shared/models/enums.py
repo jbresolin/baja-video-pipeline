@@ -130,3 +130,69 @@ class LeaseHeartbeatStatus(StrEnum):
     # The lease no longer exists (expired, or a reviewer changed the job).
     # The worker must stop that task and throw away its partial output.
     LOST = "lost"
+
+
+class UserRole(StrEnum):
+    """What a signed-in user of the review UI may do."""
+
+    # Reviews jobs: the queue, the job page, clips and fleet.
+    REVIEWER = "reviewer"
+    # Everything a reviewer does, plus the admin pages under /review/admin/.
+    ADMIN = "admin"
+
+
+class ContactStatus(StrEnum):
+    """What intake does with a WhatsApp sender (admin Contacts page)."""
+
+    # Approved by an admin: always accepted.
+    ALLOWED = "allowed"
+    # Never accepted, and the bot stays silent.
+    BLOCKED = "blocked"
+    # Wrote to the bot, nobody decided yet. Accepted only in "open" intake mode.
+    UNKNOWN = "unknown"
+
+
+class IntakeMode(StrEnum):
+    """Who may send videos (admin Settings page)."""
+
+    # Everyone except blocked senders.
+    OPEN = "open"
+    # Only senders an admin marked "allowed".
+    ALLOWLIST = "allowlist"
+
+
+class TeamsImportMode(StrEnum):
+    """What a teams CSV upload does with the teams already in the table."""
+
+    # Delete every team first; the table is exactly the file afterwards.
+    REPLACE = "replace"
+    # Add new cars and update known ones; cars missing from the file stay.
+    MERGE = "merge"
+
+
+class EnrollmentTokenStatus(StrEnum):
+    """Where a one-time enrollment token is in its life."""
+
+    UNUSED = "unused"
+    USED = "used"
+    EXPIRED = "expired"
+    REVOKED = "revoked"
+
+
+class SecretState(StrEnum):
+    """Whether a secret from .env is set. The UI never shows the value itself."""
+
+    CONFIGURED = "configured"
+    MISSING = "missing"
+
+
+class AdminArea(StrEnum):
+    """One admin page, for GET /admin/audit?area=… (its latest changes)."""
+
+    USERS = "users"
+    CONTACTS = "contacts"
+    PROVAS = "provas"
+    TEAMS = "teams"
+    ENROLLMENT = "enrollment"
+    WORKERS = "workers"
+    SETTINGS = "settings"
