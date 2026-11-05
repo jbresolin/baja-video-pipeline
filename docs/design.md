@@ -557,3 +557,36 @@ secrets are edited on the server. **Supersedes** §15 "Reviewer auth", §17
   its leases end and its holder rows are dropped. Tailnet removal is manual.
 * **Audit.** Every admin change is an event with `details: {before,
   after}`; each page shows its latest changes (`GET /admin/audit`).
+
+## 22. After the first real video (LIVESTACK-38, 2026-11-04)
+
+The first real video went end to end on the production VPS on 2026-11-04.
+Fixes and additions, with the decisions taken while building them (the PR
+"Review and bot fixes from the first real video" lists them in full):
+
+* **Review version.** `Job.version` only moves on reviewer actions (any
+  `PATCH …/review`, including the state change it causes); machine
+  activity never bumps it, so a busy worker no longer makes every save a
+  `version_conflict`. `regenerate-proxy` does not bump it either.
+* **Media info.** The first holder sends the raw's whole ffprobe report
+  (`PUT /jobs/{id}/media-info`, contract 2.1.0); every location/GPS tag is
+  removed on the worker and again on the orchestrator, only
+  `location_present` is kept. The job page shows it under the player.
+* **Bot answers on the video.** ✅/⚠️/❌ reactions on the volunteer's
+  message (its key as it arrived, `@lid` included); every text is a quoted
+  reply to that video, sent to the phone JID. A ⚠️ is never replaced by ✅.
+* **Discard can be undone** (`restore`, back to `discarded_from`). Nothing
+  is deleted during the discard grace period (24 h, inbox copy included);
+  after it, restore works while a copy is left, else `raw_unavailable`.
+  `discarded` is therefore no longer a final state.
+* **Clips are the archive** (§11 as amended): workers keep their clips,
+  the master archives every version (`archive_clip`), outbox copies wait
+  for ACK + archive (72 h at most), reviewers can download outbox clips at
+  `/clip-downloads/*` and see where each clip is.
+* **Clip overlay** drawn with Pillow in BajaOvrLay's Ardósia lower-third
+  look, from a vendored `tokens.css` and Bebas Neue (`worker/overlay_theme/`).
+* **Worker for novices:** a tray icon (`BajaWorkerTray.exe`), pause
+  (`paused` in the heartbeat: no offers, still serves peers), stop/start
+  without UAC (service rights for Users), a pt-BR status page and a local
+  JSON API on 127.0.0.1:8700; a pending tailnet join is explained in pt-BR
+  instead of a `ConnectError`.

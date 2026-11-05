@@ -6,4 +6,4 @@ called with the reviewer's own credentials (the browser's Authorization
 header, which Caddy has already checked).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

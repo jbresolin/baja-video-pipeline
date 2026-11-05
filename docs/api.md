@@ -294,7 +294,7 @@ fail, `Job.failure` and `waiting_reason` are set, and a `claimed` job whose
 process task failed with scope `worker` goes back to `ready` for another
 holder.
 
-**Clips are kept and archived** (contract 1.2.0; design §11 as amended).
+**Clips are kept and archived** (contract 2.1.0; design §11 as amended).
 After a verified delivery the rendering worker keeps its clip
 (`clips/<job_id>.<sha256>.mp4`, §8.3), lists it in every heartbeat's
 `held_clips` and serves it on `:8710 GET /clip/{job_id}`. Every clip that
@@ -429,7 +429,7 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `POST /jobs/{job_id}/failed` | `FailedRequest` → `JobStateResponse` | ends the lease (§5) |
 | `POST /jobs/{job_id}/holder-confirm` | `HolderConfirmRequest` → `HolderConfirmResponse` | 422 `hash_mismatch` drops you as holder |
 | `PUT /jobs/{job_id}/thumbnail` | JPEG body, `Lease-Id` → 204 | before the proxy |
-| `PUT /jobs/{job_id}/media-info` | `ProbeReport` JSON, `Lease-Id` → 204 | make_proxy lease; the raw's ffprobe report (contract 1.2.0, below) |
+| `PUT /jobs/{job_id}/media-info` | `ProbeReport` JSON, `Lease-Id` → 204 | make_proxy lease; the raw's ffprobe report (contract 2.1.0, below) |
 | `POST /jobs/{job_id}/proxy` | chunk (+ `Frame-Rate`) → `ChunkAccepted` | ends make_proxy lease; sets `Job.frame_rate` |
 | `POST /jobs/{job_id}/clip` | chunk → `ChunkAccepted` | outbox route; claimed → uploaded |
 | `POST /jobs/{job_id}/delivered` | `DeliveredRequest` → `JobStateResponse` | studio; direct route |
@@ -533,7 +533,7 @@ Evolution 2.3.7 (`src/validate/message.schema.ts`, `src/api/dto/sendMessage.dto.
 `whatsapp.baileys.service.ts`; see `orchestrator/clients/evolution.py`).
 Every text is in `orchestrator/domain/bot_messages.py` (pt-BR).
 
-**Media info** (contract 1.2.0). The first holder already runs ffprobe
+**Media info** (contract 2.1.0). The first holder already runs ffprobe
 on the raw to make the proxy; it sends the whole answer
 (`ffprobe -show_format -show_streams`, as `ProbeReport {format, streams,
 location_present}`) to the task's `media_info_upload_url` =
