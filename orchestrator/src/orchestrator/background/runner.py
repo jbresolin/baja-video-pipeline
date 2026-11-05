@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from orchestrator.background import sweepers
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain.results_sync import sync_if_due
 from orchestrator.domain.sessions import delete_idle_sessions
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,9 @@ PERIODIC_TASKS = [
     PeriodicTask("inbox-cleanup", 30, sweepers.clean_inbox_once),
     PeriodicTask("proxy-eviction", 60, sweepers.evict_proxies_once),
     PeriodicTask("outbox-cleanup", 60, sweepers.clean_outbox_once),
+    # Provas and teams from the results API: every 6 h while an event is set
+    # (checked every 10 min; it also retries a failed sync after 15 min).
+    PeriodicTask("results-sync", 600, sync_if_due),
     # Expired sessions are already refused when used; this only tidies the table.
     PeriodicTask(
         "idle-session-cleanup",

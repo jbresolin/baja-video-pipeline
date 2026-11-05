@@ -20,14 +20,13 @@ from orchestrator.app import build_context, create_app
 from orchestrator.clock import ManualClock
 from orchestrator.config import load_settings
 from orchestrator.context import OrchestratorContext
+from orchestrator.testing.fake_results_api import FAKE_RESULTS_API_URL, FakeResultsApi
 from orchestrator.testing.fakes import (
-    FAKE_BAJA_APP_URL,
     FAKE_CDN_BASE_URL,
     FAKE_EVOLUTION_URL,
     FAKE_TAILSCALE_API_BASE,
     FAKE_TAILSCALE_CLIENT_ID,
     FAKE_TAILSCALE_CLIENT_SECRET,
-    FakeBajaApp,
     FakeEvolutionApi,
     FakeTailscaleApi,
     FakeWhatsAppCdn,
@@ -116,7 +115,7 @@ class OrchestratorHarness:
     cdn: FakeWhatsAppCdn
     evolution: FakeEvolutionApi
     tailscale: FakeTailscaleApi
-    baja_app: FakeBajaApp
+    results_api: FakeResultsApi
 
     # The static admin token (scripts), and two signed-in users.
     admin_headers = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
@@ -168,6 +167,15 @@ class OrchestratorHarness:
         response.raise_for_status()
         return response.json()
 
+    def add_team(self, car_number: int, team_name: str, short_name: str | None = None) -> None:
+        """Put a car in the teams table (as an admin would; no results API sync)."""
+        response = self.client.put(
+            f"/admin/teams/{car_number}",
+            json={"team_name": team_name, "short_name": short_name},
+            headers=self.admin_headers,
+        )
+        response.raise_for_status()
+
     def job(self, job_id: str) -> dict:
         response = self.client.get(f"/jobs/{job_id}", auth=self.reviewer_auth)
         response.raise_for_status()
@@ -198,7 +206,7 @@ def build_harness(data_dir: Path, **setting_overrides) -> OrchestratorHarness:
             "whatsapp_media_base_url": FAKE_CDN_BASE_URL,
             "evolution_url": FAKE_EVOLUTION_URL,
             "evolution_api_key": "fake-evolution-key",
-            "baja_app_url": FAKE_BAJA_APP_URL,
+            "results_api_url": FAKE_RESULTS_API_URL,
             "tailscale_oauth_client_id": FAKE_TAILSCALE_CLIENT_ID,
             "tailscale_oauth_client_secret": FAKE_TAILSCALE_CLIENT_SECRET,
             "tailscale_api_base": FAKE_TAILSCALE_API_BASE,
@@ -207,15 +215,15 @@ def build_harness(data_dir: Path, **setting_overrides) -> OrchestratorHarness:
     )
     clock = ManualClock()
     cdn, evolution = FakeWhatsAppCdn(), FakeEvolutionApi()
-    tailscale, baja_app = FakeTailscaleApi(), FakeBajaApp()
+    tailscale, results_api = FakeTailscaleApi(), FakeResultsApi()
     context = build_context(
         settings,
         clock=clock,
         media_http_client=httpx.Client(transport=cdn.transport()),
         evolution_http_client=httpx.Client(transport=evolution.transport()),
         tailscale_http_client=httpx.Client(transport=tailscale.transport()),
-        baja_app_http_client=httpx.Client(transport=baja_app.transport()),
+        results_api_http_client=httpx.Client(transport=results_api.transport()),
     )
     app = create_app(context, run_background_tasks=False)
     client = httpx.Client(transport=SyncAsgiTransport(app), base_url="http://orchestrator.test")
-    return OrchestratorHarness(context, client, clock, cdn, evolution, tailscale, baja_app)
+    return OrchestratorHarness(context, client, clock, cdn, evolution, tailscale, results_api)

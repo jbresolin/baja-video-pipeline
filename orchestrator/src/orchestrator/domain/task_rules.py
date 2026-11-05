@@ -150,7 +150,8 @@ def _evaluate_process(
             cut_out_s=job_row["cut_out_s"],
             prova=job_row["prova"],
             car_number=job_row["car_number"],
-            team_name=job_row["team_name"],
+            # The overlay text: the team's short name when the results API has one.
+            team_name=job_row["overlay_team_name"] or job_row["team_name"],
             passagem=job_row["passagem"],
             show_pass=bool(job_row["show_pass"]),
             clip_relative_path=clip_relative_path_in_folder(

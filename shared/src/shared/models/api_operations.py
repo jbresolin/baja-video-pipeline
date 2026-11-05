@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import Field
 
 from shared.models.api_admin import ServerDisk
+from shared.models.api_catalog import ResultsSyncReport
 from shared.models.common import ApiModel
 from shared.models.enums import EnrollmentTokenStatus, IntakeMode, SecretState, WorkerRole
 
@@ -35,6 +36,10 @@ class EnrollmentTokensResponse(ApiModel):
 
 # --- Settings ---
 
+# An event id of the results API: 4 letters or digits ("26BR"), case kept.
+# Empty = no event configured (no sync).
+EVENT_ID_PATTERN = r"^([A-Za-z0-9]{4})?$"
+
 
 class AdminSettings(ApiModel):
     """Settings the operator edits in the UI. The .env values are only first-start defaults."""
@@ -48,6 +53,10 @@ class AdminSettings(ApiModel):
     # Link shown next to a new enrollment token, e.g. the latest GitHub
     # Release asset of the worker installer. Empty = no link.
     installer_download_url: str = Field(max_length=500)
+    # The current event in the Baja results API; provas and teams are synced
+    # from it (on change, and every 6 h). Case matters: "26br" is not "26BR".
+    event_id: str = Field(default="", pattern=EVENT_ID_PATTERN)
+    results_api_base_url: str = Field(default="https://api.bajasaebrasil.net", max_length=200)
 
 
 class UpdateSettingsRequest(ApiModel):
@@ -57,6 +66,8 @@ class UpdateSettingsRequest(ApiModel):
     inbox_hold_gb: float | None = Field(default=None, gt=0)
     proxy_evict_min_free_gb: float | None = Field(default=None, ge=0)
     installer_download_url: str | None = Field(default=None, max_length=500)
+    event_id: str | None = Field(default=None, pattern=EVENT_ID_PATTERN)
+    results_api_base_url: str | None = Field(default=None, max_length=200)
 
 
 class EvolutionStatus(ApiModel):
@@ -80,6 +91,8 @@ class SettingsStatus(ApiModel):
     server_disk: ServerDisk
     # BVP_INBOX_CAP_GB, the hard cap (also the inbox filesystem's size): not editable.
     inbox_cap_gb: float
+    # The last provas/teams sync with the results API; None before the first.
+    results_sync: ResultsSyncReport | None = None
 
 
 class SettingsResponse(ApiModel):

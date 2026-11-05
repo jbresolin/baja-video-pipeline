@@ -123,9 +123,10 @@ def list_admin_events(
 ) -> list[Event]:
     """The newest `limit` admin changes (actor "admin" or "admin:<name>"), newest first.
 
-    `kinds` narrows it to those event kinds (one admin page's changes).
+    Syncs with the results API count too, also the scheduled ones (actor
+    "system"). `kinds` narrows it to those event kinds (one admin page's changes).
     """
-    conditions = ["(actor = ? OR actor LIKE 'admin:%')"]
+    conditions = ["(actor = ? OR actor LIKE 'admin:%' OR kind = 'results_synced')"]
     parameters: list = [ADMIN_TOKEN_ACTOR]
     if kinds:
         conditions.append(f"kind IN ({', '.join('?' for _ in kinds)})")

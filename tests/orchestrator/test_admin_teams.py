@@ -1,11 +1,19 @@
-"""The admin Teams page: the teams table with inline edit, add, delete and a CSV upload.
+"""The admin Teams page: synced teams, corrections that survive syncs, manual cars.
 
-The table is what GET /teams/{car_number} (and so the review form's team
-name) asks first. A CSV upload either REPLACES the whole table or MERGES
-into it; the operator picks.
+The teams table is what GET /teams/{car_number} (and so the review form and
+the clip overlay) resolves a car number against. It is filled from the Baja
+results API (test_results_sync.py). On this page an admin can:
+
+* correct a synced team: stored as an "override" next to the API's values,
+  so the next sync does not undo it; "remove" then only drops the correction;
+* add a car the API does not list (a manual team), edit it, remove it.
+
+The fake results API (orchestrator/testing/fake_results_api.py) has the
+documented 26BR example: car 1 "BAJA UFMG" (short "Baja UFMG") and car 2
+"Equipe FEI Baja" (short "FEI").
 """
 
-CSV = "car_number,team_name,school\n42,Equipe Trovão,UFSC\n7,Mangue Baja,UFPE\n"
+import pytest
 
 
 def teams(harness) -> dict[int, dict]:
@@ -13,33 +21,39 @@ def teams(harness) -> dict[int, dict]:
     return {team["car_number"]: team for team in listed}
 
 
-def save(harness, car_number, team_name, school=None):
+def save(harness, car_number, team_name, short_name=None, school=None):
     return harness.client.put(
         f"/admin/teams/{car_number}",
-        json={"team_name": team_name, "school": school},
+        json={"team_name": team_name, "short_name": short_name, "school": school},
         auth=harness.admin_auth,
     )
 
 
-def upload(harness, csv_text, mode):
-    return harness.client.post(
-        "/admin/teams/import", json={"csv_text": csv_text, "mode": mode}, auth=harness.admin_auth
-    )
+def sync(harness):
+    response = harness.client.post("/admin/results-sync", auth=harness.admin_auth)
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
-def test_add_edit_and_delete_one_car(harness):
+@pytest.fixture
+def synced(harness):
+    """A harness whose event is 26BR, synced once (the Settings change syncs)."""
+    harness.client.patch("/admin/settings", json={"event_id": "26BR"}, auth=harness.admin_auth)
+    return harness
+
+
+def test_a_manual_car_can_be_added_edited_and_removed(harness):
     # Add: PUT on a car that is not there yet.
-    assert save(harness, 42, "Equipe Trovão", "UFSC").status_code == 200
-    # The review form now finds it.
+    assert save(harness, 42, "Equipe Trovão", school="UFSC").status_code == 200
     found = harness.client.get("/teams/42", auth=harness.reviewer_auth).json()
     assert found["team_name"] == "Equipe Trovão"
-    # Inline edit: PUT again with new values. An empty school means "none".
-    save(harness, 42, "Trovão Baja", "  ")
-    assert teams(harness)[42] == {"car_number": 42, "team_name": "Trovão Baja", "school": None}
-    # Delete: gone from the table (and the review form, with no Baja app).
+    # Edit: PUT again. An empty school means "none".
+    save(harness, 42, "Trovão Baja", school="  ")
+    row = teams(harness)[42]
+    assert (row["team_name"], row["school"], row["source"]) == ("Trovão Baja", None, "manual")
+    # Remove: gone.
     assert harness.client.delete("/admin/teams/42", auth=harness.admin_auth).status_code == 204
     assert 42 not in teams(harness)
-    # Deleting it again: 404.
     assert harness.client.delete("/admin/teams/42", auth=harness.admin_auth).status_code == 404
 
 
@@ -47,43 +61,46 @@ def test_car_numbers_outside_0_to_9999_are_refused(harness):
     assert save(harness, 10000, "Too big").status_code == 400
 
 
-def test_replace_makes_the_table_exactly_the_file(harness):
-    save(harness, 99, "Old team")
-    answer = upload(harness, CSV, "replace").json()
-    assert answer == {"imported": 2, "problems": [], "total_teams": 2}
-    assert sorted(teams(harness)) == [7, 42]  # car 99 is gone
+def test_a_correction_of_a_synced_team_survives_the_next_sync(synced):
+    row = teams(synced)[2]
+    assert (row["source"], row["team_name"], row["overridden"]) == (
+        "results_api",
+        "Equipe FEI Baja",
+        False,
+    )
+    # The admin corrects the short name shown on the overlay.
+    save(synced, 2, "Equipe FEI Baja", short_name="FEI Baja")
+    # The API renames the team meanwhile; then a sync runs.
+    synced.results_api.teams_of()[1]["name"] = "FEI Baja Team"
+    sync(synced)
+
+    row = teams(synced)[2]
+    # The correction is still what lookups answer...
+    assert (row["team_name"], row["short_name"], row["overridden"]) == (
+        "Equipe FEI Baja",
+        "FEI Baja",
+        True,
+    )
+    # ...while the API's newer value is kept next to it, for the page.
+    assert row["synced_team_name"] == "FEI Baja Team"
 
 
-def test_merge_adds_and_updates_but_keeps_cars_missing_from_the_file(harness):
-    save(harness, 99, "Old team")
-    save(harness, 42, "Name to be replaced")
-    answer = upload(harness, CSV, "merge").json()
-    assert answer["total_teams"] == 3
-    assert teams(harness)[99]["team_name"] == "Old team"
-    assert teams(harness)[42]["team_name"] == "Equipe Trovão"
-
-
-def test_bad_lines_are_skipped_and_reported(harness):
-    answer = upload(harness, "42,Trovão,\nabc,No number,\n7,\n", "merge").json()
-    assert answer["imported"] == 1
-    assert answer["problems"] == [
-        "line 2: car_number 'abc' is not a number from 0 to 9999",
-        "line 3: needs car_number,team_name",
-    ]
-
-
-def test_a_file_with_no_valid_line_never_empties_the_table(harness):
-    # Uploading the wrong file in "replace" mode must not wipe the teams.
-    save(harness, 42, "Equipe Trovão")
-    answer = upload(harness, "this is not,a teams file\n", "replace").json()
-    assert answer["imported"] == 0
-    assert sorted(teams(harness)) == [42]
+def test_removing_a_synced_team_only_drops_the_correction(synced):
+    save(synced, 1, "UFMG corrigida")
+    assert synced.client.delete("/admin/teams/1", auth=synced.admin_auth).status_code == 204
+    # The car is still there, with the API's values again.
+    row = teams(synced)[1]
+    assert (row["team_name"], row["short_name"], row["overridden"]) == (
+        "BAJA UFMG",
+        "Baja UFMG",
+        False,
+    )
 
 
 def test_team_changes_are_audited(harness):
     save(harness, 42, "Equipe Trovão")
-    upload(harness, CSV, "replace")
+    harness.client.delete("/admin/teams/42", auth=harness.admin_auth)
     events = harness.client.get("/admin/audit?area=teams", auth=harness.admin_auth).json()["events"]
-    assert [event["kind"] for event in events] == ["teams_imported", "team_saved"]
-    assert events[0]["details"]["after"]["mode"] == "replace"
+    assert [event["kind"] for event in events] == ["team_deleted", "team_saved"]
     assert events[1]["details"]["before"] is None  # a new car
+    assert events[0]["details"]["after"] is None  # gone

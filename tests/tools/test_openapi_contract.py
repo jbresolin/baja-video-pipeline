@@ -67,7 +67,6 @@ REQUIRED_ENDPOINTS = {
     ("put", "/admin/provas/order"),
     ("patch", "/admin/provas/{prova_id}"),
     ("get", "/admin/teams"),
-    ("post", "/admin/teams/import"),
     ("put", "/admin/teams/{car_number}"),
     ("delete", "/admin/teams/{car_number}"),
     ("get", "/admin/enrollment-tokens"),
@@ -76,6 +75,7 @@ REQUIRED_ENDPOINTS = {
     ("get", "/admin/settings"),
     ("patch", "/admin/settings"),
     ("get", "/admin/audit"),
+    ("post", "/admin/results-sync"),
 }
 
 # Routes that must work without an auth header: the health check, /enroll

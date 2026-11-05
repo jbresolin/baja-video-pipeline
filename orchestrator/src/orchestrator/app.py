@@ -4,7 +4,7 @@
     app = create_app(build_context(settings))
 
 Tests call build_context() with fakes for the clock and the four outside
-services (WhatsApp CDN, Evolution, Tailscale, Baja app) and pass
+services (WhatsApp CDN, Evolution, Tailscale, the Baja results API) and pass
 run_background_tasks=False, then drive the sweepers by hand.
 """
 
@@ -27,10 +27,9 @@ from orchestrator.api import (
 )
 from orchestrator.api.error_handlers import install_error_handlers
 from orchestrator.background.runner import start_background_tasks
-from orchestrator.clients.baja_app import BajaAppClient
 from orchestrator.clients.evolution import EvolutionClient
+from orchestrator.clients.results_api import ResultsApiClient
 from orchestrator.clients.tailscale import TailscaleClient
-from orchestrator.clients.teams import TeamDirectory
 from orchestrator.clock import Clock
 from orchestrator.config import Settings
 from orchestrator.context import OrchestratorContext
@@ -54,7 +53,7 @@ def build_context(
     media_http_client: httpx.Client | None = None,
     evolution_http_client: httpx.Client | None = None,
     tailscale_http_client: httpx.Client | None = None,
-    baja_app_http_client: httpx.Client | None = None,
+    results_api_http_client: httpx.Client | None = None,
     layout: VpsLayout | None = None,
 ) -> OrchestratorContext:
     """Create the folders and DB under BVP_DATA_DIR and wire every dependency.
@@ -90,19 +89,7 @@ def build_context(
             settings.tailscale_tailnet,
             clock,
         ),
-        teams=TeamDirectory(
-            database,
-            (
-                BajaAppClient(
-                    baja_app_http_client or httpx.Client(timeout=API_TIMEOUT),
-                    settings.baja_app_url,
-                    settings.baja_app_token.get_secret_value(),
-                    clock,
-                )
-                if settings.baja_app_url
-                else None
-            ),
-        ),
+        results_api=ResultsApiClient(results_api_http_client or httpx.Client(timeout=API_TIMEOUT)),
         enroll_rate_limiter=SlidingWindowRateLimiter(
             settings.enroll_rate_limit_requests, settings.enroll_rate_limit_window_s
         ),

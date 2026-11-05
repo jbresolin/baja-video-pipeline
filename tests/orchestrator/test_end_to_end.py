@@ -62,7 +62,7 @@ def test_a_pass_video_goes_from_whatsapp_to_the_studio(harness, tmp_path):
     studio = harness.enroll(WorkerRole.STUDIO, "streaming-pc")
     report_download_speed(harness, fast_worker, mbps=400)
     report_download_speed(harness, slow_worker, mbps=20)
-    harness.baja_app.teams[42] = "Equipe Mangue Baja"
+    harness.add_team(42, "Equipe Mangue Baja")
 
     # --- 1. A volunteer sends the video as a WhatsApp document.
     # The fake poster's own payload builder makes the webhook body.

@@ -5,13 +5,11 @@ from fastapi.responses import Response
 
 from shared.models import (
     CreateProvaRequest,
-    ImportTeamsRequest,
-    ImportTeamsResponse,
     Prova,
     ProvasResponse,
     ReorderProvasRequest,
     SaveTeamRequest,
-    Team,
+    TeamRow,
     TeamsResponse,
     UpdateProvaRequest,
 )
@@ -37,9 +35,10 @@ _CAR_NUMBER = Path(ge=0, le=9999)
     responses=error_responses(401),
 )
 def list_provas() -> ProvasResponse:
-    """The review form offers the active ones. `ready`, `reprocess` and a
-    `retry` back to ready need a prova from this list (active or not), else
-    422 `unknown_prova`."""
+    """Synced provas first (the results API's order), then manual ones. The
+    review form offers the active ones. `ready`, `reprocess` and a `retry`
+    back to ready need a prova from this list (active or not), else 422
+    `unknown_prova`."""
     not_implemented()
 
 
@@ -80,14 +79,16 @@ def reorder_provas(body: ReorderProvasRequest) -> ProvasResponse:
 )
 def update_prova(prova_id: int, body: UpdateProvaRequest) -> Prova:
     """A rename relabels every job that had the old name and keeps the slug,
-    so clips stay in the same folder on the studio box (docs/api.md §8.1)."""
+    so clips stay in the same folder on the studio box (docs/api.md §8.1).
+    A synced prova is named by the results API: renaming it is a 409
+    `conflict` (activating/deactivating it is fine)."""
     not_implemented()
 
 
 @router.get(
     "/admin/teams",
     tags=["admin"],
-    summary="The teams table, by car number",
+    summary="The teams table (synced from the results API, plus manual rows), by car number",
     response_model=TeamsResponse,
     dependencies=ADMIN_ONLY,
     responses=error_responses(401, 403),
@@ -96,36 +97,22 @@ def list_teams() -> TeamsResponse:
     not_implemented()
 
 
-@router.post(
-    "/admin/teams/import",
-    tags=["admin"],
-    summary="Upload a car_number,team_name,school CSV: replace the table or merge into it",
-    response_model=ImportTeamsResponse,
-    dependencies=ADMIN_ONLY,
-    responses=error_responses(400, 401, 403),
-)
-def import_teams(body: ImportTeamsRequest) -> ImportTeamsResponse:
-    """Header line optional. Bad lines are skipped and listed in `problems`.
-    A file without a single valid line never empties the table."""
-    not_implemented()
-
-
 @router.put(
     "/admin/teams/{car_number}",
     tags=["admin"],
-    summary="Add a car or change its team name and school",
-    response_model=Team,
+    summary="Add a car, edit a manual one, or correct a synced one (kept across syncs)",
+    response_model=TeamRow,
     dependencies=ADMIN_ONLY,
     responses=error_responses(400, 401, 403),
 )
-def save_team(body: SaveTeamRequest, car_number: int = _CAR_NUMBER) -> Team:
+def save_team(body: SaveTeamRequest, car_number: int = _CAR_NUMBER) -> TeamRow:
     not_implemented()
 
 
 @router.delete(
     "/admin/teams/{car_number}",
     tags=["admin"],
-    summary="Remove a car from the teams table",
+    summary="Remove a manual car, or undo the correction of a synced one",
     status_code=204,
     response_class=Response,
     dependencies=ADMIN_ONLY,

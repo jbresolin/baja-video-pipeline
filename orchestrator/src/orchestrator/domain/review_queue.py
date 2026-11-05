@@ -1,13 +1,13 @@
 """Review-side reads and requests that do not edit the review: queue, job, team, proxy."""
 
-from orchestrator.clients.baja_app import BajaAppError
 from orchestrator.context import OrchestratorContext
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
 from orchestrator.domain.job_view import job_from_row, load_job, require_job_row
-from orchestrator.errors import not_found, upstream_error
+from orchestrator.errors import not_found
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
+from orchestrator.repositories import teams as teams_repo
 from shared.models import (
     HolderStatus,
     Job,
@@ -34,10 +34,9 @@ def get_job(context: OrchestratorContext, job_id: str) -> Job:
 
 
 def find_team(context: OrchestratorContext, car_number: int) -> Team:
-    try:
-        team = context.teams.find_team(car_number)
-    except BajaAppError as error:
-        raise upstream_error("baja app", str(error)) from error
+    """GET /teams/{car}: the teams table (synced from the results API, plus corrections)."""
+    with context.database.transaction() as connection:
+        team = teams_repo.get_team(connection, car_number)
     if team is None:
         raise not_found("team for that car number")
     return team

@@ -4,13 +4,14 @@ from fastapi import APIRouter, Depends, Query
 
 from orchestrator.api.auth import get_context, require_admin
 from orchestrator.context import OrchestratorContext
-from orchestrator.domain import event_log, settings_page, workers_admin
+from orchestrator.domain import event_log, results_sync, settings_page, workers_admin
 from orchestrator.domain.audit import AdminActor
 from shared.models import (
     AdminArea,
     EnrollmentTokenInfo,
     EnrollmentTokensResponse,
     EventsResponse,
+    ResultsSyncReport,
     SettingsResponse,
     UpdateSettingsRequest,
     Worker,
@@ -70,6 +71,14 @@ def update_settings(
     context: OrchestratorContext = Depends(get_context),
 ) -> SettingsResponse:
     return settings_page.update_settings(context, actor, body)
+
+
+@router.post("/admin/results-sync", tags=["admin"], response_model=ResultsSyncReport)
+def sync_from_results_api(
+    actor: AdminActor = Depends(require_admin),
+    context: OrchestratorContext = Depends(get_context),
+) -> ResultsSyncReport:
+    return results_sync.sync_or_raise(context, actor)
 
 
 @router.get(

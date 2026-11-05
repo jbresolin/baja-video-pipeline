@@ -23,6 +23,8 @@ BYTES_PER_GB = 1_000_000_000
 # asset URL in Settings (asset names carry the version, so there is no
 # stable "latest" asset link).
 DEFAULT_INSTALLER_DOWNLOAD_URL = "https://github.com/jbresolin/baja-video-pipeline/releases/latest"
+# The Baja platform's public results API (docs/results-api.md in baja-sae-brasil-online).
+DEFAULT_RESULTS_API_URL = "https://api.bajasaebrasil.net"
 
 # BVP_DEV_MODE=1 is refused unless BVP_PUBLIC_BASE_URL points at one of
 # these hosts: dev mode serves raw files without Caddy and enables
@@ -96,11 +98,14 @@ class Settings(BaseSettings):
     )
     evolution_instance: str = "baja-bot"
 
-    # --- Team names: the teams table, then the Baja app. ---
-    # Imported once into an empty teams table at startup, then ignored.
+    # --- Teams: the teams table, synced from the results API (event_id below). ---
+    # An old CSV, imported once into an empty teams table at startup, then ignored.
     teams_file: Path | None = None
-    baja_app_url: str = ""
-    baja_app_token: SecretStr = SecretStr("")
+
+    # --- Baja results API (first-start defaults of the Settings page) ---
+    # The event whose provas and teams are synced, e.g. "26BR"; empty = none.
+    event_id: str = Field(default="", pattern=r"^([A-Za-z0-9]{4})?$")
+    results_api_url: str = DEFAULT_RESULTS_API_URL
 
     # --- Tailscale auth-key minting (infra/tailnet/mint_auth_key.md) ---
     tailscale_oauth_client_id: str = Field(validation_alias="TAILSCALE_OAUTH_CLIENT_ID")

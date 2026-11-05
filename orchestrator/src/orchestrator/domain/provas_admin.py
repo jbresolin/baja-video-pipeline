@@ -10,6 +10,7 @@ from orchestrator.errors import ApiError, not_found, validation_error
 from orchestrator.repositories import catalog as catalog_repo
 from shared.layout import slugify_prova
 from shared.models import (
+    CatalogSource,
     CreateProvaRequest,
     ErrorCode,
     Prova,
@@ -90,6 +91,13 @@ def update_prova(
         relabelled_jobs = 0
         if request.name is not None:
             name = _clean_name(request.name)
+            if name != before.name and before.source == CatalogSource.RESULTS_API:
+                raise ApiError(
+                    409,
+                    ErrorCode.CONFLICT,
+                    f"'{before.name}' comes from the results API, which names it; add a manual"
+                    " prova for another clip category instead",
+                )
             if name != before.name:
                 _check_name_is_free(connection, name, own_id=prova_id)
                 changes["name"] = name

@@ -47,11 +47,13 @@ class RegenerateProxyResponse(ApiModel):
 
 
 class Team(ApiModel):
-    """GET /teams/{car_number}: team resolved from the Baja app."""
+    """GET /teams/{car_number}: the team of a car (teams table, synced from the results API)."""
 
     car_number: CarNumber
     team_name: str
     school: str | None = None
+    # The API's short name ("FEI" for "Equipe FEI Baja"), used on the clip overlay.
+    short_name: str | None = None
 
 
 class ReviewQueueFilter(ApiModel):

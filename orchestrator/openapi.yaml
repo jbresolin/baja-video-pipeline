@@ -2119,11 +2119,13 @@ paths:
       tags:
       - review
       summary: Every prova in display order (inactive ones flagged)
-      description: 'The review form offers the active ones. `ready`, `reprocess` and a
+      description: 'Synced provas first (the results API''s order), then manual ones. The
 
-        `retry` back to ready need a prova from this list (active or not), else
+        review form offers the active ones. `ready`, `reprocess` and a `retry`
 
-        422 `unknown_prova`.'
+        back to ready need a prova from this list (active or not), else 422
+
+        `unknown_prova`.'
       operationId: list_provas_provas_get
       responses:
         '200':
@@ -2249,7 +2251,11 @@ paths:
       summary: Rename, deactivate or reactivate a prova
       description: 'A rename relabels every job that had the old name and keeps the slug,
 
-        so clips stay in the same folder on the studio box (docs/api.md §8.1).'
+        so clips stay in the same folder on the studio box (docs/api.md §8.1).
+
+        A synced prova is named by the results API: renaming it is a 409
+
+        `conflict` (activating/deactivating it is fine).'
       operationId: update_prova_admin_provas__prova_id__patch
       security:
       - sessionBearer: []
@@ -2314,7 +2320,7 @@ paths:
     get:
       tags:
       - admin
-      summary: The teams table, by car number
+      summary: The teams table (synced from the results API, plus manual rows), by car number
       operationId: list_teams_admin_teams_get
       responses:
         '200':
@@ -2338,60 +2344,11 @@ paths:
       security:
       - sessionBearer: []
       - adminBearer: []
-  /admin/teams/import:
-    post:
-      tags:
-      - admin
-      summary: 'Upload a car_number,team_name,school CSV: replace the table or merge into it'
-      description: 'Header line optional. Bad lines are skipped and listed in `problems`.
-
-        A file without a single valid line never empties the table.'
-      operationId: import_teams_admin_teams_import_post
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ImportTeamsRequest'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ImportTeamsResponse'
-        '400':
-          description: Malformed request (validation_error)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Missing or wrong credentials (unauthenticated)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: Authenticated but not allowed (forbidden)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      security:
-      - sessionBearer: []
-      - adminBearer: []
   /admin/teams/{car_number}:
     put:
       tags:
       - admin
-      summary: Add a car or change its team name and school
+      summary: Add a car, edit a manual one, or correct a synced one (kept across syncs)
       operationId: save_team_admin_teams__car_number__put
       security:
       - sessionBearer: []
@@ -2417,7 +2374,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Team'
+                $ref: '#/components/schemas/TeamRow'
         '400':
           description: Malformed request (validation_error)
           content:
@@ -2445,7 +2402,7 @@ paths:
     delete:
       tags:
       - admin
-      summary: Remove a car from the teams table
+      summary: Remove a manual car, or undo the correction of a synced one
       operationId: delete_team_admin_teams__car_number__delete
       security:
       - sessionBearer: []
@@ -2635,7 +2592,11 @@ paths:
       tags:
       - admin
       summary: Change intake mode, inbox soft cap, proxy eviction threshold or installer URL
-      description: '`inbox_hold_gb` must not exceed BVP_INBOX_CAP_GB (400).'
+      description: '`inbox_hold_gb` must not exceed BVP_INBOX_CAP_GB (400). A new
+
+        `event_id` (or API address) syncs provas and teams at once; a failed
+
+        sync does not undo the change (see `status.results_sync`).'
       operationId: update_settings_admin_settings_patch
       requestBody:
         content:
@@ -2674,6 +2635,66 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - sessionBearer: []
+      - adminBearer: []
+  /admin/results-sync:
+    post:
+      tags:
+      - admin
+      summary: Fetch the configured event's provas and teams from the Baja results API now
+      description: 'Also runs by itself when the event id changes and every 6 h while one
+
+        is set. Provas are keyed by the API''s prova id, teams by car number; a
+
+        sync adds and renames, and marks rows the API stopped listing inactive
+
+        (never deletes them). Admin corrections of synced teams are kept.
+
+
+        No event id set → 400. Event id unknown to the API → 422 (details: the
+
+        report). API unreachable or rate-limited → 503 `upstream_error`. The
+
+        report is kept either way (GET /admin/settings, `status.results_sync`).'
+      operationId: sync_from_results_api_admin_results_sync_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultsSyncReport'
+        '400':
+          description: Malformed request (validation_error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or wrong credentials (unauthenticated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated but not allowed (forbidden)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Well-formed but wrong (hash_mismatch, missing_review_fields, unknown_prova, ...)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Temporarily unavailable (dev_mode_disabled, upstream_error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       security:
       - sessionBearer: []
       - adminBearer: []
@@ -2768,6 +2789,16 @@ components:
           type: string
           maxLength: 500
           title: Installer Download Url
+        event_id:
+          type: string
+          pattern: ^([A-Za-z0-9]{4})?$
+          title: Event Id
+          default: ''
+        results_api_base_url:
+          type: string
+          maxLength: 200
+          title: Results Api Base Url
+          default: https://api.bajasaebrasil.net
       additionalProperties: false
       type: object
       required:
@@ -2797,6 +2828,13 @@ components:
       required:
       - file
       title: Body_test_upload_intake_test_upload_post
+    CatalogSource:
+      type: string
+      enum:
+      - manual
+      - results_api
+      title: CatalogSource
+      description: Where a prova or a team row came from.
     ChunkAccepted:
       properties:
         received_bytes:
@@ -3925,43 +3963,6 @@ components:
       - assigned
       - confirmed
       title: HolderStatus
-    ImportTeamsRequest:
-      properties:
-        csv_text:
-          type: string
-          maxLength: 1000000
-          title: Csv Text
-        mode:
-          $ref: '#/components/schemas/TeamsImportMode'
-      additionalProperties: false
-      type: object
-      required:
-      - csv_text
-      - mode
-      title: ImportTeamsRequest
-      description: 'POST /admin/teams/import: the text of a `car_number,team_name,school` CSV.'
-    ImportTeamsResponse:
-      properties:
-        imported:
-          type: integer
-          minimum: 0.0
-          title: Imported
-        problems:
-          items:
-            type: string
-          type: array
-          title: Problems
-        total_teams:
-          type: integer
-          minimum: 0.0
-          title: Total Teams
-      additionalProperties: false
-      type: object
-      required:
-      - imported
-      - problems
-      - total_teams
-      title: ImportTeamsResponse
     IntakeMode:
       type: string
       enum:
@@ -4812,6 +4813,14 @@ components:
         active:
           type: boolean
           title: Active
+        source:
+          $ref: '#/components/schemas/CatalogSource'
+          default: manual
+        external_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: External Id
       additionalProperties: false
       type: object
       required:
@@ -4873,6 +4882,66 @@ components:
       required:
       - prova_ids
       title: ReorderProvasRequest
+    ResultsSyncReport:
+      properties:
+        event_id:
+          type: string
+          title: Event Id
+        at:
+          type: string
+          format: date-time
+          title: At
+        ok:
+          type: boolean
+          title: Ok
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+        error_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Code
+        provas_added:
+          type: integer
+          minimum: 0.0
+          title: Provas Added
+          default: 0
+        provas_renamed:
+          type: integer
+          minimum: 0.0
+          title: Provas Renamed
+          default: 0
+        provas_deactivated:
+          type: integer
+          minimum: 0.0
+          title: Provas Deactivated
+          default: 0
+        teams_added:
+          type: integer
+          minimum: 0.0
+          title: Teams Added
+          default: 0
+        teams_updated:
+          type: integer
+          minimum: 0.0
+          title: Teams Updated
+          default: 0
+        teams_deactivated:
+          type: integer
+          minimum: 0.0
+          title: Teams Deactivated
+          default: 0
+      additionalProperties: false
+      type: object
+      required:
+      - event_id
+      - at
+      - ok
+      title: ResultsSyncReport
+      description: What the last sync with the Baja results API did (or why it failed).
     ReviewAction:
       type: string
       enum:
@@ -4963,6 +5032,12 @@ components:
           maxLength: 100
           minLength: 1
           title: Team Name
+        short_name:
+          anyOf:
+          - type: string
+            maxLength: 60
+          - type: 'null'
+          title: Short Name
         school:
           anyOf:
           - type: string
@@ -4974,7 +5049,12 @@ components:
       required:
       - team_name
       title: SaveTeamRequest
-      description: 'PUT /admin/teams/{car_number}: add the car or change its team.'
+      description: 'PUT /admin/teams/{car_number}: add a car, edit a manual one, or correct a synced one.
+
+
+        For a synced team the values are stored as a correction (override) that
+
+        later syncs keep.'
     SecretState:
       type: string
       enum:
@@ -5045,6 +5125,10 @@ components:
         inbox_cap_gb:
           type: number
           title: Inbox Cap Gb
+        results_sync:
+          anyOf:
+          - $ref: '#/components/schemas/ResultsSyncReport'
+          - type: 'null'
       additionalProperties: false
       type: object
       required:
@@ -5078,25 +5162,76 @@ components:
           - type: string
           - type: 'null'
           title: School
+        short_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Short Name
       additionalProperties: false
       type: object
       required:
       - car_number
       - team_name
       title: Team
-      description: 'GET /teams/{car_number}: team resolved from the Baja app.'
-    TeamsImportMode:
-      type: string
-      enum:
-      - replace
-      - merge
-      title: TeamsImportMode
-      description: What a teams CSV upload does with the teams already in the table.
+      description: 'GET /teams/{car_number}: the team of a car (teams table, synced from the results API).'
+    TeamRow:
+      properties:
+        car_number:
+          type: integer
+          maximum: 9999.0
+          minimum: 0.0
+          title: Car Number
+        team_name:
+          type: string
+          title: Team Name
+        short_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Short Name
+        school:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: School
+        source:
+          $ref: '#/components/schemas/CatalogSource'
+        in_source:
+          type: boolean
+          title: In Source
+          default: true
+        overridden:
+          type: boolean
+          title: Overridden
+          default: false
+        synced_team_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Synced Team Name
+        synced_short_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Synced Short Name
+        synced_school:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Synced School
+      additionalProperties: false
+      type: object
+      required:
+      - car_number
+      - team_name
+      - source
+      title: TeamRow
+      description: 'A row of the admin Teams page: what lookups answer, and where it came from.'
     TeamsResponse:
       properties:
         teams:
           items:
-            $ref: '#/components/schemas/Team'
+            $ref: '#/components/schemas/TeamRow'
           type: array
           title: Teams
       additionalProperties: false
@@ -5178,6 +5313,18 @@ components:
             maxLength: 500
           - type: 'null'
           title: Installer Download Url
+        event_id:
+          anyOf:
+          - type: string
+            pattern: ^([A-Za-z0-9]{4})?$
+          - type: 'null'
+          title: Event Id
+        results_api_base_url:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Results Api Base Url
       additionalProperties: false
       type: object
       title: UpdateSettingsRequest

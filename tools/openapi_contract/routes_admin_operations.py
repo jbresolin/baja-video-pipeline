@@ -10,6 +10,7 @@ from shared.models import (
     EnrollmentTokenInfo,
     EnrollmentTokensResponse,
     EventsResponse,
+    ResultsSyncReport,
     SettingsResponse,
     UpdateSettingsRequest,
     Worker,
@@ -87,7 +88,30 @@ def get_settings() -> SettingsResponse:
     responses=error_responses(400, 401, 403),
 )
 def update_settings(body: UpdateSettingsRequest) -> SettingsResponse:
-    """`inbox_hold_gb` must not exceed BVP_INBOX_CAP_GB (400)."""
+    """`inbox_hold_gb` must not exceed BVP_INBOX_CAP_GB (400). A new
+    `event_id` (or API address) syncs provas and teams at once; a failed
+    sync does not undo the change (see `status.results_sync`)."""
+    not_implemented()
+
+
+@router.post(
+    "/admin/results-sync",
+    tags=["admin"],
+    summary="Fetch the configured event's provas and teams from the Baja results API now",
+    response_model=ResultsSyncReport,
+    dependencies=ADMIN_ONLY,
+    responses=error_responses(400, 401, 403, 422, 503),
+)
+def sync_from_results_api() -> ResultsSyncReport:
+    """Also runs by itself when the event id changes and every 6 h while one
+    is set. Provas are keyed by the API's prova id, teams by car number; a
+    sync adds and renames, and marks rows the API stopped listing inactive
+    (never deletes them). Admin corrections of synced teams are kept.
+
+    No event id set → 400. Event id unknown to the API → 422 (details: the
+    report). API unreachable or rate-limited → 503 `upstream_error`. The
+    report is kept either way (GET /admin/settings, `status.results_sync`).
+    """
     not_implemented()
 
 

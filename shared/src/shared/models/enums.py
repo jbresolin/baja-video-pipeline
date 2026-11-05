@@ -161,13 +161,13 @@ class IntakeMode(StrEnum):
     ALLOWLIST = "allowlist"
 
 
-class TeamsImportMode(StrEnum):
-    """What a teams CSV upload does with the teams already in the table."""
+class CatalogSource(StrEnum):
+    """Where a prova or a team row came from."""
 
-    # Delete every team first; the table is exactly the file afterwards.
-    REPLACE = "replace"
-    # Add new cars and update known ones; cars missing from the file stay.
-    MERGE = "merge"
+    # Typed by an admin (or imported from old files / old jobs).
+    MANUAL = "manual"
+    # Synced from the Baja results API for the configured event.
+    RESULTS_API = "results_api"
 
 
 class EnrollmentTokenStatus(StrEnum):

@@ -1,8 +1,8 @@
 """Tests for the team lookup the job page does as the car number is typed.
 
 GET /review/api/teams/{car} relays to the orchestrator's GET /teams/{car},
-which asks the Baja app. The fake knows car 42 (Equipe Cerrado, UnB) and
-car 7 (Equipe Ipê, no school).
+which looks in its teams table (synced from the results API). The fake
+knows car 42 (Equipe Cerrado, UnB) and car 7 (Equipe Ipê, no school).
 """
 
 
@@ -10,7 +10,12 @@ def test_known_car_returns_the_team(ui, fake_orchestrator):
     response = ui.get("/review/api/teams/42")
 
     assert response.status_code == 200
-    assert response.json() == {"car_number": 42, "team_name": "Equipe Cerrado", "school": "UnB"}
+    assert response.json() == {
+        "car_number": 42,
+        "team_name": "Equipe Cerrado",
+        "school": "UnB",
+        "short_name": None,
+    }
     # It really asked the orchestrator, for that car.
     assert len(fake_orchestrator.requests_to("GET", "/teams/42")) == 1
 
@@ -24,8 +29,8 @@ def test_unknown_car_is_a_404_with_a_clear_message(ui):
     assert "999" in error["message"]
 
 
-def test_baja_app_down_is_reported_as_upstream_error(ui, fake_orchestrator):
-    # Setup: the orchestrator says the Baja app did not answer (503).
+def test_an_orchestrator_error_is_passed_on(ui, fake_orchestrator):
+    # Setup: the orchestrator answers 503 (it is restarting, say).
     fake_orchestrator.teams_upstream_down = True
 
     response = ui.get("/review/api/teams/42")

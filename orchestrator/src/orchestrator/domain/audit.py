@@ -19,8 +19,8 @@ from shared.models import AdminArea
 KINDS_BY_AREA: dict[AdminArea, list[str]] = {
     AdminArea.USERS: ["user_created", "user_updated"],
     AdminArea.CONTACTS: ["contact_created", "contact_updated"],
-    AdminArea.PROVAS: ["prova_created", "prova_updated", "provas_reordered"],
-    AdminArea.TEAMS: ["team_saved", "team_deleted", "teams_imported"],
+    AdminArea.PROVAS: ["prova_created", "prova_updated", "provas_reordered", "results_synced"],
+    AdminArea.TEAMS: ["team_saved", "team_deleted", "results_synced"],
     AdminArea.ENROLLMENT: ["enrollment_token_created", "enrollment_token_revoked"],
     AdminArea.WORKERS: ["worker_revoked"],
     AdminArea.SETTINGS: ["settings_updated"],

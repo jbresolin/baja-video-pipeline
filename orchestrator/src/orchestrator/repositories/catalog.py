@@ -1,16 +1,32 @@
-"""SQL for the provas list and the teams table (the review form's choices)."""
+"""SQL for the provas list (the review form's choices). Teams: repositories/teams.py."""
 
 import sqlite3
 from datetime import datetime
 
 from orchestrator.db.database import to_db_time
-from shared.models import Prova, Team
+from shared.models import CatalogSource, Prova
 
 # --- Provas ---
 
 
 def list_prova_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
-    return connection.execute("SELECT * FROM provas ORDER BY display_order, id").fetchall()
+    """Synced provas first (the API's order), then manual ones (the admin's order)."""
+    return connection.execute(
+        "SELECT * FROM provas ORDER BY source = 'manual', display_order, id"
+    ).fetchall()
+
+
+def list_synced_prova_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    return connection.execute(
+        "SELECT * FROM provas WHERE source = ?", (str(CatalogSource.RESULTS_API),)
+    ).fetchall()
+
+
+def find_synced_prova_row(connection: sqlite3.Connection, external_id: str) -> sqlite3.Row | None:
+    return connection.execute(
+        "SELECT * FROM provas WHERE source = ? AND external_id = ?",
+        (str(CatalogSource.RESULTS_API), external_id),
+    ).fetchone()
 
 
 def get_prova_row(connection: sqlite3.Connection, prova_id: int) -> sqlite3.Row | None:
@@ -31,12 +47,22 @@ def next_display_order(connection: sqlite3.Connection) -> int:
     ]
 
 
-def insert_prova(connection: sqlite3.Connection, name: str, slug: str, now: datetime) -> int:
-    """Add an active prova at the end of the list; returns its id."""
+def insert_prova(
+    connection: sqlite3.Connection,
+    name: str,
+    slug: str,
+    now: datetime,
+    *,
+    source: CatalogSource = CatalogSource.MANUAL,
+    external_id: str | None = None,
+    display_order: int | None = None,
+) -> int:
+    """Add an active prova (at the end of the list by default); returns its id."""
+    order = display_order if display_order is not None else next_display_order(connection)
     cursor = connection.execute(
-        "INSERT INTO provas (name, slug, display_order, active, created_at, updated_at)"
-        " VALUES (?, ?, ?, 1, ?, ?)",
-        (name, slug, next_display_order(connection), to_db_time(now), to_db_time(now)),
+        "INSERT INTO provas (name, slug, display_order, active, created_at, updated_at,"
+        " source, external_id) VALUES (?, ?, ?, 1, ?, ?, ?, ?)",
+        (name, slug, order, to_db_time(now), to_db_time(now), str(source), external_id),
     )
     return cursor.lastrowid
 
@@ -75,43 +101,6 @@ def prova_from_row(row: sqlite3.Row) -> Prova:
         slug=row["slug"],
         display_order=row["display_order"],
         active=bool(row["active"]),
+        source=CatalogSource(row["source"]),
+        external_id=row["external_id"],
     )
-
-
-# --- Teams ---
-
-
-def list_teams(connection: sqlite3.Connection) -> list[Team]:
-    rows = connection.execute("SELECT * FROM teams ORDER BY car_number").fetchall()
-    return [_team_from_row(row) for row in rows]
-
-
-def get_team(connection: sqlite3.Connection, car_number: int) -> Team | None:
-    row = connection.execute("SELECT * FROM teams WHERE car_number = ?", (car_number,)).fetchone()
-    return _team_from_row(row) if row else None
-
-
-def count_teams(connection: sqlite3.Connection) -> int:
-    return connection.execute("SELECT COUNT(*) FROM teams").fetchone()[0]
-
-
-def save_team(connection: sqlite3.Connection, team: Team, now: datetime) -> None:
-    """Insert the car, or replace its team name and school."""
-    connection.execute(
-        "INSERT INTO teams (car_number, team_name, school, updated_at) VALUES (?, ?, ?, ?)"
-        " ON CONFLICT (car_number) DO UPDATE SET team_name = excluded.team_name,"
-        " school = excluded.school, updated_at = excluded.updated_at",
-        (team.car_number, team.team_name, team.school, to_db_time(now)),
-    )
-
-
-def delete_team(connection: sqlite3.Connection, car_number: int) -> bool:
-    return connection.execute("DELETE FROM teams WHERE car_number = ?", (car_number,)).rowcount == 1
-
-
-def delete_all_teams(connection: sqlite3.Connection) -> int:
-    return connection.execute("DELETE FROM teams").rowcount
-
-
-def _team_from_row(row: sqlite3.Row) -> Team:
-    return Team(car_number=row["car_number"], team_name=row["team_name"], school=row["school"])

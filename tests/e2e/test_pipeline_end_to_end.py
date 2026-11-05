@@ -39,7 +39,7 @@ def test_a_whatsapp_video_reaches_the_studio_through_the_real_services(system):
     master = system.start_worker(WorkerRole.MASTER, "master.test")
     volunteer = system.start_worker(WorkerRole.WORKER, "volunteer.test")
     master_id, volunteer_id = master.config.worker_id, volunteer.config.worker_id
-    system.harness.baja_app.teams[42] = "Equipe Mangue Baja"
+    system.harness.add_team(42, "Equipe Mangue Baja")
 
     # --- 1. Intake: the fake CDN serves the encrypted file and a fake
     # Evolution webhook announces it. The orchestrator decrypts it into the

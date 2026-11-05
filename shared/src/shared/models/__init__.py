@@ -40,12 +40,12 @@ from shared.models.api_auth import (
 )
 from shared.models.api_catalog import (
     CreateProvaRequest,
-    ImportTeamsRequest,
-    ImportTeamsResponse,
     Prova,
     ProvasResponse,
     ReorderProvasRequest,
+    ResultsSyncReport,
     SaveTeamRequest,
+    TeamRow,
     TeamsResponse,
     UpdateProvaRequest,
 )
@@ -90,6 +90,7 @@ from shared.models.api_worker_loop import (
 from shared.models.common import ErrorBody, ErrorCode, ErrorResponse, utc_now
 from shared.models.enums import (
     AdminArea,
+    CatalogSource,
     ContactStatus,
     DeliveryRoute,
     EnrollmentTokenStatus,
@@ -103,7 +104,6 @@ from shared.models.enums import (
     ReviewAction,
     SecretState,
     TaskKind,
-    TeamsImportMode,
     UserRole,
     WorkerRole,
 )
@@ -142,6 +142,7 @@ __all__ = [
     "Contact",
     "ContactStatus",
     "ContactsResponse",
+    "CatalogSource",
     "CreateContactRequest",
     "CreateEnrollmentTokenRequest",
     "CreateProvaRequest",
@@ -176,8 +177,6 @@ __all__ = [
     "HolderConfirmRequest",
     "HolderConfirmResponse",
     "HolderStatus",
-    "ImportTeamsRequest",
-    "ImportTeamsResponse",
     "IncomingMedia",
     "IntakeMode",
     "IntakeResponse",
@@ -213,6 +212,7 @@ __all__ = [
     "ReviewQueueFilter",
     "ReviewQueueResponse",
     "ReviewUpdate",
+    "ResultsSyncReport",
     "SaveTeamRequest",
     "SecretState",
     "ServerDisk",
@@ -221,7 +221,7 @@ __all__ = [
     "Task",
     "TaskKind",
     "Team",
-    "TeamsImportMode",
+    "TeamRow",
     "TeamsResponse",
     "UpdateContactRequest",
     "UpdateProvaRequest",

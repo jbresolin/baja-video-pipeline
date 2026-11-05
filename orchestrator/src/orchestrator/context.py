@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 import httpx
 
 from orchestrator.clients.evolution import EvolutionClient
+from orchestrator.clients.results_api import ResultsApiClient
 from orchestrator.clients.tailscale import TailscaleClient
-from orchestrator.clients.teams import TeamDirectory
 from orchestrator.clock import Clock
 from orchestrator.config import Settings
 from orchestrator.counters import TaskCounters
@@ -48,8 +48,8 @@ class OrchestratorContext:
     media_http_client: httpx.Client
     evolution: EvolutionClient
     tailscale: TailscaleClient
-    # Team names: the teams table, then the Baja app.
-    teams: TeamDirectory
+    # The Baja results API: the configured event's provas and teams.
+    results_api: ResultsApiClient
     enroll_rate_limiter: SlidingWindowRateLimiter
     login_rate_limiter: SlidingWindowRateLimiter
     upload_locks: KeyedLocks = field(default_factory=KeyedLocks)

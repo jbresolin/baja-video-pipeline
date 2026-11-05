@@ -34,7 +34,7 @@ def patch_review(harness, job_id, **body):
 
 def test_save_stores_fields_resolves_the_team_and_records_the_reviewer(harness, job_in_review):
     _, job_id = job_in_review
-    harness.baja_app.teams[7] = "Equipe Sete"
+    harness.add_team(7, "Equipe Sete")
     response = patch_review(harness, job_id, action="save", prova="Suspensão", car_number=7)
     assert response.status_code == 200
     job = response.json()
@@ -165,21 +165,21 @@ def test_regenerate_proxy_says_so_when_no_holder_is_online(harness, job_in_revie
 
 
 def test_team_lookup_endpoint(harness):
-    harness.baja_app.teams[42] = "Equipe X"
+    harness.add_team(42, "Equipe X", short_name="X")
     found = harness.client.get("/teams/42", auth=harness.reviewer_auth)
-    assert found.json() == {"car_number": 42, "team_name": "Equipe X", "school": None}
+    assert found.json() == {
+        "car_number": 42,
+        "team_name": "Equipe X",
+        "school": None,
+        "short_name": "X",
+    }
     missing = harness.client.get("/teams/41", auth=harness.reviewer_auth)
     assert missing.status_code == 404
-    harness.baja_app.down = True
-    down = harness.client.get("/teams/40", auth=harness.reviewer_auth)
-    assert down.status_code == 503
-    assert down.json()["error"]["code"] == "upstream_error"
 
 
-def test_review_still_works_when_the_baja_app_is_down(harness, job_in_review):
-    # A team name is nice to have; it must never block a reviewer.
+def test_a_car_with_no_team_still_saves_with_an_empty_team_name(harness, job_in_review):
+    # A team name is nice to have; it must never block a reviewer (design §18).
     _, job_id = job_in_review
-    harness.baja_app.down = True
     response = patch_review(harness, job_id, action="save", car_number=42)
     assert response.status_code == 200
     assert response.json()["team_name"] is None

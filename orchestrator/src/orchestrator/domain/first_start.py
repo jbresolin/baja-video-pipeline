@@ -26,6 +26,7 @@ from orchestrator.db.database import Database
 from orchestrator.repositories import app_settings as settings_repo
 from orchestrator.repositories import catalog as catalog_repo
 from orchestrator.repositories import events as events_repo
+from orchestrator.repositories import teams as teams_repo
 from orchestrator.repositories import users as users_repo
 from shared.layout import slugify_prova
 from shared.models import UserRole
@@ -98,12 +99,12 @@ def import_teams_file(database: Database, path: Path | None, now: datetime) -> i
         if path is None or not path.exists():
             # Nothing to import yet; try again on the next start.
             return 0
-        if catalog_repo.count_teams(connection) > 0:
+        if teams_repo.count_teams(connection) > 0:
             settings_repo.mark_import_done(connection, TEAMS_IMPORT, now, "table not empty")
             return 0
         parsed = parse_teams_csv(path.read_text(encoding="utf-8-sig"))
         for team in parsed.teams.values():
-            catalog_repo.save_team(connection, team, now)
+            teams_repo.save_manual_team(connection, team, now)
         for problem in parsed.problems:
             logger.warning("teams file %s: %s (skipped)", path, problem)
         detail = f"{len(parsed.teams)} team(s) from {path}"

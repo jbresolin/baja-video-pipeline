@@ -18,7 +18,7 @@ UPDATABLE_JOB_COLUMNS = frozenset(
     {
         "state", "finished_at", "duration_s", "has_audio", "frame_rate", "raw_on_vps",
         "proxy_available", "thumbnail_available", "proxy_requested",
-        "prova", "car_number", "team_name", "passagem", "show_pass",
+        "prova", "car_number", "team_name", "overlay_team_name", "passagem", "show_pass",
         "cut_in_s", "cut_out_s", "reviewed_by", "reviewed_at",
         "clip_sha256", "clip_size_bytes", "clip_relative_path", "clip_route",
         "clip_rendered_by", "clip_delivered_at",

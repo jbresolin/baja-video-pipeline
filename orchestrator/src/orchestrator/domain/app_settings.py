@@ -1,7 +1,8 @@
 """Operator settings edited on the admin Settings page.
 
 Stored in the `app_settings` table. The .env values (BVP_INTAKE_MODE,
-BVP_INBOX_HOLD_GB, BVP_PROXY_EVICT_MIN_FREE_GB, BVP_INSTALLER_DOWNLOAD_URL)
+BVP_INBOX_HOLD_GB, BVP_PROXY_EVICT_MIN_FREE_GB, BVP_INSTALLER_DOWNLOAD_URL,
+BVP_EVENT_ID, BVP_RESULTS_API_URL)
 are only used for a key that is not in the table yet, i.e. on the first
 start; after that the table wins and editing .env changes nothing.
 
@@ -28,6 +29,8 @@ def defaults_from_environment(settings: Settings) -> AdminSettings:
         inbox_hold_gb=settings.inbox_hold_gb,
         proxy_evict_min_free_gb=settings.proxy_evict_min_free_gb,
         installer_download_url=settings.installer_download_url,
+        event_id=settings.event_id,
+        results_api_base_url=settings.results_api_url,
     )
 
 
@@ -69,11 +72,14 @@ class AdminSettingsStore:
     ) -> AdminSettings:
         """Validate and store the changed values; records one audit event."""
         changes = request.model_dump(exclude_unset=True, exclude_none=True, mode="json")
-        if "installer_download_url" in changes:
-            url = changes["installer_download_url"].strip()
-            if url and not url.startswith(("https://", "http://")):
-                raise validation_error("installer_download_url must start with https://")
-            changes["installer_download_url"] = url
+        for key in ("installer_download_url", "results_api_base_url"):
+            if key in changes:
+                url = changes[key].strip()
+                if url and not url.startswith(("https://", "http://")):
+                    raise validation_error(f"{key} must start with https://")
+                changes[key] = url
+        if changes.get("results_api_base_url") == "":
+            raise validation_error("results_api_base_url cannot be empty")
         with self._lock:
             before = self._current
             after = AdminSettings.model_validate(before.model_dump(mode="json") | changes)

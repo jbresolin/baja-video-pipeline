@@ -1,10 +1,10 @@
-"""Tests for the team lookup: the teams table first, then the Baja app.
+"""Tests for the team lookup (GET /teams/{car}): the teams table and nothing else.
 
-The table is edited on the admin Teams page (tests in test_admin_teams.py);
-BVP_TEAMS_FILE is only imported into it on the first start
-(test_first_start_imports.py). A car neither the table nor the Baja app
-knows is unknown (404 from GET /teams/{car}, and the job's team_name stays
-empty).
+The table is filled by the results API sync (test_results_sync.py) and
+corrected on the admin Teams page (test_admin_teams.py); an old
+BVP_TEAMS_FILE is imported into it on the first start
+(test_first_start_imports.py). A car the table does not know is unknown
+(404, and the job's team_name stays empty).
 """
 
 from orchestrator.clients.teams import parse_teams_csv
@@ -44,37 +44,21 @@ def test_an_excel_byte_order_mark_does_not_hide_the_header():
     assert parsed.problems == []
 
 
-def test_the_table_wins_over_the_baja_app(tmp_path):
-    # The teams file is imported into the (empty) table on the first start.
+def test_teams_from_the_old_csv_answer_lookups(tmp_path):
+    # A VPS that had BVP_TEAMS_FILE: imported once into the empty table.
     teams_path = tmp_path / "teams.csv"
     teams_path.write_text(TEAMS_CSV, encoding="utf-8")
     harness = build_harness(tmp_path / "data", teams_file=teams_path)
-    # The app has its own (different) name for car 42 and a team for car 9.
-    harness.baja_app.teams[42] = "Name from the app"
-    harness.baja_app.teams[9] = "Only in the app"
 
     status, body = team_answer(harness, 42)
     assert (status, body["team_name"], body["school"]) == (200, "Equipe Trovão", "UFSC")
-    # The app was not even asked about car 42...
-    assert 42 not in harness.baja_app.requests
-    # ...but it is asked about a car the table does not know.
-    assert team_answer(harness, 9)[1]["team_name"] == "Only in the app"
-    # Neither knows car 5: 404, i.e. "unknown".
+    # A car the table does not know: 404, i.e. "unknown". Nothing else is
+    # asked (the old Baja app lookup is gone; the results API is synced,
+    # not asked per car).
     assert team_answer(harness, 5)[0] == 404
+    assert harness.results_api.requests == []
 
 
-def test_with_the_app_down_the_table_still_answers(tmp_path):
-    teams_path = tmp_path / "teams.csv"
-    teams_path.write_text(TEAMS_CSV, encoding="utf-8")
-    harness = build_harness(tmp_path / "data", teams_file=teams_path)
-    harness.baja_app.down = True
-    assert team_answer(harness, 7)[1]["team_name"] == "Mangue Baja"
-    # A car only the (down) app could know is an upstream error, not "unknown".
-    assert team_answer(harness, 99)[0] == 503
-
-
-def test_with_an_empty_table_and_no_app_every_car_is_unknown(tmp_path):
-    # No teams file and no BVP_BAJA_APP_URL: the service still starts.
-    harness = build_harness(tmp_path / "data", baja_app_url="")
+def test_with_an_empty_table_every_car_is_unknown(tmp_path):
+    harness = build_harness(tmp_path / "data")
     assert team_answer(harness, 42)[0] == 404
-    assert harness.baja_app.requests == []

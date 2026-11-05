@@ -8,13 +8,11 @@ from orchestrator.domain import provas_admin, teams_admin
 from orchestrator.domain.audit import AdminActor
 from shared.models import (
     CreateProvaRequest,
-    ImportTeamsRequest,
-    ImportTeamsResponse,
     Prova,
     ProvasResponse,
     ReorderProvasRequest,
     SaveTeamRequest,
-    Team,
+    TeamRow,
     TeamsResponse,
     UpdateProvaRequest,
 )
@@ -72,22 +70,13 @@ def list_teams(context: OrchestratorContext = Depends(get_context)) -> TeamsResp
     return teams_admin.list_teams(context)
 
 
-@router.post("/admin/teams/import", tags=["admin"], response_model=ImportTeamsResponse)
-def import_teams(
-    body: ImportTeamsRequest,
-    actor: AdminActor = Depends(require_admin),
-    context: OrchestratorContext = Depends(get_context),
-) -> ImportTeamsResponse:
-    return teams_admin.import_teams(context, actor, body)
-
-
-@router.put("/admin/teams/{car_number}", tags=["admin"], response_model=Team)
+@router.put("/admin/teams/{car_number}", tags=["admin"], response_model=TeamRow)
 def save_team(
     body: SaveTeamRequest,
     car_number: int = CAR_NUMBER,
     actor: AdminActor = Depends(require_admin),
     context: OrchestratorContext = Depends(get_context),
-) -> Team:
+) -> TeamRow:
     return teams_admin.save_team(context, actor, car_number, body)
 
 
