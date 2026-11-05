@@ -69,7 +69,7 @@ class IntakeSource(ApiModel):
 
 
 class ClipInfo(ApiModel):
-    """The finished, rendered clip."""
+    """The finished, rendered clip (the current version)."""
 
     sha256: Sha256Hex
     size_bytes: ByteCount
@@ -78,6 +78,27 @@ class ClipInfo(ApiModel):
     route: DeliveryRoute
     rendered_by_worker_id: str
     delivered_at: datetime | None = None
+    # 1 for the first rendering, 2 after a reprocess, ... (ClipVersion).
+    version: int = Field(default=1, ge=1)
+    # True while the VPS outbox still has a copy (studio offline, or not yet
+    # archived by the master): the review UI offers it for download.
+    in_outbox: bool = False
+
+
+class ClipVersion(ApiModel):
+    """One rendering of a job's clip. Reprocessing adds a version; none is replaced."""
+
+    version: int = Field(ge=1)
+    sha256: Sha256Hex
+    size_bytes: ByteCount
+    # Box path at render time, e.g. "enduro/42/3.mp4".
+    relative_path: str
+    # Path in the master's archive folder: "enduro/42/3.mp4", "enduro/42/3.v2.mp4".
+    archive_relative_path: str
+    rendered_by_worker_id: str | None = None
+    rendered_at: datetime
+    # When the master confirmed its archive copy (sha256 checked); None until then.
+    archived_at: datetime | None = None
 
 
 class ProbeReport(ApiModel):
@@ -167,6 +188,8 @@ class Job(ApiModel):
 
     # --- Output ---
     clip: ClipInfo | None = None
+    # Every rendering ever made, oldest first, with its archive status.
+    clip_versions: list[ClipVersion] = Field(default_factory=list)
     # Set when a worker reported a failure; shown to the reviewer, who then
     # chooses retry or discard. Cleared by "retry".
     failure: JobFailure | None = None

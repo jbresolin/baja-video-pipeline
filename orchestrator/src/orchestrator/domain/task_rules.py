@@ -1,7 +1,8 @@
 """Who may do which task on which job (design §4, §5; docs/api.md §5).
 
 evaluate_task() is the single rulebook used both by /next (to make an
-offer) and by /claim (to accept it), so the two can never disagree. It
+offer) and by /claim (to accept it), so the two can never disagree.
+archive_clip's rules live in archive_rules.py. It
 answers with the task to hand out, or with why not:
 
     ALREADY_CLAIMED  another worker holds the lease (or the holder slots)
@@ -12,12 +13,13 @@ returns the same lease.
 """
 
 import sqlite3
-from dataclasses import dataclass
 from datetime import timedelta
 
 from orchestrator.db.database import from_db_time
 from orchestrator.domain import provas_catalog
+from orchestrator.domain.archive_rules import evaluate_archive_clip
 from orchestrator.domain.fleet_snapshot import FleetSnapshot, accepts_new_raws, peer_raw_url
+from orchestrator.domain.task_decision import TaskDecision, refuse
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.storage import VpsLayout
 from shared.layout import clip_relative_path_in_folder
@@ -46,17 +48,6 @@ NO_DOWNLOAD_STATES = frozenset({JobState.DISCARDED, JobState.FAILED})
 NO_MASTER_DOWNLOAD_STATES = frozenset({JobState.DISCARDED})
 
 
-@dataclass(frozen=True)
-class TaskDecision:
-    task: DownloadRawTask | MakeProxyTask | ProcessTask | DeliverTask | None = None
-    refusal: ErrorCode | None = None
-    reason: str = ""
-
-
-def refuse(code: ErrorCode, reason: str) -> TaskDecision:
-    return TaskDecision(refusal=code, reason=reason)
-
-
 def evaluate_task(
     connection: sqlite3.Connection,
     layout: VpsLayout,
@@ -72,6 +63,8 @@ def evaluate_task(
         return _evaluate_deliver(connection, layout, job_row, worker_row)
     if is_studio:
         return refuse(ErrorCode.NOT_CLAIMABLE, "the studio never holds or processes raws")
+    if kind == TaskKind.ARCHIVE_CLIP:
+        return evaluate_archive_clip(connection, layout, snapshot, job_row, worker_row)
     if leases_repo.is_task_excluded(connection, job_row["id"], worker_row["id"], kind):
         return refuse(ErrorCode.NOT_CLAIMABLE, f"this worker already failed {kind} on this job")
     if kind == TaskKind.DOWNLOAD_RAW:

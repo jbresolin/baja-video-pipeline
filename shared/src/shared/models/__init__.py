@@ -18,6 +18,7 @@ The models are split over several files only to keep each file short:
 """
 
 from shared.models.api_admin import (
+    ClipArchiveProgress,
     CreateEnrollmentTokenRequest,
     EnrollmentTokenCreated,
     EnrollRequest,
@@ -73,10 +74,12 @@ from shared.models.api_review import (
 )
 from shared.models.api_worker_loop import (
     ChunkAccepted,
+    ClipArchivedRequest,
     DeliveredRequest,
     FailedRequest,
     HeartbeatRequest,
     HeartbeatResponse,
+    HeldClip,
     HolderConfirmRequest,
     HolderConfirmResponse,
     JobStateResponse,
@@ -111,6 +114,7 @@ from shared.models.events import Event, EventsResponse
 from shared.models.evolution import EvolutionWebhook, IncomingMedia, find_incoming_video
 from shared.models.job import (
     ClipInfo,
+    ClipVersion,
     Holder,
     IntakeSource,
     Job,
@@ -120,6 +124,7 @@ from shared.models.job import (
     ProbeReport,
 )
 from shared.models.tasks import (
+    ArchiveClipTask,
     ClaimRequest,
     ClaimResponse,
     DeliverTask,
@@ -136,7 +141,12 @@ from shared.models.worker import EnrollmentToken, Worker, WorkerCapabilities, Wo
 __all__ = [
     "AdminArea",
     "AdminSettings",
+    "ArchiveClipTask",
     "ChunkAccepted",
+    "ClipArchiveProgress",
+    "ClipArchivedRequest",
+    "ClipVersion",
+    "HeldClip",
     "ClaimRequest",
     "ClaimResponse",
     "ClipInfo",

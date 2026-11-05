@@ -99,9 +99,30 @@ class DeliverTask(ApiModel):
     clip_relative_path: str
 
 
-# "Any one of the four task models", picked by looking at the `kind` field.
+class ArchiveClipTask(ApiModel):
+    """Master only: keep a copy of one finished clip version in the archive folder.
+
+    Lowest priority, after live work and raw backfill. If the master has
+    the clip itself (it rendered it), it moves its own copy; otherwise it
+    GETs the first URL that works: the rendering worker's file server
+    ("http://<peer>:8710/clip/<job_id>?sha256=…", no token) or the VPS outbox
+    (Caddy, send your token). Then POST /jobs/{id}/clip-archived.
+    """
+
+    kind: Literal[TaskKind.ARCHIVE_CLIP] = TaskKind.ARCHIVE_CLIP
+    job_id: str
+    version: int = Field(ge=1)
+    sha256: Sha256Hex
+    size_bytes: ByteCount
+    # Where to store it under the archive folder (shared.layout.archive_relative_path).
+    archive_relative_path: str
+    # Sources in order; may be empty when the master itself holds the clip.
+    download_urls: list[str] = Field(default_factory=list)
+
+
+# "Any one of the task models", picked by looking at the `kind` field.
 Task = Annotated[
-    DownloadRawTask | MakeProxyTask | ProcessTask | DeliverTask,
+    DownloadRawTask | MakeProxyTask | ProcessTask | DeliverTask | ArchiveClipTask,
     Field(discriminator="kind"),
 ]
 

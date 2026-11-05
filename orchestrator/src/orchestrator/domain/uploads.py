@@ -12,6 +12,7 @@ from pathlib import Path
 
 from orchestrator.context import OrchestratorContext
 from orchestrator.domain import provas_catalog
+from orchestrator.domain.clip_archive import record_clip_version
 from orchestrator.domain.job_view import require_job_row
 from orchestrator.domain.leases import require_active_lease, sweep_expired_leases
 from orchestrator.domain.transitions import end_lease, move_job
@@ -209,6 +210,20 @@ def accept_clip_chunk(
         return accepted
 
     def clip_is_in_outbox(connection: sqlite3.Connection, job_row: sqlite3.Row) -> None:
+        relative_path = clip_relative_path_in_folder(
+            provas_catalog.clip_folder_for(connection, job_row["prova"]),
+            job_row["car_number"],
+            job_row["passagem"],
+        )
+        record_clip_version(
+            connection,
+            job_id,
+            sha256=upload.sha256,
+            size_bytes=upload.total_length,
+            relative_path=relative_path,
+            rendered_by=worker_row["id"],
+            now=context.clock.now(),
+        )
         move_job(
             connection,
             job_row,
@@ -219,11 +234,7 @@ def accept_clip_chunk(
             changes={
                 "clip_sha256": upload.sha256,
                 "clip_size_bytes": upload.total_length,
-                "clip_relative_path": clip_relative_path_in_folder(
-                    provas_catalog.clip_folder_for(connection, job_row["prova"]),
-                    job_row["car_number"],
-                    job_row["passagem"],
-                ),
+                "clip_relative_path": relative_path,
                 "clip_route": str(DeliveryRoute.OUTBOX),
                 "clip_rendered_by": worker_row["id"],
                 "clip_delivered_at": None,

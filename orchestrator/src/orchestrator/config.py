@@ -88,6 +88,9 @@ class Settings(BaseSettings):
     # "restore" just works. A setting until the admin page's settings
     # table exists (LIVESTACK-37); then read from there.
     discard_grace_hours: float = Field(default=24, ge=0)
+    # How long an outbox clip the studio already took is kept while the
+    # master has not archived it (master offline). design §11 as amended.
+    outbox_keep_unarchived_hours: float = Field(default=72, ge=0)
 
     # --- Admin Settings page, first-start defaults (like the two above) ---
     intake_mode: IntakeMode = IntakeMode.OPEN
@@ -133,6 +136,10 @@ class Settings(BaseSettings):
     @property
     def discard_grace(self) -> timedelta:
         return timedelta(hours=self.discard_grace_hours)
+
+    @property
+    def outbox_keep_unarchived(self) -> timedelta:
+        return timedelta(hours=self.outbox_keep_unarchived_hours)
 
     @property
     def inbox_cap_bytes(self) -> int:

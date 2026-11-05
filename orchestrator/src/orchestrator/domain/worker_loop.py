@@ -4,6 +4,8 @@ import sqlite3
 from datetime import datetime
 
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain import clip_archive
+from orchestrator.domain.archive_rules import offer_archive_clip
 from orchestrator.domain.discard import discard_grace_is_over
 from orchestrator.domain.fleet_snapshot import FleetSnapshot, accepts_new_raws
 from orchestrator.domain.job_view import require_job_row
@@ -38,7 +40,8 @@ from shared.protocol import (
 # they unblock the human reviewers, who are the slowest part of the line.
 KIND_PRIORITY = [TaskKind.MAKE_PROXY, TaskKind.PROCESS, TaskKind.DOWNLOAD_RAW, TaskKind.DELIVER]
 # After all of that, the master backfills raws of finished jobs it missed
-# (design §17): the lowest priority there is.
+# (design §17), and after that it archives clips (archive_rules.py): the
+# lowest priority there is.
 
 
 def process_heartbeat(
@@ -80,6 +83,8 @@ def process_heartbeat(
         if worker_row["role"] != WorkerRole.STUDIO:
             _forget_raws_the_worker_no_longer_has(connection, worker_id, request, now)
         deletable = _deletable_job_ids(connection, request.held_job_ids, now)
+        clip_archive.store_held_clips(connection, worker_id, request.held_clips)
+        archived_clips = clip_archive.archived_among(connection, request.held_clips)
         refreshed_row = workers_repo.get_worker_row(connection, worker_id)
 
     return HeartbeatResponse(
@@ -87,6 +92,7 @@ def process_heartbeat(
         heartbeat_interval_s=HEARTBEAT_INTERVAL_SECONDS,
         accepting_new_raws=accepts_new_raws(refreshed_row),
         deletable_job_ids=deletable,
+        archived_clip_sha256s=archived_clips,
     )
 
 
@@ -177,6 +183,10 @@ def offer_next_task(
         if backfill is not None:
             context.task_counters.count_offer(TaskKind.DOWNLOAD_RAW)
             return NextTaskResponse(task=backfill, retry_after_s=0)
+        archive = offer_archive_clip(connection, context.layout, snapshot, worker_row, accepted)
+        if archive is not None:
+            context.task_counters.count_offer(TaskKind.ARCHIVE_CLIP)
+            return NextTaskResponse(task=archive, retry_after_s=0)
     return NextTaskResponse(task=None, retry_after_s=EMPTY_QUEUE_RETRY_SECONDS)
 
 

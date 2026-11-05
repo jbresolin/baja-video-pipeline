@@ -62,6 +62,9 @@ class TaskKind(StrEnum):
     PROCESS = "process"
     # Studio only: pull a clip from the VPS outbox, verify it, store it, ACK.
     DELIVER = "deliver"
+    # Master only: copy a finished clip (any version) into its archive
+    # folder, from the worker that rendered it or the VPS outbox.
+    ARCHIVE_CLIP = "archive_clip"
 
 
 class HolderStatus(StrEnum):

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 
 from orchestrator.context import OrchestratorContext
-from orchestrator.domain.delivery import finish_delivery
+from orchestrator.domain.delivery import delete_outbox_copy_if_unneeded, finish_delivery
 from orchestrator.domain.discard import discard_grace_is_over
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
 from orchestrator.domain.leases import sweep_expired_leases
@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 # Half-written outbox uploads untouched for this long are abandoned.
 ABANDONED_UPLOAD_AGE = timedelta(hours=24)
-OUTBOX_FILE_NEEDED_STATES = frozenset({JobState.CLAIMED, JobState.UPLOADED})
 
 
 def expire_leases_once(context: OrchestratorContext) -> list[str]:
@@ -133,7 +132,7 @@ def clean_outbox_once(context: OrchestratorContext) -> OutboxCleanupResult:
     with context.database.transaction() as connection:
         now = context.clock.now()
         for row in jobs_repo.list_job_rows_in_states(connection, [JobState.DELIVERED]):
-            finish_delivery(connection, context.layout, row["id"], now, SYSTEM_ACTOR)
+            finish_delivery(context, connection, row["id"], now, SYSTEM_ACTOR)
             result.finished_job_ids.append(row["id"])
         for path in sorted(outbox.iterdir()):
             if path.name.startswith("."):
@@ -143,9 +142,12 @@ def clean_outbox_once(context: OrchestratorContext) -> OutboxCleanupResult:
                     result.deleted_files.append(path.name)
                 continue
             job_row = jobs_repo.get_job_row(connection, path.stem)
-            # claimed: the upload may have just completed, and the move to
-            # uploaded follows in the next transaction. Leave it alone.
-            if job_row is None or job_row["state"] not in OUTBOX_FILE_NEEDED_STATES:
+            if job_row is None:
                 delete_file_and_partials(path)
+                result.deleted_files.append(path.name)
+            # claimed (the move to uploaded may follow in the next
+            # transaction), uploaded (the studio has not pulled it), or
+            # delivered but not yet archived by the master: keep it.
+            elif delete_outbox_copy_if_unneeded(context, connection, job_row, now):
                 result.deleted_files.append(path.name)
     return result

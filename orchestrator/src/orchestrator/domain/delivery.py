@@ -1,8 +1,9 @@
 """Studio ACKs (direct push and outbox) and the clip manifest (design §7).
 
-Both ACK routes end with the clip `delivered` and, once the outbox copy (if
-any) is deleted, `done`. If deleting fails the job stays `delivered` and
-the background outbox cleanup finishes the move.
+Both ACK routes end with the clip `delivered` and then `done`. The outbox
+copy (if any) is deleted only once the master has archived that clip too
+(or BVP_OUTBOX_KEEP_UNARCHIVED_HOURS after the ACK): domain/clip_archive.py.
+If deleting fails, the background outbox cleanup tries again.
 """
 
 import logging
@@ -11,14 +12,16 @@ from datetime import UTC, datetime
 
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import from_db_time, to_db_time
+from orchestrator.domain.clip_archive import outbox_copy_still_needed, record_clip_version
 from orchestrator.domain.job_view import require_job_row
 from orchestrator.domain.leases import require_active_lease, sweep_expired_leases
 from orchestrator.domain.transitions import end_lease, move_job, revoke_job_leases
 from orchestrator.errors import ApiError, forbidden, from_illegal_transition, hash_mismatch
+from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
-from orchestrator.storage import VpsLayout, delete_file_and_partials
+from orchestrator.storage import delete_file_and_partials
 from shared.layout import is_safe_relative_path, slugify_prova
 from shared.models import (
     DeliveredRequest,
@@ -44,22 +47,43 @@ def require_studio(worker_row: sqlite3.Row) -> None:
 
 
 def finish_delivery(
-    connection: sqlite3.Connection, layout: VpsLayout, job_id: str, now: datetime, actor: str
+    context: OrchestratorContext,
+    connection: sqlite3.Connection,
+    job_id: str,
+    now: datetime,
+    actor: str,
 ) -> None:
-    """delivered → done once the outbox has no copy left (deleting it if needed)."""
-    try:
-        delete_file_and_partials(layout.outbox_path(job_id))
-    except OSError as error:
-        logger.warning("outbox copy of %s not deleted yet: %s", job_id, error)
-        return
+    """delivered → done; the outbox copy goes now unless the master still needs it."""
     move_job(
         connection,
         require_job_row(connection, job_id),
         JobState.DONE,
         now,
         actor=actor,
-        reason="delivered and outbox copy removed",
+        reason="delivered to the studio",
     )
+    delete_outbox_copy_if_unneeded(context, connection, require_job_row(connection, job_id), now)
+
+
+def delete_outbox_copy_if_unneeded(
+    context: OrchestratorContext,
+    connection: sqlite3.Connection,
+    job_row: sqlite3.Row,
+    now: datetime,
+) -> bool:
+    """Delete the job's outbox file unless studio or master still need it. True if gone."""
+    path = context.layout.outbox_path(job_row["id"])
+    if not path.exists():
+        return True
+    keep = context.settings.outbox_keep_unarchived
+    if outbox_copy_still_needed(connection, job_row, now, keep):
+        return False
+    try:
+        delete_file_and_partials(path)
+    except OSError as error:
+        logger.warning("outbox copy of %s not deleted yet: %s", job_row["id"], error)
+        return False
+    return True
 
 
 def acknowledge_direct_push(
@@ -90,6 +114,15 @@ def acknowledge_direct_push(
             reason="studio acknowledged",
             kinds={TaskKind.PROCESS, TaskKind.DELIVER},
         )
+        record_clip_version(
+            connection,
+            job_id,
+            sha256=request.sha256,
+            size_bytes=request.size_bytes,
+            relative_path=request.relative_path,
+            rendered_by=renderer or worker_row["id"],
+            now=now,
+        )
         clip_columns = {
             "clip_sha256": request.sha256,
             "clip_size_bytes": request.size_bytes,
@@ -117,7 +150,7 @@ def acknowledge_direct_push(
             reason="studio acknowledged a direct push",
             changes={**clip_columns, "clip_delivered_at": to_db_time(now)},
         )
-        finish_delivery(connection, context.layout, job_id, now, actor)
+        finish_delivery(context, connection, job_id, now, actor)
         final_state = JobState(require_job_row(connection, job_id)["state"])
     return JobStateResponse(job_id=job_id, state=final_state)
 
@@ -160,7 +193,7 @@ def acknowledge_outbox_pull(
                     "clip_relative_path": request.relative_path,
                 },
             )
-            finish_delivery(connection, context.layout, job_id, now, actor)
+            finish_delivery(context, connection, job_id, now, actor)
             final_state = JobState(require_job_row(connection, job_id)["state"])
     if mismatch is not None:
         raise mismatch
@@ -179,6 +212,15 @@ def build_manifest(
         since = since.replace(tzinfo=UTC)  # docs/api.md §1: times are UTC
     with context.database.transaction() as connection:
         rows = jobs_repo.list_delivered_job_rows(connection)
+        return _manifest_from_rows(context, connection, rows, since, wanted_slug)
+
+
+def _current_version_number(connection: sqlite3.Connection, row: sqlite3.Row) -> int:
+    version = clips_repo.get_version_by_sha(connection, row["id"], row["clip_sha256"])
+    return version["version"] if version is not None else 1
+
+
+def _manifest_from_rows(context, connection, rows, since, wanted_slug) -> ManifestResponse:
     entries = []
     seen_paths = set()
     for row in rows:  # newest delivery first, so the first one per path wins
@@ -201,6 +243,8 @@ def build_manifest(
                 sha256=row["clip_sha256"],
                 size_bytes=row["clip_size_bytes"],
                 delivered_at=delivered_at,
+                version=_current_version_number(connection, row),
+                in_outbox=context.layout.outbox_path(row["id"]).exists(),
             )
         )
     return ManifestResponse(clips=entries, generated_at=context.clock.now())

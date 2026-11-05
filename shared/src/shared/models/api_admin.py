@@ -107,6 +107,18 @@ class FleetWorker(ApiModel):
     held_bytes: ByteCount
     # False near the storage cap: no new raws, still processes held ones.
     accepting_new_raws: bool
+    # Finished clips the worker keeps, and how many of those the master
+    # has archived (only those may be evicted). The master's own archive is
+    # FleetResponse.clip_archive.
+    clips_held: int = Field(default=0, ge=0)
+    clips_archived: int = Field(default=0, ge=0)
+
+
+class ClipArchiveProgress(ApiModel):
+    """How much of every clip ever rendered (all versions) the master has."""
+
+    archived: int = Field(ge=0)
+    total: int = Field(ge=0)
 
 
 class FleetResponse(ApiModel):
@@ -114,6 +126,10 @@ class FleetResponse(ApiModel):
     server_disk: ServerDisk
     # Count of jobs per state, e.g. {"awaiting_review": 4, "ready": 2}.
     jobs_by_state: dict[str, int]
+    # "N of M clips archived" on the master.
+    clip_archive: ClipArchiveProgress = Field(
+        default_factory=lambda: ClipArchiveProgress(archived=0, total=0)
+    )
 
 
 # --- Manifest (read by the studio and the later playout UI, LIVESTACK-8) ---
@@ -130,6 +146,13 @@ class ManifestEntry(ApiModel):
     sha256: Sha256Hex
     size_bytes: ByteCount
     delivered_at: datetime
+    # Which rendering of this pass it is: 1, then 2 after a reprocess, ...
+    # The master archives every version (<passagem>.mp4, <passagem>.v2.mp4);
+    # the box and this manifest only have the current one.
+    version: int = Field(default=1, ge=1)
+    # True while the VPS outbox still has this clip: the review UI's clips
+    # page offers it for download (reviewer auth, Caddy /outbox-download/).
+    in_outbox: bool = False
 
 
 class ManifestResponse(ApiModel):

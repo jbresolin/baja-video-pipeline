@@ -145,7 +145,7 @@ def update_review(
             changes.update(_team_names(connection, update.car_number))
         actor = events_repo.reviewer_actor(reviewer)
         _apply_action(context, connection, job_row, update.action, changes, merged, actor)
-        return load_job(connection, job_id)
+        return load_job(connection, job_id, context.layout)
 
 
 def _apply_action(

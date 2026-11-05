@@ -2,6 +2,7 @@
 
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import from_db_time
+from orchestrator.domain.clip_archive import archive_progress, worker_clip_counts
 from orchestrator.domain.fleet_snapshot import accepts_new_raws, is_online
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
@@ -15,6 +16,7 @@ def build_fleet(context: OrchestratorContext) -> FleetResponse:
         fleet_workers = []
         for row in workers_repo.list_worker_rows(connection):
             held_count, held_bytes = leases_repo.held_bytes_for_worker(connection, row["id"])
+            clips_held, clips_archived = worker_clip_counts(connection, row["id"])
             fleet_workers.append(
                 FleetWorker(
                     worker=workers_repo.worker_from_row(connection, row),
@@ -23,11 +25,17 @@ def build_fleet(context: OrchestratorContext) -> FleetResponse:
                     held_job_count=held_count,
                     held_bytes=held_bytes,
                     accepting_new_raws=accepts_new_raws(row),
+                    clips_held=clips_held,
+                    clips_archived=clips_archived,
                 )
             )
         jobs_by_state = jobs_repo.count_jobs_by_state(connection)
+        progress = archive_progress(connection)
     return FleetResponse(
-        workers=fleet_workers, server_disk=server_disk(context), jobs_by_state=jobs_by_state
+        workers=fleet_workers,
+        server_disk=server_disk(context),
+        jobs_by_state=jobs_by_state,
+        clip_archive=progress,
     )
 
 

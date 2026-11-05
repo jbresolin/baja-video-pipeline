@@ -11,12 +11,21 @@ from orchestrator.api.auth import (
     require_worker_matching_path,
 )
 from orchestrator.context import OrchestratorContext
-from orchestrator.domain import delivery, fleet, media_info, task_results, uploads, worker_loop
+from orchestrator.domain import (
+    clip_archive,
+    delivery,
+    fleet,
+    media_info,
+    task_results,
+    uploads,
+    worker_loop,
+)
 from orchestrator.domain.file_access import authorize_file_request
 from shared.models import (
     ChunkAccepted,
     ClaimRequest,
     ClaimResponse,
+    ClipArchivedRequest,
     DeliveredRequest,
     FailedRequest,
     HeartbeatRequest,
@@ -177,6 +186,16 @@ async def upload_clip(
     return await run_in_threadpool(
         uploads.accept_clip_chunk, context, worker_row, job_id, lease_id, request.headers, chunk
     )
+
+
+@router.post("/jobs/{job_id}/clip-archived", response_model=JobStateResponse, tags=["delivery"])
+def clip_archived(
+    job_id: str,
+    body: ClipArchivedRequest,
+    worker_row: sqlite3.Row = Depends(require_worker),
+    context: OrchestratorContext = Depends(get_context),
+) -> JobStateResponse:
+    return clip_archive.confirm_clip_archived(context, worker_row, job_id, body)
 
 
 @router.post("/jobs/{job_id}/delivered", response_model=JobStateResponse, tags=["delivery"])

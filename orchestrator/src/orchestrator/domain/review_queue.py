@@ -24,13 +24,13 @@ NO_HOLDER_ONLINE = "waiting for a holder of the raw to come back online"
 def review_queue(context: OrchestratorContext, states: list[JobState], limit: int):
     with context.database.transaction() as connection:
         rows = jobs_repo.list_job_rows_in_states(connection, states, limit)
-        jobs = [job_from_row(connection, row) for row in rows]
+        jobs = [job_from_row(connection, row, context.layout) for row in rows]
     return ReviewQueueResponse(items=[JobSummary.from_job(job) for job in jobs])
 
 
 def get_job(context: OrchestratorContext, job_id: str) -> Job:
     with context.database.transaction() as connection:
-        return load_job(connection, job_id)
+        return load_job(connection, job_id, context.layout)
 
 
 def find_team(context: OrchestratorContext, car_number: int) -> Team:

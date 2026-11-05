@@ -35,6 +35,7 @@ REQUIRED_ENDPOINTS = {
     ("put", "/jobs/{job_id}/media-info"),
     ("post", "/jobs/{job_id}/clip"),
     ("post", "/jobs/{job_id}/delivered"),
+    ("post", "/jobs/{job_id}/clip-archived"),
     # Review
     ("get", "/review/queue"),
     ("get", "/jobs/{job_id}"),

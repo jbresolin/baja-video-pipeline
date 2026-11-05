@@ -1132,6 +1132,81 @@ paths:
             schema:
               type: string
               format: binary
+  /jobs/{job_id}/clip-archived:
+    post:
+      tags:
+      - delivery
+      summary: 'Master: confirm one clip version is in the archive (sha256 checked)'
+      description: 'Master only (403 otherwise), under its archive_clip lease. Marks the
+
+        clip version with that sha256 archived and ends the lease; 422
+
+        hash_mismatch when the sha256 is no version of this job (the lease
+
+        stays, so the master can fetch from another source). Archived clips
+
+        may then be evicted by the workers that keep them, and the outbox copy
+
+        may go once the studio has ACKed it. The job''s state does not change.'
+      operationId: clip_archived_jobs__job_id__clip_archived_post
+      security:
+      - workerBearer: []
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClipArchivedRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStateResponse'
+        '400':
+          description: Malformed request (validation_error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or wrong credentials (unauthenticated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated but not allowed (forbidden)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No such job / worker / team / user / ... (not_found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflicts with the current state (see error.code)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Well-formed but wrong (hash_mismatch, missing_review_fields, unknown_prova, ...)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /jobs/{job_id}/delivered:
     post:
       tags:
@@ -2885,6 +2960,57 @@ components:
       - installer_download_url
       title: AdminSettings
       description: Settings the operator edits in the UI. The .env values are only first-start defaults.
+    ArchiveClipTask:
+      properties:
+        kind:
+          type: string
+          const: archive_clip
+          title: Kind
+          default: archive_clip
+        job_id:
+          type: string
+          title: Job Id
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+        sha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          title: Sha256
+        size_bytes:
+          type: integer
+          minimum: 0.0
+          title: Size Bytes
+        archive_relative_path:
+          type: string
+          title: Archive Relative Path
+        download_urls:
+          items:
+            type: string
+          type: array
+          title: Download Urls
+      additionalProperties: false
+      type: object
+      required:
+      - job_id
+      - version
+      - sha256
+      - size_bytes
+      - archive_relative_path
+      title: ArchiveClipTask
+      description: 'Master only: keep a copy of one finished clip version in the archive folder.
+
+
+        Lowest priority, after live work and raw backfill. If the master has
+
+        the clip itself (it rendered it), it moves its own copy; otherwise it
+
+        GETs the first URL that works: the rendering worker''s file server
+
+        ("http://<peer>:8710/clip/<job_id>?sha256=…", no token) or the VPS outbox
+
+        (Caddy, send your token). Then POST /jobs/{id}/clip-archived.'
     Body_test_upload_intake_test_upload_post:
       properties:
         file:
@@ -2947,10 +3073,12 @@ components:
           - $ref: '#/components/schemas/MakeProxyTask'
           - $ref: '#/components/schemas/ProcessTask'
           - $ref: '#/components/schemas/DeliverTask'
+          - $ref: '#/components/schemas/ArchiveClipTask'
           title: Task
           discriminator:
             propertyName: kind
             mapping:
+              archive_clip: '#/components/schemas/ArchiveClipTask'
               deliver: '#/components/schemas/DeliverTask'
               download_raw: '#/components/schemas/DownloadRawTask'
               make_proxy: '#/components/schemas/MakeProxyTask'
@@ -2961,6 +3089,39 @@ components:
       - lease
       - task
       title: ClaimResponse
+    ClipArchiveProgress:
+      properties:
+        archived:
+          type: integer
+          minimum: 0.0
+          title: Archived
+        total:
+          type: integer
+          minimum: 0.0
+          title: Total
+      additionalProperties: false
+      type: object
+      required:
+      - archived
+      - total
+      title: ClipArchiveProgress
+      description: How much of every clip ever rendered (all versions) the master has.
+    ClipArchivedRequest:
+      properties:
+        lease_id:
+          type: string
+          title: Lease Id
+        sha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          title: Sha256
+      additionalProperties: false
+      type: object
+      required:
+      - lease_id
+      - sha256
+      title: ClipArchivedRequest
+      description: 'POST /jobs/{id}/clip-archived: the master stored that exact clip, hash checked.'
     ClipInfo:
       properties:
         sha256:
@@ -2985,6 +3146,15 @@ components:
             format: date-time
           - type: 'null'
           title: Delivered At
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+          default: 1
+        in_outbox:
+          type: boolean
+          title: In Outbox
+          default: false
       additionalProperties: false
       type: object
       required:
@@ -2994,7 +3164,53 @@ components:
       - route
       - rendered_by_worker_id
       title: ClipInfo
-      description: The finished, rendered clip.
+      description: The finished, rendered clip (the current version).
+    ClipVersion:
+      properties:
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+        sha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          title: Sha256
+        size_bytes:
+          type: integer
+          minimum: 0.0
+          title: Size Bytes
+        relative_path:
+          type: string
+          title: Relative Path
+        archive_relative_path:
+          type: string
+          title: Archive Relative Path
+        rendered_by_worker_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rendered By Worker Id
+        rendered_at:
+          type: string
+          format: date-time
+          title: Rendered At
+        archived_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Archived At
+      additionalProperties: false
+      type: object
+      required:
+      - version
+      - sha256
+      - size_bytes
+      - relative_path
+      - archive_relative_path
+      - rendered_at
+      title: ClipVersion
+      description: One rendering of a job's clip. Reprocessing adds a version; none is replaced.
     Contact:
       properties:
         phone:
@@ -3840,6 +4056,8 @@ components:
             type: integer
           type: object
           title: Jobs By State
+        clip_archive:
+          $ref: '#/components/schemas/ClipArchiveProgress'
       additionalProperties: false
       type: object
       required:
@@ -3870,6 +4088,16 @@ components:
         accepting_new_raws:
           type: boolean
           title: Accepting New Raws
+        clips_held:
+          type: integer
+          minimum: 0.0
+          title: Clips Held
+          default: 0
+        clips_archived:
+          type: integer
+          minimum: 0.0
+          title: Clips Archived
+          default: 0
       additionalProperties: false
       type: object
       required:
@@ -3933,6 +4161,11 @@ components:
             $ref: '#/components/schemas/Measurement'
           type: array
           title: Measurements
+        held_clips:
+          items:
+            $ref: '#/components/schemas/HeldClip'
+          type: array
+          title: Held Clips
       additionalProperties: false
       type: object
       required:
@@ -3958,12 +4191,34 @@ components:
             type: string
           type: array
           title: Deletable Job Ids
+        archived_clip_sha256s:
+          items:
+            type: string
+            pattern: ^[0-9a-f]{64}$
+          type: array
+          title: Archived Clip Sha256S
       additionalProperties: false
       type: object
       required:
       - heartbeat_interval_s
       - accepting_new_raws
       title: HeartbeatResponse
+    HeldClip:
+      properties:
+        job_id:
+          type: string
+          title: Job Id
+        sha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          title: Sha256
+      additionalProperties: false
+      type: object
+      required:
+      - job_id
+      - sha256
+      title: HeldClip
+      description: A finished clip a worker keeps in its clips/ folder (served on :8710).
     Holder:
       properties:
         worker_id:
@@ -4270,6 +4525,11 @@ components:
           anyOf:
           - $ref: '#/components/schemas/ClipInfo'
           - type: 'null'
+        clip_versions:
+          items:
+            $ref: '#/components/schemas/ClipVersion'
+          type: array
+          title: Clip Versions
         failure:
           anyOf:
           - $ref: '#/components/schemas/JobFailure'
@@ -4628,6 +4888,15 @@ components:
           type: string
           format: date-time
           title: Delivered At
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+          default: 1
+        in_outbox:
+          type: boolean
+          title: In Outbox
+          default: false
       additionalProperties: false
       type: object
       required:
@@ -4714,9 +4983,11 @@ components:
             - $ref: '#/components/schemas/MakeProxyTask'
             - $ref: '#/components/schemas/ProcessTask'
             - $ref: '#/components/schemas/DeliverTask'
+            - $ref: '#/components/schemas/ArchiveClipTask'
             discriminator:
               propertyName: kind
               mapping:
+                archive_clip: '#/components/schemas/ArchiveClipTask'
                 deliver: '#/components/schemas/DeliverTask'
                 download_raw: '#/components/schemas/DownloadRawTask'
                 make_proxy: '#/components/schemas/MakeProxyTask'
@@ -5276,6 +5547,7 @@ components:
       - make_proxy
       - process
       - deliver
+      - archive_clip
       title: TaskKind
       description: The kinds of work /workers/{id}/next can hand out.
     Team:
