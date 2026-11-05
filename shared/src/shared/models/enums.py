@@ -95,6 +95,9 @@ class ReviewAction(StrEnum):
     DISCARD = "discard"
     # Try again after a worker failure (failed → Job.failed_from; claimed → ready).
     RETRY = "retry"
+    # Undo a discard (discarded → Job.discarded_from). Always works within
+    # the discard grace period; after it only while a raw copy is left.
+    RESTORE = "restore"
 
 
 class DeliveryRoute(StrEnum):

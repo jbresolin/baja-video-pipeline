@@ -3507,6 +3507,7 @@ components:
       - no_holder_online
       - already_exists
       - conflict
+      - raw_unavailable
       - inbox_full
       - rate_limited
       - upstream_error
@@ -4277,6 +4278,16 @@ components:
           anyOf:
           - $ref: '#/components/schemas/JobState'
           - type: 'null'
+        discarded_from:
+          anyOf:
+          - $ref: '#/components/schemas/JobState'
+          - type: 'null'
+        discard_grace_ends_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Discard Grace Ends At
         waiting_reason:
           anyOf:
           - type: string
@@ -5069,6 +5080,7 @@ components:
       - reprocess
       - discard
       - retry
+      - restore
       title: ReviewAction
       description: What a PATCH /jobs/{id}/review should do besides storing the fields.
     ReviewQueueResponse:

@@ -63,6 +63,8 @@ class ErrorCode(StrEnum):
     # Admin pages: the change is not possible right now (e.g. disabling the
     # last admin, revoking a token that was already used).
     CONFLICT = "conflict"
+    # restore after the discard grace period, and no copy of the raw is left.
+    RAW_UNAVAILABLE = "raw_unavailable"
     # 413 / 507
     INBOX_FULL = "inbox_full"
     # 429 (POST /enroll, per source IP)

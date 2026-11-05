@@ -6,6 +6,11 @@
   <p class="hint"><kbd>↑</kbd><kbd>↓</kbd> or <kbd>j</kbd><kbd>k</kbd> to move, <kbd>Enter</kbd> to open. Refreshes every {{ poll_seconds }} s.</p>
 </div>
 
+<nav class="presets" aria-label="Quick filters">
+  <a class="chip" href="/review/">Needs a human</a>
+  <a class="chip{% if filter.states|length == 1 and filter.states[0].value == "discarded" %} active{% endif %}" href="/review/?state=discarded">Descartados</a>
+</nav>
+
 <form class="filters" method="get" action="/review/" id="queue-filters">
   <fieldset class="chips">
     <legend>State</legend>

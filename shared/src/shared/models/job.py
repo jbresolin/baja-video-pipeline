@@ -174,6 +174,13 @@ class Job(ApiModel):
     # proxy_ready or claimed). "retry" returns it there (claimed → ready).
     # None in every other state.
     failed_from: JobState | None = None
+    # While state is "discarded": the state it was discarded from
+    # (awaiting_review, ready or failed). "restore" returns it there.
+    discarded_from: JobState | None = None
+    # While state is "discarded": until when holders keep the raw (and the
+    # VPS its inbox copy). Restore always works before this; after it, only
+    # while a holder still has the raw (RAW_UNAVAILABLE otherwise).
+    discard_grace_ends_at: datetime | None = None
     # Human-readable reason the job is stuck, shown in the review UI,
     # e.g. "waiting for a holder to come back online". None when not stuck.
     waiting_reason: str | None = None

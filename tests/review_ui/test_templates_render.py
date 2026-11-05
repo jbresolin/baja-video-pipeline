@@ -169,11 +169,12 @@ def test_text_from_senders_and_workers_is_escaped():
     assert "<b>boom</b>" not in html
 
 
-def test_discarded_job_has_no_actions():
+def test_discarded_job_offers_only_restore():
     html = render("job.html", job_context(make_job(state=JobState.DISCARDED)))
 
-    assert "data-action=" not in html
-    assert "No review actions in this state." in html
+    # Restore is the one action left (LIVESTACK-38: a discard can be undone).
+    assert 'data-action="restore"' in html
+    assert html.count("data-action=") == 1
 
 
 def test_car_number_zero_is_shown_not_treated_as_missing():

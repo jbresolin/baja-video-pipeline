@@ -29,7 +29,8 @@ SUCCESS_MESSAGES = {
     ReviewAction.READY: "Marked ready. A holder will render the clip.",
     ReviewAction.REPROCESS: "Sent back to ready; the clip will be rendered again.",
     ReviewAction.RETRY: "Retrying: the job is back to ready.",
-    ReviewAction.DISCARD: "Discarded.",
+    ReviewAction.DISCARD: "Discarded. The raw is kept for a while; Restore undoes this.",
+    ReviewAction.RESTORE: "Restored: the job is back where it was before the discard.",
 }
 
 

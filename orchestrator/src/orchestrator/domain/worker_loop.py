@@ -1,8 +1,10 @@
 """Heartbeat, /next offers, claims and lease renewal (docs/api.md §5)."""
 
 import sqlite3
+from datetime import datetime
 
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain.discard import discard_grace_is_over
 from orchestrator.domain.fleet_snapshot import FleetSnapshot, accepts_new_raws
 from orchestrator.domain.job_view import require_job_row
 from orchestrator.domain.leases import renew_lease, require_active_lease, sweep_expired_leases
@@ -77,7 +79,7 @@ def process_heartbeat(
 
         if worker_row["role"] != WorkerRole.STUDIO:
             _forget_raws_the_worker_no_longer_has(connection, worker_id, request, now)
-        deletable = _deletable_job_ids(connection, request.held_job_ids)
+        deletable = _deletable_job_ids(connection, request.held_job_ids, now)
         refreshed_row = workers_repo.get_worker_row(connection, worker_id)
 
     return HeartbeatResponse(
@@ -108,12 +110,18 @@ def _forget_raws_the_worker_no_longer_has(
         )
 
 
-def _deletable_job_ids(connection: sqlite3.Connection, held_job_ids: list[str]) -> list[str]:
-    """Held raws of discarded jobs (design §4). Unknown ids are never listed, to be safe."""
+def _deletable_job_ids(
+    connection: sqlite3.Connection, held_job_ids: list[str], now: datetime
+) -> list[str]:
+    """Held raws of jobs discarded longer ago than the grace period (domain/discard.py).
+
+    Within the grace period a discard can still be undone, so holders keep
+    the raw. Unknown ids are never listed, to be safe.
+    """
     deletable = []
     for job_id in held_job_ids:
         row = jobs_repo.get_job_row(connection, job_id)
-        if row is not None and row["state"] == JobState.DISCARDED:
+        if row is not None and discard_grace_is_over(row, now):
             deletable.append(job_id)
     return deletable
 

@@ -6,10 +6,17 @@ test without a server. The event log lines live in event_log_view.py.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from review_ui.event_log_view import worker_label
-from shared.models import Job, JobState, ReceivedAs, ReviewAction, TaskKind
-from shared.state_machine import DISCARDABLE_STATES, REPROCESSABLE_STATES, RETRYABLE_STATES
+from review_ui.formatting import clock_utc
+from shared.models import Job, JobState, ReceivedAs, ReviewAction, TaskKind, utc_now
+from shared.state_machine import (
+    DISCARDABLE_STATES,
+    REPROCESSABLE_STATES,
+    RESTORABLE_STATES,
+    RETRYABLE_STATES,
+)
 
 # One sentence per state: what is going on and what happens next.
 STATE_EXPLANATIONS: dict[JobState, str] = {
@@ -22,7 +29,7 @@ STATE_EXPLANATIONS: dict[JobState, str] = {
     JobState.DELIVERED: "The studio confirmed the clip; cleanup is finishing.",
     JobState.DONE: "Done: the clip is on the studio box.",
     JobState.FAILED: "A worker could not process this job. Choose Retry or Discard.",
-    JobState.DISCARDED: "Discarded. Nothing more will happen to this job.",
+    JobState.DISCARDED: "Discarded. Nothing more will happen to this job unless it is restored.",
 }
 
 # How a task reads in a sentence: "<worker> is <doing>".
@@ -49,6 +56,7 @@ ACTION_LABELS: dict[ReviewAction, str] = {
     ReviewAction.REPROCESS: "Reprocess",
     ReviewAction.RETRY: "Retry",
     ReviewAction.DISCARD: "Discard",
+    ReviewAction.RESTORE: "Restore",
 }
 
 
@@ -72,6 +80,8 @@ def available_actions(state: JobState) -> list[ReviewAction]:
         actions.append(ReviewAction.RETRY)
     if state in DISCARDABLE_STATES:
         actions.append(ReviewAction.DISCARD)
+    if state in RESTORABLE_STATES:
+        actions.append(ReviewAction.RESTORE)
     return actions
 
 
@@ -83,9 +93,34 @@ def _state_level(state: JobState) -> str:
     return "info"
 
 
-def explain_status(job: Job, worker_names: dict[str, str]) -> list[StatusNote]:
+def discard_note(job: Job, now: datetime) -> StatusNote | None:
+    """What "Restore" will do for a discarded job: within or past the grace period."""
+    if job.state != JobState.DISCARDED:
+        return None
+    back_to = (job.discarded_from or JobState.AWAITING_REVIEW).value.replace("_", " ")
+    ends_at = job.discard_grace_ends_at
+    if ends_at is not None and now < ends_at:
+        return StatusNote(
+            "info",
+            f"The raw is kept until {clock_utc(ends_at)}; until then Restore puts the job "
+            f"back to {back_to}.",
+        )
+    return StatusNote(
+        "warning",
+        "The grace period is over: holders may have deleted the raw. Restore works only "
+        "while a holder still has it (one that was offline, for example); otherwise the "
+        "video must be sent again.",
+    )
+
+
+def explain_status(
+    job: Job, worker_names: dict[str, str], now: datetime | None = None
+) -> list[StatusNote]:
     """The sentences of the status strip, most important first."""
     notes = [StatusNote(_state_level(job.state), STATE_EXPLANATIONS[job.state])]
+    discarded = discard_note(job, now or utc_now())
+    if discarded is not None:
+        notes.append(discarded)
 
     if job.waiting_reason:
         # The orchestrator's own words for why the job is stuck.

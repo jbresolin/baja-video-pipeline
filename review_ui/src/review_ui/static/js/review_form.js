@@ -62,9 +62,10 @@ export function setupReviewForm({ form, jobElement }) {
 
   async function run(action) {
     if (busy || !form.querySelector(`[data-action="${action}"]`)) return;
-    if (action === "discard" && !window.confirm("Discard this video? This cannot be undone.")) return;
-    // Discard needs no fields; sending none keeps it from failing on a half-typed one.
-    const body = action === "discard" ? { expected_version: version, action } : collect(action);
+    if (action === "discard" && !window.confirm("Discard this video? You can restore it from “Descartados”.")) return;
+    // Discard and restore need no fields; sending none keeps them from failing on a half-typed one.
+    const withoutFields = action === "discard" || action === "restore";
+    const body = withoutFields ? { expected_version: version, action } : collect(action);
     setBusy(true);
     const result = await sendJson(`/review/api/jobs/${encodeURIComponent(jobId)}/review`, "PATCH", body);
     setBusy(false);

@@ -11,6 +11,7 @@ from datetime import timedelta
 
 from orchestrator.context import OrchestratorContext
 from orchestrator.domain.delivery import finish_delivery
+from orchestrator.domain.discard import discard_grace_is_over
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
 from orchestrator.domain.leases import sweep_expired_leases
 from orchestrator.domain.raw_copies import drop_inbox_copy, inbox_copy_is_redundant
@@ -66,15 +67,19 @@ def _refresh_waiting_reasons(connection, now) -> None:
 
 
 def clean_inbox_once(context: OrchestratorContext) -> list[str]:
-    """Delete inbox raws held by two confirmed holders, or of discarded jobs."""
+    """Delete inbox raws held by two confirmed holders, or of jobs discarded past the grace."""
     deleted = []
     with context.database.transaction() as connection:
         now = context.clock.now()
         for row in jobs_repo.list_job_rows_with_raw_on_vps(connection):
-            if not inbox_copy_is_redundant(connection, row):
+            if discard_grace_is_over(row, now):
+                reason = "discard grace period over"
+            elif inbox_copy_is_redundant(connection, row):
+                reason = "inbox cleanup"
+            else:
                 continue
             if drop_inbox_copy(
-                connection, context.layout, row, now, actor=SYSTEM_ACTOR, reason="inbox cleanup"
+                connection, context.layout, row, now, actor=SYSTEM_ACTOR, reason=reason
             ):
                 deleted.append(row["id"])
     return deleted

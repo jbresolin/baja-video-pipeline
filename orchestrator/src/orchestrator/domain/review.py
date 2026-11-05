@@ -6,8 +6,8 @@ from typing import Any
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import to_db_time
 from orchestrator.domain import provas_catalog
+from orchestrator.domain.discard import discard_job, restore_job
 from orchestrator.domain.job_view import load_job, require_job_row
-from orchestrator.domain.raw_copies import drop_inbox_copy
 from orchestrator.domain.transitions import move_job, revoke_job_leases
 from orchestrator.errors import ApiError, illegal_transition
 from orchestrator.repositories import events as events_repo
@@ -26,6 +26,7 @@ from shared.models import (
 from shared.state_machine import (
     DISCARDABLE_STATES,
     REPROCESSABLE_STATES,
+    RESTORABLE_STATES,
     RETRYABLE_STATES,
     retry_target_for,
 )
@@ -67,6 +68,7 @@ def _check_action_allowed(state: JobState, action: ReviewAction) -> None:
         ReviewAction.REPROCESS: state in REPROCESSABLE_STATES,
         ReviewAction.DISCARD: state in DISCARDABLE_STATES,
         ReviewAction.RETRY: state in RETRYABLE_STATES,
+        ReviewAction.RESTORE: state in RESTORABLE_STATES,
     }[action]
     if not allowed:
         raise illegal_transition(state, action)
@@ -197,26 +199,11 @@ def _apply_action(
         )
         return
     if action == ReviewAction.DISCARD:
-        revoke_job_leases(connection, job_id, now, actor=actor, reason="job discarded")
-        delete_file_and_partials(context.layout.outbox_path(job_id))
-        move_job(
-            connection,
-            job_row,
-            JobState.DISCARDED,
-            now,
-            actor=actor,
-            reason="discarded",
-            changes={**changes, "proxy_requested": 0, "waiting_reason": None},
-            bump_version=True,
-        )
-        drop_inbox_copy(
-            connection,
-            context.layout,
-            require_job_row(connection, job_id),
-            now,
-            actor=actor,
-            reason="job discarded",
-        )
+        # Nothing is deleted yet: raws stay for the grace period (domain/discard.py).
+        discard_job(context, connection, job_row, changes, actor)
+        return
+    if action == ReviewAction.RESTORE:
+        restore_job(context, connection, job_row, changes, actor)
         return
     # RETRY: back to where the job failed (claimed → ready).
     failed_from = JobState(job_row["failed_from"] or JobState.CLAIMED)

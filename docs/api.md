@@ -138,6 +138,7 @@ Branch on `error.code`, never on `message`.
 | 409 | `not_claimable` | Job not in a state for that task, or caller not eligible (e.g. not a holder) |
 | 409 | `lease_lost` | Lease expired or revoked; stop the task |
 | 409 | `version_conflict` | `expected_version` is stale (`details.current_version`) |
+| 409 | `raw_unavailable` | `restore` after the discard grace period, and no worker or inbox still has the raw |
 | 409 | `upload_offset_mismatch` | Chunk at the wrong offset (`details.expected_offset`) |
 | 409 | `already_exists` | Admin pages: that username, phone, prova name or clip folder is taken |
 | 409 | `conflict` | Admin pages: not possible now (last enabled admin, revoking a used token, renaming a synced prova) |
@@ -179,14 +180,21 @@ direct push: the studio ACK moves claimed → uploaded → delivered in one call
 | uploaded → delivered → done | `POST /outbox/{id}/ack`, or `POST …/delivered` (direct route, also from claimed) |
 | claimed → ready | process lease expired or revoked |
 | claimed / uploaded / delivered / done → ready | review `action: reprocess` |
-| awaiting_review / ready → discarded | review `action: discard` |
+| awaiting_review / ready → discarded | review `action: discard` (records `discarded_from`) |
+| discarded → `discarded_from` | review `action: restore` |
 | received / proxy_ready / claimed → failed | `POST /jobs/{id}/failed` (records `failed_from`) |
 | failed → received / proxy_ready / ready | review `action: retry` (back to `failed_from`; claimed → ready) |
 | failed → discarded | review `action: discard` |
 
-* **`discarded`** is final. The orchestrator revokes any lease, deletes
-  the VPS inbox copy and lists the job in each holder's heartbeat answer
-  (`deletable_job_ids`), so holders may delete their raw.
+* **`discarded`** can be undone (`restore`, back to `Job.discarded_from`).
+  The orchestrator revokes any lease at once, but deletes nothing for the
+  **discard grace period** (`BVP_DISCARD_GRACE_HOURS`, default 24 h; the
+  end is `Job.discard_grace_ends_at`, fixed at discard time): holders keep
+  the raw and the VPS its inbox copy, so a restore just works. After it,
+  the job is listed in each holder's heartbeat answer
+  (`deletable_job_ids`) and the inbox cleanup drops the VPS copy; restore
+  then works only while some copy is left (a confirmed holder that has not
+  deleted it yet, or the inbox), else 409 `raw_unavailable`.
 * **`failed`**: `Job.failure` holds who failed, under which task, the
   message and exit code; `Job.failed_from` the state it failed from. The
   review queue shows it (`failure_message`). `retry` returns the job to
@@ -241,7 +249,9 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
   report the task's result.
 * The heartbeat answer's `accepting_new_raws: false` means you are near
   your storage cap (no new `download_raw`, keep processing what you hold);
-  `deletable_job_ids` lists held raws of discarded jobs you may delete.
+  `deletable_job_ids` lists held raws of jobs discarded longer ago than the
+  discard grace period (§4); delete them. Within the grace period they are
+  not listed, because a reviewer may still restore the job.
 * Report `measurements` (bytes + seconds) in the next heartbeat; the
   orchestrator keeps the rolling `stats`. `held_job_ids` lists every raw on
   your disk so the orchestrator can reconcile holders after crashes.
@@ -507,7 +517,8 @@ actions (§4), the conflict means another reviewer changed the job.
 | `save` | any except `discarded` | store fields/cuts only |
 | `ready` | `awaiting_review` | → `ready`; needs all fields |
 | `reprocess` | `claimed`, `uploaded`, `delivered`, `done` | → `ready`; revokes any process lease; needs all fields |
-| `discard` | `awaiting_review`, `ready`, `failed` | → `discarded` (final); fields not needed |
+| `discard` | `awaiting_review`, `ready`, `failed` | → `discarded`, records `discarded_from`; nothing deleted during the grace period (§4); fields not needed |
+| `restore` | `discarded` | → `discarded_from`; 409 `raw_unavailable` after the grace period when no copy of the raw is left; fields not needed |
 | `retry` | `failed` | → `failed_from` (`claimed` → `ready`); clears `failure`; needs all fields only when the target is `ready` (may be corrected in the same call) |
 
 Other combinations → 409 `illegal_transition`. "All fields" = `prova`,
@@ -644,6 +655,7 @@ variables keep the names fixed in design §8.
 | `BVP_INSTALLER_DOWNLOAD_URL` | the repo's `releases/latest` page | Shown with new enrollment tokens. First-start default |
 | `BVP_EVENT_ID` | empty | Results API event (e.g. `26BR`). First-start default |
 | `BVP_RESULTS_API_URL` | `https://api.bajasaebrasil.net` | Results API base. First-start default |
+| `BVP_DISCARD_GRACE_HOURS` | `24` | How long a discarded job's raws are kept (holders and inbox) so `restore` works (§4). First-start default |
 | `BVP_WHATSAPP_MEDIA_BASE_URL` | `https://mmg.whatsapp.net` | Only media URLs under this are fetched (dev: the fake CDN) |
 | `BVP_EVOLUTION_URL` | `http://evolution:8080` | Evolution API, for `sendText` replies |
 | `BVP_EVOLUTION_API_KEY` | — (required) | Evolution API key (`BVP_EVOLUTION_INSTANCE_TOKEN` is accepted as an alias) |

@@ -305,3 +305,8 @@ table.admin-table tr.muted td { color: var(--muted); }
 .badge.range-hdr { background: var(--warn-bg); color: var(--warn-ink); }
 .badge.range-sdr { background: var(--surface-2); color: var(--ink); }
 .badge.muted { background: var(--surface-2); color: var(--muted); }
+
+/* --- Queue quick filters ("Descartados") --- */
+.presets { display: flex; gap: 0.4rem; margin: 0 0 0.6rem; }
+.presets .chip { text-decoration: none; color: var(--ink); }
+.presets .chip.active { background: var(--accent); color: var(--accent-ink); }

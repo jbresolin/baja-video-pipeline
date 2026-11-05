@@ -23,7 +23,10 @@ LOW_RES_RESEND_AS_DOCUMENT = (
 )
 
 # Download or verification failed; no job exists.
-DOWNLOAD_FAILED_PLEASE_RESEND = "Não conseguimos receber este vídeo. Por favor, envie de novo como *documento* (📎 → Documento)."
+DOWNLOAD_FAILED_PLEASE_RESEND = (
+    "Não conseguimos receber este vídeo. "
+    "Por favor, envie de novo como *documento* (📎 → Documento)."
+)
 
 # Inbox above BVP_INBOX_HOLD_GB: the video was accepted.
 INBOX_NEARLY_FULL_PLEASE_HOLD = (

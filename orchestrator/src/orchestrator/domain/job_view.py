@@ -92,6 +92,8 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Job:
         clip=clip,
         failure=failure,
         failed_from=JobState(row["failed_from"]) if row["failed_from"] else None,
+        discarded_from=JobState(row["discarded_from"]) if row["discarded_from"] else None,
+        discard_grace_ends_at=from_db_time(row["discard_grace_ends_at"]),
         waiting_reason=row["waiting_reason"],
     )
 

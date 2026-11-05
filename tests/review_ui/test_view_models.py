@@ -49,7 +49,7 @@ from tests.review_ui.sample_events import make_events
         (JobState.DONE, ["save", "reprocess"]),
         (JobState.FAILED, ["save", "retry", "discard"]),
         (JobState.RECEIVED, ["save"]),
-        (JobState.DISCARDED, []),
+        (JobState.DISCARDED, ["restore"]),
     ],
 )
 def test_available_actions_follow_the_api_table(state, expected):
