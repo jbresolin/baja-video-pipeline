@@ -145,3 +145,34 @@ def test_the_grace_period_is_a_setting(tmp_path):
     review(harness, job_id, "discard")
     harness.clock.advance(2 * 3600)
     assert harness.heartbeat(master, held_job_ids=[job_id])["deletable_job_ids"] == [job_id]
+
+
+def test_the_grace_period_is_an_admin_setting_and_moves_no_existing_deadline(
+    harness, job_in_review
+):
+    # The admin Settings page shows the grace period (24 h unless .env said
+    # otherwise on the first start) and can change it.
+    master, first_job = job_in_review
+    settings = harness.client.get("/admin/settings", auth=harness.admin_auth).json()["settings"]
+    assert settings["discard_grace_hours"] == 24
+    review(harness, first_job, "discard")
+    first_deadline = harness.job(first_job)["discard_grace_ends_at"]
+
+    response = harness.client.patch(
+        "/admin/settings", json={"discard_grace_hours": 2}, auth=harness.admin_auth
+    )
+    assert response.status_code == 200, response.text
+
+    # A second job, held by the same master, is discarded after the change.
+    second_job = receive_job(harness)
+    hold_raw(harness, master, second_job)
+    make_proxy(harness, master, second_job)
+    review(harness, second_job, "discard")
+    harness.clock.advance(3 * 3600)
+
+    # Three hours later only the second job's raw may be deleted (2 h
+    # period); the first keeps the 24 h it was given when it was discarded,
+    # because the deadline is stored on the job at that moment.
+    heartbeat = harness.heartbeat(master, held_job_ids=[first_job, second_job])
+    assert heartbeat["deletable_job_ids"] == [second_job]
+    assert harness.job(first_job)["discard_grace_ends_at"] == first_deadline

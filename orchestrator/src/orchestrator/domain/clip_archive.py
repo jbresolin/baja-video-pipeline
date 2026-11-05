@@ -8,7 +8,7 @@ they render and may evict one only after the master archived it.
 
 Outbox copies are deleted only when the studio has ACKed *and* the master
 has archived that clip, or, if the master stays offline, once
-BVP_OUTBOX_KEEP_UNARCHIVED_HOURS (default 72 h) have passed since the ACK,
+outbox_keep_unarchived_hours (Settings page, default 72 h) have passed since the ACK,
 so an offline master cannot lose a clip the studio already took.
 """
 
@@ -135,6 +135,6 @@ def archive_progress(connection: sqlite3.Connection) -> ClipArchiveProgress:
 
 
 def forget_worker_clips_on_revoke(connection: sqlite3.Connection, worker_id: str) -> None:
-    """Hook for worker revocation (LIVESTACK-37): its clips are no longer a source."""
+    """On worker revocation (admin Workers page): its clips are no longer a source."""
     if workers_repo.get_worker_row(connection, worker_id) is not None:
         clips_repo.replace_worker_clips(connection, worker_id, [])

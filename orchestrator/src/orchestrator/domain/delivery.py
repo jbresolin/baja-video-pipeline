@@ -2,7 +2,7 @@
 
 Both ACK routes end with the clip `delivered` and then `done`. The outbox
 copy (if any) is deleted only once the master has archived that clip too
-(or BVP_OUTBOX_KEEP_UNARCHIVED_HOURS after the ACK): domain/clip_archive.py.
+(or outbox_keep_unarchived_hours after the ACK): domain/clip_archive.py.
 If deleting fails, the background outbox cleanup tries again.
 """
 
@@ -75,7 +75,7 @@ def delete_outbox_copy_if_unneeded(
     path = context.layout.outbox_path(job_row["id"])
     if not path.exists():
         return True
-    keep = context.settings.outbox_keep_unarchived
+    keep = context.admin_settings.outbox_keep_unarchived
     if outbox_copy_still_needed(connection, job_row, now, keep):
         return False
     try:

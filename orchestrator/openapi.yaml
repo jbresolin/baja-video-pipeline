@@ -2951,6 +2951,18 @@ components:
           maxLength: 200
           title: Results Api Base Url
           default: https://api.bajasaebrasil.net
+        discard_grace_hours:
+          type: number
+          maximum: 720.0
+          minimum: 0.0
+          title: Discard Grace Hours
+          default: 24
+        outbox_keep_unarchived_hours:
+          type: number
+          maximum: 720.0
+          minimum: 0.0
+          title: Outbox Keep Unarchived Hours
+          default: 72
       additionalProperties: false
       type: object
       required:
@@ -5756,6 +5768,20 @@ components:
             maxLength: 200
           - type: 'null'
           title: Results Api Base Url
+        discard_grace_hours:
+          anyOf:
+          - type: number
+            maximum: 720.0
+            minimum: 0.0
+          - type: 'null'
+          title: Discard Grace Hours
+        outbox_keep_unarchived_hours:
+          anyOf:
+          - type: number
+            maximum: 720.0
+            minimum: 0.0
+          - type: 'null'
+          title: Outbox Keep Unarchived Hours
       additionalProperties: false
       type: object
       title: UpdateSettingsRequest

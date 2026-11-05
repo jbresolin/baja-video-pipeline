@@ -7,7 +7,6 @@ the first request that needs it.
 """
 
 import ipaddress
-from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -84,13 +83,11 @@ class Settings(BaseSettings):
     inbox_hold_gb: float = Field(default=22, gt=0)
     inbox_cap_gb: float = Field(default=25, gt=0)
     proxy_evict_min_free_gb: float = Field(default=10, ge=0)
-    # How long a discarded job's raws are kept (holders and VPS inbox), so
-    # "restore" just works. A setting until the admin page's settings
-    # table exists (LIVESTACK-37); then read from there.
-    discard_grace_hours: float = Field(default=24, ge=0)
-    # How long an outbox clip the studio already took is kept while the
-    # master has not archived it (master offline). design §11 as amended.
-    outbox_keep_unarchived_hours: float = Field(default=72, ge=0)
+    # Also first-start defaults of the Settings page (LIVESTACK-38): how long
+    # a discarded job's raws are kept so "restore" works, and how long an
+    # outbox clip the studio already took waits for the master's archive.
+    discard_grace_hours: float = Field(default=24, ge=0, le=720)
+    outbox_keep_unarchived_hours: float = Field(default=72, ge=0, le=720)
 
     # --- Admin Settings page, first-start defaults (like the two above) ---
     intake_mode: IntakeMode = IntakeMode.OPEN
@@ -132,14 +129,6 @@ class Settings(BaseSettings):
     def _empty_teams_file_means_none(cls, value):
         # Compose passes BVP_TEAMS_FILE= (empty) when it is not configured.
         return None if value == "" else value
-
-    @property
-    def discard_grace(self) -> timedelta:
-        return timedelta(hours=self.discard_grace_hours)
-
-    @property
-    def outbox_keep_unarchived(self) -> timedelta:
-        return timedelta(hours=self.outbox_keep_unarchived_hours)
 
     @property
     def inbox_cap_bytes(self) -> int:

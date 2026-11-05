@@ -1,7 +1,7 @@
 """Discard and restore: a discard can be undone (LIVESTACK-38 item 4).
 
 Discarding no longer deletes anything right away. For the discard grace
-period (BVP_DISCARD_GRACE_HOURS, default 24 h from the discard; the end is
+period (Settings page discard_grace_hours, default 24 h from the discard; the end is
 stored on the job as discard_grace_ends_at) the holders keep the raw and
 the VPS keeps its inbox copy, so "restore" simply puts the job back where
 it was.
@@ -67,7 +67,7 @@ def discard_job(
             "proxy_requested": 0,
             "waiting_reason": None,
             "discarded_from": job_row["state"],
-            "discard_grace_ends_at": to_db_time(now + context.settings.discard_grace),
+            "discard_grace_ends_at": to_db_time(now + context.admin_settings.discard_grace),
         },
         bump_version=True,
     )

@@ -157,11 +157,28 @@ def settings_page(harness) -> dict:
 
 def test_settings_start_from_the_environment_values(tmp_path):
     harness = build_harness(
-        tmp_path / "data", inbox_hold_gb=20, intake_mode="allowlist", proxy_evict_min_free_gb=5
+        tmp_path / "data",
+        inbox_hold_gb=20,
+        intake_mode="allowlist",
+        proxy_evict_min_free_gb=5,
+        discard_grace_hours=12,
     )
     values = settings_page(harness)["settings"]
     assert values["intake_mode"] == "allowlist"
     assert (values["inbox_hold_gb"], values["proxy_evict_min_free_gb"]) == (20, 5)
+    # The two grace periods of LIVESTACK-38: one from .env, one the default.
+    assert values["discard_grace_hours"] == 12
+    assert values["outbox_keep_unarchived_hours"] == 72
+
+
+def test_the_grace_periods_stay_within_a_month(harness):
+    # 0 means "no grace at all" and is allowed; negative or > 720 h is not.
+    for field in ("discard_grace_hours", "outbox_keep_unarchived_hours"):
+        for bad in (-1, 721):
+            response = harness.client.patch(
+                "/admin/settings", json={field: bad}, auth=harness.admin_auth
+            )
+            assert response.status_code == 400, (field, bad)
 
 
 def test_after_the_first_start_the_database_wins_over_the_environment(tmp_path):

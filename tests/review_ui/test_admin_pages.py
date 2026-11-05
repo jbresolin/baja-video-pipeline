@@ -259,6 +259,30 @@ def test_settings_save_and_take_effect_on_intake(admin, harness):
     assert job_id_for_message(harness, payload["data"]["key"]["id"]) is None
 
 
+def test_the_grace_periods_are_edited_on_the_settings_page(admin, harness):
+    # LIVESTACK-38: the restore window and the outbox wait for the master's
+    # archive. The page shows the current values (24 h and 72 h)...
+    page = admin.get("/review/admin/settings").text
+    assert 'name="discard_grace_hours"' in page and 'value="24"' in page
+    assert 'name="outbox_keep_unarchived_hours"' in page and 'value="72"' in page
+    # ...and saving the form changes them in the orchestrator.
+    follow(
+        admin,
+        post_form(
+            admin,
+            "/review/admin/settings",
+            intake_mode="open",
+            inbox_hold_gb="22",
+            proxy_evict_min_free_gb="10",
+            installer_download_url="",
+            discard_grace_hours="48",
+            outbox_keep_unarchived_hours="12",
+        ),
+    )
+    stored = harness.context.admin_settings.current
+    assert (stored.discard_grace_hours, stored.outbox_keep_unarchived_hours) == (48, 12)
+
+
 def test_settings_status_shows_secrets_as_configured_but_never_their_values(admin):
     page = admin.get("/review/admin/settings").text
     assert "<code>BVP_ADMIN_TOKEN</code>: configurado" in page

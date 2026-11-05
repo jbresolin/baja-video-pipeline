@@ -149,23 +149,34 @@ def settings_page(request: Request) -> HTMLResponse:
     return _settings_page(request)
 
 
+def _number(form: dict, name: str) -> float:
+    """A number typed in the form; a decimal comma is fine. ValueError otherwise."""
+    return float(form.get(name, "").replace(",", "."))
+
+
+def _optional_number(form: dict, name: str) -> float | None:
+    """Like _number, but a field left out or blank keeps its stored value (None)."""
+    return _number(form, name) if form.get(name, "").strip() else None
+
+
 @router.post("/settings")
 def save_settings(request: Request, form: dict = Depends(read_form)) -> Response:
     try:
         body = UpdateSettingsRequest(
             intake_mode=form.get("intake_mode"),
-            inbox_hold_gb=float(form.get("inbox_hold_gb", "").replace(",", ".")),
-            proxy_evict_min_free_gb=float(
-                form.get("proxy_evict_min_free_gb", "").replace(",", ".")
-            ),
+            inbox_hold_gb=_number(form, "inbox_hold_gb"),
+            proxy_evict_min_free_gb=_number(form, "proxy_evict_min_free_gb"),
             installer_download_url=form.get("installer_download_url", "").strip(),
             event_id=form.get("event_id", "").strip(),
             results_api_base_url=form_text(form, "results_api_base_url"),
+            discard_grace_hours=_optional_number(form, "discard_grace_hours"),
+            outbox_keep_unarchived_hours=_optional_number(form, "outbox_keep_unarchived_hours"),
         )
     except ValueError:
         return _settings_page(
             request,
-            "Os limites em GB precisam ser números positivos, e o evento tem 4 letras ou números.",
+            "Os limites em GB precisam ser números positivos, os prazos em horas números"
+            " de 0 a 720, e o evento tem 4 letras ou números.",
             400,
         )
     return apply_change(

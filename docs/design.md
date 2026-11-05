@@ -576,13 +576,15 @@ Fixes and additions, with the decisions taken while building them (the PR
   message (its key as it arrived, `@lid` included); every text is a quoted
   reply to that video, sent to the phone JID. A ⚠️ is never replaced by ✅.
 * **Discard can be undone** (`restore`, back to `discarded_from`). Nothing
-  is deleted during the discard grace period (24 h, inbox copy included);
+  is deleted during the discard grace period (24 h, inbox copy included;
+  editable on the admin Settings page, fixed on the job at discard time);
   after it, restore works while a copy is left, else `raw_unavailable`.
   `discarded` is therefore no longer a final state.
 * **Clips are the archive** (§11 as amended): workers keep their clips,
   the master archives every version (`archive_clip`), outbox copies wait
-  for ACK + archive (72 h at most), reviewers can download outbox clips at
-  `/clip-downloads/*` and see where each clip is.
+  for ACK + archive (72 h at most, also a Settings value), signed-in users
+  download outbox clips at `/clip-downloads/*` (Caddy `forward_auth` to
+  `/auth/media`, like proxies) and see where each clip is.
 * **Clip overlay** drawn with Pillow in BajaOvrLay's Ardósia lower-third
   look, from a vendored `tokens.css` and Bebas Neue (`worker/overlay_theme/`).
 * **Worker for novices:** a tray icon (`BajaWorkerTray.exe`), pause

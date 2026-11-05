@@ -288,3 +288,45 @@ def test_a_failed_archive_copy_is_retried_later_without_blocking_others(harness,
     for worker in (master, volunteer, studio):
         harness.heartbeat(worker, held_job_ids=[job_id] if worker is volunteer else [])
     assert ask_next(harness, master, [TaskKind.ARCHIVE_CLIP])["job_id"] == job_id
+
+
+def test_the_72_hours_are_an_admin_setting(harness, fleet):
+    # Same situation as above, but the admin shortened the wait to 6 h on
+    # the Settings page: the change applies at once, no restart.
+    _, _, studio = fleet
+    response = harness.client.patch(
+        "/admin/settings", json={"outbox_keep_unarchived_hours": 6}, auth=harness.admin_auth
+    )
+    assert response.status_code == 200, response.text
+    job_id = outbox_delivery(harness, fleet)
+    studio_pulls(harness, studio, job_id)
+
+    harness.clock.advance(7 * HOURS)
+    clean_outbox_once(harness.context)
+    assert not harness.context.layout.outbox_path(job_id).exists()
+
+
+def test_a_revoked_worker_is_no_longer_a_clip_source(harness, fleet):
+    # The volunteer rendered a clip and keeps it; the master is offline.
+    master, volunteer, studio = fleet
+    job_id = ready_job(harness, volunteer)
+    harness.clock.advance(OFFLINE_SECONDS)
+    harness.heartbeat(volunteer, held_job_ids=[job_id])
+    harness.heartbeat(studio)
+    render_to_studio(harness, volunteer, studio, job_id)
+    held = [{"job_id": job_id, "sha256": CLIP_SHA256}]
+    harness.heartbeat(volunteer, held_job_ids=[job_id], held_clips=held)
+
+    # An admin revokes the volunteer (admin Workers page).
+    response = harness.client.post(
+        f"/admin/workers/{volunteer.worker_id}/revoke", auth=harness.admin_auth
+    )
+    assert response.status_code == 200, response.text
+
+    # Its kept clip is forgotten: the fleet page counts nothing for it, and
+    # the master, back online, is not sent to download from it.
+    fleet_view = harness.client.get("/fleet", auth=harness.admin_auth).json()
+    row = next(w for w in fleet_view["workers"] if w["worker"]["name"] == "volunteer")
+    assert row["clips_held"] == 0
+    harness.heartbeat(master, held_job_ids=[job_id])
+    assert ask_next(harness, master, [TaskKind.ARCHIVE_CLIP]) is None

@@ -189,7 +189,7 @@ direct push: the studio ACK moves claimed → uploaded → delivered in one call
 
 * **`discarded`** can be undone (`restore`, back to `Job.discarded_from`).
   The orchestrator revokes any lease at once, but deletes nothing for the
-  **discard grace period** (`BVP_DISCARD_GRACE_HOURS`, default 24 h; the
+  **discard grace period** (admin Settings `discard_grace_hours`, default 24 h; the
   end is `Job.discard_grace_ends_at`, fixed at discard time): holders keep
   the raw and the VPS its inbox copy, so a restore just works. After it,
   the job is listed in each holder's heartbeat answer
@@ -311,7 +311,7 @@ touching the job. The heartbeat answer's `archived_clip_sha256s` lists the
 held clips the master has; only those may be evicted, only near the cap
 (under 4 GB free), oldest first. **Outbox copies** are deleted only when
 the studio ACKed **and** the master archived that clip, or once
-`BVP_OUTBOX_KEEP_UNARCHIVED_HOURS` (72) passed since the ACK; a job is
+`outbox_keep_unarchived_hours` (admin Settings, 72) passed since the ACK; a job is
 `done` at the ACK either way.
 
 **Where the clip is** (for the review UI): `Job.clip.in_outbox` says the

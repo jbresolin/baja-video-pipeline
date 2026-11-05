@@ -12,6 +12,7 @@ from datetime import datetime
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import from_db_time
 from orchestrator.domain.audit import AdminActor, record_admin_change
+from orchestrator.domain.clip_archive import forget_worker_clips_on_revoke
 from orchestrator.domain.enrollment import token_id_for
 from orchestrator.domain.transitions import end_lease
 from orchestrator.errors import ApiError, not_found
@@ -121,6 +122,8 @@ def revoke_worker(context: OrchestratorContext, actor: AdminActor, worker_id: st
                     worker_id=worker_id,
                     reason="worker revoked by an admin",
                 )
+            # Its kept clips are no longer an archive source (LIVESTACK-38).
+            forget_worker_clips_on_revoke(connection, worker_id)
             record_admin_change(
                 connection,
                 now,
