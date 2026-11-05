@@ -158,7 +158,7 @@ def _apply_action(
     now = context.clock.now()
     job_id = job_row["id"]
     if action == ReviewAction.SAVE:
-        jobs_repo.update_job(connection, job_id, now, changes)
+        jobs_repo.update_job(connection, job_id, now, changes, bump_version=True)
         events_repo.record_event(connection, now, actor=actor, kind="review_saved", job_id=job_id)
         return
     if action == ReviewAction.READY:
@@ -171,6 +171,7 @@ def _apply_action(
             actor=actor,
             reason="reviewed",
             changes=changes,
+            bump_version=True,
         )
         return
     if action == ReviewAction.REPROCESS:
@@ -192,6 +193,7 @@ def _apply_action(
             actor=actor,
             reason="reprocess",
             changes={**changes, **CLEARED_CLIP_COLUMNS},
+            bump_version=True,
         )
         return
     if action == ReviewAction.DISCARD:
@@ -205,6 +207,7 @@ def _apply_action(
             actor=actor,
             reason="discarded",
             changes={**changes, "proxy_requested": 0, "waiting_reason": None},
+            bump_version=True,
         )
         drop_inbox_copy(
             connection,
@@ -229,6 +232,7 @@ def _apply_action(
         actor=actor,
         reason="retry after failure",
         changes={**changes, **CLEARED_FAILURE_COLUMNS, "waiting_reason": None},
+        bump_version=True,
     )
     if target == JobState.PROXY_READY:
         # The proxy exists (that is what proxy_ready means): straight back to review.

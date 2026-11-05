@@ -46,13 +46,15 @@ def update_job(
     now: datetime,
     changes: dict[str, Any],
     *,
-    bump_version: bool = True,
+    bump_version: bool = False,
 ) -> None:
     """Change some columns of one job and stamp updated_at.
 
-    `version` goes up by one unless bump_version=False. Only pure
-    bookkeeping that a reviewer does not care about (the VPS dropping its
-    inbox copy) skips the bump, so it never causes a version_conflict.
+    `version` is the job's *review* version (docs/api.md §4): it goes up
+    by one only when bump_version=True, which only reviewer actions pass
+    (domain/review.py). Machine activity (holder confirmations, proxy and
+    thumbnail uploads, leases, sweepers) never bumps it, so a worker busy
+    with the job cannot make a reviewer's save fail with version_conflict.
     """
     unknown = set(changes) - UPDATABLE_JOB_COLUMNS
     if unknown:

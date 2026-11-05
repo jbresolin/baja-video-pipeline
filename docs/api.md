@@ -200,7 +200,17 @@ direct push: the studio ACK moves claimed → uploaded → delivered in one call
 * **Proxy availability** (`proxy_available`) is also beside the state:
   eviction and `regenerate-proxy` never change the state.
 * `waiting_reason` is a human sentence for the UI when a job is stuck,
-  else `null`. `version` increases on every change of the job.
+  else `null`.
+* **`version` is the review version.** It goes up by one only when a
+  reviewer changes the job: any `PATCH …/review` action (`save`, `ready`,
+  `reprocess`, `discard`, `restore`, `retry`), including the state change
+  that action causes. Machine activity never bumps it: holder
+  confirmations, proxy/thumbnail/media-info uploads, claims, lease
+  expiry, clip upload and delivery, sweepers. So a worker busy with the
+  job cannot make a reviewer's save fail; only another reviewer's change
+  can. (Until 2026-11 it went up on every change, which made every save
+  during processing a `version_conflict`.) Watch `state` and the other
+  fields, not `version`, to notice machine progress.
 
 ## 5. Worker loop
 
@@ -450,7 +460,8 @@ the sender go through Evolution `sendText`; every text is in
 (low_res or hold notice), so each video gets one positive reply.
 
 **Review update.** `expected_version` must equal the job's `version`
-(else 409 `version_conflict`).
+(else 409 `version_conflict`). Since `version` only moves on review
+actions (§4), the conflict means another reviewer changed the job.
 
 | `action` | From states | Effect |
 | --- | --- | --- |

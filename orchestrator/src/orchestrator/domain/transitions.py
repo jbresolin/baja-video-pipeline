@@ -31,9 +31,12 @@ def move_job(
     actor: str,
     reason: str,
     changes: dict[str, Any] | None = None,
+    bump_version: bool = False,
 ) -> None:
     """Move one job to `to_state`, plus any other column `changes`, as one update.
 
+    bump_version=True for moves a reviewer causes (review actions); see
+    repositories.jobs.update_job for why machine moves leave it alone.
     Raises shared.state_machine.IllegalTransitionError for an illegal move.
     """
     from_state = JobState(job_row["state"])
@@ -42,7 +45,7 @@ def move_job(
     all_changes["state"] = str(to_state)
     if to_state in FINISHED_STATES:
         all_changes["finished_at"] = to_db_time(now)
-    jobs_repo.update_job(connection, job_row["id"], now, all_changes)
+    jobs_repo.update_job(connection, job_row["id"], now, all_changes, bump_version=bump_version)
     events_repo.record_event(
         connection,
         now,

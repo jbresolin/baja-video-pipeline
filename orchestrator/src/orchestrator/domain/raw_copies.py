@@ -54,8 +54,7 @@ def drop_inbox_copy(
     except OSError as error:
         logger.warning("could not delete %s: %s", path, error)
         return False
-    # Pure bookkeeping for the reviewer: no version bump.
-    jobs_repo.update_job(connection, job_row["id"], now, {"raw_on_vps": 0}, bump_version=False)
+    jobs_repo.update_job(connection, job_row["id"], now, {"raw_on_vps": 0})
     events_repo.record_event(
         connection, now, actor=actor, kind="inbox_copy_deleted", job_id=job_row["id"], reason=reason
     )

@@ -95,8 +95,10 @@ class Job(ApiModel):
 
     id: str
     state: JobState
-    # Goes up by one on every change. PATCH /review must send the version it
-    # saw, so two reviewers cannot silently overwrite each other.
+    # The review version: goes up by one only when a reviewer changes the job
+    # (any PATCH /review action). Machine activity (holders, proxy, leases)
+    # never bumps it. PATCH /review must send the version it saw, so two
+    # reviewers cannot silently overwrite each other (docs/api.md §4).
     version: int = Field(default=1, ge=1)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
