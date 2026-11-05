@@ -61,6 +61,8 @@
           </td>
           <td>
             <span class="dot {{ 'online' if entry.online else 'offline' }}"></span>{{ "online" if entry.online else "offline" }}
+            {# Paused by the volunteer (tray icon): heartbeats, serves held raws, takes no tasks. #}
+            {% if entry.paused %}<span class="badge paused" title="no new tasks; still serves held raws">pausado</span>{% endif %}
             <div class="small">heartbeat {{ age(worker.last_heartbeat, now) }}</div>
           </td>
           <td class="num">{{ entry.held_job_count }}<div class="small">{{ entry.held_bytes|bytes }}</div>

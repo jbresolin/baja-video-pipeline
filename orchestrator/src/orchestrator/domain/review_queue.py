@@ -18,7 +18,7 @@ from shared.models import (
     Team,
 )
 
-NO_HOLDER_ONLINE = "waiting for a holder of the raw to come back online"
+NO_HOLDER_ONLINE = "waiting for a holder of the raw to come back online (or be resumed)"
 
 
 def review_queue(context: OrchestratorContext, states: list[JobState], limit: int):
@@ -53,7 +53,8 @@ def regenerate_proxy(
             return RegenerateProxyResponse(job_id=job_id, queued=False, waiting_reason=reason)
         snapshot = FleetSnapshot.take(connection, now)
         holder_online = any(
-            holder.status == HolderStatus.CONFIRMED and snapshot.is_online(holder.worker_id)
+            holder.status == HolderStatus.CONFIRMED
+            and snapshot.is_available_for_work(holder.worker_id)
             for holder in leases_repo.list_holders(connection, job_id)
         )
         waiting_reason = None if holder_online else NO_HOLDER_ONLINE

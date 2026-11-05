@@ -55,7 +55,8 @@ def _refresh_waiting_reasons(connection, now) -> None:
     ]
     for row in rows:
         holder_online = any(
-            holder.status == HolderStatus.CONFIRMED and snapshot.is_online(holder.worker_id)
+            holder.status == HolderStatus.CONFIRMED
+            and snapshot.is_available_for_work(holder.worker_id)
             for holder in leases_repo.list_holders(connection, row["id"])
         )
         wanted = None if holder_online else NO_HOLDER_ONLINE

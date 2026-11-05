@@ -4093,6 +4093,10 @@ components:
         accepting_new_raws:
           type: boolean
           title: Accepting New Raws
+        paused:
+          type: boolean
+          title: Paused
+          default: false
         clips_held:
           type: integer
           minimum: 0.0
@@ -4171,6 +4175,10 @@ components:
             $ref: '#/components/schemas/HeldClip'
           type: array
           title: Held Clips
+        paused:
+          type: boolean
+          title: Paused
+          default: false
       additionalProperties: false
       type: object
       required:

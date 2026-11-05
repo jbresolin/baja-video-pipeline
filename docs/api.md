@@ -253,6 +253,18 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
   `deletable_job_ids` lists held raws of jobs discarded longer ago than the
   discard grace period (§4); delete them. Within the grace period they are
   not listed, because a reviewer may still restore the job.
+* **Pause.** `paused: true` in the heartbeat means the volunteer paused
+  this worker (tray icon or status page, worker/README.md). The worker
+  finishes the task it is on, then asks for nothing new, but keeps
+  heartbeating (its lease is renewed until that task ends) and keeps
+  serving held raws on `:8710`. The orchestrator offers a paused worker
+  nothing (`/next` answers `task: null`; `/claim` → 409 `not_claimable`)
+  and treats it like an offline worker when choosing the second holder,
+  deciding whether the master still counts as a future holder, and
+  picking the studio for direct pushes (a paused studio → `outbox`). It
+  stays a download source for peers. `GET /fleet` lists `paused` per
+  worker; the fleet page shows "pausado". The flag lasts until a heartbeat
+  says `paused: false` ("Retomar"); the worker keeps it across restarts.
 * Report `measurements` (bytes + seconds) in the next heartbeat; the
   orchestrator keeps the rolling `stats`. `held_job_ids` lists every raw on
   your disk so the orchestrator can reconcile holders after crashes.

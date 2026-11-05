@@ -190,3 +190,14 @@ def test_fleet_page_shows_kept_clips_and_the_masters_archive(ui, fake_orchestrat
 
     assert "3 clips kept · 2 archived" in html
     assert "5 of 6 clips archived" in html
+
+
+def test_fleet_says_pausado_for_a_worker_the_volunteer_paused(ui, fake_orchestrator):
+    # The sample fleet has nobody paused: no "pausado" badge anywhere.
+    assert "pausado" not in ui.get("/review/fleet").text
+    # Mark the master as paused (its heartbeat said paused: true, item 9 of
+    # LIVESTACK-38) and render again: the badge appears.
+    fake_orchestrator.fleet.workers[1].paused = True
+    html = ui.get("/review/fleet").text
+    assert 'class="badge paused"' in html
+    assert ">pausado<" in html

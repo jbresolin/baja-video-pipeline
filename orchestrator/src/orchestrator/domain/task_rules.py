@@ -56,6 +56,8 @@ def evaluate_task(
     worker_row: sqlite3.Row,
     kind: TaskKind,
 ) -> TaskDecision:
+    if worker_row["paused"]:
+        return refuse(ErrorCode.NOT_CLAIMABLE, "this worker is paused")
     is_studio = worker_row["role"] == WorkerRole.STUDIO
     if kind == TaskKind.DELIVER:
         if not is_studio:
@@ -257,7 +259,7 @@ def _faster_idle_worker_exists(
         idle_and_eligible = (
             worker_id != asking_worker_id
             and row["role"] == WorkerRole.WORKER
-            and snapshot.is_online(worker_id)
+            and snapshot.is_available_for_work(worker_id)
             and accepts_new_raws(row)
             and worker_id not in holder_ids
             and worker_id not in snapshot.downloading_worker_ids

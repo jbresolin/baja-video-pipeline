@@ -49,6 +49,12 @@ class HeartbeatRequest(ApiModel):
     # Clips this worker rendered and keeps (design §11 as amended: clips are
     # the archive). The master copies them; the answer says which it has.
     held_clips: list[HeldClip] = Field(default_factory=list)
+    # True while the volunteer has paused this worker ("Pausar" in the tray
+    # icon or on the status page). The worker finishes the task it is on and
+    # asks for nothing new; the orchestrator offers it nothing and treats it
+    # like an offline worker for second-holder and studio choice, but it
+    # still serves its held raws to peers.
+    paused: bool = False
 
 
 class HeartbeatResponse(ApiModel):

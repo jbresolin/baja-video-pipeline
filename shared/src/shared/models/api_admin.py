@@ -107,6 +107,9 @@ class FleetWorker(ApiModel):
     held_bytes: ByteCount
     # False near the storage cap: no new raws, still processes held ones.
     accepting_new_raws: bool
+    # The volunteer paused it (tray icon / status page): no new tasks, still
+    # serves held raws to peers. Shown as "pausado" on the fleet page.
+    paused: bool = False
     # Finished clips the worker keeps, and how many of those the master
     # has archived (only those may be evicted). The master's own archive is
     # FleetResponse.clip_archive.

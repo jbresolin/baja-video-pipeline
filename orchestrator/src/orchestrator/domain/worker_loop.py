@@ -7,7 +7,7 @@ from orchestrator.context import OrchestratorContext
 from orchestrator.domain import clip_archive
 from orchestrator.domain.archive_rules import offer_archive_clip
 from orchestrator.domain.discard import discard_grace_is_over
-from orchestrator.domain.fleet_snapshot import FleetSnapshot, accepts_new_raws
+from orchestrator.domain.fleet_snapshot import FleetSnapshot, accepts_new_raws, is_paused
 from orchestrator.domain.job_view import require_job_row
 from orchestrator.domain.leases import renew_lease, require_active_lease, sweep_expired_leases
 from orchestrator.domain.task_rules import evaluate_task
@@ -60,6 +60,7 @@ def process_heartbeat(
             tailnet_address=request.tailnet_address,
             file_server_port=request.file_server_port,
             receiver_port=request.receiver_port,
+            paused=request.paused,
         )
         for measurement in request.measurements:
             workers_repo.insert_stat_sample(
@@ -157,6 +158,9 @@ def offer_next_task(
     context: OrchestratorContext, worker_row: sqlite3.Row, request: NextTaskRequest
 ) -> NextTaskResponse:
     """The first task this worker may do among the kinds it accepts; an offer, not a lease."""
+    if is_paused(worker_row):
+        # The volunteer paused it (tray icon): nothing new of any kind.
+        return NextTaskResponse(task=None, retry_after_s=EMPTY_QUEUE_RETRY_SECONDS)
     with context.database.transaction() as connection:
         now = context.clock.now()
         sweep_expired_leases(connection, now)

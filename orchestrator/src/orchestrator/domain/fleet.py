@@ -27,6 +27,7 @@ def build_fleet(context: OrchestratorContext) -> FleetResponse:
                     accepting_new_raws=accepts_new_raws(row),
                     clips_held=clips_held,
                     clips_archived=clips_archived,
+                    paused=bool(row["paused"]),
                 )
             )
         jobs_by_state = jobs_repo.count_jobs_by_state(connection)

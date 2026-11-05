@@ -1,7 +1,10 @@
 """A moment-in-time view of the workers, used to place tasks (design §5).
 
 "Online" means a heartbeat within the lease TTL (45 s = three missed beats),
-and not revoked by an admin.
+and not revoked by an admin. "Available for work" also needs the worker
+not to be paused (its last heartbeat said `paused: true`, LIVESTACK-38
+item 9). A paused worker still counts as online for serving its held raws
+to peers.
 """
 
 import sqlite3
@@ -31,6 +34,15 @@ def is_online(worker_row: sqlite3.Row, now: datetime) -> bool:
     return last_heartbeat is not None and now - last_heartbeat < timedelta(
         seconds=LEASE_TTL_SECONDS
     )
+
+
+def is_paused(worker_row: sqlite3.Row) -> bool:
+    return bool(worker_row["paused"])
+
+
+def is_available_for_work(worker_row: sqlite3.Row, now: datetime) -> bool:
+    """Online and not paused: may be offered tasks, chosen as holder or studio."""
+    return is_online(worker_row, now) and not is_paused(worker_row)
 
 
 def accepts_new_raws(worker_row: sqlite3.Row) -> bool:
@@ -78,6 +90,10 @@ class FleetSnapshot:
         row = self.workers_by_id.get(worker_id)
         return row is not None and is_online(row, self.now)
 
+    def is_available_for_work(self, worker_id: str) -> bool:
+        row = self.workers_by_id.get(worker_id)
+        return row is not None and is_available_for_work(row, self.now)
+
     def is_master(self, worker_id: str) -> bool:
         row = self.workers_by_id.get(worker_id)
         return row is not None and row["role"] == WorkerRole.MASTER
@@ -97,6 +113,8 @@ class FleetSnapshot:
                 continue
             if row["revoked_at"] is not None:
                 continue
+            if is_paused(row):
+                continue  # a paused studio takes no pushes; the outbox keeps clips
             if last_heartbeat is None or self.now - last_heartbeat >= window:
                 continue
             if best_heartbeat is None or last_heartbeat > best_heartbeat:
@@ -108,6 +126,6 @@ class FleetSnapshot:
 
     def any_master_online(self) -> bool:
         return any(
-            row["role"] == WorkerRole.MASTER and is_online(row, self.now)
+            row["role"] == WorkerRole.MASTER and is_available_for_work(row, self.now)
             for row in self.workers_by_id.values()
         )
