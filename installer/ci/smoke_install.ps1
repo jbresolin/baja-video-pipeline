@@ -91,15 +91,30 @@ function Assert-Installed {
     if (-not $sddl.Contains($UsersStartStopAce)) { Fail "service descriptor lacks $UsersStartStopAce`: $sddl" }
 }
 
+# The throwaway user's password: random, made up at run time, never written
+# in the repo (design §14: no credentials in the code, not even CI ones).
+# Exactly 14 characters: for a longer password `net user /add` stops to ask
+# "longer than 14 characters ... continue (Y/N)?", which a CI runner cannot
+# answer, so the user was never created (the first CI failure of this
+# check). "Aa1!" covers the four character classes of Windows' complexity rule.
+function New-ThrowawayUserPassword {
+    $alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    $random = -join (1..10 | ForEach-Object {
+        $alphabet[[System.Security.Cryptography.RandomNumberGenerator]::GetInt32($alphabet.Length)]
+    })
+    return "Aa1!" + $random
+}
+
 # Stop and start the service as an ordinary (non-admin) local user, the way
 # the tray icon does it: plain sc.exe, no elevation.
 function Assert-NonAdminCanStopAndStart {
     $name = "bajatray"
-    $password = "Tr4y-" + [guid]::NewGuid().ToString("N").Substring(0, 12) + "!"
-    & net.exe user $name $password /add | Out-Null
+    $throwawayUserPassword = New-ThrowawayUserPassword
+    & net.exe user $name $throwawayUserPassword /add | Out-Null
+    if ($LASTEXITCODE -ne 0) { Fail "could not create the local user $name (net user exited $LASTEXITCODE)" }
     try {
         $credential = New-Object System.Management.Automation.PSCredential(
-            ".\$name", (ConvertTo-SecureString $password -AsPlainText -Force))
+            ".\$name", (ConvertTo-SecureString $throwawayUserPassword -AsPlainText -Force))
         foreach ($command in "stop", "start") {
             $process = Start-Process -FilePath "$env:SystemRoot\System32\sc.exe" `
                 -ArgumentList $command, "BajaWorker" -Credential $credential `

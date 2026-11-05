@@ -229,7 +229,9 @@ tests. Therefore:
   "placeholder-password-for-tests"`). No inline `password="..."` literals in
   tests; a test enforces it. `.gitguardian.yaml` ignores `tests/**` and that
   module for `ggshield`; the GitGuardian GitHub check is set to Neutral for
-  this repo and test findings are dismissed as "test credential".
+  this repo and test findings are dismissed as "test credential". CI
+  scripts (`installer/ci/*.ps1`) generate any password they need at run
+  time; the same test checks them for password literals.
 
 ## 15. Wave-1 reconciliation (2026-10-25, PRs #1–#3)
 
