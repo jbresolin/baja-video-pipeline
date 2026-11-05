@@ -17,6 +17,7 @@ import threading
 from shared.models import HeartbeatRequest, HeartbeatResponse, LeaseHeartbeatStatus, WorkerRole
 from shared.protocol import HEARTBEAT_INTERVAL_SECONDS
 from worker.api_client import ApiError, OrchestratorClient, OrchestratorUnreachableError
+from worker.config import CONNECTION_STEP_PENDING_MESSAGE
 from worker.leases import LeaseTracker
 from worker.status import StatusBoard
 from worker.storage import Storage
@@ -39,9 +40,13 @@ class Heartbeater:
         file_server_port: int,
         receiver_port: int,
         fixed_interval_seconds: float | None = None,
+        connection_step_pending: bool = False,
     ) -> None:
         """`fixed_interval_seconds` overrides the orchestrator's
-        heartbeat_interval_s (in-process test runs beat faster)."""
+        heartbeat_interval_s (in-process test runs beat faster).
+        `connection_step_pending` (WorkerConfig.connection_step_pending):
+        the tailnet join is not done, so a failed beat is explained with
+        CONNECTION_STEP_PENDING_MESSAGE rather than the network error."""
         self._api = api
         self._role = role
         self._storage = storage
@@ -52,6 +57,7 @@ class Heartbeater:
         self._file_server_port = file_server_port
         self._receiver_port = receiver_port
         self._fixed_interval_seconds = fixed_interval_seconds
+        self._connection_step_pending = connection_step_pending
         self.interval_seconds: float = fixed_interval_seconds or HEARTBEAT_INTERVAL_SECONDS
         # How many of our kept clips the master has archived (status page).
         self.clips_archived_by_master = 0
@@ -95,7 +101,11 @@ class Heartbeater:
             # Leases keep running on the orchestrator's side for 45 s, so a
             # single missed beat is harmless; just keep the measurements.
             self._measurements.put_back(request.measurements)
-            self._status.set("orchestrator", f"unreachable: {error}")
+            if self._connection_step_pending and isinstance(error, OrchestratorUnreachableError):
+                self._status.set("orchestrator", CONNECTION_STEP_PENDING_MESSAGE)
+            else:
+                self._status.set("orchestrator", f"unreachable: {error}")
+            self._status.set("last error", str(error))
             logger.warning("heartbeat failed: %s", error)
             return None
 

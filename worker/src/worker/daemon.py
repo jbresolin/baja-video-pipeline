@@ -71,7 +71,7 @@ class DaemonTimings:
 def build_api_client(config: WorkerConfig, transport: httpx.BaseTransport) -> OrchestratorClient:
     return OrchestratorClient(
         httpx.Client(transport=transport, timeout=API_TIMEOUT),
-        config.orchestrator_url,
+        config.resolved_orchestrator_url(),
         worker_id=config.worker_id,
         bearer_token=config.bearer_token,
         tailnet_base_url=config.tailnet_base_url,
@@ -141,6 +141,7 @@ class Daemon:
             file_server_port=config.file_server_port,
             receiver_port=config.receiver_port,
             fixed_interval_seconds=timings.heartbeat_interval_seconds,
+            connection_step_pending=config.connection_step_pending,
         )
         self.stage_freed = threading.Event()
         self.stages: dict[TaskKind, StageRunner] = {

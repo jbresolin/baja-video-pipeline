@@ -94,7 +94,7 @@ Written by the installer and the setup page. Unknown keys are refused.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `orchestrator_url` | `http://127.0.0.1:8000` | Caddy's tailnet listener, e.g. `http://100.101.102.103:8080`. Every call except `/enroll`. One of the two origins that get the bearer token. |
+| `orchestrator_url` | `http://127.0.0.1:8000` | Caddy's tailnet listener, e.g. `http://100.101.102.103:8080`. Every call except `/enroll`. One of the two origins that get the bearer token. While it is still the default on an enrolled worker, the service uses `tailnet_base_url` instead (traffic only flows once the PC has joined the tailnet with `--first-run`), and the status page says "Conexão não concluída: abra 'Baja Worker - concluir conexão' no menu Iniciar." instead of the network error. |
 | `enroll_url` | `null` = `orchestrator_url` | Public 443 site that routes `POST /enroll` (reachable before Tailscale is up). |
 | `enrollment_token` | `null` | One-time token. Removed after a successful enrollment. |
 | `worker_id`, `bearer_token`, `role` | `null` | Saved by enrollment. All three set = enrolled. Keep the file private: the token is the worker's identity. |
