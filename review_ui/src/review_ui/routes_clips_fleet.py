@@ -10,6 +10,7 @@ from review_ui.clips_and_fleet_view import (
     online_count,
     studio_path,
 )
+from review_ui.delivery_view import outbox_waiting
 from review_ui.orchestrator_client import (
     OrchestratorClient,
     OrchestratorError,
@@ -18,7 +19,7 @@ from review_ui.orchestrator_client import (
 from review_ui.queue_view import distinct_provas
 from review_ui.request_context import orchestrator_for, render_page
 from review_ui.settings import FLEET_POLL_SECONDS
-from shared.models import Event
+from shared.models import Event, JobState
 
 router = APIRouter()
 
@@ -28,7 +29,8 @@ RECENT_EVENTS_PER_WORKER = 5
 
 @router.get("/review/clips", response_class=HTMLResponse)
 def clips_page(request: Request, prova: str | None = None) -> HTMLResponse:
-    manifest = orchestrator_for(request).manifest()
+    orchestrator = orchestrator_for(request)
+    manifest = orchestrator.manifest()
     chosen_prova = (prova or "").strip()
     clip_root = request.app.state.settings.studio_clip_root
     clips = filter_clips_by_prova(manifest.clips, chosen_prova)
@@ -40,8 +42,18 @@ def clips_page(request: Request, prova: str | None = None) -> HTMLResponse:
         "chosen_prova": chosen_prova,
         "total_count": len(manifest.clips),
         "generated_at": manifest.generated_at,
+        # Clips still waiting in the outbox for the studio (studio offline).
+        "outbox_waiting": outbox_waiting_or_empty(orchestrator),
     }
     return render_page(request, "clips.html", context)
+
+
+def outbox_waiting_or_empty(orchestrator: OrchestratorClient):
+    """Uploaded jobs whose clip is in the outbox; [] if the queue cannot be read."""
+    try:
+        return outbox_waiting(orchestrator.review_queue([JobState.UPLOADED]))
+    except (OrchestratorError, OrchestratorUnavailableError):
+        return []
 
 
 def recent_events_by_worker(

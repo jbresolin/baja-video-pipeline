@@ -3155,6 +3155,11 @@ components:
           type: boolean
           title: In Outbox
           default: false
+        download_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Download Url
       additionalProperties: false
       type: object
       required:
@@ -4699,6 +4704,11 @@ components:
           - type: string
           - type: 'null'
           title: Failure Message
+        clip_download_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Clip Download Url
       additionalProperties: false
       type: object
       required:
@@ -4897,6 +4907,11 @@ components:
           type: boolean
           title: In Outbox
           default: false
+        download_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Download Url
       additionalProperties: false
       type: object
       required:

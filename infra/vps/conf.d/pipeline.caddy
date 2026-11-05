@@ -69,6 +69,25 @@ ${PIPELINE_DOMAIN} {
 		import bvp_pipeline_files
 	}
 
+	# Finished clips still in the outbox (studio offline, or not yet archived
+	# by the master), for the review UI's Download button (LIVESTACK-38):
+	# /clip-downloads/<job_id>.mp4 -> outbox/<job_id>.mp4. The same sign-in
+	# check as proxies (forward_auth to /auth/media, the bvp_session cookie);
+	# not the bvp_pipeline_files snippet, because handle_path serves it from
+	# outbox/ under another name. The tailnet listener's /outbox/* (workers,
+	# studio, /auth/file) is a different route and stays as it is.
+	handle_path /clip-downloads/* {
+		header Cache-Control "private, no-store"
+		header Content-Disposition "attachment"
+		forward_auth bvp-orchestrator:8000 {
+			uri /auth/media
+		}
+		root * ${CADDY_PIPELINE_DIR}/outbox
+		file_server {
+			hide .* *.part *.part.json
+		}
+	}
+
 	# Review UI: its own service (design §16), with its own login page. It
 	# turns the bvp_session cookie into a bearer token for the orchestrator,
 	# which checks it on every call (docs/api.md §2). X-Forwarded-For (set

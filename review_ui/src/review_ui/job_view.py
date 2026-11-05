@@ -8,6 +8,7 @@ test without a server. The event log lines live in event_log_view.py.
 from dataclasses import dataclass
 from datetime import datetime
 
+from review_ui.delivery_view import delivery_notes
 from review_ui.event_log_view import worker_label
 from review_ui.formatting import clock_utc
 from shared.models import Job, JobState, ReceivedAs, ReviewAction, TaskKind, utc_now
@@ -65,6 +66,8 @@ class StatusNote:
     # "info", "success", "warning" or "error": picks the colour in the strip.
     level: str
     text: str
+    # Shown after the text in the browser's local time (delivery notes).
+    at: datetime | None = None
 
 
 def available_actions(state: JobState) -> list[ReviewAction]:
@@ -160,8 +163,9 @@ def explain_status(
         who = worker_label(lease.worker_id, worker_names)
         notes.append(StatusNote("info", f"{who} is {TASK_DESCRIPTIONS[lease.task_kind]}."))
 
-    if job.clip and job.clip.delivered_at:
-        notes.append(StatusNote("success", f"On the studio box at {job.clip.relative_path}."))
+    # Where the clip is: studio, outbox, master archive (delivery_view.py).
+    for note in delivery_notes(job):
+        notes.append(StatusNote(note.level, note.text, note.at))
     return notes
 
 

@@ -122,6 +122,29 @@ def test_only_the_studio_may_download_outbox_clips(dev_harness):
     assert by_worker.status_code == 403
 
 
+def test_reviewers_download_outbox_clips_from_clip_downloads(dev_harness):
+    # LIVESTACK-38 item 5: the review UI's Download button points at
+    # /clip-downloads/<job_id>.mp4, which Caddy serves from the outbox
+    # behind the same reviewer auth as proxies. Dev mode mirrors that.
+    worker = dev_harness.enroll(WorkerRole.WORKER, "pc")
+    job_id = "b" * 32
+    dev_harness.context.layout.outbox_path(job_id).write_bytes(b"clip")
+    path = f"/clip-downloads/{job_id}.mp4"
+
+    by_reviewer = dev_harness.client.get(path, auth=dev_harness.reviewer_auth)
+    by_worker = dev_harness.client.get(path, headers=worker.headers)
+    missing = dev_harness.client.get(
+        f"/clip-downloads/{'c' * 32}.mp4", auth=dev_harness.reviewer_auth
+    )
+
+    # The reviewer gets the file, as a download (Content-Disposition).
+    assert by_reviewer.status_code == 200 and by_reviewer.content == b"clip"
+    assert "attachment" in by_reviewer.headers["Content-Disposition"]
+    # A worker's bearer token is not a reviewer login.
+    assert by_worker.status_code == 401
+    assert missing.status_code == 404
+
+
 def test_half_written_and_hidden_files_are_never_served(dev_harness):
     # Writers create "<name>.part" and dot-files first and rename them when
     # complete (design §15). Caddy hides those names; dev mode must too.

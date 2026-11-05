@@ -57,6 +57,7 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
     clip = None
     if row["clip_sha256"] is not None:
         current = next((v for v in versions if v.sha256 == row["clip_sha256"]), None)
+        in_outbox = layout.outbox_path(row["id"]).exists()
         clip = ClipInfo(
             sha256=row["clip_sha256"],
             size_bytes=row["clip_size_bytes"],
@@ -65,7 +66,8 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
             rendered_by_worker_id=row["clip_rendered_by"],
             delivered_at=from_db_time(row["clip_delivered_at"]),
             version=current.version if current else 1,
-            in_outbox=layout.outbox_path(row["id"]).exists(),
+            in_outbox=in_outbox,
+            download_url=VpsLayout.clip_download_public_path(row["id"]) if in_outbox else None,
         )
     failure = None
     if row["failure_message"] is not None:

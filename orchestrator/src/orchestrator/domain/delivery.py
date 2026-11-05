@@ -21,7 +21,7 @@ from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
-from orchestrator.storage import delete_file_and_partials
+from orchestrator.storage import VpsLayout, delete_file_and_partials
 from shared.layout import is_safe_relative_path, slugify_prova
 from shared.models import (
     DeliveredRequest,
@@ -228,6 +228,7 @@ def _manifest_from_rows(context, connection, rows, since, wanted_slug) -> Manife
             continue
         seen_paths.add(row["clip_relative_path"])
         delivered_at = from_db_time(row["clip_delivered_at"])
+        in_outbox = context.layout.outbox_path(row["id"]).exists()
         if since is not None and delivered_at <= since:
             continue
         if wanted_slug is not None and slugify_prova(row["prova"]) != wanted_slug:
@@ -244,7 +245,10 @@ def _manifest_from_rows(context, connection, rows, since, wanted_slug) -> Manife
                 size_bytes=row["clip_size_bytes"],
                 delivered_at=delivered_at,
                 version=_current_version_number(connection, row),
-                in_outbox=context.layout.outbox_path(row["id"]).exists(),
+                in_outbox=in_outbox,
+                download_url=(
+                    VpsLayout.clip_download_public_path(row["id"]) if in_outbox else None
+                ),
             )
         )
     return ManifestResponse(clips=entries, generated_at=context.clock.now())

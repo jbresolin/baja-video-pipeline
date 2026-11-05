@@ -153,6 +153,7 @@ class ManifestEntry(ApiModel):
     # True while the VPS outbox still has this clip: the review UI's clips
     # page offers it for download (reviewer auth, Caddy /outbox-download/).
     in_outbox: bool = False
+    download_url: str | None = None
 
 
 class ManifestResponse(ApiModel):

@@ -4,6 +4,7 @@ On the VPS, Caddy serves the bytes (design §6, §15):
 
     /inbox/*  /outbox/*    tailnet listener, after forward_auth → GET /auth/file
     /proxies/* /thumbs/*   public site, behind reviewer basic auth
+    /clip-downloads/*      public site, reviewer auth: outbox/<job_id>.mp4
 
 A laptop has no Caddy, so with BVP_DEV_MODE=1 (which config.load_settings
 only accepts with a localhost BVP_PUBLIC_BASE_URL) the orchestrator answers
@@ -44,9 +45,11 @@ def worker_file_path(
 
 
 def review_media_path(context: OrchestratorContext, folder: str, file_name: str) -> Path:
-    """The proxy or thumbnail to show a reviewer, or raise 404."""
+    """The proxy, thumbnail or outbox clip to give a reviewer, or raise 404."""
     if folder == "proxies":
         pattern, folder_path = PROXY_FILE_NAME, context.layout.proxies_dir
+    elif folder == "clip-downloads":
+        pattern, folder_path = PROXY_FILE_NAME, context.layout.outbox_dir
     else:
         pattern, folder_path = THUMBNAIL_FILE_NAME, context.layout.thumbs_dir
     if not pattern.match(file_name):

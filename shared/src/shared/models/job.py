@@ -81,8 +81,11 @@ class ClipInfo(ApiModel):
     # 1 for the first rendering, 2 after a reprocess, ... (ClipVersion).
     version: int = Field(default=1, ge=1)
     # True while the VPS outbox still has a copy (studio offline, or not yet
-    # archived by the master): the review UI offers it for download.
+    # archived by the master): the review UI offers it for download at
+    # download_url ("/clip-downloads/<job_id>.mp4", relative to the public
+    # base URL, reviewer auth like proxies). None when not in the outbox.
     in_outbox: bool = False
+    download_url: str | None = None
 
 
 class ClipVersion(ApiModel):
@@ -234,6 +237,9 @@ class JobSummary(ApiModel):
     waiting_reason: str | None
     # The worker's error message when state is "failed", else None.
     failure_message: str | None
+    # Where a reviewer can download the clip while the VPS outbox has it
+    # (ClipInfo.download_url), else None.
+    clip_download_url: str | None = None
 
     @classmethod
     def from_job(cls, job: Job) -> "JobSummary":
@@ -254,4 +260,5 @@ class JobSummary(ApiModel):
             passagem=job.passagem,
             waiting_reason=job.waiting_reason,
             failure_message=job.failure.message if job.failure else None,
+            clip_download_url=job.clip.download_url if job.clip else None,
         )

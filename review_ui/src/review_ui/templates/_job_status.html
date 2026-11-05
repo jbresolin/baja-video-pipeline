@@ -1,6 +1,7 @@
 {# The status strip. data-version lets the page notice changes by others. #}
+{% import "macros.html" as m %}
 <div id="status-strip" class="status-strip" data-version="{{ job.version }}" data-state="{{ job.state }}" aria-live="polite">
   {% for note in notes %}
-  <p class="note {{ note.level }}">{{ note.text }}</p>
+  <p class="note {{ note.level }}">{{ note.text }}{% if note.at %} {{ m.time(note.at) }}.{% endif %}</p>
   {% endfor %}
 </div>

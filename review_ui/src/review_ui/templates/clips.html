@@ -24,11 +24,32 @@
   <noscript><button type="submit">Apply</button></noscript>
 </form>
 
+{% if outbox_waiting %}
+<h2>Na caixa de saída do servidor (estúdio offline)</h2>
+<div class="table-wrap">
+  <table class="data clips">
+    <thead><tr><th>Prova</th><th class="num">Car</th><th class="num">Pass</th><th></th></tr></thead>
+    <tbody>
+      {% for item in outbox_waiting %}
+      <tr>
+        <td>{{ item.prova }}</td>
+        <td class="num">{{ m.or_unknown(item.car_number) }}</td>
+        <td class="num">{{ m.or_unknown(item.passagem) }}</td>
+        <td><a class="button" href="{{ media_url(item.clip_download_url) }}" download>Download</a>
+            <a href="/review/jobs/{{ item.id }}" title="Open the job">job</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<h2>Entregues ao estúdio</h2>
+{% endif %}
+
 {% if rows %}
 <div class="table-wrap">
   <table class="data clips">
     <thead>
-      <tr><th>Delivered</th><th>Prova</th><th class="num">Car</th><th>Team</th><th class="num">Pass</th><th>Studio path</th></tr>
+      <tr><th>Delivered</th><th>Prova</th><th class="num">Car</th><th>Team</th><th class="num">Pass</th><th>Studio path</th><th>Download</th></tr>
     </thead>
     <tbody>
       {% for clip, path in rows %}
@@ -45,6 +66,7 @@
             <a href="/review/jobs/{{ clip.job_id }}" title="Open the job">job</a>
           </span>
         </td>
+        <td>{% if clip.download_url %}<a class="button" href="{{ media_url(clip.download_url) }}" download>Download</a>{% if clip.version > 1 %} <span class="hint">v{{ clip.version }}</span>{% endif %}{% else %}<span class="hint" title="Only clips still in the VPS outbox can be downloaded here">—</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

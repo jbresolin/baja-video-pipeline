@@ -100,6 +100,11 @@ class VpsLayout:
         return f"/proxies/{job_id}.mp4"
 
     @staticmethod
+    def clip_download_public_path(job_id: str) -> str:
+        """The outbox clip for reviewers: Caddy :443 /clip-downloads/* (reviewer auth)."""
+        return f"/clip-downloads/{job_id}.mp4"
+
+    @staticmethod
     def thumbnail_public_path(job_id: str) -> str:
         return f"/thumbs/{job_id}.jpg"
 

@@ -8,6 +8,7 @@ log (sample_events.py) mentions the master in 7 events and the volunteer in 5.
 """
 
 from review_ui.settings import ReviewUiSettings
+from shared.models import ClipArchiveProgress
 from tests.review_ui.conftest import build_ui
 from tests.review_ui.sample_data import MASTER_ID, SIGNED_IN_COOKIES, VOLUNTEER_ID
 
@@ -174,3 +175,18 @@ def test_fleet_still_works_when_the_event_log_fails(ui, fake_orchestrator):
     # After the first failure the UI stops asking: one failed call, not one
     # per worker, so a broken log cannot slow every refresh down.
     assert len(fake_orchestrator.requests_to("GET", "/events")) == 1
+
+
+def test_fleet_page_shows_kept_clips_and_the_masters_archive(ui, fake_orchestrator):
+    # Setup (LIVESTACK-38 item 7): the volunteer keeps 3 clips, 2 of them
+    # already archived by the master, which has 5 of 6 clips overall.
+    fleet = fake_orchestrator.fleet
+    for entry in fleet.workers:
+        if entry.worker.role == "worker":
+            entry.clips_held, entry.clips_archived = 3, 2
+    fleet.clip_archive = ClipArchiveProgress(archived=5, total=6)
+
+    html = ui.get("/review/fleet").text
+
+    assert "3 clips kept · 2 archived" in html
+    assert "5 of 6 clips archived" in html
