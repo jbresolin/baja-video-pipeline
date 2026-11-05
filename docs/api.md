@@ -454,11 +454,32 @@ every check passed. If that fails, no job exists and the bot asks the
 sender to resend. A repeated `data.key.id` (in progress or done) → 200
 `duplicate: true` with the existing `job_id` if any. Inbox above
 `BVP_INBOX_CAP_GB` → 413 `inbox_full`; above `BVP_INBOX_HOLD_GB` the media
-is accepted but the bot asks the sender to hold further videos. Replies to
-the sender go through Evolution `sendText`; every text is in
-`orchestrator/domain/bot_messages.py` (pt-BR). A verified document gets
-`RECEIVED_OK` once its job exists, unless the webhook already answered
-(low_res or hold notice), so each video gets one positive reply.
+is accepted but the bot asks the sender to hold further videos.
+
+**Bot answers** (`orchestrator/domain/bot_replies.py`) are attached to the
+video they are about, because volunteers send several files in a row:
+
+| Situation | Reaction on the video | Text (quoted reply to the video) |
+| --- | --- | --- |
+| verified, job created | ✅ | none |
+| arrived as a WhatsApp video (`low_res`) | ⚠️ | `LOW_RES_RESEND_AS_DOCUMENT` |
+| inbox above the soft cap | ⚠️ | `INBOX_NEARLY_FULL_PLEASE_HOLD` |
+| inbox above the hard cap (413) | ❌ | `INBOX_FULL_RESEND_LATER` |
+| download or a hash check failed | ❌ | `DOWNLOAD_FAILED_PLEASE_RESEND` |
+
+A ⚠️ video gets no ✅ later (the warning stays visible); a later ❌
+replaces it if the download then fails (WhatsApp keeps one reaction per
+message). Reactions go through Evolution `POST /message/sendReaction/{instance}`
+with `{"key": {"remoteJid", "fromMe": false, "id"}, "reaction"}`, the key
+**exactly as it arrived** (an `@lid` `remoteJid` stays `@lid`: reactions
+address the message). Texts go through `sendText` to the phone number
+(`sender_jid`, i.e. `remoteJidAlt` for `@lid` senders) with
+`"quoted": {"key": <same key>, "message": {"documentMessage"|"videoMessage":
+{mimetype, fileName}}}`; sending `message` means Evolution does not need its
+own message store to build the quote. Request shapes verified against
+Evolution 2.3.7 (`src/validate/message.schema.ts`, `src/api/dto/sendMessage.dto.ts`,
+`whatsapp.baileys.service.ts`; see `orchestrator/clients/evolution.py`).
+Every text is in `orchestrator/domain/bot_messages.py` (pt-BR).
 
 **Media info** (contract 1.2.0). The first holder already runs ffprobe
 on the raw to make the proxy; it sends the whole answer

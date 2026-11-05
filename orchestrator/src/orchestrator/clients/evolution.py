@@ -1,8 +1,25 @@
-"""Bot replies to volunteers through Evolution API v2 `sendText`, and the instance status.
+"""Bot replies to volunteers through Evolution API v2.3.7: texts and reactions.
 
-POST {BVP_EVOLUTION_URL}/message/sendText/{instance}
-     apikey: <BVP_EVOLUTION_API_KEY>
-     {"number": "5511999999999", "text": "..."}
+    POST {BVP_EVOLUTION_URL}/message/sendText/{instance}       apikey: <key>
+         {"number": "5511999999999", "text": "...",
+          "quoted": {"key": {"id", "remoteJid", "fromMe"}, "message": {...}}}
+    POST {BVP_EVOLUTION_URL}/message/sendReaction/{instance}   apikey: <key>
+         {"key": {"remoteJid": "...@lid", "fromMe": false, "id": "..."}, "reaction": "✅"}
+
+Request bodies as Evolution 2.3.7 validates and uses them (tag 2.3.7 of
+github.com/EvolutionAPI/evolution-api):
+* src/validate/message.schema.ts: `textMessageSchema` (number + text
+  required, optional `quoted` = `quotedOptionsSchema`: key.id required,
+  plus `message`) and `reactionMessageSchema` (key.id, key.remoteJid and
+  key.fromMe all required, plus `reaction`).
+* src/api/dto/sendMessage.dto.ts: `SendTextDto`, `Quoted {key, message}`,
+  `SendReactionDto {key, reaction}`.
+* src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts:
+  `reactionMessage()` sends to `key.remoteJid` as given (an `@lid` jid is
+  accepted as-is by `whatsappNumber()`), and `sendMessageWithTyping()`
+  uses `quoted` directly when it carries `message`, else looks the key up
+  in Evolution's own message table. We always send `message`, so quoting
+  works even when Evolution does not store messages.
 
 A reply that fails is logged and dropped: it must never break intake.
 The admin Settings page also asks for the instance's connection state and
@@ -10,6 +27,7 @@ webhook (instance_status).
 """
 
 import logging
+from typing import Any
 
 import httpx
 
@@ -23,6 +41,11 @@ def phone_number_from_jid(jid: str) -> str:
     return jid.split("@", 1)[0]
 
 
+def message_key(remote_jid: str, message_id: str) -> dict[str, Any]:
+    """The key of a message someone sent us, exactly as the webhook carried it."""
+    return {"remoteJid": remote_jid, "fromMe": False, "id": message_id}
+
+
 class EvolutionClient:
     def __init__(
         self, http_client: httpx.Client, base_url: str, api_key: str, instance: str
@@ -32,24 +55,35 @@ class EvolutionClient:
         self._api_key = api_key
         self._instance = instance
 
-    def send_text(self, recipient_jid: str, text: str) -> bool:
-        """Send one WhatsApp text. True if Evolution accepted it."""
+    def send_text(
+        self, recipient_jid: str, text: str, *, quoted: dict[str, Any] | None = None
+    ) -> bool:
+        """Send one WhatsApp text, optionally as a reply to `quoted` ({key, message}).
+
+        True if Evolution accepted it.
+        """
+        body: dict[str, Any] = {"number": phone_number_from_jid(recipient_jid), "text": text}
+        if quoted is not None:
+            body["quoted"] = quoted
+        return self._post("sendText", body, f"bot reply to {recipient_jid}")
+
+    def send_reaction(self, key: dict[str, Any], emoji: str) -> bool:
+        """React to one message (identified by its key) with `emoji`. True if accepted."""
+        body = {"key": key, "reaction": emoji}
+        return self._post("sendReaction", body, f"reaction to message {key.get('id')}")
+
+    def _post(self, endpoint: str, body: dict[str, Any], what: str) -> bool:
         try:
             response = self._http.post(
-                f"{self._base_url}/message/sendText/{self._instance}",
-                json={"number": phone_number_from_jid(recipient_jid), "text": text},
+                f"{self._base_url}/message/{endpoint}/{self._instance}",
+                json=body,
                 headers={"apikey": self._api_key},
             )
         except httpx.HTTPError as error:
-            logger.warning("bot reply to %s failed: %s", recipient_jid, error)
+            logger.warning("%s failed: %s", what, error)
             return False
         if response.is_error:
-            logger.warning(
-                "bot reply to %s failed: HTTP %s %s",
-                recipient_jid,
-                response.status_code,
-                response.text[:200],
-            )
+            logger.warning("%s failed: HTTP %s %s", what, response.status_code, response.text[:200])
             return False
         return True
 

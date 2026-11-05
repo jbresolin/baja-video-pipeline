@@ -5,7 +5,9 @@
      text inside the box, it already uses WhatsApp's *bold* formatting) and
      replace <NÚMERO DO BAJA BOT> first. The bot's replies quoted below are
      the exact texts in orchestrator/domain/bot_messages.py; a test keeps
-     them in sync (tests/orchestrator/test_bot_replies.py). -->
+     them in sync (tests/orchestrator/test_bot_replies.py). Since
+     2026-11 the bot reacts on the video (✅ ⚠️ ❌) and sends texts as
+     quoted replies to it (orchestrator/domain/bot_replies.py). -->
 
 ## Mensagem para fixar no grupo
 
@@ -18,11 +20,11 @@
    • Android: 📎 → Documento → Procurar outros documentos → escolha o vídeo
    • iPhone: + → Documento → Escolher foto ou vídeo → escolha o vídeo
 3. Um vídeo por passagem. Não precisa escrever nada nem renomear o arquivo.
-4. Espere a resposta do bot:
-   ✅ "Vídeo recebido!" → deu certo, pode mandar o próximo.
-   ⚠️ "o WhatsApp reduziu a qualidade" → você mandou como vídeo; mande de novo como documento.
-   ⏳ "fila está quase cheia" / "fila está cheia" → espere uns minutos antes de mandar mais (no "cheia", reenvie esse).
-   ❌ "Não conseguimos receber" → mande de novo como documento.
+4. O bot responde *no próprio vídeo* (uma reação nele):
+   ✅ → deu certo, pode mandar o próximo. O bot não escreve nada.
+   ⚠️ → o vídeo foi aproveitado, mas leia a resposta do bot logo abaixo dele.
+   ❌ → este vídeo NÃO foi recebido; leia a resposta e mande de novo.
+   Quando o bot escreve, a mensagem é uma *resposta* ao vídeo de que fala.
 5. Só apague o vídeo do celular depois do ✅.
 
 Dúvidas: fale com o João.
@@ -83,37 +85,41 @@ escolha o vídeo na pasta onde salvou.
 
 ## O que o bot responde
 
-Estas são as respostas exatas do Baja Bot e o que fazer em cada caso.
+O bot responde com uma **reação no próprio vídeo**, para você saber de
+qual vídeo ele está falando mesmo mandando vários seguidos. Quando ele
+precisa explicar algo, manda também um texto como **resposta** àquele
+vídeo (aparece com o vídeo citado em cima). Estas são as respostas exatas
+e o que fazer em cada caso.
 
-**Deu certo.** Pode mandar o próximo vídeo.
+**✅ Deu certo.** O vídeo chegou e foi conferido. O bot não escreve nada:
+pode mandar o próximo.
 
-> ✅ Vídeo recebido! Obrigado.
-
-**Chegou como vídeo comprimido.** O vídeo foi aproveitado, mas com
+**⚠️ Chegou como vídeo comprimido.** O vídeo foi aproveitado, mas com
 qualidade pior. Se ainda tiver o original, mande de novo como documento.
 
-> Recebemos seu vídeo, mas o WhatsApp reduziu a qualidade dele. Se puder, envie de novo como *documento* (📎 → Documento) para usarmos o original. Obrigado!
+> Recebemos este vídeo, mas o WhatsApp reduziu a qualidade dele. Se puder, envie de novo como *documento* (📎 → Documento) para usarmos o original. Obrigado!
 
-**Recebido, mas a fila está quase cheia.** Este vídeo chegou. Espere
+**⚠️ Recebido, mas a fila está quase cheia.** Este vídeo chegou. Espere
 alguns minutos antes de mandar os próximos.
 
-> Recebemos seu vídeo! Nossa fila está quase cheia: por favor, espere alguns minutos antes de enviar os próximos.
+> Recebemos este vídeo! Nossa fila está quase cheia: por favor, espere alguns minutos antes de enviar os próximos.
 
-**Fila cheia: este vídeo NÃO foi recebido.** Espere alguns minutos e
+**❌ Fila cheia: este vídeo NÃO foi recebido.** Espere alguns minutos e
 mande este mesmo vídeo de novo.
 
 > Nossa fila está cheia e não conseguimos receber este vídeo agora. Por favor, espere alguns minutos e envie de novo.
 
-**Falhou.** Algo deu errado no envio. Mande de novo, como documento.
+**❌ Falhou.** Algo deu errado no envio. Mande de novo, como documento.
 
-> Não conseguimos receber seu vídeo. Por favor, envie de novo como *documento* (📎 → Documento).
+> Não conseguimos receber este vídeo. Por favor, envie de novo como *documento* (📎 → Documento).
 
-**Número não autorizado.** Neste evento só números cadastrados podem
+**❌ Número não autorizado.** Neste evento só números cadastrados podem
 mandar vídeos, e o seu ainda não está na lista. O vídeo NÃO foi recebido.
 Fale com a organização para liberarem seu número e depois mande de novo.
-(O bot avisa no máximo uma vez por dia.)
+(O bot avisa no máximo uma vez por dia; nos outros vídeos desse dia não
+aparece reação nenhuma.)
 
 > Este número não está autorizado a enviar vídeos. Fale com a organização.
 
-**Sem resposta depois de alguns minutos?** Confira se mandou para o número
+**Nenhuma reação no vídeo depois de alguns minutos?** Confira se mandou para o número
 certo, no privado. Se sim, avise o João e **não apague o vídeo** do celular.

@@ -21,6 +21,15 @@ from pydantic import ValidationError
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import to_db_time
 from orchestrator.domain import bot_messages, contacts
+from orchestrator.domain.bot_replies import (
+    REACTION_FAILED,
+    REACTION_STORED,
+    REACTION_WARNING,
+    BotReply,
+    VideoMessageRef,
+    quoted_message_for,
+    send_bot_reply,
+)
 from orchestrator.errors import ApiError
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
@@ -59,9 +68,11 @@ class PendingMediaDownload:
     sender_jid: str
     sender_name: str | None
     raw_extension: str
-    # Send bot_messages.RECEIVED_OK once the job exists. False when the
-    # webhook already answered (low_res resend request, inbox hold notice),
-    # so each video gets one "received" message, not two.
+    # The WhatsApp message to react to / quote (domain/bot_replies.py).
+    target: VideoMessageRef
+    # React ✅ once the job exists. False when the webhook already answered
+    # (low_res resend request, inbox hold notice: ⚠️), so that warning stays
+    # visible on the video instead of being replaced by ✅.
     confirm_when_stored: bool = True
     # The sender's default prova (admin Contacts page), filled into the job.
     default_prova: str | None = None
@@ -73,8 +84,8 @@ class WebhookOutcome:
     response: IntakeResponse | None = None
     error: ApiError | None = None
     download: PendingMediaDownload | None = None
-    # (recipient jid, text) pairs to send after the DB work is done.
-    replies: list[tuple[str, str]] = field(default_factory=list)
+    # Answers to send after the DB work is done.
+    replies: list[BotReply] = field(default_factory=list)
 
 
 def ignored(reason: str, message_id: str | None = None) -> WebhookOutcome:
@@ -118,13 +129,23 @@ def handle_webhook(context: OrchestratorContext, payload: Any) -> WebhookOutcome
         decision = contacts.intake_decision(
             connection, contact_row, context.admin_settings.current.intake_mode, now
         )
+        # Reactions and quotes go on the video's own message key; contacts
+        # stay keyed by sender_jid (an @lid sender is matched by phone).
+        target = VideoMessageRef(
+            remote_jid=key.remote_jid,
+            message_id=key.id,
+            reply_jid=key.sender_jid,
+            quoted_message=quoted_message_for(incoming),
+        )
         if not decision.accept:
             outcome = ignored(decision.reason, key.id)
             if decision.send_refusal:
-                outcome.replies.append((key.sender_jid, bot_messages.SENDER_NOT_AUTHORIZED))
+                # At most once per 24 h per sender (contacts.intake_decision).
+                refusal = BotReply(target, REACTION_FAILED, (bot_messages.SENDER_NOT_AUTHORIZED,))
+                outcome.replies.append(refusal)
             return outcome
         return _accept_incoming_video(
-            context, connection, webhook, incoming, decision.default_prova
+            context, connection, webhook, incoming, target, decision.default_prova
         )
 
 
@@ -133,6 +154,7 @@ def _accept_incoming_video(
     connection: sqlite3.Connection,
     webhook: EvolutionWebhook,
     incoming: IncomingMedia,
+    target: VideoMessageRef,
     default_prova: str | None,
 ) -> WebhookOutcome:
     now = context.clock.now()
@@ -156,7 +178,9 @@ def _accept_incoming_video(
         # Evolution retries a 413 for ~20 minutes; reply to the sender only once.
         replies = []
         if known is None or known["status"] != REJECTED_INBOX_FULL:
-            replies.append((key.sender_jid, bot_messages.INBOX_FULL_RESEND_LATER))
+            replies.append(
+                BotReply(target, REACTION_FAILED, (bot_messages.INBOX_FULL_RESEND_LATER,))
+            )
         jobs_repo.save_intake_message(
             connection, key.id, REJECTED_INBOX_FULL, now, sender_jid=key.sender_jid
         )
@@ -168,11 +192,12 @@ def _accept_incoming_video(
         )
         return WebhookOutcome(status_code=413, error=error, replies=replies)
 
-    replies = []
+    warnings = []
     if low_res:
-        replies.append((key.sender_jid, bot_messages.LOW_RES_RESEND_AS_DOCUMENT))
+        warnings.append(bot_messages.LOW_RES_RESEND_AS_DOCUMENT)
     if inbox_bytes + incoming_bytes > context.admin_settings.inbox_hold_bytes:
-        replies.append((key.sender_jid, bot_messages.INBOX_NEARLY_FULL_PLEASE_HOLD))
+        warnings.append(bot_messages.INBOX_NEARLY_FULL_PLEASE_HOLD)
+    replies = [BotReply(target, REACTION_WARNING, tuple(warnings))] if warnings else []
 
     jobs_repo.save_intake_message(connection, key.id, DOWNLOADING, now, sender_jid=key.sender_jid)
     download = PendingMediaDownload(
@@ -182,6 +207,7 @@ def _accept_incoming_video(
         sender_jid=key.sender_jid,
         sender_name=webhook.data.push_name,
         raw_extension=raw_extension_for(incoming.media.file_name, incoming.media.mimetype),
+        target=target,
         confirm_when_stored=not replies,
         default_prova=default_prova,
     )
@@ -189,9 +215,9 @@ def _accept_incoming_video(
     return WebhookOutcome(status_code=202, response=response, download=download, replies=replies)
 
 
-def send_replies(context: OrchestratorContext, replies: list[tuple[str, str]]) -> None:
-    for recipient, text in replies:
-        context.evolution.send_text(recipient, text)
+def send_replies(context: OrchestratorContext, replies: list[BotReply]) -> None:
+    for reply in replies:
+        send_bot_reply(context.evolution, reply)
 
 
 def run_media_download(context: OrchestratorContext, pending: PendingMediaDownload) -> str | None:
@@ -215,7 +241,10 @@ def run_media_download(context: OrchestratorContext, pending: PendingMediaDownlo
             jobs_repo.save_intake_message(
                 connection, pending.message_id, FAILED, context.clock.now(), detail=str(error)
             )
-        context.evolution.send_text(pending.sender_jid, bot_messages.DOWNLOAD_FAILED_PLEASE_RESEND)
+        failed = BotReply(
+            pending.target, REACTION_FAILED, (bot_messages.DOWNLOAD_FAILED_PLEASE_RESEND,)
+        )
+        send_bot_reply(context.evolution, failed)
         return None
 
     with context.database.transaction() as connection:
@@ -237,7 +266,7 @@ def run_media_download(context: OrchestratorContext, pending: PendingMediaDownlo
         )
     # Confirm only now that the file is verified and the job exists.
     if pending.confirm_when_stored:
-        context.evolution.send_text(pending.sender_jid, bot_messages.RECEIVED_OK)
+        send_bot_reply(context.evolution, BotReply(pending.target, REACTION_STORED))
     return pending.job_id
 
 
