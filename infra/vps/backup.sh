@@ -6,8 +6,10 @@
 #                                                          # container exists, else 1
 #
 # Writes /var/backups/baja/<UTC timestamp>/ with:
-#   bvp.sqlite3              orchestrator jobs DB (SQLite online backup, integrity-checked)
-#   reviewers.txt, teams.csv the two files the orchestrator and the base Caddy read
+#   bvp.sqlite3              orchestrator DB (SQLite online backup, integrity-checked):
+#                            jobs, and since the admin page also users, contacts,
+#                            provas, teams and settings
+#   reviewers.txt, teams.csv if present: the files those tables were first imported from
 #   SHA256SUMS
 # NOT included: .env and orchestrator.env (secrets; keep them in the password
 # manager), raws/proxies/clips (the master worker holds every raw, design §11),
@@ -71,8 +73,14 @@ backup_sqlite() {
 }
 
 backup_pipeline_files() {
-    cp -p "$DATA_DIR/reviewers.txt" "$WORK/reviewers.txt" &&
-        cp -p "$DATA_DIR/teams.csv" "$WORK/teams.csv"
+    # Optional since the admin page: users and teams live in the DB; these
+    # files only seeded it on the first start (domain/first_start.py).
+    local name
+    for name in reviewers.txt teams.csv; do
+        if [[ -e "$DATA_DIR/$name" ]]; then
+            cp -p "$DATA_DIR/$name" "$WORK/$name" || return 1
+        fi
+    done
 }
 
 write_checksums() {

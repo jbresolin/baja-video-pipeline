@@ -83,15 +83,14 @@ install_caddy_routes() {
     fi
     rm -f "$rendered"
 
-    # Always reload: it also picks up reviewers.txt edits, and Caddy skips a
-    # reload whose config did not change.
+    # Always reload: Caddy skips a reload whose config did not change.
     if ! reload_base_caddy; then
         if [[ -n "$previous" ]]; then
             mv -f "$previous" "$CONFD_FILE"
             die "base Caddy refused the new routes; previous $CONFD_FILE put back (error above)"
         fi
         rm -f "$CONFD_FILE"
-        die "base Caddy refused the routes; $CONFD_FILE removed again (error above; reviewers.txt empty?)"
+        die "base Caddy refused the routes; $CONFD_FILE removed again (error above)"
     fi
     [[ -z "$previous" ]] || rm -f "$previous"
     log "base Caddy reloaded"

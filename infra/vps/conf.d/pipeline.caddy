@@ -8,7 +8,7 @@
 # dollar sign, or envsubst would replace them in this comment too):
 #   PIPELINE_DOMAIN     the public hostname (DNS A/AAAA -> VPS)
 #   CADDY_PIPELINE_DIR  where the base Caddy container sees /srv/pipeline
-#                       (read-only bind mount, README §1)
+#                       (read-only bind mount, README §1; proxies/ and thumbs/)
 # They are resolved at install time because the base Caddy's environment
 # belongs to the base stack: a Caddy env placeholder here would read the
 # base container's variables, which this repo does not set. Caddy
@@ -26,14 +26,25 @@
 #
 # Upstreams are the pipeline containers' aliases on baja-edge
 # (docker-compose.yml): bvp-review-ui:8001 and bvp-orchestrator:8000.
-# Reviewers and Range requests: Caddyfile basic_auth caches bcrypt results,
-# so the many Range requests from the video player do not each pay a bcrypt
-# hash.
+#
+# Sign-in (admin page, LIVESTACK-37): Caddy asks for no password any more.
+# Users live in the orchestrator's database and sign in on the review UI's
+# own /review/login page, which sets the bvp_session cookie. Proxies and
+# thumbnails are guarded by forward_auth to the orchestrator's GET
+# /auth/media, which checks that cookie (the same pattern as /auth/file on
+# the tailnet listener). The orchestrator refreshes a session at most once a
+# minute, so the many Range requests of the video player stay cheap.
 
-# Static files from the pipeline data dir. file_server answers Range (206).
-# Writers drop in-progress files as dot-files and rename them when complete
-# (design §15); dot-files and upload staging files are never served.
+# Static files from the pipeline data dir, for a signed-in browser only.
+# forward_auth sends the browser's own request headers (its Cookie included)
+# to GET /auth/media: 2xx serves the file, anything else (401) is the answer.
+# file_server answers Range (206). Writers drop in-progress files as
+# dot-files and rename them when complete (design §15); dot-files and upload
+# staging files are never served.
 (bvp_pipeline_files) {
+	forward_auth bvp-orchestrator:8000 {
+		uri /auth/media
+	}
 	root * ${CADDY_PIPELINE_DIR}
 	file_server {
 		hide .* *.part *.part.json
@@ -44,14 +55,6 @@ ${PIPELINE_DOMAIN} {
 	log {
 		output stdout
 		format console
-	}
-
-	# Named reviewers, one `username bcrypt-hash` pair per line. Same file
-	# the orchestrator reads via BVP_REVIEWERS_FILE (design §15). Adding a
-	# reviewer: README §4. Caddy reads it at (re)load time.
-	@bvp_reviewer_area path /review /review/* /proxies/* /thumbs/*
-	basic_auth @bvp_reviewer_area {
-		import ${CADDY_PIPELINE_DIR}/reviewers.txt
 	}
 
 	# Proxies (480p review copies, design §6): /proxies/<job_id>.mp4
@@ -66,15 +69,12 @@ ${PIPELINE_DOMAIN} {
 		import bvp_pipeline_files
 	}
 
-	# Review UI: its own service (design §16). reverse_proxy forwards the
-	# client's `Authorization: Basic …` header unchanged; the UI passes it
-	# on to the orchestrator, which checks reviewerBasic itself (docs/api.md
-	# §2). X-Reviewer is a convenience copy of the user name Caddy
-	# authenticated (header_up replaces any client-sent value).
+	# Review UI: its own service (design §16), with its own login page. It
+	# turns the bvp_session cookie into a bearer token for the orchestrator,
+	# which checks it on every call (docs/api.md §2). X-Forwarded-For (set
+	# by reverse_proxy) lets the orchestrator rate-limit sign-ins per client.
 	handle /review* {
-		reverse_proxy bvp-review-ui:8001 {
-			header_up X-Reviewer {http.auth.user.id}
-		}
+		reverse_proxy bvp-review-ui:8001
 	}
 
 	# Enrollment (design §8): a new PC is not on the tailnet yet, so this one
@@ -94,9 +94,12 @@ ${PIPELINE_DOMAIN} {
 		reverse_proxy bvp-orchestrator:8000
 	}
 
-	# Bare domain -> review UI.
+	# Bare domain -> review UI. The `*` matters: `redir /review/ 302`
+	# would read "/review/" as a request matcher and "302" as the target,
+	# so a request for "/" matched nothing inside this handle and Caddy
+	# answered an empty 200 (what the site did before this change).
 	handle / {
-		redir /review/ 302
+		redir * /review/ 302
 	}
 
 	# Nothing else is public.

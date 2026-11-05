@@ -220,8 +220,11 @@ def test_backup_sh_writes_every_part_with_checksums(tmp_path):
 @linux_only
 def test_a_failed_part_marks_the_backup_incomplete_but_keeps_the_rest(tmp_path):
     environment = prepare_vps(tmp_path)
-    # teams.csv went missing: that part fails, the DB part must not care.
-    (Path(environment["BAJA_DATA_DIR"]) / "teams.csv").unlink()
+    # teams.csv cannot be copied (here: something made it a folder), so that
+    # part fails; the DB part must not care.
+    teams = Path(environment["BAJA_DATA_DIR"]) / "teams.csv"
+    teams.unlink()
+    teams.mkdir()
 
     completed = run_backup(environment)
 
@@ -232,6 +235,22 @@ def test_a_failed_part_marks_the_backup_incomplete_but_keeps_the_rest(tmp_path):
     [folder] = backup_folders(environment)
     assert folder.name.endswith("-incomplete")
     assert (folder / "bvp.sqlite3").exists()
+
+
+@linux_only
+def test_missing_reviewers_and_teams_files_are_fine(tmp_path):
+    # Since the admin page, users and teams live in the DB; the two files
+    # only seeded it on the first start and may be gone.
+    environment = prepare_vps(tmp_path)
+    for name in ("reviewers.txt", "teams.csv"):
+        (Path(environment["BAJA_DATA_DIR"]) / name).unlink()
+
+    completed = run_backup(environment)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    [folder] = backup_folders(environment)
+    assert (folder / "bvp.sqlite3").exists()
+    assert not folder.name.endswith("-incomplete")
 
 
 @linux_only

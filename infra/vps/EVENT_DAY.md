@@ -98,28 +98,18 @@ streaming PC, `worker` for everyone else. Each token works once.
 
 ### 5. Reviewers
 
-For each person reviewing videos, README §4 ("Add a reviewer"): append
-the line and reload the base Caddy. The orchestrator picks the change up by
-itself on the next login, no restart. Then:
+For each person reviewing videos: **Admin → Usuários → Adicionar usuário**
+(role Revisor). Nothing to edit on the server (README §4). Send each reviewer `https://<PIPELINE_DOMAIN>/review/login`, their user name
+and their own password. Shortcuts are on the job page (`?`).
 
-```bash
-sudo ./compose-smoke.sh                      # "reviewers file" row lists everyone
-```
+### 6. Event, provas and teams
 
-Send each reviewer `https://<PIPELINE_DOMAIN>/review/` and their own
-password. Shortcuts are on the job page (`?`).
-
-### 6. Teams (`teams.csv`)
-
-One `car_number,team_name,school` line per car, from the official entry
-list. The orchestrator re-reads it when it changes; no restart:
-
-```bash
-sudo install -o 10001 -g 10001 -m 640 teams.csv /srv/pipeline/teams.csv
-curl -s -u '<reviewer>:<password>' "https://$PIPELINE_DOMAIN/review/api/teams/42"   # → that car's team
-```
-
-A car missing from the file shows no team name on the overlay (design §18).
+**Admin → Configurações**: set the event id (4 characters, e.g. `26BR`, from
+the Baja results site). The orchestrator then pulls the event's provas and
+teams from the results API (and again every 6 h); **Admin → Provas** and
+**Admin → Equipes** show them, each with a *Sincronizar* button. Add manual
+provas for clip categories that are not competition provas ("Abertura",
+"Pódio"). A team name corrected by hand survives later syncs.
 
 ### 7. Inbox cap
 

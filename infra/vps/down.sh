@@ -10,7 +10,7 @@
 #      a stopped orchestrator (a webhook someone pointed elsewhere is left alone);
 #   2. remove /srv/caddy/conf.d/pipeline.caddy and reload the base Caddy;
 #   3. docker compose down. Volumes and /srv/pipeline are kept: the jobs DB,
-#      reviewers.txt and teams.csv are all there for the next up.sh.
+#      users, teams and settings (all in the DB) are there for the next up.sh.
 #
 # Every step runs even if an earlier one failed, so the containers always
 # stop. Exit codes: 0 = all done; 1 = down, but a step needs a look (read
