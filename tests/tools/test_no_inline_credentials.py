@@ -51,7 +51,9 @@ def test_the_check_catches_both_shapes_and_allows_names():
 
 
 # This file is the one exception: it has to spell out the patterns it bans.
-SCANNED_FILES = sorted(path for path in TESTS_FOLDER.rglob("*.py") if path != Path(__file__).resolve())
+SCANNED_FILES = sorted(
+    path for path in TESTS_FOLDER.rglob("*.py") if path != Path(__file__).resolve()
+)
 
 
 @pytest.mark.parametrize("path", SCANNED_FILES, ids=lambda path: str(path.relative_to(REPO_ROOT)))
