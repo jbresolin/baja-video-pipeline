@@ -12,11 +12,11 @@ from shared.models import (
     ReceivedAs,
 )
 from tools.openapi_contract.auth import (
-    admin_bearer,
     error_responses,
     not_implemented,
     webhook_secret,
 )
+from tools.openapi_contract.routes_admin_people import ADMIN_ONLY
 
 router = APIRouter()
 
@@ -76,8 +76,8 @@ def evolution_webhook(payload: EvolutionWebhook) -> IntakeResponse:
     tags=["intake"],
     summary="Dev only: upload a file as if it came from WhatsApp",
     response_model=IntakeResponse,
-    dependencies=[Depends(admin_bearer)],
-    responses=error_responses(400, 401, 413, 503),
+    dependencies=ADMIN_ONLY,
+    responses=error_responses(400, 401, 403, 413, 503),
 )
 def test_upload(
     file: UploadFile = File(..., description="The video file."),
@@ -100,11 +100,15 @@ def test_upload(
     summary="Create a one-time enrollment token for a volunteer",
     response_model=EnrollmentTokenCreated,
     status_code=201,
-    dependencies=[Depends(admin_bearer)],
-    responses=error_responses(400, 401),
+    dependencies=ADMIN_ONLY,
+    responses=error_responses(400, 401, 403),
 )
 def create_enrollment_token(body: CreateEnrollmentTokenRequest) -> EnrollmentTokenCreated:
-    """The plaintext token is returned once; only its SHA-256 is stored."""
+    """The plaintext token is returned once; only its SHA-256 is stored.
+
+    The answer also carries the token's public `token_id` (for the token
+    list and revocation) and the installer download link from Settings.
+    """
     not_implemented()
 
 

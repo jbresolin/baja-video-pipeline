@@ -24,10 +24,14 @@ def enroll_body(token: str) -> dict:
 
 
 def test_only_the_admin_can_create_enrollment_tokens(harness):
+    # A signed-in reviewer is known (so not 401) but not allowed: 403.
     response = harness.client.post(
         "/admin/enrollment-tokens", json={"volunteer_name": "x"}, auth=harness.reviewer_auth
     )
-    assert response.status_code == 401
+    assert response.status_code == 403
+    # Nobody signed in at all: 401.
+    anonymous = harness.client.post("/admin/enrollment-tokens", json={"volunteer_name": "x"})
+    assert anonymous.status_code == 401
 
 
 def test_enroll_exchanges_a_token_for_worker_id_bearer_and_tailscale_key(harness):

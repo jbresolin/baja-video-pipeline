@@ -1,12 +1,11 @@
 """Review queue, review updates, proxy regeneration and team lookup (docs/api.md §7.1)."""
 
-import logging
 import sqlite3
 from typing import Any
 
-from orchestrator.clients.baja_app import BajaAppError
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import to_db_time
+from orchestrator.domain import provas_catalog
 from orchestrator.domain.job_view import load_job, require_job_row
 from orchestrator.domain.raw_copies import drop_inbox_copy
 from orchestrator.domain.transitions import move_job, revoke_job_leases
@@ -14,6 +13,7 @@ from orchestrator.errors import ApiError, illegal_transition
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
+from orchestrator.repositories import teams as teams_repo
 from orchestrator.storage import delete_file_and_partials
 from shared.models import (
     ErrorCode,
@@ -29,8 +29,6 @@ from shared.state_machine import (
     RETRYABLE_STATES,
     retry_target_for,
 )
-
-logger = logging.getLogger(__name__)
 
 REQUIRED_REVIEW_FIELDS = ("prova", "car_number", "passagem", "cut_in_s", "cut_out_s")
 EDITABLE_FIELDS = ("prova", "car_number", "passagem", "show_pass", "cut_in_s", "cut_out_s")
@@ -52,14 +50,14 @@ CLEARED_FAILURE_COLUMNS = {
 }
 
 
-def _team_name_or_none(context: OrchestratorContext, car_number: int) -> str | None:
-    """The team name for a review; a Baja app outage must not block reviewing."""
-    try:
-        team = context.teams.find_team(car_number)
-    except BajaAppError as error:
-        logger.warning("team lookup for car %s failed: %s", car_number, error)
-        return None
-    return team.team_name if team else None
+def _team_names(connection: sqlite3.Connection, car_number: int) -> dict[str, str | None]:
+    """team_name (full, for the review UI and latest.m3u) and overlay_team_name
+    (the short name when the results API has one: the clip overlay shows it).
+    An unknown car leaves both empty (design §18)."""
+    team = teams_repo.get_team(connection, car_number)
+    if team is None:
+        return {"team_name": None, "overlay_team_name": None}
+    return {"team_name": team.team_name, "overlay_team_name": team.short_name or team.team_name}
 
 
 def _check_action_allowed(state: JobState, action: ReviewAction) -> None:
@@ -99,7 +97,8 @@ def _check_cuts(job_row: sqlite3.Row, merged: dict[str, Any]) -> None:
         )
 
 
-def _check_required_fields(merged: dict[str, Any]) -> None:
+def _check_ready_to_render(connection: sqlite3.Connection, merged: dict[str, Any]) -> None:
+    """Before a job becomes ready: every field set, and a prova from the provas table."""
     missing = [name for name in REQUIRED_REVIEW_FIELDS if merged[name] is None]
     if missing:
         raise ApiError(
@@ -108,16 +107,18 @@ def _check_required_fields(merged: dict[str, Any]) -> None:
             "these fields must be set: " + ", ".join(missing),
             {"missing": missing},
         )
+    if not provas_catalog.is_known_prova(connection, merged["prova"]):
+        raise ApiError(
+            422,
+            ErrorCode.UNKNOWN_PROVA,
+            f"prova '{merged['prova']}' is not in the provas list; pick one from the list",
+            {"prova": merged["prova"]},
+        )
 
 
 def update_review(
     context: OrchestratorContext, reviewer: str, job_id: str, update: ReviewUpdate
 ) -> Job:
-    # Network call before the transaction (cached in the client).
-    team_name = None
-    if update.car_number is not None:
-        team_name = _team_name_or_none(context, update.car_number)
-
     with context.database.transaction() as connection:
         now = context.clock.now()
         job_row = require_job_row(connection, job_id)
@@ -139,7 +140,7 @@ def update_review(
             "reviewed_at": to_db_time(now),
         }
         if update.car_number is not None:
-            changes["team_name"] = team_name
+            changes.update(_team_names(connection, update.car_number))
         actor = events_repo.reviewer_actor(reviewer)
         _apply_action(context, connection, job_row, update.action, changes, merged, actor)
         return load_job(connection, job_id)
@@ -161,7 +162,7 @@ def _apply_action(
         events_repo.record_event(connection, now, actor=actor, kind="review_saved", job_id=job_id)
         return
     if action == ReviewAction.READY:
-        _check_required_fields(merged)
+        _check_ready_to_render(connection, merged)
         move_job(
             connection,
             job_row,
@@ -173,7 +174,7 @@ def _apply_action(
         )
         return
     if action == ReviewAction.REPROCESS:
-        _check_required_fields(merged)
+        _check_ready_to_render(connection, merged)
         revoke_job_leases(
             connection,
             job_id,
@@ -218,7 +219,7 @@ def _apply_action(
     failed_from = JobState(job_row["failed_from"] or JobState.CLAIMED)
     target = retry_target_for(failed_from)
     if target == JobState.READY:
-        _check_required_fields(merged)
+        _check_ready_to_render(connection, merged)
     leases_repo.clear_task_exclusions(connection, job_id)
     move_job(
         connection,

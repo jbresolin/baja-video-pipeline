@@ -23,6 +23,7 @@ from baja_installer.first_run import (
 )
 from baja_installer.tailscale_cli import TailscaleStatus
 from shared.models import WorkerRole
+from shared.testing.credentials import PLACEHOLDER_WORKER_TOKEN
 from worker.config import WorkerConfig, load_config, save_config
 from worker.enrollment import TAILSCALE_AUTH_KEY_FILE_NAME
 
@@ -74,7 +75,7 @@ def enrolled_config(role=WorkerRole.WORKER) -> WorkerConfig:
     """worker.json as worker/enrollment.py leaves it after POST /enroll."""
     return WorkerConfig(
         worker_id=WORKER_ID,
-        bearer_token="worker-secret",
+        bearer_token=PLACEHOLDER_WORKER_TOKEN,
         role=role,
         tailnet_base_url=TAILNET_BASE_URL,
         enroll_url="https://enroll.example",
@@ -150,7 +151,7 @@ def test_after_joining_worker_json_knows_the_tailnet_address_and_orchestrator(tm
     # instead of the built-in local default http://127.0.0.1:8000.
     assert config.orchestrator_url == TAILNET_BASE_URL
     # The identity is untouched.
-    assert config.worker_id == WORKER_ID and config.bearer_token == "worker-secret"
+    assert config.worker_id == WORKER_ID and config.bearer_token == PLACEHOLDER_WORKER_TOKEN
 
 
 def test_an_orchestrator_url_set_by_hand_is_kept(tmp_path):

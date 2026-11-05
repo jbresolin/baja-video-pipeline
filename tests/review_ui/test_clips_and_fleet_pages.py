@@ -9,7 +9,7 @@ log (sample_events.py) mentions the master in 7 events and the volunteer in 5.
 
 from review_ui.settings import ReviewUiSettings
 from tests.review_ui.conftest import build_ui
-from tests.review_ui.sample_data import MASTER_ID, REVIEWER_AUTHORIZATION, VOLUNTEER_ID
+from tests.review_ui.sample_data import MASTER_ID, SIGNED_IN_COOKIES, VOLUNTEER_ID
 
 
 def events_row(html: str, worker_id: str) -> str:
@@ -49,7 +49,7 @@ def test_clips_page_says_when_nothing_matches(ui):
 def test_copy_path_uses_the_studio_clip_root_when_configured(fake_orchestrator):
     # Setup: the studio box keeps clips under a Windows folder.
     settings = ReviewUiSettings(studio_clip_root="D:\\Baja\\clips")
-    ui = build_ui(fake_orchestrator, settings, {"Authorization": REVIEWER_AUTHORIZATION})
+    ui = build_ui(fake_orchestrator, settings, SIGNED_IN_COOKIES)
 
     html = ui.get("/review/clips").text
 

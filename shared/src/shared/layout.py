@@ -34,7 +34,17 @@ def clip_relative_path(prova: str, car_number: int, passagem: int) -> str:
 
     Example: clip_relative_path("Enduro", 42, 3) == "enduro/42/3.mp4".
     """
-    return str(PurePosixPath(slugify_prova(prova), str(car_number), f"{passagem}.mp4"))
+    return clip_relative_path_in_folder(slugify_prova(prova), car_number, passagem)
+
+
+def clip_relative_path_in_folder(prova_slug: str, car_number: int, passagem: int) -> str:
+    """Same, from a prova folder name that is already a slug.
+
+    The orchestrator stores each prova's slug when the prova is created and
+    keeps it across renames (orchestrator/domain/provas_catalog.py), so it
+    builds paths from that stored slug instead of the current name.
+    """
+    return str(PurePosixPath(prova_slug, str(car_number), f"{passagem}.mp4"))
 
 
 def is_safe_relative_path(relative_path: str) -> bool:

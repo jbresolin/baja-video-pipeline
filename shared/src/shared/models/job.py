@@ -130,7 +130,7 @@ class Job(ApiModel):
     # --- Review fields (design §6) ---
     prova: str | None = None
     car_number: CarNumber | None = None
-    # Team name resolved from the Baja app by car number, copied at review.
+    # Team name from the teams table (results API) by car number, copied at review.
     team_name: str | None = None
     passagem: PassNumber | None = None
     # Whether the overlay shows the pass number.

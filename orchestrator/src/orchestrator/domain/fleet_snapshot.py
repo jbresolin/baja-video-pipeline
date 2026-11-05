@@ -1,6 +1,7 @@
 """A moment-in-time view of the workers, used to place tasks (design §5).
 
-"Online" means a heartbeat within the lease TTL (45 s = three missed beats).
+"Online" means a heartbeat within the lease TTL (45 s = three missed beats),
+and not revoked by an admin.
 """
 
 import sqlite3
@@ -24,6 +25,8 @@ NEAR_CAP_HEADROOM_BYTES = 4_000_000_000
 
 
 def is_online(worker_row: sqlite3.Row, now: datetime) -> bool:
+    if worker_row["revoked_at"] is not None:
+        return False
     last_heartbeat = from_db_time(worker_row["last_heartbeat"])
     return last_heartbeat is not None and now - last_heartbeat < timedelta(
         seconds=LEASE_TTL_SECONDS
@@ -91,6 +94,8 @@ class FleetSnapshot:
         for row in self.workers_by_id.values():
             last_heartbeat = from_db_time(row["last_heartbeat"])
             if row["role"] != WorkerRole.STUDIO or not row["tailnet_address"]:
+                continue
+            if row["revoked_at"] is not None:
                 continue
             if last_heartbeat is None or self.now - last_heartbeat >= window:
                 continue

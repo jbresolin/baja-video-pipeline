@@ -9,6 +9,10 @@ The models are split over several files only to keep each file short:
     api_worker_loop.py  heartbeat, holder-confirm, uploads, ACKs, peers
     api_review.py       review queue and review update
     api_admin.py        intake, enrollment, fleet, manifest
+    api_auth.py         sign-in, sessions and user accounts
+    api_contacts.py     WhatsApp senders (admin Contacts page)
+    api_catalog.py      provas and teams (admin pages)
+    api_operations.py   enrollment token list and settings (admin pages)
     events.py           the orchestrator's event log
     evolution.py        the Evolution webhook payload
 """
@@ -24,6 +28,41 @@ from shared.models.api_admin import (
     ManifestEntry,
     ManifestResponse,
     ServerDisk,
+)
+from shared.models.api_auth import (
+    CreateUserRequest,
+    CurrentUser,
+    LoginRequest,
+    LoginResponse,
+    UpdateUserRequest,
+    User,
+    UsersResponse,
+)
+from shared.models.api_catalog import (
+    CreateProvaRequest,
+    Prova,
+    ProvasResponse,
+    ReorderProvasRequest,
+    ResultsSyncReport,
+    SaveTeamRequest,
+    TeamRow,
+    TeamsResponse,
+    UpdateProvaRequest,
+)
+from shared.models.api_contacts import (
+    Contact,
+    ContactsResponse,
+    CreateContactRequest,
+    UpdateContactRequest,
+)
+from shared.models.api_operations import (
+    AdminSettings,
+    EnrollmentTokenInfo,
+    EnrollmentTokensResponse,
+    EvolutionStatus,
+    SettingsResponse,
+    SettingsStatus,
+    UpdateSettingsRequest,
 )
 from shared.models.api_review import (
     RegenerateProxyResponse,
@@ -50,15 +89,22 @@ from shared.models.api_worker_loop import (
 )
 from shared.models.common import ErrorBody, ErrorCode, ErrorResponse, utc_now
 from shared.models.enums import (
+    AdminArea,
+    CatalogSource,
+    ContactStatus,
     DeliveryRoute,
+    EnrollmentTokenStatus,
     FailureScope,
     HolderStatus,
+    IntakeMode,
     JobState,
     LeaseHeartbeatStatus,
     MeasurementKind,
     ReceivedAs,
     ReviewAction,
+    SecretState,
     TaskKind,
+    UserRole,
     WorkerRole,
 )
 from shared.models.events import Event, EventsResponse
@@ -87,29 +133,42 @@ from shared.models.tasks import (
 from shared.models.worker import EnrollmentToken, Worker, WorkerCapabilities, WorkerStats
 
 __all__ = [
+    "AdminArea",
+    "AdminSettings",
     "ChunkAccepted",
     "ClaimRequest",
     "ClaimResponse",
     "ClipInfo",
+    "Contact",
+    "ContactStatus",
+    "ContactsResponse",
+    "CatalogSource",
+    "CreateContactRequest",
     "CreateEnrollmentTokenRequest",
+    "CreateProvaRequest",
+    "CreateUserRequest",
+    "CurrentUser",
     "DeliverTask",
     "DeliveredRequest",
     "DeliveryPlan",
-    "FailedRequest",
-    "FailureScope",
-    "JobFailure",
     "DeliveryRoute",
     "DownloadRawTask",
     "EnrollRequest",
     "EnrollResponse",
     "EnrollmentToken",
     "EnrollmentTokenCreated",
+    "EnrollmentTokenInfo",
+    "EnrollmentTokenStatus",
+    "EnrollmentTokensResponse",
     "ErrorBody",
     "ErrorCode",
     "ErrorResponse",
     "Event",
     "EventsResponse",
+    "EvolutionStatus",
     "EvolutionWebhook",
+    "FailedRequest",
+    "FailureScope",
     "FleetResponse",
     "FleetWorker",
     "HeartbeatRequest",
@@ -119,9 +178,11 @@ __all__ = [
     "HolderConfirmResponse",
     "HolderStatus",
     "IncomingMedia",
+    "IntakeMode",
     "IntakeResponse",
     "IntakeSource",
     "Job",
+    "JobFailure",
     "JobState",
     "JobStateResponse",
     "JobSummary",
@@ -129,6 +190,8 @@ __all__ = [
     "LeaseHeartbeatStatus",
     "LeaseRenewRequest",
     "LeaseRenewResponse",
+    "LoginRequest",
+    "LoginResponse",
     "MakeProxyTask",
     "ManifestEntry",
     "ManifestResponse",
@@ -140,16 +203,33 @@ __all__ = [
     "Peer",
     "PeersResponse",
     "ProcessTask",
+    "Prova",
+    "ProvasResponse",
     "ReceivedAs",
     "RegenerateProxyResponse",
+    "ReorderProvasRequest",
     "ReviewAction",
     "ReviewQueueFilter",
     "ReviewQueueResponse",
     "ReviewUpdate",
+    "ResultsSyncReport",
+    "SaveTeamRequest",
+    "SecretState",
     "ServerDisk",
+    "SettingsResponse",
+    "SettingsStatus",
     "Task",
     "TaskKind",
     "Team",
+    "TeamRow",
+    "TeamsResponse",
+    "UpdateContactRequest",
+    "UpdateProvaRequest",
+    "UpdateSettingsRequest",
+    "UpdateUserRequest",
+    "User",
+    "UserRole",
+    "UsersResponse",
     "Worker",
     "WorkerCapabilities",
     "WorkerRole",

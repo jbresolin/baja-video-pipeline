@@ -16,10 +16,11 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from orchestrator.db.database import from_db_time
+from orchestrator.domain import provas_catalog
 from orchestrator.domain.fleet_snapshot import FleetSnapshot, accepts_new_raws, peer_raw_url
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.storage import VpsLayout
-from shared.layout import clip_relative_path
+from shared.layout import clip_relative_path_in_folder
 from shared.models import (
     DeliverTask,
     DeliveryPlan,
@@ -149,11 +150,14 @@ def _evaluate_process(
             cut_out_s=job_row["cut_out_s"],
             prova=job_row["prova"],
             car_number=job_row["car_number"],
-            team_name=job_row["team_name"],
+            # The overlay text: the team's short name when the results API has one.
+            team_name=job_row["overlay_team_name"] or job_row["team_name"],
             passagem=job_row["passagem"],
             show_pass=bool(job_row["show_pass"]),
-            clip_relative_path=clip_relative_path(
-                job_row["prova"], job_row["car_number"], job_row["passagem"]
+            clip_relative_path=clip_relative_path_in_folder(
+                provas_catalog.clip_folder_for(connection, job_row["prova"]),
+                job_row["car_number"],
+                job_row["passagem"],
             ),
             outbox_upload_url=layout.api_url(f"/jobs/{job_id}/clip"),
             delivery=delivery_plan(snapshot, job_id),

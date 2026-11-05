@@ -1,0 +1,33 @@
+{# Every admin page: pt-BR, the admin sub-navigation, the result of the last
+   change, and the latest changes of this page (the audit log). #}
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block lang %}pt-BR{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Administração</h1>
+  <nav class="subnav" aria-label="Páginas de administração">
+    {% for path, label in sections %}
+    <a href="/review/admin/{{ path }}" {% if path == section %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+</div>
+{% if done %}<p class="banner ok" role="status">{{ done }}</p>{% endif %}
+{% if error %}<p class="banner error" role="alert">{{ error }}</p>{% endif %}
+
+{% block admin_content %}{% endblock %}
+
+<section class="audit" aria-label="Últimas alterações">
+  <h2>Últimas alterações</h2>
+  {% if audit %}
+  <ul class="audit-list">
+    {% for line in audit %}
+    <li>{{ m.time(line.at) }} · <strong>{{ line.who }}</strong> · {{ line.text }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="hint">Nenhuma alteração ainda.</p>
+  {% endif %}
+</section>
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ static('js/admin.js') }}"></script>{% endblock %}

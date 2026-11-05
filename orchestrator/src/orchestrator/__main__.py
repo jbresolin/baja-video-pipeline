@@ -7,7 +7,6 @@ import uvicorn
 
 from orchestrator.app import build_context, create_app
 from orchestrator.config import ConfigError, load_settings
-from shared.reviewers_file import ReviewersFileError
 
 
 def main() -> int:
@@ -17,7 +16,8 @@ def main() -> int:
     try:
         settings = load_settings()
         context = build_context(settings)
-    except (ConfigError, ReviewersFileError) as error:
+    except (ConfigError, RuntimeError) as error:
+        # RuntimeError: a migration or the first-start reviewers.txt import failed.
         print(f"orchestrator: cannot start: {error}", file=sys.stderr)
         return 2
     except FileNotFoundError as error:

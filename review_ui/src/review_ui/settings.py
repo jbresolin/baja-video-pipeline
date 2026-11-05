@@ -24,6 +24,10 @@ class ReviewUiSettings:
     # Optional clip root on the studio box, e.g. "D:\\Baja\\clips". When set,
     # the clips page copies full paths instead of paths relative to it.
     studio_clip_root: str = ""
+    # Mark the session cookie Secure (HTTPS only). Browsers also accept
+    # Secure cookies from http://localhost, so only turn this off for an
+    # unusual local setup (BVP_SESSION_COOKIE_SECURE=0).
+    session_cookie_secure: bool = True
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str] | None = None) -> "ReviewUiSettings":
@@ -37,4 +41,5 @@ class ReviewUiSettings:
                 env.get("BVP_ORCHESTRATOR_TIMEOUT_S", defaults.orchestrator_timeout_s)
             ),
             studio_clip_root=env.get("BVP_STUDIO_CLIP_ROOT", defaults.studio_clip_root),
+            session_cookie_secure=env.get("BVP_SESSION_COOKIE_SECURE", "1") != "0",
         )

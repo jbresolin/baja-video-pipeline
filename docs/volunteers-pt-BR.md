@@ -108,5 +108,12 @@ mande este mesmo vídeo de novo.
 
 > Não conseguimos receber seu vídeo. Por favor, envie de novo como *documento* (📎 → Documento).
 
+**Número não autorizado.** Neste evento só números cadastrados podem
+mandar vídeos, e o seu ainda não está na lista. O vídeo NÃO foi recebido.
+Fale com a organização para liberarem seu número e depois mande de novo.
+(O bot avisa no máximo uma vez por dia.)
+
+> Este número não está autorizado a enviar vídeos. Fale com a organização.
+
 **Sem resposta depois de alguns minutos?** Confira se mandou para o número
 certo, no privado. Se sim, avise o João e **não apague o vídeo** do celular.

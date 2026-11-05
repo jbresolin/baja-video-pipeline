@@ -10,6 +10,7 @@ import pytest
 
 from orchestrator.config import ConfigError, load_settings
 from orchestrator.security import client_ip_for_rate_limit
+from shared.testing.credentials import PLACEHOLDER_TAILSCALE_CLIENT_SECRET
 
 # The smallest complete set of required settings, by field name.
 REQUIRED = {
@@ -18,9 +19,8 @@ REQUIRED = {
     "public_base_url": "https://review.example.test",
     "tailnet_base_url": "http://100.64.0.1:8080",
     "evolution_api_key": "k",
-    "baja_app_url": "http://baja.test",
     "tailscale_oauth_client_id": "id",
-    "tailscale_oauth_client_secret": "secret",
+    "tailscale_oauth_client_secret": PLACEHOLDER_TAILSCALE_CLIENT_SECRET,
 }
 
 
@@ -38,8 +38,13 @@ def test_defaults_match_docs_api_section_10():
     settings = load_settings(**REQUIRED)
     # Values straight from the table in docs/api.md §10.
     assert str(settings.data_dir) == "/srv/pipeline"
-    assert settings.inbox_hold_bytes == 22_000_000_000
+    # BVP_INBOX_HOLD_GB is only the first-start default of the Settings page.
+    assert settings.inbox_hold_gb == 22
     assert settings.inbox_cap_bytes == 25_000_000_000
+    assert settings.intake_mode == "open"
+    assert settings.password_hash_rounds == 12
+    assert settings.login_rate_limit_requests == 20
+    assert settings.bootstrap_admin == ""
     assert settings.enroll_rate_limit_requests == 10
     assert settings.enroll_rate_limit_window_s == 600
     assert settings.tailscale_tailnet == "-"
@@ -57,16 +62,21 @@ def test_missing_required_variables_are_named_in_the_error():
     assert "BVP_WEBHOOK_SECRET" in message
 
 
-def test_team_sources_are_optional(monkeypatch):
-    # Design §17: neither BVP_TEAMS_FILE nor BVP_BAJA_APP_URL is needed to
-    # start. Leave the Baja app out and pass the teams file as the empty
-    # string compose sends when the variable is unset.
-    without_app = {k: v for k, v in REQUIRED.items() if k != "baja_app_url"}
+def test_team_and_event_settings_are_optional(monkeypatch):
+    # Neither an old teams CSV nor an event id is needed to start. Compose
+    # passes BVP_TEAMS_FILE as the empty string when it is unset.
     monkeypatch.setenv("BVP_TEAMS_FILE", "")
-    settings = load_settings(**without_app)
-    # Both read as "not configured" instead of failing at startup.
-    assert settings.baja_app_url == ""
+    settings = load_settings(**REQUIRED)
     assert settings.teams_file is None
+    # No event yet (set later on the admin Settings page), and the real API.
+    assert settings.event_id == ""
+    assert settings.results_api_url == "https://api.bajasaebrasil.net"
+
+
+def test_an_event_id_must_look_like_one():
+    # 4 letters or digits, as the results API wants them.
+    with pytest.raises(ConfigError, match="BVP_EVENT_ID"):
+        load_settings(**REQUIRED, event_id="26-BR")
 
 
 def test_settings_are_read_from_the_environment(monkeypatch):
@@ -79,7 +89,7 @@ def test_settings_are_read_from_the_environment(monkeypatch):
     monkeypatch.setenv("BVP_EVOLUTION_API_KEY", "k")
     monkeypatch.setenv("BVP_BAJA_APP_URL", "http://baja.test")
     monkeypatch.setenv("TAILSCALE_OAUTH_CLIENT_ID", "id")
-    monkeypatch.setenv("TAILSCALE_OAUTH_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("TAILSCALE_OAUTH_CLIENT_SECRET", PLACEHOLDER_TAILSCALE_CLIENT_SECRET)
     monkeypatch.setenv("BVP_INBOX_CAP_GB", "30")
     settings = load_settings()
     assert settings.admin_token.get_secret_value() == "from-env"

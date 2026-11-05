@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{% block lang %}en{% endblock %}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,14 +10,23 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/review/">Baja pipeline</a>
+    {% if user %}
     <nav class="nav" aria-label="Sections">
       <a href="/review/" {% if active_nav == "queue" %}aria-current="page"{% endif %}>Queue</a>
       <a href="/review/clips" {% if active_nav == "clips" %}aria-current="page"{% endif %}>Clips</a>
       <a href="/review/fleet" {% if active_nav == "fleet" %}aria-current="page"{% endif %}>Fleet</a>
+      {# Shown to admins only; the orchestrator refuses reviewers anyway (403). #}
+      {% if is_admin %}<a href="/review/admin/" {% if active_nav == "admin" %}aria-current="page"{% endif %}>Admin</a>{% endif %}
     </nav>
+    {% endif %}
     <span class="topbar-right">
       <span class="live" id="live-status" hidden></span>
-      {% if reviewer %}<span class="who" title="Signed in as {{ reviewer }}">{{ reviewer }}</span>{% endif %}
+      {% if user %}
+      <span class="who" title="Signed in as {{ user.username }} ({{ user.role }})">{{ user.username }}</span>
+      <form method="post" action="/review/logout" class="inline-form">
+        <button type="submit" class="link-button">Sair</button>
+      </form>
+      {% endif %}
     </span>
   </header>
   <main class="page {% block main_class %}{% endblock %}">

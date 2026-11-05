@@ -2,14 +2,15 @@
 
 Added in wave 3 (deployment hardening) so an external Prometheus/Grafana
 can watch the event without new services on the VPS
-(infra/vps/MONITORING.md). Admin token only: it reveals fleet size and
+(infra/vps/MONITORING.md). Admins only (the token, or an admin session): it reveals fleet size and
 disk use, which reviewers and workers do not need.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from fastapi.responses import Response
 
-from tools.openapi_contract.auth import admin_bearer, error_responses, not_implemented
+from tools.openapi_contract.auth import error_responses, not_implemented
+from tools.openapi_contract.routes_admin_people import ADMIN_ONLY
 
 router = APIRouter()
 
@@ -20,13 +21,13 @@ router = APIRouter()
     summary="Jobs per state, VPS disk, workers online, task counters (Prometheus text)",
     # Plain Response: the 200 body is text (declared below), errors stay JSON.
     response_class=Response,
-    dependencies=[Depends(admin_bearer)],
+    dependencies=ADMIN_ONLY,
     responses={
         200: {
             "description": "Prometheus text exposition format 0.0.4",
             "content": {"text/plain; version=0.0.4": {"schema": {"type": "string"}}},
         },
-        **error_responses(401),
+        **error_responses(401, 403),
     },
 )
 def metrics() -> str:

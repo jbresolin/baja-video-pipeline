@@ -2,13 +2,17 @@
 
 The web app reviewers use at `https://<PIPELINE_DOMAIN>/review/`. It runs as
 its own service (design §16) and keeps **no data of its own**. Every page is
-built from the orchestrator's HTTP API, called with the reviewer's own
-`Authorization: Basic …` header, which Caddy has already checked. The
-orchestrator checks it again and records the reviewer in `Job.reviewed_by`.
+built from the orchestrator's HTTP API, called with the signed-in user's
+session: the `/review/login` page signs in through the orchestrator and keeps
+the token in the `bvp_session` cookie (httpOnly, Secure, SameSite=Lax), which
+every page sends on as `Authorization: Bearer …`. The orchestrator checks it
+and records the reviewer in `Job.reviewed_by`. Admins also get the pages
+under `/review/admin/` (pt-BR): users, contacts, provas, teams, enrollment,
+workers, settings.
 
 ```
 browser ──443──▶ Caddy ──/review*──▶ review-ui:8001 ──HTTP API──▶ orchestrator:8000
-                   └──/proxies/*, /thumbs/* served by Caddy itself (Range, no app in the byte path)
+                   └──/proxies/*, /thumbs/* served by Caddy itself after forward_auth to /auth/media
 ```
 
 Caddy routes only `/review*` to this service; the orchestrator's API is not

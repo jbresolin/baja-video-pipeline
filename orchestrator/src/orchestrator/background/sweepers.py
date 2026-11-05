@@ -86,7 +86,7 @@ def evict_proxies_once(context: OrchestratorContext) -> list[str]:
     Any holder can render a proxy again on request (regenerate-proxy).
     """
     evicted = []
-    minimum_free = context.settings.proxy_evict_min_free_bytes
+    minimum_free = context.admin_settings.proxy_evict_min_free_bytes
     if context.layout.free_bytes() >= minimum_free:
         return evicted
     with context.database.transaction() as connection:

@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 
 from orchestrator.api.auth import (
@@ -11,10 +11,11 @@ from orchestrator.api.auth import (
     require_webhook_secret,
 )
 from orchestrator.api.error_handlers import error_response
+from orchestrator.api.rate_limits import enforce_enroll_rate_limit
 from orchestrator.context import OrchestratorContext
 from orchestrator.domain import dev_upload, enrollment, intake
+from orchestrator.domain.audit import AdminActor
 from orchestrator.errors import ApiError
-from orchestrator.security import client_ip_for_rate_limit
 from shared.models import (
     CreateEnrollmentTokenRequest,
     EnrollmentTokenCreated,
@@ -89,33 +90,13 @@ def test_upload(
     tags=["enrollment"],
     response_model=EnrollmentTokenCreated,
     status_code=201,
-    dependencies=[Depends(require_admin)],
 )
 def create_enrollment_token(
-    body: CreateEnrollmentTokenRequest, context: OrchestratorContext = Depends(get_context)
+    body: CreateEnrollmentTokenRequest,
+    actor: AdminActor = Depends(require_admin),
+    context: OrchestratorContext = Depends(get_context),
 ) -> EnrollmentTokenCreated:
-    return enrollment.create_enrollment_token(context, body)
-
-
-def enforce_enroll_rate_limit(
-    request: Request, context: OrchestratorContext = Depends(get_context)
-) -> None:
-    """docs/api.md §2.2. A dependency, so it runs before the body is validated:
-    malformed requests count against the limit too."""
-    source_ip = client_ip_for_rate_limit(
-        request.client.host if request.client else None,
-        request.headers.get("X-Forwarded-For"),
-        context.settings.trusted_proxy_networks,
-    )
-    wait_s = context.enroll_rate_limiter.try_acquire(source_ip, context.clock.now())
-    if wait_s is not None:
-        raise ApiError(
-            429,
-            ErrorCode.RATE_LIMITED,
-            "too many enrollment attempts from this address",
-            {"retry_after_s": wait_s},
-            headers={"Retry-After": str(wait_s)},
-        )
+    return enrollment.create_enrollment_token(context, body, actor)
 
 
 @router.post(

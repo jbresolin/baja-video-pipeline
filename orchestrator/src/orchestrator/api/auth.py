@@ -1,9 +1,15 @@
-"""The four credentials (docs/api.md §2) as FastAPI dependencies.
+"""The credentials (docs/api.md §2) as FastAPI dependencies.
 
-    workerBearer   per-worker token from /enroll       → the worker's DB row
-    adminBearer    BVP_ADMIN_TOKEN                      → "admin"
-    reviewerBasic  BVP_REVIEWERS_FILE (bcrypt)          → the reviewer's username
+    workerBearer   per-worker token from /enroll           → the worker's DB row
+    adminBearer    BVP_ADMIN_TOKEN (scripts)                → AdminActor(None)
+    sessionBearer  session token from POST /auth/login      → the signed-in user
+    sessionCookie  the same token in the bvp_session cookie  (only GET /auth/media)
     webhookSecret  X-Webhook-Secret = BVP_WEBHOOK_SECRET
+
+All three bearer kinds use `Authorization: Bearer …`; each dependency
+tries the kinds it accepts. Roles: review routes accept a session of a
+`reviewer` or an `admin`; admin routes accept an `admin` session or the
+admin token, and answer 403 to a reviewer.
 
 The security objects are declared with the same scheme names as the
 contract, so the service's own OpenAPI document matches orchestrator/openapi.yaml.
@@ -13,15 +19,15 @@ import sqlite3
 from dataclasses import dataclass
 
 from fastapi import Depends, Request
-from fastapi.security import (
-    APIKeyHeader,
-    HTTPAuthorizationCredentials,
-    HTTPBasic,
-    HTTPBasicCredentials,
-    HTTPBearer,
-)
+from fastapi.security import APIKeyCookie, APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain.audit import AdminActor
+from orchestrator.domain.sessions import (
+    SESSION_COOKIE_NAME,
+    SessionUser,
+    session_user_for_token,
+)
 from orchestrator.errors import forbidden, unauthenticated
 from orchestrator.repositories import workers as workers_repo
 from orchestrator.security import secrets_match, token_sha256
@@ -29,7 +35,10 @@ from shared.protocol import WEBHOOK_SECRET_HEADER
 
 worker_bearer = HTTPBearer(scheme_name="workerBearer", auto_error=False)
 admin_bearer = HTTPBearer(scheme_name="adminBearer", auto_error=False)
-reviewer_basic = HTTPBasic(scheme_name="reviewerBasic", auto_error=False)
+session_bearer = HTTPBearer(scheme_name="sessionBearer", auto_error=False)
+session_cookie = APIKeyCookie(
+    name=SESSION_COOKIE_NAME, scheme_name="sessionCookie", auto_error=False
+)
 webhook_secret = APIKeyHeader(
     name=WEBHOOK_SECRET_HEADER, scheme_name="webhookSecret", auto_error=False
 )
@@ -40,22 +49,24 @@ def get_context(request: Request) -> OrchestratorContext:
 
 
 def _worker_for_token(context: OrchestratorContext, token: str) -> sqlite3.Row | None:
+    """The worker with this bearer token, unless an admin revoked it."""
     with context.database.transaction() as connection:
-        return workers_repo.find_worker_by_token_hash(connection, token_sha256(token))
+        row = workers_repo.find_worker_by_token_hash(connection, token_sha256(token))
+    if row is None or row["revoked_at"] is not None:
+        return None
+    return row
 
 
-def _is_admin(context: OrchestratorContext, token: str) -> bool:
+def _is_admin_token(context: OrchestratorContext, token: str) -> bool:
     return secrets_match(token, context.settings.admin_token.get_secret_value())
 
 
-def _reviewer_name(
-    context: OrchestratorContext, credentials: HTTPBasicCredentials | None
-) -> str | None:
+def _session_user(
+    context: OrchestratorContext, credentials: HTTPAuthorizationCredentials | None
+) -> SessionUser | None:
     if credentials is None:
         return None
-    if context.reviewers.check(credentials.username, credentials.password):
-        return credentials.username
-    return None
+    return session_user_for_token(context, credentials.credentials)
 
 
 def require_worker(
@@ -66,7 +77,7 @@ def require_worker(
         raise unauthenticated("send 'Authorization: Bearer <worker token>'")
     worker_row = _worker_for_token(context, credentials.credentials)
     if worker_row is None:
-        raise unauthenticated("unknown worker token")
+        raise unauthenticated("unknown or revoked worker token")
     return worker_row
 
 
@@ -79,23 +90,36 @@ def require_worker_matching_path(
     return worker_row
 
 
+def require_session(
+    credentials: HTTPAuthorizationCredentials | None = Depends(session_bearer),
+    context: OrchestratorContext = Depends(get_context),
+) -> SessionUser:
+    """Any signed-in user (reviewer or admin)."""
+    user = _session_user(context, credentials)
+    if user is None:
+        raise unauthenticated("sign in again: the session is unknown, ended or expired")
+    return user
+
+
+def require_reviewer(user: SessionUser = Depends(require_session)) -> str:
+    """Review routes: a reviewer or an admin session. Returns the username."""
+    return user.username
+
+
 def require_admin(
-    credentials: HTTPAuthorizationCredentials | None = Depends(admin_bearer),
+    admin: HTTPAuthorizationCredentials | None = Depends(admin_bearer),
+    session: HTTPAuthorizationCredentials | None = Depends(session_bearer),
     context: OrchestratorContext = Depends(get_context),
-) -> str:
-    if credentials is None or not _is_admin(context, credentials.credentials):
-        raise unauthenticated("send 'Authorization: Bearer <admin token>'")
-    return "admin"
-
-
-def require_reviewer(
-    credentials: HTTPBasicCredentials | None = Depends(reviewer_basic),
-    context: OrchestratorContext = Depends(get_context),
-) -> str:
-    username = _reviewer_name(context, credentials)
-    if username is None:
-        raise unauthenticated("reviewer username or password is wrong")
-    return username
+) -> AdminActor:
+    """Admin routes: the admin token (scripts) or a session of a user with role admin."""
+    if admin is not None and _is_admin_token(context, admin.credentials):
+        return AdminActor(username=None)
+    user = _session_user(context, session)
+    if user is None:
+        raise unauthenticated("send the admin token or sign in as an admin")
+    if not user.is_admin:
+        raise forbidden(f"'{user.username}' is a reviewer; this needs an admin")
+    return AdminActor(username=user.username)
 
 
 @dataclass(frozen=True)
@@ -108,31 +132,31 @@ class Caller:
 
 
 def require_reviewer_or_worker(
-    basic: HTTPBasicCredentials | None = Depends(reviewer_basic),
+    session: HTTPAuthorizationCredentials | None = Depends(session_bearer),
     bearer: HTTPAuthorizationCredentials | None = Depends(worker_bearer),
     context: OrchestratorContext = Depends(get_context),
 ) -> Caller:
-    username = _reviewer_name(context, basic)
-    if username is not None:
-        return Caller(reviewer=username)
+    user = _session_user(context, session)
+    if user is not None:
+        return Caller(reviewer=user.username)
     if bearer is not None:
         worker_row = _worker_for_token(context, bearer.credentials)
         if worker_row is not None:
             return Caller(worker_row=worker_row)
-    raise unauthenticated("reviewer Basic auth or a worker bearer token is required")
+    raise unauthenticated("a signed-in reviewer or a worker bearer token is required")
 
 
 def require_reviewer_or_admin(
-    basic: HTTPBasicCredentials | None = Depends(reviewer_basic),
+    session: HTTPAuthorizationCredentials | None = Depends(session_bearer),
     bearer: HTTPAuthorizationCredentials | None = Depends(admin_bearer),
     context: OrchestratorContext = Depends(get_context),
 ) -> Caller:
-    username = _reviewer_name(context, basic)
-    if username is not None:
-        return Caller(reviewer=username)
-    if bearer is not None and _is_admin(context, bearer.credentials):
+    if bearer is not None and _is_admin_token(context, bearer.credentials):
         return Caller(is_admin=True)
-    raise unauthenticated("reviewer Basic auth or the admin token is required")
+    user = _session_user(context, session)
+    if user is not None:
+        return Caller(reviewer=user.username, is_admin=user.is_admin)
+    raise unauthenticated("a signed-in reviewer or the admin token is required")
 
 
 def require_webhook_secret(

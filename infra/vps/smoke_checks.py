@@ -41,6 +41,7 @@ DEFAULT_TRUSTED_PROXY_CIDRS = "127.0.0.1/32,10.201.0.0/24,172.16.0.0/12"
 # Folders the orchestrator writes (design §15, README §2.1), and the two
 # files it reads. All must belong to the containers' user (design §17).
 DATA_FOLDERS = ["", "inbox", "proxies", "thumbs", "outbox", "db"]
+# Optional since the admin page: only the first start imports them.
 DATA_FILES = ["reviewers.txt", "teams.csv"]
 
 
@@ -219,18 +220,23 @@ def check_metrics(got_status: str, body: str) -> list[str]:
 
 
 def check_reviewers_file(path: Path) -> list[str]:
+    """reviewers.txt is optional since the admin page (users live in the DB).
+
+    The orchestrator imports it only on a first start with no users, and
+    refuses to start if it does not parse then. So a missing file is fine;
+    a present one must still parse.
+    """
     check = "reviewers file"
     try:
         reviewers = parse_reviewers(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return [result(FAIL, check, f"{path} does not exist (README §4)")]
+        return [result(PASS, check, "none (users live in the database; README §4)")]
     except PermissionError:
         return [result(FAIL, check, f"cannot read {path}; run the smoke test with sudo")]
     except ReviewersFileError as error:
-        return [result(FAIL, check, str(error))]
-    if not reviewers:
-        return [result(FAIL, check, "no reviewers; Caddy refuses to load an empty file")]
-    return [result(PASS, check, f"{len(reviewers)} reviewer(s): {', '.join(sorted(reviewers))}")]
+        return [result(FAIL, check, f"{error} (a first start would refuse to import it)")]
+    names = ", ".join(sorted(reviewers)) or "nobody"
+    return [result(PASS, check, f"{names}; only read on a first start with no users")]
 
 
 def check_ownership(stat_output: str, expected_uid: int, expected_gid: int) -> list[str]:

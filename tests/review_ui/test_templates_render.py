@@ -21,7 +21,7 @@ from review_ui.job_view import (
 from review_ui.queue_view import STATES_IN_PIPELINE_ORDER, QueueFilter
 from review_ui.settings import ReviewUiSettings
 from review_ui.templating import TEMPLATES_DIR, build_templates
-from shared.models import JobState, JobSummary
+from shared.models import CurrentUser, JobState, JobSummary
 from tests.review_ui.sample_data import (
     T0,
     delivered_job,
@@ -38,7 +38,8 @@ NAMES = {"w-master-0001": "joao-desktop"}
 
 def common_context() -> dict:
     """What render_page adds to every page."""
-    return {"reviewer": "ana", "settings": SETTINGS, "now": T0, "active_nav": "queue"}
+    user = CurrentUser(username="ana", role="reviewer")
+    return {"user": user, "is_admin": False, "settings": SETTINGS, "now": T0, "active_nav": "queue"}
 
 
 def job_context(job) -> dict:
@@ -52,7 +53,7 @@ def job_context(job) -> dict:
         "actions": [
             (action.value, ACTION_LABELS[action]) for action in available_actions(job.state)
         ],
-        "prova_suggestions": ["Enduro", "Suspensão"],
+        "prova_choices": ["Enduro", "Suspensão"],
         "poll_seconds": 5,
     }
 
@@ -107,6 +108,7 @@ CASES = {
     "clips.html": clips_context,
     "fleet.html": fleet_context,
     "_fleet_body.html": fleet_context,
+    "login.html": lambda: {"next_path": "/review/", "error": "Usuário ou senha incorretos."},
     "error.html": lambda: {
         "title": "Not found",
         "status_code": 404,
@@ -130,7 +132,9 @@ def test_template_renders(name):
 
 
 def test_every_template_file_has_a_render_case():
-    # base.html and macros.html are only used through the others.
+    # base.html and macros.html are only used through the others. The admin
+    # pages (templates/admin/) are rendered by test_admin_pages.py, against
+    # the real orchestrator.
     files = {path.name for path in TEMPLATES_DIR.glob("*.html")} - {"base.html", "macros.html"}
 
     assert files == set(CASES)

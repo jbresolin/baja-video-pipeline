@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Entrar{% endblock %}
+{% block content %}
+<section class="login">
+  <h1>Entrar</h1>
+  <p class="hint">Use o usuário e a senha que a organização passou para você.</p>
+  {% if error %}<p class="banner error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/review/login" class="stacked">
+    <input type="hidden" name="next" value="{{ next_path }}">
+    <label for="username">Usuário</label>
+    <input id="username" name="username" autocomplete="username" autocapitalize="none" required autofocus>
+    <label for="password">Senha</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit" class="primary">Entrar</button>
+  </form>
+</section>
+{% endblock %}

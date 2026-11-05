@@ -12,7 +12,7 @@ What is real and what is fake:
   * fake: the network (one in-memory RoutingTransport that sends each
     request to the app registered for its host:port), Caddy
     (FakeCaddyTransport), the WhatsApp CDN, Evolution, Tailscale and the
-    Baja app (the orchestrator harness fakes), and ffmpeg/ffprobe
+    results API (the orchestrator harness fakes), and ffmpeg/ffprobe
     (FakeMediaTools: writes placeholder files instead of rendering).
 
 Addresses on the fake network:
@@ -22,7 +22,6 @@ Addresses on the fake network:
     http://studio.test:8720        the studio receiver
 """
 
-import base64
 import threading
 import time
 from collections.abc import Callable
@@ -33,6 +32,8 @@ import httpx
 
 from orchestrator.app import create_app as create_orchestrator_app
 from orchestrator.testing.harness import (
+    ADMIN_NAME,
+    ADMIN_PASSWORD,
     REVIEWER_NAME,
     REVIEWER_PASSWORD,
     TAILNET_BASE_URL,
@@ -108,6 +109,8 @@ class System:
     review_ui: httpx.Client
     root: Path
     daemons: list[Daemon] = field(default_factory=list)
+    # Another browser, signed in as the admin (the admin pages).
+    admin_ui: httpx.Client | None = None
 
     def start_worker(self, role: WorkerRole, host: str) -> Daemon:
         """Enroll a worker of `role` through the real /enroll and start its daemon.
@@ -162,13 +165,15 @@ class System:
         for daemon in self.daemons:
             daemon.stop()
         self.review_ui.close()
+        if self.admin_ui is not None:
+            self.admin_ui.close()
         self.harness.client.close()
         self.harness.context.database.close()
 
 
 def build_system(root: Path) -> System:
-    # The orchestrator, wired to fake WhatsApp CDN/Evolution/Tailscale/Baja
-    # app by the test harness (its tailnet base URL is the "Caddy" below).
+    # The orchestrator, wired to fake WhatsApp CDN/Evolution/Tailscale/results
+    # API by the test harness (its tailnet base URL is the "Caddy" below).
     harness = build_harness(root / "vps")
     orchestrator = SyncAsgiTransport(
         create_orchestrator_app(harness.context, run_background_tasks=False)
@@ -178,15 +183,25 @@ def build_system(root: Path) -> System:
     caddy = FakeCaddyTransport(orchestrator, harness.context.settings.data_dir)
     network.add_transport(TAILNET_BASE_URL, caddy)
 
-    # The review UI talks to the same orchestrator over HTTP, as a reviewer.
+    # The review UI talks to the same orchestrator over HTTP, as the user
+    # signed in on its login page: one browser for the reviewer, one for
+    # the admin (https://, because the session cookie is Secure).
     ui_app = create_review_ui_app(
         ReviewUiSettings(orchestrator_url=ORCHESTRATOR_URL, public_base_url=""),
         orchestrator_http_client=httpx.Client(transport=orchestrator, base_url=ORCHESTRATOR_URL),
     )
-    credentials = base64.b64encode(f"{REVIEWER_NAME}:{REVIEWER_PASSWORD}".encode()).decode()
-    review_ui = httpx.Client(
-        transport=SyncAsgiTransport(ui_app),
-        base_url="http://review.test",
-        headers={"Authorization": f"Basic {credentials}"},
+    review_ui = signed_in_browser(ui_app, REVIEWER_NAME, REVIEWER_PASSWORD)
+    admin_ui = signed_in_browser(ui_app, ADMIN_NAME, ADMIN_PASSWORD)
+    return System(harness, network, caddy, review_ui, root, admin_ui=admin_ui)
+
+
+def signed_in_browser(ui_app, username: str, password: str) -> httpx.Client:
+    """A browser (with its cookie jar) that signed in on /review/login."""
+    browser = httpx.Client(transport=SyncAsgiTransport(ui_app), base_url="https://review.test")
+    response = browser.post(
+        "/review/login",
+        data={"username": username, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    return System(harness, network, caddy, review_ui, root)
+    assert response.status_code == 303, response.text
+    return browser

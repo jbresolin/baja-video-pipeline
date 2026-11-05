@@ -5,7 +5,6 @@ test's sample data does not match the API contract, building it fails.
 The event log for these jobs and workers is in sample_events.py.
 """
 
-import base64
 from datetime import UTC, datetime, timedelta
 
 from shared.models import (
@@ -22,6 +21,7 @@ from shared.models import (
     Lease,
     ManifestEntry,
     ManifestResponse,
+    Prova,
     ReceivedAs,
     ServerDisk,
     TaskKind,
@@ -31,13 +31,19 @@ from shared.models import (
     WorkerRole,
     WorkerStats,
 )
+from shared.testing import credentials
 
 # A fixed moment, so tests never depend on the real clock.
 T0 = datetime(2026, 10, 25, 14, 0, 0, tzinfo=UTC)
 
-# The reviewer the fake orchestrator accepts: user "ana", password "secret".
-REVIEWER_USERNAME = "ana"
-REVIEWER_AUTHORIZATION = "Basic " + base64.b64encode(b"ana:secret").decode()
+# The reviewer the fake orchestrator accepts (placeholders, design §14).
+# Signing in gives REVIEWER_SESSION_TOKEN; the browser keeps it in the
+# bvp_session cookie and the UI sends it on as REVIEWER_AUTHORIZATION.
+REVIEWER_USERNAME = credentials.REVIEWER_USERNAME
+REVIEWER_PASSWORD = credentials.PLACEHOLDER_PASSWORD
+REVIEWER_SESSION_TOKEN = credentials.PLACEHOLDER_SESSION_TOKEN
+REVIEWER_AUTHORIZATION = f"Bearer {REVIEWER_SESSION_TOKEN}"
+SIGNED_IN_COOKIES = {"bvp_session": REVIEWER_SESSION_TOKEN}
 
 MASTER_ID = "w-master-0001"
 VOLUNTEER_ID = "w-volunteer-0002"
@@ -225,3 +231,12 @@ def make_fleet() -> FleetResponse:
         ),
         jobs_by_state={"awaiting_review": 4, "ready": 2, "done": 30, "failed": 1},
     )
+
+
+def make_provas() -> list[Prova]:
+    """The provas list: two active, one deactivated."""
+    return [
+        Prova(id=1, name="Enduro", slug="enduro", display_order=1, active=True),
+        Prova(id=2, name="Suspensão", slug="suspensao", display_order=2, active=True),
+        Prova(id=3, name="Lama", slug="lama", display_order=3, active=False),
+    ]

@@ -22,9 +22,11 @@ from pathlib import Path
 import pytest
 import yaml
 
+from shared.testing.credentials import PLACEHOLDER_WEBHOOK_SECRET
+
 VPS_FOLDER = Path(__file__).resolve().parents[2] / "infra" / "vps"
 WEBHOOK_URL = "http://bvp-orchestrator:8000/intake/evolution-webhook"
-SECRET = "s3cret-webhook-value"
+SECRET = PLACEHOLDER_WEBHOOK_SECRET
 
 
 def load_helper():
@@ -263,8 +265,10 @@ def test_up_on_a_fresh_vps_does_every_step(tmp_path):
     routes = installed(environment).read_text()
     assert "\nreview.test {" in routes
     assert "root * /mnt/pipeline" in routes
-    assert "import /mnt/pipeline/reviewers.txt" in routes
-    assert "{http.auth.user.id}" in routes
+    # Sign-in is the review UI's own page now: no basic_auth, and media is
+    # checked with the orchestrator (forward_auth to /auth/media).
+    assert "basic_auth" not in routes
+    assert "uri /auth/media" in routes
     assert "${" not in routes
     assert "docker exec -w /etc/caddy caddy caddy reload --config /etc/caddy/Caddyfile" in log
     # The webhook now points at the orchestrator, with the secret header.

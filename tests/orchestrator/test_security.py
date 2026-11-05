@@ -1,4 +1,4 @@
-"""Tests for orchestrator.security: rate limit, source IP, reviewer passwords, tokens."""
+"""Tests for orchestrator.security: rate limit, source IP, passwords, tokens."""
 
 import ipaddress
 from datetime import UTC, datetime, timedelta
@@ -6,12 +6,14 @@ from datetime import UTC, datetime, timedelta
 import bcrypt
 
 from orchestrator.security import (
-    ReviewerDirectory,
     SlidingWindowRateLimiter,
     client_ip_for_rate_limit,
+    hash_password,
     new_id,
+    password_matches,
     token_sha256,
 )
+from shared.testing.credentials import PLACEHOLDER_PASSWORD, PLACEHOLDER_WRONG_PASSWORD
 
 NOW = datetime(2026, 10, 25, 12, 0, tzinfo=UTC)
 CADDY_NETWORKS = [ipaddress.ip_network("172.16.0.0/12")]
@@ -40,18 +42,23 @@ def test_source_ip_is_the_last_forwarded_hop_only_behind_a_trusted_proxy():
     assert client_ip_for_rate_limit("172.18.0.5", None, CADDY_NETWORKS) == "172.18.0.5"
 
 
-def test_reviewer_passwords_are_checked_against_bcrypt_hashes():
-    # The reviewers file may hold $2y$ hashes (from htpasswd); Python's
-    # bcrypt only writes $2b$. They are the same algorithm, so both work.
-    hash_2b = bcrypt.hashpw(b"secret", bcrypt.gensalt(rounds=4)).decode()
-    hash_2y = "$2y$" + hash_2b[4:]
-    directory = ReviewerDirectory({"ana": hash_2b, "bruno": hash_2y})
-    assert directory.check("ana", "secret")
-    assert directory.check("bruno", "secret")
-    assert not directory.check("ana", "wrong")
-    assert not directory.check("nobody", "secret")
-    # Checking again is answered from memory (bcrypt is slow on purpose).
-    assert directory.check("ana", "secret")
+def test_passwords_are_checked_against_bcrypt_hashes_of_every_label():
+    # Users imported from reviewers.txt may have $2a$ (Caddy) or $2y$
+    # (htpasswd) hashes; Python's bcrypt only writes $2b$. They are the same
+    # algorithm with a different label, so all three must work.
+    hash_2b = bcrypt.hashpw(PLACEHOLDER_PASSWORD.encode(), bcrypt.gensalt(rounds=4)).decode()
+    for label in ("$2a$", "$2b$", "$2y$"):
+        assert password_matches(PLACEHOLDER_PASSWORD, label + hash_2b[4:])
+        assert not password_matches(PLACEHOLDER_WRONG_PASSWORD, label + hash_2b[4:])
+
+
+def test_a_new_password_hash_is_bcrypt_with_the_chosen_cost_and_checks_out():
+    # The admin page stores bcrypt hashes; the cost is BVP_PASSWORD_HASH_ROUNDS.
+    password_hash = hash_password(PLACEHOLDER_PASSWORD, rounds=4)
+    assert password_hash.startswith("$2b$04$")
+    assert password_matches(PLACEHOLDER_PASSWORD, password_hash)
+    # Something that is not a bcrypt hash at all never matches (and does not crash).
+    assert not password_matches(PLACEHOLDER_PASSWORD, "not-a-hash")
 
 
 def test_ids_and_token_hashes_have_the_documented_shape():

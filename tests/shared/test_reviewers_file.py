@@ -15,6 +15,7 @@ from shared.reviewers_file import (
     load_reviewers_file,
     parse_reviewers,
 )
+from shared.testing.credentials import PLACEHOLDER_PASSWORD
 
 # Two well-formed bcrypt hashes (made with `caddy hash-password` and
 # `htpasswd -nbB`). Their exact content does not matter to the parser,
@@ -67,7 +68,7 @@ def test_htpasswd_colon_format_is_refused_with_a_helpful_message():
         # A username alone, with no hash.
         ("ana", "one space"),
         # A plain-text password instead of a hash must never be accepted.
-        ("ana secret123", "not a bcrypt hash"),
+        (f"ana {PLACEHOLDER_PASSWORD}", "not a bcrypt hash"),
         # Characters that would confuse Caddy or Basic auth.
         (f"ana#1 {HASH_A}", "letters, digits"),
     ],

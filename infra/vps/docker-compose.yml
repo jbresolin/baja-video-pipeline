@@ -39,23 +39,33 @@ services:
     environment:
       # inbox/ proxies/ thumbs/ outbox/ db/bvp.sqlite3 all live under here.
       BVP_DATA_DIR: /srv/pipeline
+      # HOLD and EVICT (and BVP_INTAKE_MODE, BVP_INSTALLER_DOWNLOAD_URL) are
+      # only first-start defaults: afterwards they are edited on the admin
+      # Settings page and the database wins. CAP is the inbox filesystem's
+      # size and stays here.
       BVP_INBOX_HOLD_GB: ${BVP_INBOX_HOLD_GB:-22}
       BVP_INBOX_CAP_GB: ${BVP_INBOX_CAP_GB:-25}
       BVP_PROXY_EVICT_MIN_FREE_GB: ${BVP_PROXY_EVICT_MIN_FREE_GB:-10}
+      BVP_INTAKE_MODE: ${BVP_INTAKE_MODE:-open}
+      BVP_INSTALLER_DOWNLOAD_URL: ${BVP_INSTALLER_DOWNLOAD_URL:-https://github.com/jbresolin/baja-video-pipeline/releases/latest}
       BVP_WEBHOOK_SECRET: ${BVP_WEBHOOK_SECRET}
       BVP_ADMIN_TOKEN: ${BVP_ADMIN_TOKEN}
-      # Same file the base Caddy imports for reviewer basic auth (design §17:
-      # .txt, it is not htpasswd format).
+      # Imported into the users table on the first start with no users, then
+      # ignored (README §4). BVP_BOOTSTRAP_ADMIN names who becomes admin.
       BVP_REVIEWERS_FILE: /srv/pipeline/reviewers.txt
+      BVP_BOOTSTRAP_ADMIN: ${BVP_BOOTSTRAP_ADMIN:-}
       # The base stack's Evolution, on baja-edge.
       BVP_EVOLUTION_URL: http://evolution:8080
       BVP_EVOLUTION_INSTANCE: ${BVP_EVOLUTION_INSTANCE}
       # Canonical name (design §17); the orchestrator also accepts the old
       # BVP_EVOLUTION_INSTANCE_TOKEN.
       BVP_EVOLUTION_API_KEY: ${BVP_EVOLUTION_API_KEY}
-      # Team names (design §17): CSV first, then the Baja app; both optional.
+      # Provas and teams: synced from the Baja results API for this event
+      # (first-start defaults; the admin Settings page afterwards). An old
+      # teams CSV is imported once into an empty table, then ignored.
+      BVP_EVENT_ID: ${BVP_EVENT_ID:-}
+      BVP_RESULTS_API_URL: ${BVP_RESULTS_API_URL:-https://api.bajasaebrasil.net}
       BVP_TEAMS_FILE: ${BVP_TEAMS_FILE:-}
-      BVP_BAJA_APP_URL: ${BVP_BAJA_APP_URL:-}
       BVP_PUBLIC_BASE_URL: https://${PIPELINE_DOMAIN}
       # Workers' inbox/outbox download URLs are built from this
       # (pipeline-edge's tailnet listener, not the orchestrator's own port).
@@ -87,9 +97,10 @@ services:
     logging: *default-logging
 
   # ---------------------------------------------------------------------------
-  # Review UI (LIVESTACK-27, -26). Its own service (design §16): it talks to
-  # the orchestrator only over the HTTP API, as the reviewer (it forwards the
-  # browser's Authorization header). No database, no volumes.
+  # Review UI (LIVESTACK-27, -26, -37). Its own service (design §16): it
+  # talks to the orchestrator only over the HTTP API, as the signed-in user
+  # (its own login page; the session cookie goes on as a bearer token).
+  # No database, no volumes.
   # Image: docker build -f review_ui/Dockerfile . (from the repo root).
   # ---------------------------------------------------------------------------
   review-ui:

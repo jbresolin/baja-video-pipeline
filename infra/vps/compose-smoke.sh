@@ -11,19 +11,22 @@
 #   * up.sh's routes are installed in the base Caddy's conf.d;
 #   * the pipeline's containers are running, and healthy where they have a
 #     healthcheck;
-#   * the base Caddy answers on 443 for PIPELINE_DOMAIN, and pipeline-edge on
-#     the Tailscale IP:8080;
+#   * the base Caddy answers on 443 for PIPELINE_DOMAIN (the review UI's login
+#     page; a proxy without a session is refused by forward_auth to the
+#     orchestrator's /auth/media; the bare domain redirects to /review/), and
+#     pipeline-edge on the Tailscale IP:8080;
 #   * the orchestrator answers through both: /health on the tailnet side,
 #     POST /enroll on the public side (the only public orchestrator route,
 #     design §8; an empty body must come back 400 from the orchestrator);
 #   * /metrics answers with the admin token;
 #   * the Evolution instance is connected (state "open") and its webhook
 #     points at the orchestrator;
-#   * /srv/pipeline/reviewers.txt parses (same rules as the orchestrator);
+#   * /srv/pipeline/reviewers.txt, if it is still there, parses (it is only
+#     imported into the users table on the first start; README §4);
 #   * the data folders and files belong to uid 10001 and the inbox is its
 #     own filesystem (README §2.1, §2.3).
 #
-# Needs root (it reads .env and the reviewers file). Changes nothing.
+# Needs root (it reads .env and the data folder). Changes nothing.
 # Each check_* function only gathers command output; smoke_checks.py next
 # to this script decides PASS/FAIL (tested in tests/infra/).
 #
@@ -107,9 +110,17 @@ check_containers() {
 
 check_caddy_public() {
     local status
-    # Basic auth in front of the review UI: 401 proves TLS + Caddy + the routes.
-    status="$(fetch "https://$PIPELINE_DOMAIN/review/")"
-    decide http "caddy 443 $PIPELINE_DOMAIN" --got "$status" --expect 401 <"$BODY"
+    # The review UI's own login page: 200 proves TLS + Caddy + the /review route.
+    status="$(fetch "https://$PIPELINE_DOMAIN/review/login")"
+    decide http "caddy 443 $PIPELINE_DOMAIN" --got "$status" --expect 200 <"$BODY"
+    # A proxy without a session cookie: Caddy asks the orchestrator
+    # (forward_auth → GET /auth/media), which answers 401. A 404 or 200 here
+    # would mean media is served without asking.
+    status="$(fetch "https://$PIPELINE_DOMAIN/proxies/smoke-check.mp4")"
+    decide http "proxies need a session (forward_auth)" --got "$status" --expect 401 <"$BODY"
+    # The bare domain redirects to the review UI (it used to answer an empty 200).
+    status="$(fetch "https://$PIPELINE_DOMAIN/")"
+    decide http "bare domain redirects to /review/" --got "$status" --expect 302 <"$BODY"
 }
 
 check_caddy_tailnet() {
@@ -150,10 +161,20 @@ check_reviewers() {
     decide reviewers "$DATA_DIR/reviewers.txt"
 }
 
+# Paths that must exist, then files that may (only the first start reads them).
+data_paths_to_check() {
+    local path
+    for path in "$DATA_DIR" "$DATA_DIR"/{inbox,proxies,thumbs,outbox,db}; do
+        echo "$path"
+    done
+    for path in "$DATA_DIR/reviewers.txt" "$DATA_DIR/teams.csv"; do
+        if [[ -e "$path" ]]; then echo "$path"; fi
+    done
+}
+
 check_disk_layout() {
     local path
-    for path in "$DATA_DIR" "$DATA_DIR"/{inbox,proxies,thumbs,outbox,db} \
-        "$DATA_DIR/reviewers.txt" "$DATA_DIR/teams.csv"; do
+    for path in $(data_paths_to_check); do
         if [[ -e "$path" ]]; then
             stat -c '%u %g %a %n' "$path"
         else

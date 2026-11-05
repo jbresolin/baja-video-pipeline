@@ -7,7 +7,6 @@ exactly what it sends and make the "server" misbehave on purpose.
 import httpx
 import pytest
 
-from orchestrator.clients.baja_app import BajaAppClient, BajaAppError
 from orchestrator.clients.evolution import EvolutionClient
 from orchestrator.clients.tailscale import (
     FALLBACK_KEY_EXPIRY_SECONDS,
@@ -16,16 +15,15 @@ from orchestrator.clients.tailscale import (
 )
 from orchestrator.clock import ManualClock
 from orchestrator.testing.fakes import (
-    FAKE_BAJA_APP_URL,
     FAKE_EVOLUTION_URL,
     FAKE_TAILSCALE_API_BASE,
     FAKE_TAILSCALE_CLIENT_ID,
     FAKE_TAILSCALE_CLIENT_SECRET,
-    FakeBajaApp,
     FakeEvolutionApi,
     FakeTailscaleApi,
 )
 from shared.models import WorkerRole
+from shared.testing.credentials import PLACEHOLDER_WRONG_PASSWORD
 
 
 def make_tailscale_client(fake: FakeTailscaleApi, clock=None, secret=FAKE_TAILSCALE_CLIENT_SECRET):
@@ -88,7 +86,7 @@ def test_outages_are_retried_then_reported():
 
 
 def test_wrong_oauth_credentials_are_a_clear_configuration_error():
-    client = make_tailscale_client(FakeTailscaleApi(), secret="wrong")
+    client = make_tailscale_client(FakeTailscaleApi(), secret=PLACEHOLDER_WRONG_PASSWORD)
     with pytest.raises(TailscaleError, match="TAILSCALE_OAUTH_CLIENT_ID"):
         client.mint_auth_key(WorkerRole.WORKER, "baja worker x")
 
@@ -114,29 +112,3 @@ def test_a_failing_bot_reply_is_logged_not_raised():
     down = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(500)))
     client = EvolutionClient(down, FAKE_EVOLUTION_URL, "k", "baja-bot")
     assert client.send_text("55@s.whatsapp.net", "x") is False
-
-
-def test_team_lookups_are_cached():
-    fake = FakeBajaApp(teams={42: "Equipe X"})
-    clock = ManualClock()
-    client = BajaAppClient(httpx.Client(transport=fake.transport()), FAKE_BAJA_APP_URL, "", clock)
-    assert client.find_team(42).team_name == "Equipe X"
-    assert client.find_team(42).team_name == "Equipe X"
-    # Unknown cars answer None (and are cached too, for a shorter time).
-    assert client.find_team(7) is None
-    assert client.find_team(7) is None
-    # Only one request per car reached the app.
-    assert fake.requests == [42, 7]
-    # After the cache expires, the app is asked again.
-    clock.advance(601)
-    client.find_team(42)
-    assert fake.requests == [42, 7, 42]
-
-
-def test_baja_app_outage_raises_baja_app_error():
-    fake = FakeBajaApp(down=True)
-    client = BajaAppClient(
-        httpx.Client(transport=fake.transport()), FAKE_BAJA_APP_URL, "", ManualClock()
-    )
-    with pytest.raises(BajaAppError):
-        client.find_team(42)

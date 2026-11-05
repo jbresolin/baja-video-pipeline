@@ -1,9 +1,10 @@
-"""Calls to the orchestrator API, made with the reviewer's own credentials.
+"""Calls to the orchestrator API, made with the signed-in user's own session.
 
 The review UI has no database and no account of its own. For every browser
-request it builds an OrchestratorClient carrying that browser's
-Authorization header, so the orchestrator sees (and checks, and records in
-Job.reviewed_by) the actual reviewer.
+request it builds an OrchestratorClient carrying that browser's session
+token (from the bvp_session cookie) as `Authorization: Bearer …`, so the
+orchestrator sees (and checks, and records in Job.reviewed_by) the actual
+user. The admin pages' calls are in admin_client.py.
 """
 
 from datetime import datetime
@@ -13,6 +14,7 @@ import httpx
 from pydantic import ValidationError
 
 from shared.models import (
+    CurrentUser,
     ErrorResponse,
     Event,
     EventsResponse,
@@ -20,7 +22,11 @@ from shared.models import (
     Job,
     JobState,
     JobSummary,
+    LoginRequest,
+    LoginResponse,
     ManifestResponse,
+    Prova,
+    ProvasResponse,
     RegenerateProxyResponse,
     ReviewQueueResponse,
     ReviewUpdate,
@@ -64,16 +70,26 @@ def _path_segment(value: str | int) -> str:
 
 
 class OrchestratorClient:
-    def __init__(self, http_client: httpx.Client, authorization: str | None) -> None:
+    def __init__(
+        self,
+        http_client: httpx.Client,
+        authorization: str | None,
+        forwarded_for: str | None = None,
+    ) -> None:
         # One shared httpx.Client (connection pool) for the whole app; the
         # credentials differ per browser request, so they are added per call.
         self._http_client = http_client
         self._authorization = authorization
+        # Caddy's X-Forwarded-For, passed on so the orchestrator's sign-in
+        # rate limit counts the browser's address, not this service's.
+        self._forwarded_for = forwarded_for
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         headers = {"Accept": "application/json"}
         if self._authorization:
             headers["Authorization"] = self._authorization
+        if self._forwarded_for:
+            headers["X-Forwarded-For"] = self._forwarded_for
         try:
             response = self._http_client.request(method, path, headers=headers, **kwargs)
         except httpx.HTTPError as error:
@@ -89,6 +105,24 @@ class OrchestratorClient:
             raise OrchestratorUnavailableError(
                 f"orchestrator sent a {model.__name__} this UI cannot read: {error}"
             ) from error
+
+    # --- Sign-in ---
+
+    def login(self, username: str, password: str) -> LoginResponse:
+        body = LoginRequest(username=username, password=password).model_dump()
+        return self._parse(LoginResponse, self._request("POST", "/auth/login", json=body))
+
+    def logout(self) -> None:
+        self._request("POST", "/auth/logout")
+
+    def me(self) -> CurrentUser:
+        return self._parse(CurrentUser, self._request("GET", "/auth/me"))
+
+    # --- Review ---
+
+    def provas(self) -> list[Prova]:
+        """Every prova in display order, inactive ones included (flagged)."""
+        return self._parse(ProvasResponse, self._request("GET", "/provas")).provas
 
     def review_queue(self, states: list[JobState]) -> list[JobSummary]:
         # A list of tuples repeats the parameter: ?state=a&state=b.
@@ -111,7 +145,7 @@ class OrchestratorClient:
         return self._parse(RegenerateProxyResponse, response)
 
     def get_team(self, car_number: int) -> Team | None:
-        """The team for a car number, or None when the Baja app does not know it."""
+        """The team for a car number, or None when the teams table does not know it."""
         try:
             response = self._request("GET", f"/teams/{_path_segment(car_number)}")
         except OrchestratorError as error:

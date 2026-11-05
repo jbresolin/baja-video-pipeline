@@ -10,7 +10,7 @@ ManualClock, and background tasks do not run by themselves; call
 orchestrator.background.sweepers.* to run one pass.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import bcrypt
@@ -20,14 +20,13 @@ from orchestrator.app import build_context, create_app
 from orchestrator.clock import ManualClock
 from orchestrator.config import load_settings
 from orchestrator.context import OrchestratorContext
+from orchestrator.testing.fake_results_api import FAKE_RESULTS_API_URL, FakeResultsApi
 from orchestrator.testing.fakes import (
-    FAKE_BAJA_APP_URL,
     FAKE_CDN_BASE_URL,
     FAKE_EVOLUTION_URL,
     FAKE_TAILSCALE_API_BASE,
     FAKE_TAILSCALE_CLIENT_ID,
     FAKE_TAILSCALE_CLIENT_SECRET,
-    FakeBajaApp,
     FakeEvolutionApi,
     FakeTailscaleApi,
     FakeWhatsAppCdn,
@@ -35,11 +34,25 @@ from orchestrator.testing.fakes import (
 from shared.models import WorkerRole
 from shared.protocol import WEBHOOK_SECRET_HEADER
 from shared.testing.asgi_transport import SyncAsgiTransport
+from shared.testing.credentials import (
+    ADMIN_USERNAME,
+    PLACEHOLDER_ADMIN_PASSWORD,
+    PLACEHOLDER_ADMIN_TOKEN,
+    PLACEHOLDER_EVOLUTION_API_KEY,
+    PLACEHOLDER_PASSWORD,
+    PLACEHOLDER_WEBHOOK_SECRET,
+    REVIEWER_USERNAME,
+)
 
-ADMIN_TOKEN = "test-admin-token"
-WEBHOOK_SECRET = "test-webhook-secret"
-REVIEWER_NAME = "ana"
-REVIEWER_PASSWORD = "senha-da-ana"
+# Placeholders from shared.testing.credentials (design §14), under the names
+# the tests have always imported from here.
+ADMIN_TOKEN = PLACEHOLDER_ADMIN_TOKEN
+WEBHOOK_SECRET = PLACEHOLDER_WEBHOOK_SECRET
+REVIEWER_NAME = REVIEWER_USERNAME
+REVIEWER_PASSWORD = PLACEHOLDER_PASSWORD
+# Made admin on the first-start import (BVP_BOOTSTRAP_ADMIN).
+ADMIN_NAME = ADMIN_USERNAME
+ADMIN_PASSWORD = PLACEHOLDER_ADMIN_PASSWORD
 PUBLIC_BASE_URL = "https://review.example.test"
 # Dev mode is refused with a public URL (config.LOCAL_HOSTNAMES), so a
 # dev-mode harness defaults to this one.
@@ -57,6 +70,41 @@ def write_reviewers_file(path: Path, passwords: dict[str, str]) -> Path:
         lines.append(f"{username} {password_hash}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
+
+
+class SessionLogin(httpx.Auth):
+    """httpx auth that signs in with POST /auth/login and sends the session as a bearer.
+
+    It signs in on first use, and again after a 401 (e.g. a test moved the
+    clock past the 12 h idle timeout), so tests can keep using one object.
+    """
+
+    requires_response_body = True
+
+    def __init__(self, username: str, password: str) -> None:
+        self.username = username
+        self.password = password
+        self.session_token: str | None = None
+
+    def _login_request(self, request: httpx.Request) -> httpx.Request:
+        return httpx.Request(
+            "POST",
+            request.url.copy_with(path="/auth/login", query=None),
+            json={"username": self.username, "password": self.password},
+        )
+
+    def auth_flow(self, request: httpx.Request):
+        for attempt in range(2):
+            if self.session_token is None or attempt == 1:
+                login = yield self._login_request(request)
+                self.session_token = (
+                    login.json()["session_token"] if login.status_code == 200 else None
+                )
+            if self.session_token is not None:
+                request.headers["Authorization"] = f"Bearer {self.session_token}"
+            response = yield request
+            if response.status_code != 401 or self.session_token is None:
+                return
 
 
 @dataclass(frozen=True)
@@ -78,11 +126,17 @@ class OrchestratorHarness:
     cdn: FakeWhatsAppCdn
     evolution: FakeEvolutionApi
     tailscale: FakeTailscaleApi
-    baja_app: FakeBajaApp
+    results_api: FakeResultsApi
 
+    # The static admin token (scripts), and two signed-in users.
     admin_headers = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
     webhook_headers = {WEBHOOK_SECRET_HEADER: WEBHOOK_SECRET}
-    reviewer_auth = httpx.BasicAuth(REVIEWER_NAME, REVIEWER_PASSWORD)
+    reviewer_auth: SessionLogin = field(
+        default_factory=lambda: SessionLogin(REVIEWER_NAME, REVIEWER_PASSWORD)
+    )
+    admin_auth: SessionLogin = field(
+        default_factory=lambda: SessionLogin(ADMIN_NAME, ADMIN_PASSWORD)
+    )
 
     def enroll(
         self,
@@ -124,6 +178,15 @@ class OrchestratorHarness:
         response.raise_for_status()
         return response.json()
 
+    def add_team(self, car_number: int, team_name: str, short_name: str | None = None) -> None:
+        """Put a car in the teams table (as an admin would; no results API sync)."""
+        response = self.client.put(
+            f"/admin/teams/{car_number}",
+            json={"team_name": team_name, "short_name": short_name},
+            headers=self.admin_headers,
+        )
+        response.raise_for_status()
+
     def job(self, job_id: str) -> dict:
         response = self.client.get(f"/jobs/{job_id}", auth=self.reviewer_auth)
         response.raise_for_status()
@@ -132,13 +195,19 @@ class OrchestratorHarness:
 
 def build_harness(data_dir: Path, **setting_overrides) -> OrchestratorHarness:
     data_dir.mkdir(parents=True, exist_ok=True)
+    # Imported into the users table on the first start (domain/first_start.py).
     reviewers_file = write_reviewers_file(
-        data_dir / "reviewers.txt", {REVIEWER_NAME: REVIEWER_PASSWORD}
+        data_dir / "reviewers.txt",
+        {REVIEWER_NAME: REVIEWER_PASSWORD, ADMIN_NAME: ADMIN_PASSWORD},
     )
     settings = load_settings(
         **{
             "data_dir": data_dir,
             "reviewers_file": reviewers_file,
+            "bootstrap_admin": ADMIN_NAME,
+            # Cheap bcrypt, and no sign-in limit getting in the way of many tests.
+            "password_hash_rounds": 4,
+            "login_rate_limit_requests": 10_000,
             "admin_token": ADMIN_TOKEN,
             "webhook_secret": WEBHOOK_SECRET,
             "public_base_url": (
@@ -147,8 +216,8 @@ def build_harness(data_dir: Path, **setting_overrides) -> OrchestratorHarness:
             "tailnet_base_url": TAILNET_BASE_URL,
             "whatsapp_media_base_url": FAKE_CDN_BASE_URL,
             "evolution_url": FAKE_EVOLUTION_URL,
-            "evolution_api_key": "fake-evolution-key",
-            "baja_app_url": FAKE_BAJA_APP_URL,
+            "evolution_api_key": PLACEHOLDER_EVOLUTION_API_KEY,
+            "results_api_url": FAKE_RESULTS_API_URL,
             "tailscale_oauth_client_id": FAKE_TAILSCALE_CLIENT_ID,
             "tailscale_oauth_client_secret": FAKE_TAILSCALE_CLIENT_SECRET,
             "tailscale_api_base": FAKE_TAILSCALE_API_BASE,
@@ -157,15 +226,15 @@ def build_harness(data_dir: Path, **setting_overrides) -> OrchestratorHarness:
     )
     clock = ManualClock()
     cdn, evolution = FakeWhatsAppCdn(), FakeEvolutionApi()
-    tailscale, baja_app = FakeTailscaleApi(), FakeBajaApp()
+    tailscale, results_api = FakeTailscaleApi(), FakeResultsApi()
     context = build_context(
         settings,
         clock=clock,
         media_http_client=httpx.Client(transport=cdn.transport()),
         evolution_http_client=httpx.Client(transport=evolution.transport()),
         tailscale_http_client=httpx.Client(transport=tailscale.transport()),
-        baja_app_http_client=httpx.Client(transport=baja_app.transport()),
+        results_api_http_client=httpx.Client(transport=results_api.transport()),
     )
     app = create_app(context, run_background_tasks=False)
     client = httpx.Client(transport=SyncAsgiTransport(app), base_url="http://orchestrator.test")
-    return OrchestratorHarness(context, client, clock, cdn, evolution, tailscale, baja_app)
+    return OrchestratorHarness(context, client, clock, cdn, evolution, tailscale, results_api)

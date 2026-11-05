@@ -35,8 +35,8 @@ Files in this directory:
   │  BASE STACK                                │  PIPELINE STACK (this folder) │
   │  caddy ─ evo/scoring sites                 │                               │
   │    └─ import conf.d/pipeline.caddy ────────┼─► {PIPELINE_DOMAIN}           │
-  │         /review*         ─► bvp-review-ui:8001                             │
-  │         /proxies/* /thumbs/* ─► file_server (/srv/pipeline, read-only)     │
+  │         /review*         ─► bvp-review-ui:8001 (its own login page)        │
+  │         /proxies/* /thumbs/* ─► forward_auth /auth/media, file_server      │
   │         POST /enroll     ─► bvp-orchestrator:8000                          │
   │  evolution ── instance webhook ───────────►  orchestrator:8000            │
   │  postgres, redis                           │   ▲                           │
@@ -65,6 +65,12 @@ Files in this directory:
 * **The global Evolution API key stays out of this repo.** `up.sh`, `down.sh`
   and the smoke test use the instance token (`BVP_EVOLUTION_API_KEY`), which
   Evolution accepts for that instance's own routes.
+* **Only secrets are edited on the server.** Reviewer logins, WhatsApp
+  senders, provas, teams, enrollment tokens and the intake settings are pages
+  of the review UI under `/review/admin/` (admins only). Provas and teams come
+  from the Baja results API (`https://api.bajasaebrasil.net`) for the event
+  set on the Settings page, synced every 6 h; the VPS needs outbound HTTPS to
+  it. `.env` keeps the secrets and a few first-start defaults (§3, §4).
 
 ---
 
@@ -78,7 +84,7 @@ three items and stops if one is missing:
 | Network `baja-edge` | External Docker network; Evolution and the base Caddy are on it, and it has internet egress |
 | Container `caddy` | Running, config at `/etc/caddy/Caddyfile` with `import /srv/caddy/conf.d/*.caddy`, admin API on its default `localhost:2019` (for `caddy reload`) |
 | `/srv/caddy/conf.d/` | Host folder, bind-mounted into `caddy` at the same path. `up.sh` writes `pipeline.caddy` there |
-| `/srv/pipeline` in `caddy` | Read-only bind mount of the host's `/srv/pipeline`, by default at the same path (`CADDY_PIPELINE_DIR` otherwise). The base Caddy serves `proxies/`, `thumbs/` and reads `reviewers.txt` from it. Docker creates an empty root-owned folder if it does not exist yet; §2.1 then fixes the owner |
+| `/srv/pipeline` in `caddy` | Read-only bind mount of the host's `/srv/pipeline`, by default at the same path (`CADDY_PIPELINE_DIR` otherwise). The base Caddy serves `proxies/` and `thumbs/` from it (after asking the orchestrator, §7). Docker creates an empty root-owned folder if it does not exist yet; §2.1 then fixes the owner |
 | Evolution | `evolution:8080` on `baja-edge`, v2.3.x webhook API; reachable from the VPS host at `EVOLUTION_URL` (normally its public hostname) |
 | `baja-edge` subnet | `10.201.0.0/24`, pinned by the base stack; `BVP_TRUSTED_PROXY_CIDRS` names it (§9). This compose declares no subnet for it |
 
@@ -91,25 +97,24 @@ the firewall's public ports) are the base stack's runbook.
 
 `/srv/pipeline` is `BVP_DATA_DIR` (design §15). The orchestrator mounts it
 read-write; `pipeline-edge` and the base Caddy read-only. The orchestrator and
-review-UI images run as **uid/gid 10001**, so the data folders and the two
-files the orchestrator reads belong to that user (design §17):
+review-UI images run as **uid/gid 10001**, so the data folders (and the two
+optional seed files below) belong to that user (design §17):
 
 ```bash
 sudo git clone https://github.com/jbresolin/baja-video-pipeline.git /opt/baja
 cd /opt/baja/infra/vps
 sudo install -d -o 10001 -g 10001 -m 750 /srv/pipeline
 sudo install -d -o 10001 -g 10001 /srv/pipeline/{inbox,proxies,thumbs,outbox,db}
-# Reviewers (filled in §4) and teams (optional CSV, see below), owned by 10001.
-[ -e /srv/pipeline/reviewers.txt ] || sudo install -o 10001 -g 10001 -m 640 /dev/null /srv/pipeline/reviewers.txt
-[ -e /srv/pipeline/teams.csv ] || echo 'car_number,team_name,school' | sudo install -o 10001 -g 10001 -m 640 /dev/stdin /srv/pipeline/teams.csv
 sudo mkdir -p /var/lib/baja
 sudo apt-get install -y gettext-base     # envsubst, for up.sh (usually already there)
 ```
 
-`teams.csv` (`BVP_TEAMS_FILE`) is one `car_number,team_name,school` line per
-car; the orchestrator re-reads it when it changes. It may stay with only
-the header: team names then come from `BVP_BAJA_APP_URL`, or stay empty.
-Both Caddies run as root inside their containers and read the files read-only.
+Users, teams and the rest live in the orchestrator's database
+(`/srv/pipeline/db/bvp.sqlite3`) and are edited on the admin pages. Two old
+files are only read on the **first start** (§4): `reviewers.txt` becomes the
+users, and `teams.csv` (`BVP_TEAMS_FILE`, `car_number,team_name,school`)
+fills the empty teams table. Neither is needed on a new VPS. Both Caddies
+run as root inside their containers and read the data folder read-only.
 
 ### 2.2 Binding to the Tailscale IP
 
@@ -179,37 +184,42 @@ sudo docker compose config -q     # must print nothing
 `BVP_EVOLUTION_INSTANCE` and `BVP_EVOLUTION_API_KEY` (the instance token)
 come from the base stack's Evolution; its runbook says where to read them.
 
-## 4. Reviewers file (`/srv/pipeline/reviewers.txt`)
+## 4. Users (review UI logins)
 
-One file of named reviewers, read by the **base Caddy** (basic auth on
-`/review*`, `/proxies/*`, `/thumbs/*`, through `conf.d/pipeline.caddy`) and
-by the **orchestrator** (`BVP_REVIEWERS_FILE`, `reviewerBasic` in
-`docs/api.md`) (design §15).
+Reviewers and admins sign in on the review UI's own page
+(`https://PIPELINE_DOMAIN/review/login`). Users live in the orchestrator's
+database; admins manage them on **Admin → Usuários** (add, change role,
+disable, set a new password). Caddy no longer asks for a password, so
+nothing is edited or reloaded on the server to add or remove someone.
+A session ends after 12 h without activity; disabling a user or changing
+their password ends their open sessions at once.
 
-**Format: one `username bcrypt-hash` pair per line, separated by a space.**
-`#` starts a comment line. This is **not** Apache's htpasswd `user:hash`
-format (hence the `.txt` name, design §17). Caddy imports the file straight
-into its `basic_auth` block, and a colon line fails to load ("username and
-password cannot be empty"). Usernames must not contain spaces.
-
-Add a reviewer, then reload the base Caddy (re-running `./up.sh` does the
-same, plus its checks):
+**Upgrading a VPS that had `reviewers.txt`.** On the first start with an
+empty users table the orchestrator imports `/srv/pipeline/reviewers.txt`
+(`BVP_REVIEWERS_FILE`): every line becomes a reviewer with the **same
+password** (the bcrypt hashes are reused), and the user named in
+`BVP_BOOTSTRAP_ADMIN` (`.env`) becomes an admin. Set it before that start:
 
 ```bash
-HASH=$(sudo docker run --rm caddy:2.11.7-alpine caddy hash-password --plaintext 'their-password')
-echo "ana $HASH" | sudo tee -a /srv/pipeline/reviewers.txt
-sudo chown 10001:10001 /srv/pipeline/reviewers.txt
-sudo chmod 640 /srv/pipeline/reviewers.txt
-sudo docker exec -w /etc/caddy caddy caddy reload --config /etc/caddy/Caddyfile
+sudo nano .env           # BVP_BOOTSTRAP_ADMIN=joao
+./up.sh
 ```
 
-Remove a reviewer: delete the line, then reload the base Caddy the same way.
-The orchestrator needs nothing: it re-reads the file on the next login after
-it changes (like `teams.csv`). If an edit leaves the file unparseable it
-logs a warning and keeps the previous version; Caddy's reload fails loudly
-and keeps running the previous config, so fix the line and reload again.
-The file must have **at least one** reviewer before `up.sh`, or the base
-Caddy refuses the routes and `up.sh` takes them back out (§6).
+After that the file is **ignored** (the orchestrator logs "reviewers file …
+is ignored: users live in the database" on every start); keep or delete it.
+A file that does not parse at that first start stops the orchestrator with
+the line number (format: one `username bcrypt-hash` pair per line, as
+before).
+
+**A new VPS without `reviewers.txt`.** Create the first admin once with the
+admin token, then do everything else in the browser:
+
+```bash
+source .env
+curl -sS -X POST "http://$TAILSCALE_IP:8080/admin/users" \
+  -H "Authorization: Bearer $BVP_ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"username": "joao", "password": "a-long-password", "role": "admin"}'
+```
 
 ## 5. Images on ghcr.io
 
@@ -300,9 +310,9 @@ the Caddy-side facts live here. If one of them changes, update
 
 | Listener | Reachable from | Served by | Routes |
 | --- | --- | --- | --- |
-| `:443` `PIPELINE_DOMAIN` | internet | base Caddy, `conf.d/pipeline.caddy` | `/review*` → `bvp-review-ui:8001` (reviewer basic auth); `/proxies/*`, `/thumbs/*` → static (reviewer basic auth); `POST /enroll` → `bvp-orchestrator:8000` (no auth, 16 KB body cap); `/` → redirect to `/review/`; anything else 404 |
+| `:443` `PIPELINE_DOMAIN` | internet | base Caddy, `conf.d/pipeline.caddy` | `/review*` → `bvp-review-ui:8001` (its own login page); `/proxies/*`, `/thumbs/*` → static behind `forward_auth` to `/auth/media` (session cookie); `POST /enroll` → `bvp-orchestrator:8000` (no auth, 16 KB body cap); `/` → 302 to `/review/`; anything else 404 |
 | `${TAILSCALE_IP}:8080` | tailnet only | `pipeline-edge`, `Caddyfile.tailnet` | `/inbox/*`, `/outbox/*` → static behind `forward_auth`; everything else → orchestrator |
-| `bvp-orchestrator:8000` | `baja-edge` and `pipeline` networks | — | base Caddy (`/enroll`), Evolution's webhook (`POST /intake/evolution-webhook`), `pipeline-edge`, review UI |
+| `bvp-orchestrator:8000` | `baja-edge` and `pipeline` networks | — | base Caddy (`/enroll`, `/auth/media`), Evolution's webhook (`POST /intake/evolution-webhook`), `pipeline-edge`, review UI |
 
 **DNS and certificates.** `PIPELINE_DOMAIN` is **DNS-only at Cloudflare
 (grey cloud)**: the A/AAAA record points straight at the VPS and Cloudflare
@@ -317,15 +327,15 @@ Caddy sees is the real client, which is what goes into `X-Forwarded-For`
 **Rendering `conf.d/pipeline.caddy`.** The file in the repo is a template
 with two variables, both from `.env`: `${PIPELINE_DOMAIN}` (the site
 address) and `${CADDY_PIPELINE_DIR}` (where the base Caddy sees
-`/srv/pipeline`: the `file_server` root and the `reviewers.txt` import).
+`/srv/pipeline`: the `file_server` root).
 `up.sh` runs
 
 ```bash
 envsubst '${PIPELINE_DOMAIN} ${CADDY_PIPELINE_DIR}' < conf.d/pipeline.caddy
 ```
 
-The explicit list matters: only those two are replaced, so Caddy's own
-placeholders (`{http.auth.user.id}`) are untouched. Why not Caddy's
+The explicit list matters: only those two are replaced, so any Caddy
+placeholder (`{…}`) added later stays untouched. Why not Caddy's
 `{$PIPELINE_DOMAIN}`: Caddy would resolve that from **the base Caddy
 container's** environment, which the base stack defines and this repo does
 not. So after changing either value in `.env`, run `./up.sh` again; it
@@ -340,11 +350,21 @@ conf.d file.
 file, and an `X-Worker-Id` response header is copied onto the request for
 the access log. Any other status is returned to the worker unchanged.
 
-**Reviewer requests**: the base Caddy checks basic auth against
-`reviewers.txt` (format in §4), then proxies `/review*` to `bvp-review-ui:8001`
-with the client's `Authorization` header unchanged, plus `X-Reviewer:
-<username>`. Caddyfile `basic_auth` caches bcrypt results, so the video
-player's many Range requests don't each pay a bcrypt hash.
+**Reviewer requests**: the base Caddy proxies `/review*` to
+`bvp-review-ui:8001` as is. The review UI has its own login page; it keeps
+the session in the `bvp_session` cookie (httpOnly, Secure, SameSite=Lax,
+path `/`) and sends it to the orchestrator as a bearer token.
+
+**forward_auth (`/proxies/*`, `/thumbs/*`)**: the base Caddy sends `GET
+/auth/media` to `bvp-orchestrator:8000` with the browser's own headers, so
+the `bvp_session` cookie arrives there. 204 serves the file; 401 is shown to
+the browser. The orchestrator refreshes a session's last-seen time at most
+once a minute, so the video player's many Range requests stay cheap.
+
+**Bare domain**: `handle / { redir * /review/ 302 }`. The `*` is needed: in
+a Caddyfile a first argument starting with `/` is a matcher, and the old
+`redir /review/ 302` meant "redirect requests for `/review/` to `302`", so
+`/` matched nothing and got an empty 200 (`tests/infra/test_caddy_site.py`).
 
 **Dot-file rule**: both Caddies' `file_server` hide `.*` (plus `*.part`,
 `*.part.json`) under the data dir [R24]. Writers create files as dot-files
@@ -474,14 +494,16 @@ Read-only. It prints one row per check and ends with `ALL CHECKS PASSED`
 | `base container caddy` | running | the base stack's logs |
 | `caddy routes installed` | `/srv/caddy/conf.d/pipeline.caddy` exists, for `PIPELINE_DOMAIN` | `./up.sh` |
 | `container <service>` | orchestrator, review-ui, pipeline-edge `running`, and `healthy` where they have a healthcheck (pipeline-edge has none) | `docker compose logs <service>` |
-| `caddy 443 <PIPELINE_DOMAIN>` | `/review/` answers 401 (basic auth) over TLS | DNS, the base Caddy's certificate and logs |
+| `caddy 443 <PIPELINE_DOMAIN>` | `/review/login` answers 200 over TLS | DNS, the base Caddy's certificate and logs |
+| `proxies need a session (forward_auth)` | `/proxies/smoke-check.mp4` without a cookie answers 401 (from the orchestrator's `/auth/media`) | a 404/200 means `conf.d/pipeline.caddy` lost its `forward_auth`: `./up.sh` |
+| `bare domain redirects to /review/` | `/` answers 302 | `./up.sh` (an old snippet answers 200) |
 | `orchestrator /health via <TAILSCALE_IP>:8080` | 200 `{"status":"ok"}` | `ip_nonlocal_bind` (§2.2), `tailscale ip -4` = `TAILSCALE_IP`, `docker compose logs pipeline-edge` |
 | `orchestrator via 443 (POST /enroll)` | an empty body comes back 400 from the orchestrator | orchestrator down or not on `baja-edge`. The public site has no `/health` (design §8), so this is the 443 probe. It uses one of the VPS IP's 10 `/enroll` tries per 10 min |
 | `orchestrator /metrics` | 200 with the admin token, `bvp_jobs` present | `BVP_ADMIN_TOKEN` |
 | `evolution instance state` | `open` | the base stack's runbook. **Do not scan a QR** as a first reaction |
 | `evolution webhook` | enabled, pointing at `bvp-orchestrator` | `./up.sh` (§8) |
-| `reviewers file` | parses with the orchestrator's rules and has at least one reviewer | §4 (`user hash`, one space, no colon) |
-| `owner <path>` | `/srv/pipeline`, its five folders, `reviewers.txt` and `teams.csv` are `10001:10001` | the `chown` the row prints |
+| `reviewers file` | missing, or parses with the orchestrator's rules (it is only imported on a first start, §4) | §4 (`user hash`, one space, no colon) |
+| `owner <path>` | `/srv/pipeline`, its five folders, and `reviewers.txt` / `teams.csv` if present, are `10001:10001` | the `chown` the row prints |
 | `inbox filesystem` | `/srv/pipeline/inbox` is its own mount, no bigger than `BVP_INBOX_CAP_GB` GiB | §2.3 |
 
 The decisions live in `smoke_checks.py` (stdlib only, plus the repo's
@@ -491,9 +513,10 @@ with fake `docker`/`curl`/`findmnt`.
 ## 12. Backups and restore
 
 `backup.sh` runs nightly from a systemd timer and writes one dated folder
-to `/var/backups/baja/`, keeping the last 14: the jobs DB (SQLite online
-backup), `reviewers.txt`, `teams.csv`. Evolution's data is the base stack's
-to back up.
+to `/var/backups/baja/`, keeping the last 14: the orchestrator DB (SQLite
+online backup: jobs, users, contacts, provas, teams, settings), and
+`reviewers.txt` / `teams.csv` if they are still there. Evolution's data is
+the base stack's to back up.
 
 The unit's `ExecCondition` runs `backup.sh --pipeline-present`, which asks
 Docker for this stack's orchestrator container (running or stopped). After

@@ -1,6 +1,7 @@
 """The service against the contract: same routes, same auth rules, same error shape."""
 
 from orchestrator.app import create_app
+from orchestrator.testing.harness import REVIEWER_NAME, REVIEWER_PASSWORD
 from shared.models import WorkerRole
 from tools.openapi_contract.app import build_contract_app
 
@@ -20,6 +21,27 @@ def test_the_service_offers_exactly_the_contract_routes(harness):
     assert routes_of(service) == routes_of(build_contract_app())
 
 
+def credentials_of(app) -> dict[tuple[str, str], set[str]]:
+    """(method, path) → the names of the credentials the route accepts."""
+    document = app.openapi()
+    return {
+        (method, path): {
+            name for requirement in operation.get("security", []) for name in requirement
+        }
+        for path, operations in document["paths"].items()
+        for method, operation in operations.items()
+    }
+
+
+def test_every_route_accepts_the_same_credentials_as_the_contract(harness):
+    # Same routes is not enough: an admin route that forgot its admin check,
+    # or a review route that suddenly accepts worker tokens, must fail here.
+    # The contract lists each route's credentials under "security"; the
+    # service's own document lists the ones its dependencies really read.
+    service = create_app(harness.context, run_background_tasks=False)
+    assert credentials_of(service) == credentials_of(build_contract_app())
+
+
 def test_health_is_open(harness):
     assert harness.client.get("/health").json() == {"status": "ok"}
 
@@ -36,12 +58,14 @@ def test_a_worker_cannot_use_another_workers_id(harness):
     assert response.json()["error"]["code"] == "forbidden"
 
 
-def test_wrong_reviewer_password_is_401(harness):
-    response = harness.client.get("/review/queue", auth=("ana", "wrong"))
+def test_basic_auth_is_no_longer_accepted(harness):
+    # Reviewers sign in with POST /auth/login now. Even the right password
+    # sent as HTTP Basic (what Caddy used to forward) is refused.
+    response = harness.client.get("/review/queue", auth=(REVIEWER_NAME, REVIEWER_PASSWORD))
     assert response.status_code == 401
 
 
-def test_get_job_accepts_a_reviewer_or_a_worker_but_not_the_admin(harness):
+def test_get_job_accepts_a_reviewer_or_a_worker_but_not_the_admin_token(harness):
     worker = harness.enroll(WorkerRole.WORKER, "pc")
     missing = "0" * 32
     # 404 (not 401) means the credential was accepted.

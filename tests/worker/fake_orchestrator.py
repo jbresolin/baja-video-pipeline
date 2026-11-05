@@ -46,6 +46,7 @@ from shared.models import (
     utc_now,
 )
 from shared.protocol import FRAME_RATE_HEADER
+from shared.testing.credentials import PLACEHOLDER_ENROLLMENT_TOKEN, PLACEHOLDER_WORKER_TOKEN
 from tests.worker.fake_orchestrator_parts import FakeJob, error, range_response, receive_chunk
 
 BASE_URL = "http://orchestrator.test:8080"
@@ -53,8 +54,8 @@ BASE_URL = "http://orchestrator.test:8080"
 # see the bearer token (design §17).
 TAILNET_URL = "http://tailnet.test:8080"
 WORKER_ID = "worker-1"
-BEARER_TOKEN = "secret-worker-token"
-GOOD_ENROLLMENT_TOKEN = "good-enrollment-token"
+BEARER_TOKEN = PLACEHOLDER_WORKER_TOKEN
+GOOD_ENROLLMENT_TOKEN = PLACEHOLDER_ENROLLMENT_TOKEN
 
 
 class FakeOrchestrator:

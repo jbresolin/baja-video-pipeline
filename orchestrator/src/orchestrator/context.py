@@ -12,13 +12,14 @@ from dataclasses import dataclass, field
 import httpx
 
 from orchestrator.clients.evolution import EvolutionClient
+from orchestrator.clients.results_api import ResultsApiClient
 from orchestrator.clients.tailscale import TailscaleClient
-from orchestrator.clients.teams import TeamDirectory
 from orchestrator.clock import Clock
 from orchestrator.config import Settings
 from orchestrator.counters import TaskCounters
 from orchestrator.db.database import Database
-from orchestrator.security import ReviewerDirectory, SlidingWindowRateLimiter
+from orchestrator.domain.app_settings import AdminSettingsStore
+from orchestrator.security import SlidingWindowRateLimiter
 from orchestrator.storage import VpsLayout
 
 
@@ -40,14 +41,17 @@ class OrchestratorContext:
     database: Database
     clock: Clock
     layout: VpsLayout
-    reviewers: ReviewerDirectory
+    # Intake mode, inbox soft cap, proxy eviction threshold, installer URL:
+    # edited on the admin Settings page (domain/app_settings.py).
+    admin_settings: AdminSettingsStore
     # Downloads WhatsApp media from the CDN (only URLs under BVP_WHATSAPP_MEDIA_BASE_URL).
     media_http_client: httpx.Client
     evolution: EvolutionClient
     tailscale: TailscaleClient
-    # Team names: BVP_TEAMS_FILE, then the Baja app (design §17).
-    teams: TeamDirectory
+    # The Baja results API: the configured event's provas and teams.
+    results_api: ResultsApiClient
     enroll_rate_limiter: SlidingWindowRateLimiter
+    login_rate_limiter: SlidingWindowRateLimiter
     upload_locks: KeyedLocks = field(default_factory=KeyedLocks)
     # Offers, claims and failures since start, for GET /metrics.
     task_counters: TaskCounters = field(default_factory=TaskCounters)

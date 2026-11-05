@@ -21,6 +21,8 @@ from pathlib import Path
 import bcrypt
 import pytest
 
+from shared.testing.credentials import PLACEHOLDER_PASSWORD
+
 VPS_FOLDER = Path(__file__).resolve().parents[2] / "infra" / "vps"
 
 
@@ -189,10 +191,14 @@ def test_metrics_check_counts_online_workers():
 
 def a_bcrypt_hash() -> str:
     # Cost 4 keeps the test fast; the format is what matters.
-    return bcrypt.hashpw(b"secret", bcrypt.gensalt(rounds=4)).decode()
+    return bcrypt.hashpw(PLACEHOLDER_PASSWORD.encode(), bcrypt.gensalt(rounds=4)).decode()
 
 
 def test_reviewers_file_rules(tmp_path):
+    # Since the admin page, users live in the orchestrator's database and
+    # reviewers.txt is only imported on a first start with no users. So the
+    # file may be missing or empty; but if it is there it must parse,
+    # because a first start would refuse to import a broken one.
     good = tmp_path / "good.txt"
     good.write_text(f"# team\nana {a_bcrypt_hash()}\nbruno {a_bcrypt_hash()}\n")
     htpasswd = tmp_path / "htpasswd.txt"
@@ -201,11 +207,13 @@ def test_reviewers_file_rules(tmp_path):
     only_comments.write_text("# nobody yet\n")
 
     assert statuses(smoke.check_reviewers_file(good)) == ["PASS"]
-    # htpasswd's "user:hash" is the classic mistake; Caddy cannot read it.
+    # htpasswd's "user:hash" is still the classic mistake.
+    assert statuses(smoke.check_reviewers_file(htpasswd)) == ["FAIL"]
     assert "htpasswd" in smoke.check_reviewers_file(htpasswd)[0]
-    # Caddy refuses to start with no reviewer at all.
-    assert statuses(smoke.check_reviewers_file(only_comments)) == ["FAIL"]
-    assert "does not exist" in smoke.check_reviewers_file(tmp_path / "missing.txt")[0]
+    assert statuses(smoke.check_reviewers_file(only_comments)) == ["PASS"]
+    missing = smoke.check_reviewers_file(tmp_path / "missing.txt")
+    assert statuses(missing) == ["PASS"]
+    assert "users live in the database" in missing[0]
 
 
 def test_ownership_wants_uid_and_gid_10001():
@@ -340,7 +348,14 @@ def healthy_vps(tmp_path: Path) -> dict[str, str]:
     findmnt = tmp_path / "findmnt.txt"
     findmnt.write_text(f"ext4 {24 * 1024**3}\n")
     answers = {
-        "https://review.test/review/": ["401", ""],
+        # The review UI's login page, a proxy refused without a session
+        # (forward_auth to the orchestrator), and the bare-domain redirect.
+        "https://review.test/review/login": ["200", "<html>Entrar</html>"],
+        "https://review.test/proxies/smoke-check.mp4": [
+            "401",
+            '{"error":{"code":"unauthenticated"}}',
+        ],
+        "https://review.test/": ["302", ""],
         "http://100.64.0.1:8080/health": ["200", '{"status":"ok"}'],
         "https://review.test/enroll": ["400", '{"error":{"code":"validation_error"}}'],
         "http://100.64.0.1:8080/metrics": [
@@ -402,6 +417,8 @@ def test_the_script_passes_on_a_healthy_vps(tmp_path):
         "caddy routes installed",
         "container pipeline-edge",
         "caddy 443 review.test",
+        "proxies need a session (forward_auth)",
+        "bare domain redirects to /review/",
         "evolution instance state",
         "evolution webhook",
     ):
@@ -433,6 +450,36 @@ def test_the_script_fails_and_names_each_problem(tmp_path):
     assert any("outbox" in row and "missing" in row for row in fail_rows)
     assert any("/health" in row and "no connection" in row for row in fail_rows)
     assert "3 CHECK(S) FAILED" in completed.stdout
+
+
+@linux_only
+def test_the_script_passes_without_the_old_reviewers_and_teams_files(tmp_path):
+    # After the first start both files are ignored; a VPS that never had
+    # them (users made with the admin token) must still pass.
+    environment = healthy_vps(tmp_path)
+    for name in ("reviewers.txt", "teams.csv"):
+        (Path(environment["SMOKE_DATA_DIR"]) / name).unlink()
+
+    completed = run_smoke(environment)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+@linux_only
+def test_media_served_without_asking_the_orchestrator_fails_the_smoke_test(tmp_path):
+    # If forward_auth were missing, Caddy would answer 404 (no such file)
+    # or 200 instead of the orchestrator's 401.
+    environment = healthy_vps(tmp_path)
+    answers = json.loads(Path(environment["FAKE_CURL_ANSWERS"]).read_text())
+    answers["https://review.test/proxies/smoke-check.mp4"] = ["404", "Not found"]
+    Path(environment["FAKE_CURL_ANSWERS"]).write_text(json.dumps(answers))
+
+    completed = run_smoke(environment)
+
+    assert completed.returncode == 1
+    assert any(
+        line.startswith("FAIL") and "forward_auth" in line for line in completed.stdout.splitlines()
+    ), completed.stdout
 
 
 @linux_only

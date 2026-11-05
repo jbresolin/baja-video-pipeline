@@ -7,8 +7,8 @@ journal says which (`journalctl -u baja-backup.service`).
 
 | File | What | Restore section |
 | --- | --- | --- |
-| `bvp.sqlite3` | orchestrator jobs DB: every job, review, holder, event, enrolled worker | A |
-| `reviewers.txt`, `teams.csv` | reviewer logins (base Caddy + orchestrator), car → team names | B |
+| `bvp.sqlite3` | orchestrator DB: every job, review, holder, event, enrolled worker, and the admin pages' users, contacts, provas, teams and settings | A |
+| `reviewers.txt`, `teams.csv` | only if still present: the files the users and teams were first imported from | B |
 | `SHA256SUMS` | checksums of the above | — |
 
 **Not in the backup, on purpose:**
@@ -21,7 +21,7 @@ journal says which (`journalctl -u baja-backup.service`).
 * Evolution (Postgres, Redis, instances volume): the base stack
   (`jbresolin/baja-vps`) backs those up and has the restore steps.
 
-`reviewers.txt` holds password hashes, so a backup folder stays mode 700,
+The DB (and `reviewers.txt`) hold password hashes, so a backup folder stays mode 700,
 and copies off the VPS go only to machines you control.
 
 Run everything below as root from `/opt/baja/infra/vps`, with the
@@ -69,15 +69,15 @@ The pipeline down (between events)? Restore the file the same way with no
 
 ## B. Reviewers and teams
 
-```bash
-sudo install -o 10001 -g 10001 -m 640 "$B/reviewers.txt" /srv/pipeline/reviewers.txt
-sudo install -o 10001 -g 10001 -m 640 "$B/teams.csv" /srv/pipeline/teams.csv
-sudo docker exec -w /etc/caddy caddy caddy reload --config /etc/caddy/Caddyfile
-```
+Users and teams are in the DB since the admin page, so restoring section A
+brings them back. The two files matter only for a DB restored to an empty
+one: put them back before the first start and they are imported once
+(README §4).
 
-The orchestrator re-reads both files when they change; no restart. The
-reload is for the base Caddy's reviewer basic auth (README §4); skip it if
-the pipeline is down.
+```bash
+[ -e "$B/reviewers.txt" ] && sudo install -o 10001 -g 10001 -m 640 "$B/reviewers.txt" /srv/pipeline/reviewers.txt
+[ -e "$B/teams.csv" ] && sudo install -o 10001 -g 10001 -m 640 "$B/teams.csv" /srv/pipeline/teams.csv
+```
 
 ## C. A new VPS from scratch
 

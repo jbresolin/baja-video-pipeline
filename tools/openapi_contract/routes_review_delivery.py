@@ -25,16 +25,17 @@ from tools.openapi_contract.auth import (
     admin_bearer,
     error_responses,
     not_implemented,
-    reviewer_basic,
+    session_bearer,
     worker_bearer,
 )
 
 router = APIRouter()
 
 # Two dependencies on one route mean "either credential is accepted".
-_reviewer_only = [Depends(reviewer_basic)]
-_reviewer_or_worker = [Depends(reviewer_basic), Depends(worker_bearer)]
-_reviewer_or_admin = [Depends(reviewer_basic), Depends(admin_bearer)]
+# A session of a reviewer or an admin counts as a reviewer here.
+_reviewer_only = [Depends(session_bearer)]
+_reviewer_or_worker = [Depends(session_bearer), Depends(worker_bearer)]
+_reviewer_or_admin = [Depends(session_bearer), Depends(admin_bearer)]
 
 
 # --- Review ---
@@ -118,7 +119,7 @@ def regenerate_proxy(job_id: str) -> RegenerateProxyResponse:
 @router.get(
     "/teams/{car_number}",
     tags=["review"],
-    summary="Team for a car number, from the Baja app",
+    summary="Team for a car number, from the teams table (results API sync + corrections)",
     response_model=Team,
     dependencies=_reviewer_only,
     responses=error_responses(401, 404, 503),

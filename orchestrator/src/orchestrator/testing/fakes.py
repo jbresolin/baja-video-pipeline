@@ -8,7 +8,7 @@ can assert on it ("the bot replied once", "the key was tagged tag:worker").
     FakeWhatsAppCdn   serves encrypted media blobs by path
     FakeEvolutionApi  accepts sendText and remembers every message
     FakeTailscaleApi  OAuth token + auth-key minting, checked like the real spec
-    FakeBajaApp       team names by car number
+    (the Baja results API's fake is in fake_results_api.py)
 """
 
 import json
@@ -19,12 +19,13 @@ from urllib.parse import parse_qs
 
 import httpx
 
+from shared.testing.credentials import PLACEHOLDER_TAILSCALE_CLIENT_SECRET
+
 FAKE_CDN_BASE_URL = "http://fake-cdn.test"
 FAKE_EVOLUTION_URL = "http://fake-evolution.test"
 FAKE_TAILSCALE_API_BASE = "http://fake-tailscale.test"
-FAKE_BAJA_APP_URL = "http://fake-baja-app.test"
 FAKE_TAILSCALE_CLIENT_ID = "fake-client-id"
-FAKE_TAILSCALE_CLIENT_SECRET = "fake-client-secret"
+FAKE_TAILSCALE_CLIENT_SECRET = PLACEHOLDER_TAILSCALE_CLIENT_SECRET
 
 
 class FakeWhatsAppCdn:
@@ -65,8 +66,21 @@ class FakeEvolutionApi:
     def __init__(self) -> None:
         self.sent: list[SentText] = []
         self._lock = threading.Lock()
+        # What GET /instance/connectionState and /webhook/find answer (Settings page).
+        self.connection_state = "open"
+        self.webhook = {
+            "enabled": True,
+            "url": "http://bvp-orchestrator:8000/intake/evolution-webhook",
+        }
 
     def handle(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path.startswith("/instance/connectionState/"):
+            instance = request.url.path.rsplit("/", 1)[-1]
+            return httpx.Response(
+                200, json={"instance": {"instanceName": instance, "state": self.connection_state}}
+            )
+        if request.method == "GET" and request.url.path.startswith("/webhook/find/"):
+            return httpx.Response(200, json=self.webhook)
         match = re.fullmatch(r"/message/sendText/([^/]+)", request.url.path)
         if request.method != "POST" or match is None:
             return httpx.Response(404)
@@ -136,31 +150,6 @@ class FakeTailscaleApi:
         minted = {"id": key_id, "key": f"tskey-auth-{key_id}-secret", **body}
         self.minted_keys.append(minted)
         return httpx.Response(200, json=minted)
-
-    def transport(self) -> httpx.MockTransport:
-        return httpx.MockTransport(self.handle)
-
-
-@dataclass
-class FakeBajaApp:
-    teams: dict[int, str] = field(default_factory=dict)
-    requests: list[int] = field(default_factory=list)
-    # When True every request answers 503 (the app is down).
-    down: bool = False
-
-    def handle(self, request: httpx.Request) -> httpx.Response:
-        match = re.fullmatch(r"/api/teams/(\d+)", request.url.path)
-        if match is None:
-            return httpx.Response(404)
-        if self.down:
-            return httpx.Response(503)
-        car_number = int(match.group(1))
-        self.requests.append(car_number)
-        if car_number not in self.teams:
-            return httpx.Response(404, json={"detail": "unknown car"})
-        return httpx.Response(
-            200, json={"car_number": car_number, "team_name": self.teams[car_number]}
-        )
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)

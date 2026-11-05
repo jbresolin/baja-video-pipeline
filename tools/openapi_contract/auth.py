@@ -1,15 +1,18 @@
 """Auth schemes and the standard error answers, shared by all contract routes.
 
-Four kinds of caller (docs/api.md, "Authentication"):
+The kinds of caller (docs/api.md, "Authentication"):
     workerBearer   per-worker token from /enroll (master, worker, studio)
-    adminBearer    one static admin token from the orchestrator's config
-    reviewerBasic  HTTP Basic, checked against BVP_REVIEWERS_FILE (bcrypt)
+    adminBearer    one static admin token from the orchestrator's config (scripts)
+    sessionBearer  session token from POST /auth/login (review UI users,
+                   role reviewer or admin)
+    sessionCookie  the same session token in the bvp_session cookie; only
+                   GET /auth/media reads it (Caddy forward_auth)
     webhookSecret  shared secret header configured in Evolution's webhook
 """
 
 from typing import Any
 
-from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBearer
+from fastapi.security import APIKeyCookie, APIKeyHeader, HTTPBearer
 
 from shared.models import ErrorResponse
 from shared.protocol import WEBHOOK_SECRET_HEADER
@@ -26,11 +29,21 @@ admin_bearer = HTTPBearer(
     description="Static admin token (BVP_ADMIN_TOKEN on the orchestrator).",
     auto_error=False,
 )
-reviewer_basic = HTTPBasic(
-    scheme_name="reviewerBasic",
+session_bearer = HTTPBearer(
+    scheme_name="sessionBearer",
     description=(
-        "Reviewer username and password, checked against the bcrypt hashes in "
-        "BVP_REVIEWERS_FILE (the same file Caddy imports). See docs/api.md."
+        "Session token from POST /auth/login. Review routes accept a user with role "
+        "reviewer or admin; /admin/* routes need role admin (403 for a reviewer). "
+        "Sessions end after 12 h without a request."
+    ),
+    auto_error=False,
+)
+session_cookie = APIKeyCookie(
+    name="bvp_session",
+    scheme_name="sessionCookie",
+    description=(
+        "The session token as the review UI's cookie. Read only by GET /auth/media, "
+        "which Caddy's forward_auth calls with the browser's own headers."
     ),
     auto_error=False,
 )
@@ -47,10 +60,10 @@ _ERROR_DESCRIPTIONS = {
     400: "Malformed request (validation_error)",
     401: "Missing or wrong credentials (unauthenticated)",
     403: "Authenticated but not allowed (forbidden)",
-    404: "No such job / worker / team (not_found)",
+    404: "No such job / worker / team / user / ... (not_found)",
     409: "Conflicts with the current state (see error.code)",
     413: "Body too large (upload_too_large, inbox_full)",
-    422: "Well-formed but wrong (hash_mismatch, missing_review_fields, ...)",
+    422: "Well-formed but wrong (hash_mismatch, missing_review_fields, unknown_prova, ...)",
     429: "Too many requests from this source IP (rate_limited); see Retry-After",
     503: "Temporarily unavailable (dev_mode_disabled, upstream_error)",
 }

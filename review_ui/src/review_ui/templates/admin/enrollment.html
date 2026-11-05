@@ -1,0 +1,62 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Cadastro de PCs{% endblock %}
+{% block admin_content %}
+{% if created %}
+<div class="banner ok token-once" role="status">
+  <p><strong>Token para {{ created.volunteer_name }}</strong> ({{ role_labels[created.role] }}),
+    válido até {{ m.time(created.expires_at) }}. Ele aparece <strong>só agora</strong>: copie e envie para a pessoa.</p>
+  <p class="copy-row"><code id="new-token">{{ created.token }}</code>
+    <button type="button" data-copy-from="new-token">Copiar</button></p>
+  {% if created.installer_download_url %}
+  <p>Instalador: <a href="{{ created.installer_download_url }}" rel="noopener" target="_blank">{{ created.installer_download_url }}</a></p>
+  {% endif %}
+  <p class="hint">No PC: instalar o BajaWorker e colar o token na página de configuração que abre no fim.
+    Cada token serve uma única vez.</p>
+</div>
+{% endif %}
+
+<h2>Novo token</h2>
+<form method="post" action="/review/admin/enrollment/create" class="inline-fields">
+  <label>Voluntário <input name="volunteer_name" required maxlength="100" placeholder="Nome de quem vai instalar"></label>
+  <label>Papel
+    <select name="role">
+      {% for value, label in roles %}<option value="{{ value }}" {% if value == "worker" %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Validade
+    <select name="valid_for_hours">
+      {% for hours, label in validity_choices %}<option value="{{ hours }}" {% if hours == 72 %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit" class="primary">Gerar token</button>
+</form>
+
+<h2>Tokens</h2>
+{% if tokens %}
+<table class="admin-table">
+  <thead><tr><th>Voluntário</th><th>Papel</th><th>Situação</th><th>Criado</th><th>Validade</th><th>Usado por</th><th></th></tr></thead>
+  <tbody>
+  {% for t in tokens %}
+    <tr {% if t.status != "unused" %}class="muted"{% endif %}>
+      <td>{{ t.volunteer_name }} <span class="small"><code>{{ t.token_id[:8] }}</code></span></td>
+      <td>{{ role_labels[t.role] }}</td>
+      <td><span class="badge token-{{ t.status }}">{{ status_labels[t.status] }}</span></td>
+      <td>{{ m.time(t.created_at) }}</td>
+      <td>{{ m.time(t.expires_at) }}</td>
+      <td>{% if t.used_by_worker_id %}{{ t.used_by_worker_name or t.used_by_worker_id|short_id }}{% endif %}</td>
+      <td>
+        {% if t.status in ("unused", "expired") %}
+        <form method="post" action="/review/admin/enrollment/{{ t.token_id }}/revoke" class="inline-form"
+              data-confirm="Revogar o token de {{ t.volunteer_name }}?">
+          <button type="submit" class="danger">Revogar</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">Nenhum token ainda.</p>
+{% endif %}
+{% endblock %}

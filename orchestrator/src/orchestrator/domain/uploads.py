@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain import provas_catalog
 from orchestrator.domain.job_view import require_job_row
 from orchestrator.domain.leases import require_active_lease, sweep_expired_leases
 from orchestrator.domain.transitions import end_lease, move_job
@@ -18,7 +19,7 @@ from orchestrator.errors import ApiError
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
 from shared.http_transfer import partial_path_for
-from shared.layout import clip_relative_path
+from shared.layout import clip_relative_path_in_folder
 from shared.models import ChunkAccepted, DeliveryRoute, ErrorCode, JobState, TaskKind
 from shared.upload_receiver import (
     ChunkedUploadReceiver,
@@ -218,8 +219,10 @@ def accept_clip_chunk(
             changes={
                 "clip_sha256": upload.sha256,
                 "clip_size_bytes": upload.total_length,
-                "clip_relative_path": clip_relative_path(
-                    job_row["prova"], job_row["car_number"], job_row["passagem"]
+                "clip_relative_path": clip_relative_path_in_folder(
+                    provas_catalog.clip_folder_for(connection, job_row["prova"]),
+                    job_row["car_number"],
+                    job_row["passagem"],
                 ),
                 "clip_route": str(DeliveryRoute.OUTBOX),
                 "clip_rendered_by": worker_row["id"],

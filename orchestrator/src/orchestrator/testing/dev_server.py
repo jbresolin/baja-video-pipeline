@@ -1,16 +1,18 @@
-"""Run the orchestrator locally with fakes for Evolution, Tailscale and the Baja app.
+"""Run the orchestrator locally with fakes for Evolution, Tailscale and the results API.
 
     uv run python -m orchestrator.testing.dev_server
 
 Real HTTP on http://127.0.0.1:8000 and a real clock, so you can drive it
 with curl and with orchestrator/fakes/fake_evolution_webhook.py (whose fake
 WhatsApp CDN on :8790 is the media base URL used here). Bot replies are
-printed instead of sent; /enroll mints fake Tailscale keys; car numbers
-1-99 resolve to "Equipe <n>".
+printed instead of sent; /enroll mints fake Tailscale keys; the results
+API is a fake with the docs' 26BR example (set the event id to 26BR in
+Admin → Configurações).
 
 Defaults (override any with the usual BVP_* variables):
     data dir  .scratch/bvp-dev        admin token  dev-admin
-    webhook   dev-secret              reviewer     ana / ana
+    webhook   dev-secret              users        ana / ana (admin), bruno / bruno
+                                      (imported from reviewers.txt on the first start)
     BVP_DEV_MODE=1 (POST /intake/test-upload enabled)
 """
 
@@ -23,13 +25,12 @@ import uvicorn
 
 from orchestrator.app import build_context, create_app
 from orchestrator.config import load_settings
+from orchestrator.testing.fake_results_api import FAKE_RESULTS_API_URL, FakeResultsApi
 from orchestrator.testing.fakes import (
-    FAKE_BAJA_APP_URL,
     FAKE_EVOLUTION_URL,
     FAKE_TAILSCALE_API_BASE,
     FAKE_TAILSCALE_CLIENT_ID,
     FAKE_TAILSCALE_CLIENT_SECRET,
-    FakeBajaApp,
     FakeEvolutionApi,
     FakeTailscaleApi,
 )
@@ -47,7 +48,7 @@ DEV_DEFAULTS = {
     "BVP_WHATSAPP_MEDIA_BASE_URL": "http://127.0.0.1:8790",
     "BVP_EVOLUTION_URL": FAKE_EVOLUTION_URL,
     "BVP_EVOLUTION_API_KEY": "dev-evolution-key",
-    "BVP_BAJA_APP_URL": FAKE_BAJA_APP_URL,
+    "BVP_RESULTS_API_URL": FAKE_RESULTS_API_URL,
     "TAILSCALE_OAUTH_CLIENT_ID": FAKE_TAILSCALE_CLIENT_ID,
     "TAILSCALE_OAUTH_CLIENT_SECRET": FAKE_TAILSCALE_CLIENT_SECRET,
     "TAILSCALE_API_BASE": FAKE_TAILSCALE_API_BASE,
@@ -72,16 +73,16 @@ def main() -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
     reviewers_file = data_dir / "reviewers.txt"
     if not reviewers_file.exists():
-        write_reviewers_file(reviewers_file, {"ana": "ana"})
+        write_reviewers_file(reviewers_file, {"ana": "ana", "bruno": "bruno"})
     os.environ.setdefault("BVP_REVIEWERS_FILE", str(reviewers_file))
+    os.environ.setdefault("BVP_BOOTSTRAP_ADMIN", "ana")
 
     settings = load_settings()
-    baja_app = FakeBajaApp(teams={number: f"Equipe {number}" for number in range(1, 100)})
     context = build_context(
         settings,
         evolution_http_client=httpx.Client(transport=PrintingEvolutionApi().transport()),
         tailscale_http_client=httpx.Client(transport=FakeTailscaleApi().transport()),
-        baja_app_http_client=httpx.Client(transport=baja_app.transport()),
+        results_api_http_client=httpx.Client(transport=FakeResultsApi().transport()),
     )
     logger.info("data dir %s; admin token %s", data_dir, settings.admin_token.get_secret_value())
     uvicorn.run(create_app(context), host="127.0.0.1", port=settings.port)

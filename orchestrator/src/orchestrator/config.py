@@ -13,10 +13,18 @@ from urllib.parse import urlsplit
 from pydantic import AliasChoices, Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.models import IntakeMode
 from shared.protocol import ENROLL_RATE_LIMIT_REQUESTS, ENROLL_RATE_LIMIT_WINDOW_SECONDS
 from shared.whatsapp_media import DEFAULT_MEDIA_BASE_URL
 
 BYTES_PER_GB = 1_000_000_000
+
+# Where volunteers find the worker installer until the admin sets the exact
+# asset URL in Settings (asset names carry the version, so there is no
+# stable "latest" asset link).
+DEFAULT_INSTALLER_DOWNLOAD_URL = "https://github.com/jbresolin/baja-video-pipeline/releases/latest"
+# The Baja platform's public results API (docs/results-api.md in baja-sae-brasil-online).
+DEFAULT_RESULTS_API_URL = "https://api.bajasaebrasil.net"
 
 # BVP_DEV_MODE=1 is refused unless BVP_PUBLIC_BASE_URL points at one of
 # these hosts: dev mode serves raw files without Caddy and enables
@@ -39,7 +47,18 @@ class Settings(BaseSettings):
 
     # --- Paths ---
     data_dir: Path = Path("/srv/pipeline")
+    # Imported once into the users table on the first start with no users
+    # (domain/first_start.py), then ignored.
     reviewers_file: Path = Path("/srv/pipeline/reviewers.txt")
+
+    # --- Review UI accounts (admin page, LIVESTACK-37) ---
+    # The user (from reviewers.txt) who becomes an admin on that first import.
+    bootstrap_admin: str = ""
+    # bcrypt cost for passwords set in the admin page (12 ≈ 0.25 s). Tests use 4.
+    password_hash_rounds: int = Field(default=12, ge=4, le=16)
+    # POST /auth/login attempts allowed per source IP per window.
+    login_rate_limit_requests: int = Field(default=20, ge=1)
+    login_rate_limit_window_s: int = Field(default=600, ge=1)
 
     # --- Secrets (required) ---
     admin_token: SecretStr
@@ -58,9 +77,16 @@ class Settings(BaseSettings):
     enroll_rate_limit_window_s: int = Field(default=ENROLL_RATE_LIMIT_WINDOW_SECONDS, ge=1)
 
     # --- VPS disk caps (design §10, §15) ---
+    # inbox_hold_gb and proxy_evict_min_free_gb are only first-start defaults
+    # of the admin Settings page (domain/app_settings.py); the database wins
+    # afterwards. inbox_cap_gb is the inbox filesystem's size: env only.
     inbox_hold_gb: float = Field(default=22, gt=0)
     inbox_cap_gb: float = Field(default=25, gt=0)
     proxy_evict_min_free_gb: float = Field(default=10, ge=0)
+
+    # --- Admin Settings page, first-start defaults (like the two above) ---
+    intake_mode: IntakeMode = IntakeMode.OPEN
+    installer_download_url: str = DEFAULT_INSTALLER_DOWNLOAD_URL
 
     # --- WhatsApp / Evolution ---
     whatsapp_media_base_url: str = DEFAULT_MEDIA_BASE_URL
@@ -72,10 +98,14 @@ class Settings(BaseSettings):
     )
     evolution_instance: str = "baja-bot"
 
-    # --- Team names (design §17): CSV file first, then the Baja app. Both optional. ---
+    # --- Teams: the teams table, synced from the results API (event_id below). ---
+    # An old CSV, imported once into an empty teams table at startup, then ignored.
     teams_file: Path | None = None
-    baja_app_url: str = ""
-    baja_app_token: SecretStr = SecretStr("")
+
+    # --- Baja results API (first-start defaults of the Settings page) ---
+    # The event whose provas and teams are synced, e.g. "26BR"; empty = none.
+    event_id: str = Field(default="", pattern=r"^([A-Za-z0-9]{4})?$")
+    results_api_url: str = DEFAULT_RESULTS_API_URL
 
     # --- Tailscale auth-key minting (infra/tailnet/mint_auth_key.md) ---
     tailscale_oauth_client_id: str = Field(validation_alias="TAILSCALE_OAUTH_CLIENT_ID")
@@ -96,16 +126,8 @@ class Settings(BaseSettings):
         return None if value == "" else value
 
     @property
-    def inbox_hold_bytes(self) -> int:
-        return int(self.inbox_hold_gb * BYTES_PER_GB)
-
-    @property
     def inbox_cap_bytes(self) -> int:
         return int(self.inbox_cap_gb * BYTES_PER_GB)
-
-    @property
-    def proxy_evict_min_free_bytes(self) -> int:
-        return int(self.proxy_evict_min_free_gb * BYTES_PER_GB)
 
     @property
     def trusted_proxy_networks(self) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
