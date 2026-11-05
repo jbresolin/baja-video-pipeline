@@ -16,6 +16,14 @@ import pytest
 
 from orchestrator.app import create_app
 from orchestrator.testing.harness import SessionLogin, build_harness
+from shared.testing.credentials import (
+    OTHER_USERNAME,
+    PLACEHOLDER_NEW_PASSWORD,
+    PLACEHOLDER_OTHER_PASSWORD,
+    PLACEHOLDER_SHORT_PASSWORD,
+    REVIEWER_USERNAME,
+    THIRD_USERNAME,
+)
 
 # Values for the {placeholders} in admin paths. They need not exist: the
 # role check happens before the orchestrator looks anything up.
@@ -91,7 +99,7 @@ def test_an_admin_may_also_use_the_review_routes(harness):
 # --- Users page ---
 
 
-def create_user(harness, username, password="senha-segura-1", role="reviewer"):
+def create_user(harness, username, password=PLACEHOLDER_OTHER_PASSWORD, role="reviewer"):
     return harness.client.post(
         "/admin/users",
         json={"username": username, "password": password, "role": role},
@@ -112,7 +120,7 @@ def test_an_admin_adds_a_user_who_can_then_sign_in(harness):
     response = create_user(harness, "bruno", role="admin")
     assert response.status_code == 201
     assert response.json()["role"] == "admin"
-    bruno = SessionLogin("bruno", "senha-segura-1")
+    bruno = SessionLogin(OTHER_USERNAME, PLACEHOLDER_OTHER_PASSWORD)
     assert harness.client.get("/admin/users", auth=bruno).status_code == 200
     # The same name twice: 409 already_exists.
     again = create_user(harness, "bruno")
@@ -120,13 +128,15 @@ def test_an_admin_adds_a_user_who_can_then_sign_in(harness):
 
 
 def test_short_passwords_and_odd_usernames_are_refused(harness):
-    assert create_user(harness, "carla", password="curta").status_code == 400
+    assert (
+        create_user(harness, THIRD_USERNAME, password=PLACEHOLDER_SHORT_PASSWORD).status_code == 400
+    )
     assert create_user(harness, "carla silva").status_code == 400
 
 
 def test_disabling_a_user_ends_their_sessions_and_blocks_sign_in(harness):
     create_user(harness, "bruno")
-    bruno = SessionLogin("bruno", "senha-segura-1")
+    bruno = SessionLogin(OTHER_USERNAME, PLACEHOLDER_OTHER_PASSWORD)
     assert harness.client.get("/review/queue", auth=bruno).status_code == 200
     disabled = harness.client.patch(
         "/admin/users/bruno", json={"disabled": True}, auth=harness.admin_auth
@@ -144,11 +154,11 @@ def test_a_new_password_replaces_the_old_one_and_ends_old_sessions(harness):
     old_session = harness.reviewer_auth
     assert harness.client.get("/review/queue", auth=old_session).status_code == 200
     harness.client.patch(
-        "/admin/users/ana", json={"password": "nova-senha-123"}, auth=harness.admin_auth
+        "/admin/users/ana", json={"password": PLACEHOLDER_NEW_PASSWORD}, auth=harness.admin_auth
     )
     # The old password no longer signs in (SessionLogin re-tries with it).
     assert harness.client.get("/review/queue", auth=old_session).status_code == 401
-    new_session = SessionLogin("ana", "nova-senha-123")
+    new_session = SessionLogin(REVIEWER_USERNAME, PLACEHOLDER_NEW_PASSWORD)
     assert harness.client.get("/review/queue", auth=new_session).status_code == 200
 
 
@@ -192,7 +202,7 @@ def test_user_changes_are_audited_with_who_and_before_and_after(harness):
 def test_a_change_made_with_the_admin_token_is_audited_as_admin(harness):
     harness.client.post(
         "/admin/users",
-        json={"username": "script", "password": "senha-segura-1"},
+        json={"username": "script", "password": PLACEHOLDER_OTHER_PASSWORD},
         headers=harness.admin_headers,
     )
     events = harness.client.get("/admin/audit", headers=harness.admin_headers).json()["events"]

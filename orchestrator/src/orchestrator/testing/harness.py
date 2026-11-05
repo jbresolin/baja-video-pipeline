@@ -34,14 +34,25 @@ from orchestrator.testing.fakes import (
 from shared.models import WorkerRole
 from shared.protocol import WEBHOOK_SECRET_HEADER
 from shared.testing.asgi_transport import SyncAsgiTransport
+from shared.testing.credentials import (
+    ADMIN_USERNAME,
+    PLACEHOLDER_ADMIN_PASSWORD,
+    PLACEHOLDER_ADMIN_TOKEN,
+    PLACEHOLDER_EVOLUTION_API_KEY,
+    PLACEHOLDER_PASSWORD,
+    PLACEHOLDER_WEBHOOK_SECRET,
+    REVIEWER_USERNAME,
+)
 
-ADMIN_TOKEN = "test-admin-token"
-WEBHOOK_SECRET = "test-webhook-secret"
-REVIEWER_NAME = "ana"
-REVIEWER_PASSWORD = "senha-da-ana"
+# Placeholders from shared.testing.credentials (design §14), under the names
+# the tests have always imported from here.
+ADMIN_TOKEN = PLACEHOLDER_ADMIN_TOKEN
+WEBHOOK_SECRET = PLACEHOLDER_WEBHOOK_SECRET
+REVIEWER_NAME = REVIEWER_USERNAME
+REVIEWER_PASSWORD = PLACEHOLDER_PASSWORD
 # Made admin on the first-start import (BVP_BOOTSTRAP_ADMIN).
-ADMIN_NAME = "joao"
-ADMIN_PASSWORD = "senha-do-joao"
+ADMIN_NAME = ADMIN_USERNAME
+ADMIN_PASSWORD = PLACEHOLDER_ADMIN_PASSWORD
 PUBLIC_BASE_URL = "https://review.example.test"
 # Dev mode is refused with a public URL (config.LOCAL_HOSTNAMES), so a
 # dev-mode harness defaults to this one.
@@ -205,7 +216,7 @@ def build_harness(data_dir: Path, **setting_overrides) -> OrchestratorHarness:
             "tailnet_base_url": TAILNET_BASE_URL,
             "whatsapp_media_base_url": FAKE_CDN_BASE_URL,
             "evolution_url": FAKE_EVOLUTION_URL,
-            "evolution_api_key": "fake-evolution-key",
+            "evolution_api_key": PLACEHOLDER_EVOLUTION_API_KEY,
             "results_api_url": FAKE_RESULTS_API_URL,
             "tailscale_oauth_client_id": FAKE_TAILSCALE_CLIENT_ID,
             "tailscale_oauth_client_secret": FAKE_TAILSCALE_CLIENT_SECRET,

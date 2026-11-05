@@ -13,11 +13,19 @@ keep the session safe in a browser:
 """
 
 from review_ui.session import safe_next_path
+from shared.testing.credentials import PLACEHOLDER_WRONG_PASSWORD
+from tests.review_ui.sample_data import REVIEWER_PASSWORD, REVIEWER_SESSION_TOKEN, REVIEWER_USERNAME
 
 FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 
 
-def sign_in(browser, username="ana", password="secret", next_path="/review/clips", **headers):
+def sign_in(
+    browser,
+    username=REVIEWER_USERNAME,
+    password=REVIEWER_PASSWORD,
+    next_path="/review/clips",
+    **headers,
+):
     return browser.post(
         "/review/login",
         content=f"username={username}&password={password}&next={next_path}",
@@ -40,12 +48,12 @@ def test_the_right_password_sets_a_safe_session_cookie_and_goes_on(anonymous_ui,
     assert response.status_code == 303
     assert response.headers["location"] == "/review/clips"
     cookie = response.headers["set-cookie"]
-    assert cookie.startswith("bvp_session=ana-session-token;")
+    assert cookie.startswith(f"bvp_session={REVIEWER_SESSION_TOKEN};")
     for flag in ("HttpOnly", "Secure", "SameSite=lax", "Path=/"):
         assert flag in cookie
     # The password went to the orchestrator as JSON, never stored by the UI.
     [login] = fake_orchestrator.requests_to("POST", "/auth/login")
-    assert login.json_body == {"username": "ana", "password": "secret"}
+    assert login.json_body == {"username": REVIEWER_USERNAME, "password": REVIEWER_PASSWORD}
 
 
 def test_with_the_cookie_the_browser_can_now_open_pages(anonymous_ui):
@@ -55,7 +63,7 @@ def test_with_the_cookie_the_browser_can_now_open_pages(anonymous_ui):
 
 
 def test_a_wrong_password_shows_the_form_again_with_a_message(anonymous_ui):
-    response = sign_in(anonymous_ui, password="wrong")
+    response = sign_in(anonymous_ui, password=PLACEHOLDER_WRONG_PASSWORD)
 
     assert response.status_code == 401
     assert "Usuário ou senha incorretos" in response.text

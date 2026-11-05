@@ -26,6 +26,13 @@ from orchestrator.testing.harness import (
     build_harness,
     write_reviewers_file,
 )
+from shared.testing.credentials import (
+    ADMIN_USERNAME,
+    PLACEHOLDER_ADMIN_PASSWORD,
+    PLACEHOLDER_NEW_PASSWORD,
+    REVIEWER_USERNAME,
+    THIRD_USERNAME,
+)
 
 
 def restart(harness, tmp_path, **overrides):
@@ -52,11 +59,18 @@ def test_once_there_are_users_the_file_is_ignored_and_a_log_line_says_so(harness
     # Someone edits the file after the first start: adds "carla" and gives
     # ana another password. (A separate file, because build_harness writes
     # its own reviewers.txt every time it starts.)
-    edited = write_reviewers_file(tmp_path / "edited.txt", {"ana": "x", "joao": "y", "carla": "z"})
+    edited = write_reviewers_file(
+        tmp_path / "edited.txt",
+        {
+            REVIEWER_USERNAME: PLACEHOLDER_NEW_PASSWORD,
+            ADMIN_USERNAME: PLACEHOLDER_NEW_PASSWORD,
+            THIRD_USERNAME: PLACEHOLDER_NEW_PASSWORD,
+        },
+    )
     with caplog.at_level(logging.INFO, logger="orchestrator.domain.first_start"):
         restarted = restart(harness, tmp_path, reviewers_file=edited)
     # ...but users live in the database now: carla was not added, and ana's
-    # password is still the one she had (not "x").
+    # password is still the one she had (not the file's new one).
     assert "carla" not in users(restarted)
     assert restarted.client.get("/auth/me", auth=restarted.reviewer_auth).status_code == 200
     assert "is ignored: users live in the database" in caplog.text
@@ -76,11 +90,11 @@ def test_without_a_reviewers_file_the_admin_token_creates_the_first_admin(tmp_pa
     # ...so the operator uses the admin token from .env once (README §4).
     created = harness.client.post(
         "/admin/users",
-        json={"username": "joao", "password": "senha-segura-1", "role": "admin"},
+        json={"username": ADMIN_USERNAME, "password": PLACEHOLDER_ADMIN_PASSWORD, "role": "admin"},
         headers=harness.admin_headers,
     )
     assert created.status_code == 201
-    joao = SessionLogin("joao", "senha-segura-1")
+    joao = SessionLogin(ADMIN_USERNAME, PLACEHOLDER_ADMIN_PASSWORD)
     assert harness.client.get("/admin/users", auth=joao).status_code == 200
 
 

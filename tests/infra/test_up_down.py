@@ -22,9 +22,11 @@ from pathlib import Path
 import pytest
 import yaml
 
+from shared.testing.credentials import PLACEHOLDER_WEBHOOK_SECRET
+
 VPS_FOLDER = Path(__file__).resolve().parents[2] / "infra" / "vps"
 WEBHOOK_URL = "http://bvp-orchestrator:8000/intake/evolution-webhook"
-SECRET = "s3cret-webhook-value"
+SECRET = PLACEHOLDER_WEBHOOK_SECRET
 
 
 def load_helper():

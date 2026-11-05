@@ -1,0 +1,7 @@
+# ggshield (GitGuardian CLI) settings. Test credentials are obvious
+# placeholders kept in one module (docs/design.md §14); never real secrets.
+version: 2
+secret:
+  ignored-paths:
+    - "tests/**"
+    - "shared/src/shared/testing/credentials.py"

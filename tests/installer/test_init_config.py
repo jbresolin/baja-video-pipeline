@@ -9,6 +9,7 @@ from pathlib import Path
 
 from baja_installer.init_config import write_installer_config
 from shared.models import WorkerRole
+from shared.testing.credentials import PLACEHOLDER_WORKER_TOKEN
 from worker.config import WorkerConfig, load_config, save_config
 
 FFMPEG = Path("C:/Program Files/BajaWorker/ffmpeg/ffmpeg.exe")
@@ -33,7 +34,7 @@ def test_an_upgrade_keeps_the_identity_folder_and_cap(tmp_path):
     config_path = tmp_path / "worker.json"
     enrolled = WorkerConfig(
         worker_id="abc",
-        bearer_token="secret",
+        bearer_token=PLACEHOLDER_WORKER_TOKEN,
         role=WorkerRole.WORKER,
         working_folder=Path("D:/Baja"),
         storage_cap_bytes=123,

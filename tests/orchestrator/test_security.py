@@ -13,6 +13,7 @@ from orchestrator.security import (
     password_matches,
     token_sha256,
 )
+from shared.testing.credentials import PLACEHOLDER_PASSWORD, PLACEHOLDER_WRONG_PASSWORD
 
 NOW = datetime(2026, 10, 25, 12, 0, tzinfo=UTC)
 CADDY_NETWORKS = [ipaddress.ip_network("172.16.0.0/12")]
@@ -45,19 +46,19 @@ def test_passwords_are_checked_against_bcrypt_hashes_of_every_label():
     # Users imported from reviewers.txt may have $2a$ (Caddy) or $2y$
     # (htpasswd) hashes; Python's bcrypt only writes $2b$. They are the same
     # algorithm with a different label, so all three must work.
-    hash_2b = bcrypt.hashpw(b"secret", bcrypt.gensalt(rounds=4)).decode()
+    hash_2b = bcrypt.hashpw(PLACEHOLDER_PASSWORD.encode(), bcrypt.gensalt(rounds=4)).decode()
     for label in ("$2a$", "$2b$", "$2y$"):
-        assert password_matches("secret", label + hash_2b[4:])
-        assert not password_matches("wrong", label + hash_2b[4:])
+        assert password_matches(PLACEHOLDER_PASSWORD, label + hash_2b[4:])
+        assert not password_matches(PLACEHOLDER_WRONG_PASSWORD, label + hash_2b[4:])
 
 
 def test_a_new_password_hash_is_bcrypt_with_the_chosen_cost_and_checks_out():
     # The admin page stores bcrypt hashes; the cost is BVP_PASSWORD_HASH_ROUNDS.
-    password_hash = hash_password("uma senha longa", rounds=4)
+    password_hash = hash_password(PLACEHOLDER_PASSWORD, rounds=4)
     assert password_hash.startswith("$2b$04$")
-    assert password_matches("uma senha longa", password_hash)
+    assert password_matches(PLACEHOLDER_PASSWORD, password_hash)
     # Something that is not a bcrypt hash at all never matches (and does not crash).
-    assert not password_matches("anything", "not-a-hash")
+    assert not password_matches(PLACEHOLDER_PASSWORD, "not-a-hash")
 
 
 def test_ids_and_token_hashes_have_the_documented_shape():

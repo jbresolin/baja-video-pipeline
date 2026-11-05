@@ -12,6 +12,11 @@
 from orchestrator.testing.harness import build_harness
 from orchestrator.testing.scenarios import claim_ok, receive_job
 from shared.models import TaskKind, WorkerRole
+from shared.testing.credentials import (
+    PLACEHOLDER_ADMIN_TOKEN,
+    PLACEHOLDER_EVOLUTION_API_KEY,
+    PLACEHOLDER_WEBHOOK_SECRET,
+)
 
 
 def issue_token(harness, name="Maria", role="worker", hours=72):
@@ -178,7 +183,11 @@ def test_secrets_are_only_reported_as_configured_or_missing(tmp_path):
         "TAILSCALE_OAUTH_CLIENT_SECRET": "missing",
     }
     # No secret value appears anywhere in the answer.
-    for secret in ("test-admin-token", "test-webhook-secret", "fake-evolution-key"):
+    for secret in (
+        PLACEHOLDER_ADMIN_TOKEN,
+        PLACEHOLDER_WEBHOOK_SECRET,
+        PLACEHOLDER_EVOLUTION_API_KEY,
+    ):
         assert secret not in str(page)
 
 

@@ -31,16 +31,17 @@ from shared.models import (
     WorkerRole,
     WorkerStats,
 )
+from shared.testing import credentials
 
 # A fixed moment, so tests never depend on the real clock.
 T0 = datetime(2026, 10, 25, 14, 0, 0, tzinfo=UTC)
 
-# The reviewer the fake orchestrator accepts: user "ana", password "secret".
+# The reviewer the fake orchestrator accepts (placeholders, design §14).
 # Signing in gives REVIEWER_SESSION_TOKEN; the browser keeps it in the
 # bvp_session cookie and the UI sends it on as REVIEWER_AUTHORIZATION.
-REVIEWER_USERNAME = "ana"
-REVIEWER_PASSWORD = "secret"
-REVIEWER_SESSION_TOKEN = "ana-session-token"
+REVIEWER_USERNAME = credentials.REVIEWER_USERNAME
+REVIEWER_PASSWORD = credentials.PLACEHOLDER_PASSWORD
+REVIEWER_SESSION_TOKEN = credentials.PLACEHOLDER_SESSION_TOKEN
 REVIEWER_AUTHORIZATION = f"Bearer {REVIEWER_SESSION_TOKEN}"
 SIGNED_IN_COOKIES = {"bvp_session": REVIEWER_SESSION_TOKEN}
 

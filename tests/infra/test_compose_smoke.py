@@ -21,6 +21,8 @@ from pathlib import Path
 import bcrypt
 import pytest
 
+from shared.testing.credentials import PLACEHOLDER_PASSWORD
+
 VPS_FOLDER = Path(__file__).resolve().parents[2] / "infra" / "vps"
 
 
@@ -189,7 +191,7 @@ def test_metrics_check_counts_online_workers():
 
 def a_bcrypt_hash() -> str:
     # Cost 4 keeps the test fast; the format is what matters.
-    return bcrypt.hashpw(b"secret", bcrypt.gensalt(rounds=4)).decode()
+    return bcrypt.hashpw(PLACEHOLDER_PASSWORD.encode(), bcrypt.gensalt(rounds=4)).decode()
 
 
 def test_reviewers_file_rules(tmp_path):

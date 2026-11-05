@@ -19,11 +19,13 @@ from urllib.parse import parse_qs
 
 import httpx
 
+from shared.testing.credentials import PLACEHOLDER_TAILSCALE_CLIENT_SECRET
+
 FAKE_CDN_BASE_URL = "http://fake-cdn.test"
 FAKE_EVOLUTION_URL = "http://fake-evolution.test"
 FAKE_TAILSCALE_API_BASE = "http://fake-tailscale.test"
 FAKE_TAILSCALE_CLIENT_ID = "fake-client-id"
-FAKE_TAILSCALE_CLIENT_SECRET = "fake-client-secret"
+FAKE_TAILSCALE_CLIENT_SECRET = PLACEHOLDER_TAILSCALE_CLIENT_SECRET
 
 
 class FakeWhatsAppCdn:

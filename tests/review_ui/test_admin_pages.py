@@ -14,6 +14,12 @@ import pytest
 
 from orchestrator.testing.scenarios import ensure_prova, job_id_for_message, send_video
 from shared.models import WorkerRole
+from shared.testing.credentials import (
+    PLACEHOLDER_ADMIN_TOKEN,
+    PLACEHOLDER_OTHER_PASSWORD,
+    PLACEHOLDER_SHORT_PASSWORD,
+    THIRD_USERNAME,
+)
 from tests.review_ui.admin_browser import follow, post_form
 
 ADMIN_PAGES = ["users", "contacts", "provas", "teams", "enrollment", "workers", "settings"]
@@ -72,7 +78,7 @@ def test_users_add_disable_and_refuse_a_duplicate(admin, harness):
             admin,
             "/review/admin/users/create",
             username="bruno",
-            password="senha-segura",
+            password=PLACEHOLDER_OTHER_PASSWORD,
             role="reviewer",
         ),
     )
@@ -90,7 +96,7 @@ def test_users_add_disable_and_refuse_a_duplicate(admin, harness):
         admin,
         "/review/admin/users/create",
         username="bruno",
-        password="senha-segura",
+        password=PLACEHOLDER_OTHER_PASSWORD,
         role="reviewer",
     )
     assert duplicate.status_code == 409
@@ -98,7 +104,12 @@ def test_users_add_disable_and_refuse_a_duplicate(admin, harness):
 
 
 def test_a_too_short_password_is_explained(admin):
-    response = post_form(admin, "/review/admin/users/create", username="carla", password="curta")
+    response = post_form(
+        admin,
+        "/review/admin/users/create",
+        username=THIRD_USERNAME,
+        password=PLACEHOLDER_SHORT_PASSWORD,
+    )
     assert response.status_code == 400
     assert "Senha: de 8 a 72 caracteres" in response.text
 
@@ -251,7 +262,7 @@ def test_settings_save_and_take_effect_on_intake(admin, harness):
 def test_settings_status_shows_secrets_as_configured_but_never_their_values(admin):
     page = admin.get("/review/admin/settings").text
     assert "<code>BVP_ADMIN_TOKEN</code>: configurado" in page
-    assert "test-admin-token" not in page
+    assert PLACEHOLDER_ADMIN_TOKEN not in page
     assert "Conectado" in page  # the fake Evolution says "open"
 
 

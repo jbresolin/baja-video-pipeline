@@ -19,6 +19,7 @@ from orchestrator.testing.harness import (
     REVIEWER_PASSWORD,
     build_harness,
 )
+from shared.testing.credentials import PLACEHOLDER_WRONG_PASSWORD
 
 # ManualClock.advance() takes seconds.
 HOUR = 3600
@@ -58,8 +59,8 @@ def test_the_admin_is_the_user_named_in_bvp_bootstrap_admin(harness):
 
 def test_wrong_password_and_unknown_user_get_the_same_401(harness):
     # The answer must not reveal whether the username exists.
-    wrong_password = login(harness, REVIEWER_NAME, "not-her-password")
-    unknown_user = login(harness, "nobody", "whatever")
+    wrong_password = login(harness, REVIEWER_NAME, PLACEHOLDER_WRONG_PASSWORD)
+    unknown_user = login(harness, "nobody", PLACEHOLDER_WRONG_PASSWORD)
     assert wrong_password.status_code == unknown_user.status_code == 401
     assert wrong_password.json()["error"] == unknown_user.json()["error"]
 
@@ -126,7 +127,7 @@ def test_sign_in_attempts_are_rate_limited_per_source_address(tmp_path):
     # A harness with a small limit: 3 attempts per 600 s per address.
     harness = build_harness(tmp_path / "data", login_rate_limit_requests=3)
     for _ in range(3):
-        login(harness, REVIEWER_NAME, "guess")
+        login(harness, REVIEWER_NAME, PLACEHOLDER_WRONG_PASSWORD)
     # The 4th attempt is refused before the password is even looked at,
     # even with the right password, and says how long to wait.
     refused = login(harness, REVIEWER_NAME, REVIEWER_PASSWORD)

@@ -10,6 +10,7 @@ import pytest
 
 from orchestrator.config import ConfigError, load_settings
 from orchestrator.security import client_ip_for_rate_limit
+from shared.testing.credentials import PLACEHOLDER_TAILSCALE_CLIENT_SECRET
 
 # The smallest complete set of required settings, by field name.
 REQUIRED = {
@@ -19,7 +20,7 @@ REQUIRED = {
     "tailnet_base_url": "http://100.64.0.1:8080",
     "evolution_api_key": "k",
     "tailscale_oauth_client_id": "id",
-    "tailscale_oauth_client_secret": "secret",
+    "tailscale_oauth_client_secret": PLACEHOLDER_TAILSCALE_CLIENT_SECRET,
 }
 
 
@@ -88,7 +89,7 @@ def test_settings_are_read_from_the_environment(monkeypatch):
     monkeypatch.setenv("BVP_EVOLUTION_API_KEY", "k")
     monkeypatch.setenv("BVP_BAJA_APP_URL", "http://baja.test")
     monkeypatch.setenv("TAILSCALE_OAUTH_CLIENT_ID", "id")
-    monkeypatch.setenv("TAILSCALE_OAUTH_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("TAILSCALE_OAUTH_CLIENT_SECRET", PLACEHOLDER_TAILSCALE_CLIENT_SECRET)
     monkeypatch.setenv("BVP_INBOX_CAP_GB", "30")
     settings = load_settings()
     assert settings.admin_token.get_secret_value() == "from-env"

@@ -23,6 +23,7 @@ from orchestrator.testing.fakes import (
     FakeTailscaleApi,
 )
 from shared.models import WorkerRole
+from shared.testing.credentials import PLACEHOLDER_WRONG_PASSWORD
 
 
 def make_tailscale_client(fake: FakeTailscaleApi, clock=None, secret=FAKE_TAILSCALE_CLIENT_SECRET):
@@ -85,7 +86,7 @@ def test_outages_are_retried_then_reported():
 
 
 def test_wrong_oauth_credentials_are_a_clear_configuration_error():
-    client = make_tailscale_client(FakeTailscaleApi(), secret="wrong")
+    client = make_tailscale_client(FakeTailscaleApi(), secret=PLACEHOLDER_WRONG_PASSWORD)
     with pytest.raises(TailscaleError, match="TAILSCALE_OAUTH_CLIENT_ID"):
         client.mint_auth_key(WorkerRole.WORKER, "baja worker x")
 
