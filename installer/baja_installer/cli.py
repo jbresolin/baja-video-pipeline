@@ -5,6 +5,7 @@
     BajaWorker.exe --init-config PATH        installer: write its keys into worker.json
     BajaWorker.exe --first-run [--config P]  after install: join the Baja tailnet
     BajaWorker.exe --leave-tailnet           uninstaller: tailscale logout
+    BajaWorker.exe --grant-service-rights    installer: Users may start/stop the service
     BajaWorker.exe --service --config P …    NSSM: wait for Tailscale, then run the worker
     BajaWorker.exe [--config P] [--console]  run the worker (= python -m worker)
 
@@ -25,6 +26,7 @@ from baja_installer.check import run_check
 from baja_installer.first_run import EXIT_CANCELLED, FirstRunEnvironment, run_first_run
 from baja_installer.init_config import write_installer_config
 from baja_installer.leave_tailnet import leave_baja_tailnet
+from baja_installer.service_rights import grant_service_rights
 from baja_installer.service_start import EXIT_TAILNET_NOT_READY, wait_for_tailnet_address
 from baja_installer.tailscale_cli import TailscaleCli, find_tailscale_executable
 
@@ -39,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     command.add_argument("--first-run", action="store_true", help="join the Baja tailnet")
     command.add_argument("--leave-tailnet", action="store_true", help="tailscale logout")
+    command.add_argument(
+        "--grant-service-rights",
+        action="store_true",
+        help="let the Users group start and stop the BajaWorker service",
+    )
     command.add_argument("--service", action="store_true", help="run as the NSSM service")
     parser.add_argument("--config", type=Path, help="worker.json (default: C:\\BajaWorker)")
     return parser
@@ -67,6 +74,8 @@ def main(argv: list[str] | None = None) -> int:
         return first_run_command(config_path, install)
     if args.leave_tailnet:
         return leave_baja_tailnet(TailscaleCli(find_tailscale_executable()))
+    if args.grant_service_rights:
+        return grant_service_rights()
     if args.service and not wait_for_tailnet_address(config_path):
         return EXIT_TAILNET_NOT_READY
     return run_worker(config_path, worker_arguments)

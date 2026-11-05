@@ -2,7 +2,8 @@
 
 Stored in the `app_settings` table. The .env values (BVP_INTAKE_MODE,
 BVP_INBOX_HOLD_GB, BVP_PROXY_EVICT_MIN_FREE_GB, BVP_INSTALLER_DOWNLOAD_URL,
-BVP_EVENT_ID, BVP_RESULTS_API_URL)
+BVP_EVENT_ID, BVP_RESULTS_API_URL, BVP_DISCARD_GRACE_HOURS,
+BVP_OUTBOX_KEEP_UNARCHIVED_HOURS)
 are only used for a key that is not in the table yet, i.e. on the first
 start; after that the table wins and editing .env changes nothing.
 
@@ -12,7 +13,7 @@ the memory copy together.
 """
 
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from orchestrator.clock import Clock
 from orchestrator.config import BYTES_PER_GB, Settings
@@ -31,6 +32,8 @@ def defaults_from_environment(settings: Settings) -> AdminSettings:
         installer_download_url=settings.installer_download_url,
         event_id=settings.event_id,
         results_api_base_url=settings.results_api_url,
+        discard_grace_hours=settings.discard_grace_hours,
+        outbox_keep_unarchived_hours=settings.outbox_keep_unarchived_hours,
     )
 
 
@@ -66,6 +69,14 @@ class AdminSettingsStore:
     @property
     def proxy_evict_min_free_bytes(self) -> int:
         return int(self.current.proxy_evict_min_free_gb * BYTES_PER_GB)
+
+    @property
+    def discard_grace(self) -> timedelta:
+        return timedelta(hours=self.current.discard_grace_hours)
+
+    @property
+    def outbox_keep_unarchived(self) -> timedelta:
+        return timedelta(hours=self.current.outbox_keep_unarchived_hours)
 
     def update(
         self, actor: AdminActor, request: UpdateSettingsRequest, now: datetime

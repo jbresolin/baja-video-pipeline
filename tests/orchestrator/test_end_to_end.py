@@ -17,7 +17,7 @@ import hashlib
 import importlib.util
 from pathlib import Path
 
-from orchestrator.domain import bot_messages
+from orchestrator.background.sweepers import clean_outbox_once
 from orchestrator.repositories.events import list_events_for_job
 from orchestrator.testing import scenarios
 from orchestrator.testing.scenarios import (
@@ -174,7 +174,24 @@ def test_a_pass_video_goes_from_whatsapp_to_the_studio(harness, tmp_path):
         headers=studio.headers,
     )
     assert ack.json() == {"job_id": job_id, "state": "done"}
-    # Delete-after-ACK: the outbox copy is gone.
+    # The studio has it, but the master has not archived it yet, so the
+    # outbox keeps its copy (design §11 as amended: clips are the archive).
+    assert harness.context.layout.outbox_path(job_id).exists()
+
+    # --- 6b. The master archives the clip, fetching it from the outbox.
+    archive_offer = ask_next(harness, master, [TaskKind.ARCHIVE_CLIP])
+    assert archive_offer["archive_relative_path"] == "enduro/42/3.mp4"
+    archive_lease, _ = claim_ok(harness, master, job_id, TaskKind.ARCHIVE_CLIP)
+    status, archived_bytes = fetch_like_caddy(harness, master, archive_offer["download_urls"][-1])
+    assert status == 200 and archived_bytes == SAMPLE_CLIP
+    archived = harness.client.post(
+        f"/jobs/{job_id}/clip-archived",
+        json={"lease_id": archive_lease, "sha256": hashlib.sha256(archived_bytes).hexdigest()},
+        headers=master.headers,
+    )
+    assert archived.status_code == 200, archived.text
+    # ACKed and archived: the next outbox cleanup deletes the copy.
+    clean_outbox_once(harness.context)
     assert not harness.context.layout.outbox_path(job_id).exists()
 
     # --- 7. The manifest lists the clip for the playout UI.
@@ -199,6 +216,7 @@ def test_a_pass_video_goes_from_whatsapp_to_the_studio(harness, tmp_path):
         "delivered",
         "done",
     ]
-    # The video arrived as a document, so the bot's only message to the
-    # volunteer was the "received" confirmation.
-    assert [message.text for message in harness.evolution.sent] == [bot_messages.RECEIVED_OK]
+    # The video arrived as a document, so the bot's only answer to the
+    # volunteer was a ✅ reaction on it: no text message at all.
+    assert harness.evolution.sent == []
+    assert [reaction.reaction for reaction in harness.evolution.reactions] == ["✅"]

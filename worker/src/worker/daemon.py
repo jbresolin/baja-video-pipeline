@@ -35,6 +35,7 @@ from worker.enrollment import detect_tailnet_address
 from worker.heartbeat import Heartbeater
 from worker.leases import LeaseTracker
 from worker.media_tools import MediaTools
+from worker.pause import PauseSwitch
 from worker.servers import BackgroundServer, build_peer_file_server_app
 from worker.stages import StageRunner
 from worker.status import StatusBoard
@@ -71,7 +72,7 @@ class DaemonTimings:
 def build_api_client(config: WorkerConfig, transport: httpx.BaseTransport) -> OrchestratorClient:
     return OrchestratorClient(
         httpx.Client(transport=transport, timeout=API_TIMEOUT),
-        config.orchestrator_url,
+        config.resolved_orchestrator_url(),
         worker_id=config.worker_id,
         bearer_token=config.bearer_token,
         tailnet_base_url=config.tailnet_base_url,
@@ -90,9 +91,12 @@ class Daemon:
         transport: httpx.BaseTransport | None = None,
         start_servers: bool = True,
         timings: DaemonTimings | None = None,
+        pause: PauseSwitch | None = None,
     ) -> None:
         """`transport` (every HTTP request: API, downloads, uploads),
-        `start_servers=False` and `timings` exist for tests."""
+        `start_servers=False` and `timings` exist for tests. `pause` is the
+        volunteer's switch, shared with the localhost API (a fresh one
+        reading worker.json when not given)."""
         if not config.is_enrolled or config.role is None:
             raise ValueError("the daemon needs an enrolled config")
         timings = timings or DaemonTimings()
@@ -105,6 +109,7 @@ class Daemon:
         self._servers: list[BackgroundServer] = []
         # The port the 8710/8720 server really listens on, once started.
         self.listening_port: int | None = None
+        self.pause = pause or PauseSwitch(config_path)
         transport = transport or httpx.HTTPTransport()
 
         working_folder = config.resolved_working_folder(config_path)
@@ -141,6 +146,8 @@ class Daemon:
             file_server_port=config.file_server_port,
             receiver_port=config.receiver_port,
             fixed_interval_seconds=timings.heartbeat_interval_seconds,
+            connection_step_pending=config.connection_step_pending,
+            pause=self.pause,
         )
         self.stage_freed = threading.Event()
         self.stages: dict[TaskKind, StageRunner] = {
@@ -159,6 +166,7 @@ class Daemon:
             shutdown=shutdown,
             stage_freed=self.stage_freed,
             max_wait_seconds=timings.max_dispatch_wait_seconds,
+            pause=self.pause,
         )
         self.acknowledger = None
         if self.library is not None:

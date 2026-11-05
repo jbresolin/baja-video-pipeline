@@ -17,8 +17,10 @@ from shared.models import JobState
 UPDATABLE_JOB_COLUMNS = frozenset(
     {
         "state", "finished_at", "duration_s", "has_audio", "frame_rate", "raw_on_vps",
+        "media_info_json", "discarded_from", "discard_grace_ends_at",
         "proxy_available", "thumbnail_available", "proxy_requested",
-        "prova", "car_number", "team_name", "overlay_team_name", "passagem", "show_pass",
+        "prova", "car_number", "team_name", "overlay_team_name", "overlay_school_short",
+        "passagem", "show_pass",
         "cut_in_s", "cut_out_s", "reviewed_by", "reviewed_at",
         "clip_sha256", "clip_size_bytes", "clip_relative_path", "clip_route",
         "clip_rendered_by", "clip_delivered_at",
@@ -46,13 +48,15 @@ def update_job(
     now: datetime,
     changes: dict[str, Any],
     *,
-    bump_version: bool = True,
+    bump_version: bool = False,
 ) -> None:
     """Change some columns of one job and stamp updated_at.
 
-    `version` goes up by one unless bump_version=False. Only pure
-    bookkeeping that a reviewer does not care about (the VPS dropping its
-    inbox copy) skips the bump, so it never causes a version_conflict.
+    `version` is the job's *review* version (docs/api.md §4): it goes up
+    by one only when bump_version=True, which only reviewer actions pass
+    (domain/review.py). Machine activity (holder confirmations, proxy and
+    thumbnail uploads, leases, sweepers) never bumps it, so a worker busy
+    with the job cannot make a reviewer's save fail with version_conflict.
     """
     unknown = set(changes) - UPDATABLE_JOB_COLUMNS
     if unknown:

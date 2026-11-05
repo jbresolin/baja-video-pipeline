@@ -23,6 +23,13 @@ class Measurement(ApiModel):
     seconds: float = Field(gt=0)
 
 
+class HeldClip(ApiModel):
+    """A finished clip a worker keeps in its clips/ folder (served on :8710)."""
+
+    job_id: str
+    sha256: Sha256Hex
+
+
 class HeartbeatRequest(ApiModel):
     """POST /workers/{id}/heartbeat, every 15 s."""
 
@@ -39,6 +46,15 @@ class HeartbeatRequest(ApiModel):
     held_job_ids: list[str] = Field(default_factory=list)
     # Measurements finished since the previous heartbeat (may be empty).
     measurements: list[Measurement] = Field(default_factory=list)
+    # Clips this worker rendered and keeps (design §11 as amended: clips are
+    # the archive). The master copies them; the answer says which it has.
+    held_clips: list[HeldClip] = Field(default_factory=list)
+    # True while the volunteer has paused this worker ("Pausar" in the tray
+    # icon or on the status page). The worker finishes the task it is on and
+    # asks for nothing new; the orchestrator offers it nothing and treats it
+    # like an offline worker for second-holder and studio choice, but it
+    # still serves its held raws to peers.
+    paused: bool = False
 
 
 class HeartbeatResponse(ApiModel):
@@ -51,6 +67,9 @@ class HeartbeatResponse(ApiModel):
     # Jobs from held_job_ids that were discarded: the worker may delete
     # its copy of their raw (design §4). Never lists a job still in use.
     deletable_job_ids: list[str] = Field(default_factory=list)
+    # SHA-256 of the held_clips the master has archived. Only these may be
+    # evicted, and only when near the storage cap, oldest first.
+    archived_clip_sha256s: list[Sha256Hex] = Field(default_factory=list)
 
 
 class LeaseRenewRequest(ApiModel):
@@ -70,6 +89,13 @@ class HolderConfirmRequest(ApiModel):
     # From ffprobe on the worker; the first confirming holder fills these in.
     duration_s: Seconds | None = None
     has_audio: bool | None = None
+
+
+class ClipArchivedRequest(ApiModel):
+    """POST /jobs/{id}/clip-archived: the master stored that exact clip, hash checked."""
+
+    lease_id: str
+    sha256: Sha256Hex
 
 
 class HolderConfirmResponse(ApiModel):

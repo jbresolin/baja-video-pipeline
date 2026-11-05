@@ -18,19 +18,19 @@ from shared.models import (
     Team,
 )
 
-NO_HOLDER_ONLINE = "waiting for a holder of the raw to come back online"
+NO_HOLDER_ONLINE = "waiting for a holder of the raw to come back online (or be resumed)"
 
 
 def review_queue(context: OrchestratorContext, states: list[JobState], limit: int):
     with context.database.transaction() as connection:
         rows = jobs_repo.list_job_rows_in_states(connection, states, limit)
-        jobs = [job_from_row(connection, row) for row in rows]
+        jobs = [job_from_row(connection, row, context.layout) for row in rows]
     return ReviewQueueResponse(items=[JobSummary.from_job(job) for job in jobs])
 
 
 def get_job(context: OrchestratorContext, job_id: str) -> Job:
     with context.database.transaction() as connection:
-        return load_job(connection, job_id)
+        return load_job(connection, job_id, context.layout)
 
 
 def find_team(context: OrchestratorContext, car_number: int) -> Team:
@@ -53,7 +53,8 @@ def regenerate_proxy(
             return RegenerateProxyResponse(job_id=job_id, queued=False, waiting_reason=reason)
         snapshot = FleetSnapshot.take(connection, now)
         holder_online = any(
-            holder.status == HolderStatus.CONFIRMED and snapshot.is_online(holder.worker_id)
+            holder.status == HolderStatus.CONFIRMED
+            and snapshot.is_available_for_work(holder.worker_id)
             for holder in leases_repo.list_holders(connection, job_id)
         )
         waiting_reason = None if holder_online else NO_HOLDER_ONLINE

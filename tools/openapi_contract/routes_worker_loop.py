@@ -6,6 +6,7 @@ from shared.models import (
     ChunkAccepted,
     ClaimRequest,
     ClaimResponse,
+    ClipArchivedRequest,
     DeliveredRequest,
     FailedRequest,
     HeartbeatRequest,
@@ -18,6 +19,7 @@ from shared.models import (
     NextTaskRequest,
     NextTaskResponse,
     PeersResponse,
+    ProbeReport,
 )
 from tools.openapi_contract.auth import (
     error_responses,
@@ -237,6 +239,25 @@ def upload_thumbnail(job_id: str, lease_id: str = Header(..., alias="Lease-Id"))
     not_implemented()
 
 
+@router.put(
+    "/jobs/{job_id}/media-info",
+    tags=["worker loop"],
+    summary="Upload the raw's ffprobe report (JSON, single request)",
+    status_code=204,
+    responses=error_responses(400, 401, 404, 409, 413),
+)
+def upload_media_info(
+    job_id: str, body: ProbeReport = Body(...), lease_id: str = Header(..., alias="Lease-Id")
+) -> None:
+    """Under the make_proxy lease, before the thumbnail and proxy. The body
+    is ffprobe's `format` and `streams` for the raw with every location tag
+    removed (`location_present` says there was one; the orchestrator strips
+    them again). Stored as `Job.media_info`; sets `Job.frame_rate` while it
+    is still empty (the proxy's `Frame-Rate` header then replaces it).
+    Over 512 KB → 413. Machine activity: does not bump `Job.version`."""
+    not_implemented()
+
+
 @router.post(
     "/jobs/{job_id}/clip",
     tags=["worker loop"],
@@ -255,6 +276,23 @@ def upload_clip(
     """On the completing chunk: clip stored in the outbox, job claimed →
     uploaded (route `outbox`), process lease released, and a `deliver` task
     becomes available to the studio."""
+    not_implemented()
+
+
+@router.post(
+    "/jobs/{job_id}/clip-archived",
+    tags=["delivery"],
+    summary="Master: confirm one clip version is in the archive (sha256 checked)",
+    response_model=JobStateResponse,
+    responses=error_responses(400, 401, 403, 404, 409, 422),
+)
+def clip_archived(job_id: str, body: ClipArchivedRequest) -> JobStateResponse:
+    """Master only (403 otherwise), under its archive_clip lease. Marks the
+    clip version with that sha256 archived and ends the lease; 422
+    hash_mismatch when the sha256 is no version of this job (the lease
+    stays, so the master can fetch from another source). Archived clips
+    may then be evicted by the workers that keep them, and the outbox copy
+    may go once the studio has ACKed it. The job's state does not change."""
     not_implemented()
 
 

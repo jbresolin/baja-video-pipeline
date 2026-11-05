@@ -4,7 +4,10 @@ Modules, roughly in the order work flows through them:
     __main__        entry point: setup page, enrollment, then the daemon
     config          worker.json
     enrollment      first-run POST /enroll, machine capabilities
-    setup_page      the localhost setup/status page
+    setup_page      the localhost setup/status page (status_page: pt-BR view)
+    local_api       the localhost JSON API the tray icon uses (:8700/api/*)
+    pause           the volunteer's "Pausar"/"Retomar" switch
+    tray/           BajaWorkerTray.exe: state rules (GUI-free), sc.exe, pystray
     daemon          builds and starts/stops every piece below
     heartbeat       15 s heartbeat: leases, held raws, free space
     dispatcher      /next + /claim, hands tasks to the stages

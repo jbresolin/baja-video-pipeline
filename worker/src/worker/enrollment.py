@@ -134,11 +134,13 @@ def wait_until_enrolled(
             setup_submitted.clear()
             continue
         status.set("setup", "enrolling…")
+        status.set_enrollment_refused(False)
         try:
             return enroll(config, config_path, api_for(config), capabilities_for(config))
         except EnrollmentRefusedError as refused:
             logger.error("enrollment refused: %s", refused)
             status.set("setup", f"the enrollment token was refused ({refused}); enter a new one")
+            status.set_enrollment_refused(True)
             save_config(config_path, config.model_copy(update={"enrollment_token": None}))
         except (OrchestratorUnreachableError, ApiError) as error:
             logger.warning("enrollment failed, will retry: %s", error)

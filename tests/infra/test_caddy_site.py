@@ -4,7 +4,8 @@ There is no Caddy in the test suite, so these tests do two things:
 
 1. Read the site block as text and check the parts the rest of the system
    relies on: no password prompt from Caddy any more; /proxies/* and
-   /thumbs/* go through forward_auth to the orchestrator's /auth/media;
+   /thumbs/* and /clip-downloads/* go through forward_auth to the
+   orchestrator's /auth/media;
    the bare domain redirects to /review/.
 2. Call the orchestrator's /auth/media the way Caddy's forward_auth does
    (the browser's own headers, cookie included, plus X-Forwarded-Method
@@ -66,6 +67,18 @@ def test_proxies_and_thumbs_ask_the_orchestrator_before_serving():
         assert "import bvp_pipeline_files" in block(text, route)
 
 
+def test_clip_downloads_ask_the_orchestrator_before_serving_the_outbox():
+    # LIVESTACK-38: the review UI's Download button for a clip still in the
+    # outbox. Its own block (it serves outbox/ under another path), but the
+    # same sign-in check as proxies, before any file is served.
+    downloads = block(site_text(), "handle_path /clip-downloads/*")
+    assert re.search(r"forward_auth bvp-orchestrator:8000 \{\s*uri /auth/media\s*\}", downloads)
+    assert downloads.index("forward_auth") < downloads.index("file_server")
+    assert "/outbox" in downloads
+    # Half-written uploads are never handed out.
+    assert "hide .* *.part *.part.json" in downloads
+
+
 def test_the_forward_auth_target_is_in_the_contract_and_reads_the_same_cookie():
     contract = OPENAPI_PATH.read_text(encoding="utf-8")
     assert "  /auth/media:" in contract
@@ -107,11 +120,13 @@ def harness(tmp_path):
     built.context.database.close()
 
 
-def as_forward_auth(cookie: str | None) -> dict[str, str]:
+def as_forward_auth(
+    cookie: str | None, uri: str = "/proxies/0123456789abcdef.mp4"
+) -> dict[str, str]:
     """The headers Caddy's forward_auth sends: the browser's own, plus these two."""
     headers = {
         "X-Forwarded-Method": "GET",
-        "X-Forwarded-Uri": "/proxies/0123456789abcdef.mp4",
+        "X-Forwarded-Uri": uri,
         "Range": "bytes=0-",  # the video player's
         "X-Forwarded-For": "203.0.113.9",
     }
@@ -145,3 +160,21 @@ def test_no_cookie_a_forged_one_or_an_ended_session_is_refused(harness):
         response = harness.client.get("/auth/media", headers=as_forward_auth(cookie))
         # Caddy passes this 401 back to the browser instead of the file.
         assert response.status_code == 401, cookie
+
+
+def test_a_clip_download_without_a_session_is_refused(harness):
+    # What Caddy asks before serving /clip-downloads/<job>.mp4: someone with
+    # the link but no sign-in (no cookie, or a made-up one) gets 401, so
+    # finished clips never leak through a shared URL.
+    clip = "/clip-downloads/0123456789abcdef0123456789abcdef.mp4"
+    for cookie in (None, "bvp_session=forged"):
+        response = harness.client.get("/auth/media", headers=as_forward_auth(cookie, clip))
+        assert response.status_code == 401, cookie
+
+    # A signed-in reviewer with the same link is let through.
+    login = harness.client.post(
+        "/auth/login", json={"username": REVIEWER_NAME, "password": REVIEWER_PASSWORD}
+    )
+    cookie = f"bvp_session={login.json()['session_token']}"
+    response = harness.client.get("/auth/media", headers=as_forward_auth(cookie, clip))
+    assert response.status_code == 204

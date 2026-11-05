@@ -21,12 +21,11 @@ def teams(harness) -> dict[int, dict]:
     return {team["car_number"]: team for team in listed}
 
 
-def save(harness, car_number, team_name, short_name=None, school=None):
-    return harness.client.put(
-        f"/admin/teams/{car_number}",
-        json={"team_name": team_name, "short_name": short_name, "school": school},
-        auth=harness.admin_auth,
-    )
+def save(harness, car_number, team_name, short_name=None, school=None, school_short=None):
+    body = {"team_name": team_name, "short_name": short_name, "school": school}
+    if school_short is not None:
+        body["school_short"] = school_short
+    return harness.client.put(f"/admin/teams/{car_number}", json=body, auth=harness.admin_auth)
 
 
 def sync(harness):
@@ -104,3 +103,12 @@ def test_team_changes_are_audited(harness):
     assert [event["kind"] for event in events] == ["team_deleted", "team_saved"]
     assert events[1]["details"]["before"] is None  # a new car
     assert events[0]["details"]["after"] is None  # gone
+
+
+def test_the_school_short_name_can_be_corrected_and_survives_a_sync(synced):
+    # The API says "UFMG" for car 1; the admin wants "UFMG-BH" on the clips.
+    assert teams(synced)[1]["school_short"] == "UFMG"
+    save(synced, 1, "BAJA UFMG", school_short="UFMG-BH")
+    sync(synced)
+    row = teams(synced)[1]
+    assert (row["school_short"], row["synced_school_short"]) == ("UFMG-BH", "UFMG")

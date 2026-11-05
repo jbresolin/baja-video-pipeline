@@ -40,6 +40,9 @@
         <span class="playhead" id="playhead"></span>
       </div>
     </div>
+    {% if media %}{% include "_media_info.html" %}{% else %}
+    <p class="hint media-info-missing">File details appear once a holder has probed the raw.</p>
+    {% endif %}
     <details class="shortcuts" id="shortcuts">
       <summary>Keyboard shortcuts <kbd>?</kbd></summary>
       <dl>
@@ -110,6 +113,9 @@
         {% else %}
         <p class="hint">No review actions in this state.</p>
         {% endfor %}
+        {% if job.clip and job.clip.download_url %}
+        <a class="action subtle" href="{{ media_url(job.clip.download_url) }}" download title="The clip as it is in the VPS outbox">Download clip</a>
+        {% endif %}
         {% if job.proxy_available and job.state != "discarded" %}
         <button type="button" class="action subtle" data-regenerate-proxy title="Ask a holder to render the proxy again">Re-render proxy</button>
         {% endif %}

@@ -23,6 +23,11 @@
       <dt>Free</dt><dd>{{ disk.free_bytes|bytes }}</dd>
     </dl>
   </div>
+  <div class="card">
+    <h2>Clip archive (master)</h2>
+    <p class="big">{{ fleet.clip_archive.archived }} <span class="of">/ {{ fleet.clip_archive.total }}</span></p>
+    <p class="small">every finished clip and version, kept on the master</p>
+  </div>
 </section>
 
 <section>
@@ -56,9 +61,18 @@
           </td>
           <td>
             <span class="dot {{ 'online' if entry.online else 'offline' }}"></span>{{ "online" if entry.online else "offline" }}
+            {# Paused by the volunteer (tray icon): heartbeats, serves held raws, takes no tasks. #}
+            {% if entry.paused %}<span class="badge paused" title="no new tasks; still serves held raws">pausado</span>{% endif %}
             <div class="small">heartbeat {{ age(worker.last_heartbeat, now) }}</div>
           </td>
-          <td class="num">{{ entry.held_job_count }}<div class="small">{{ entry.held_bytes|bytes }}</div></td>
+          <td class="num">{{ entry.held_job_count }}<div class="small">{{ entry.held_bytes|bytes }}</div>
+            {# Clips: what a worker keeps (and how many the master has, so it may evict
+               them); on the master, the whole archive (design §11 as amended). #}
+            {% if worker.role == "master" %}
+            <div class="small" data-clip-archive>{{ fleet.clip_archive.archived }} of {{ fleet.clip_archive.total }} clips archived</div>
+            {% elif worker.role == "worker" %}
+            <div class="small" data-worker-clips>{{ entry.clips_held }} clips kept · {{ entry.clips_archived }} archived</div>
+            {% endif %}</td>
           <td>
             <div class="meter {{ 'warn' if not entry.accepting_new_raws else '' }}"><span class="meter-fill" style="width: {{ row.used_percent }}%"></span></div>
             <div class="small">{{ row.used_bytes|bytes }} of {{ worker.storage_cap_bytes|bytes }} · {{ worker.free_bytes|bytes }} free

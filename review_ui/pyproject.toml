@@ -1,6 +1,6 @@
 [project]
 name = "review-ui"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reviewer web UI (queue, cut marks, clips, fleet) that talks to the orchestrator over HTTP"
 requires-python = ">=3.12,<3.13"
 dependencies = [

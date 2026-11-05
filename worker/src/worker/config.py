@@ -24,6 +24,14 @@ from shared.protocol import DEFAULT_STUDIO_RECEIVER_PORT, DEFAULT_WORKER_FILE_SE
 CONFIG_FILE_NAME = "worker.json"
 DEFAULT_SETUP_PAGE_PORT = 8700
 GIGABYTE = 1024**3
+# Built-in orchestrator_url: a local dev orchestrator. An installed worker
+# still has it after enrolling until `--first-run` has joined the tailnet and
+# written Caddy's tailnet listener there (installer/baja_installer/first_run.py).
+DEFAULT_ORCHESTRATOR_URL = "http://127.0.0.1:8000"
+# Shown instead of a raw "connection refused" while that step is pending.
+CONNECTION_STEP_PENDING_MESSAGE = (
+    "Conexão não concluída: abra 'Baja Worker - concluir conexão' no menu Iniciar."
+)
 
 
 class WorkerConfig(BaseModel):
@@ -33,7 +41,7 @@ class WorkerConfig(BaseModel):
 
     # Caddy's tailnet listener, e.g. "http://100.101.102.103:8080". Every API
     # call except /enroll goes here.
-    orchestrator_url: str = "http://127.0.0.1:8000"
+    orchestrator_url: str = DEFAULT_ORCHESTRATOR_URL
     # The public site that routes POST /enroll (design §8). None = use
     # orchestrator_url (local dev, where both are the same process).
     enroll_url: str | None = None
@@ -70,6 +78,10 @@ class WorkerConfig(BaseModel):
     receiver_port: int = DEFAULT_STUDIO_RECEIVER_PORT
     setup_page_port: int = DEFAULT_SETUP_PAGE_PORT
 
+    # The volunteer clicked "Pausar" (tray icon or status page): finish the
+    # current task, take nothing new. Kept here so it survives a reboot.
+    paused: bool = False
+
     # Studio only: the folder OBS plays from (<prova>/<car>/<passagem>.mp4
     # plus latest.m3u). None = "<working folder>/box".
     studio_clip_root: Path | None = None
@@ -77,6 +89,30 @@ class WorkerConfig(BaseModel):
     @property
     def is_enrolled(self) -> bool:
         return bool(self.worker_id and self.bearer_token and self.role)
+
+    @property
+    def connection_step_pending(self) -> bool:
+        """Enrolled, but `--first-run` has not finished the tailnet join yet.
+
+        first_run.py replaces the default orchestrator_url once the PC is on
+        the tailnet, so "enrolled and still on the default" means that step
+        is still to do (or failed). Volunteers then see
+        CONNECTION_STEP_PENDING_MESSAGE instead of a network error.
+        """
+        return self.is_enrolled and self.orchestrator_url == DEFAULT_ORCHESTRATOR_URL
+
+    def resolved_orchestrator_url(self) -> str:
+        """Where the daemon sends API calls.
+
+        While orchestrator_url is still the built-in local default but /enroll
+        told us Caddy's tailnet listener (`tailnet_base_url`), use that: it
+        is where the worker API lives. Traffic only flows once this PC has
+        joined the tailnet (`--first-run`), but then it works even if the
+        join step never got to rewrite worker.json.
+        """
+        if self.orchestrator_url == DEFAULT_ORCHESTRATOR_URL and self.tailnet_base_url:
+            return self.tailnet_base_url
+        return self.orchestrator_url
 
     def resolved_enroll_url(self) -> str:
         return self.enroll_url or self.orchestrator_url

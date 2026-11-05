@@ -1,9 +1,13 @@
 """Heartbeat, /next offers, claims and lease renewal (docs/api.md §5)."""
 
 import sqlite3
+from datetime import datetime
 
 from orchestrator.context import OrchestratorContext
-from orchestrator.domain.fleet_snapshot import FleetSnapshot, accepts_new_raws
+from orchestrator.domain import clip_archive
+from orchestrator.domain.archive_rules import offer_archive_clip
+from orchestrator.domain.discard import discard_grace_is_over
+from orchestrator.domain.fleet_snapshot import FleetSnapshot, accepts_new_raws, is_paused
 from orchestrator.domain.job_view import require_job_row
 from orchestrator.domain.leases import renew_lease, require_active_lease, sweep_expired_leases
 from orchestrator.domain.task_rules import evaluate_task
@@ -36,7 +40,8 @@ from shared.protocol import (
 # they unblock the human reviewers, who are the slowest part of the line.
 KIND_PRIORITY = [TaskKind.MAKE_PROXY, TaskKind.PROCESS, TaskKind.DOWNLOAD_RAW, TaskKind.DELIVER]
 # After all of that, the master backfills raws of finished jobs it missed
-# (design §17): the lowest priority there is.
+# (design §17), and after that it archives clips (archive_rules.py): the
+# lowest priority there is.
 
 
 def process_heartbeat(
@@ -55,6 +60,7 @@ def process_heartbeat(
             tailnet_address=request.tailnet_address,
             file_server_port=request.file_server_port,
             receiver_port=request.receiver_port,
+            paused=request.paused,
         )
         for measurement in request.measurements:
             workers_repo.insert_stat_sample(
@@ -77,7 +83,9 @@ def process_heartbeat(
 
         if worker_row["role"] != WorkerRole.STUDIO:
             _forget_raws_the_worker_no_longer_has(connection, worker_id, request, now)
-        deletable = _deletable_job_ids(connection, request.held_job_ids)
+        deletable = _deletable_job_ids(connection, request.held_job_ids, now)
+        clip_archive.store_held_clips(connection, worker_id, request.held_clips)
+        archived_clips = clip_archive.archived_among(connection, request.held_clips)
         refreshed_row = workers_repo.get_worker_row(connection, worker_id)
 
     return HeartbeatResponse(
@@ -85,6 +93,7 @@ def process_heartbeat(
         heartbeat_interval_s=HEARTBEAT_INTERVAL_SECONDS,
         accepting_new_raws=accepts_new_raws(refreshed_row),
         deletable_job_ids=deletable,
+        archived_clip_sha256s=archived_clips,
     )
 
 
@@ -108,12 +117,18 @@ def _forget_raws_the_worker_no_longer_has(
         )
 
 
-def _deletable_job_ids(connection: sqlite3.Connection, held_job_ids: list[str]) -> list[str]:
-    """Held raws of discarded jobs (design §4). Unknown ids are never listed, to be safe."""
+def _deletable_job_ids(
+    connection: sqlite3.Connection, held_job_ids: list[str], now: datetime
+) -> list[str]:
+    """Held raws of jobs discarded longer ago than the grace period (domain/discard.py).
+
+    Within the grace period a discard can still be undone, so holders keep
+    the raw. Unknown ids are never listed, to be safe.
+    """
     deletable = []
     for job_id in held_job_ids:
         row = jobs_repo.get_job_row(connection, job_id)
-        if row is not None and row["state"] == JobState.DISCARDED:
+        if row is not None and discard_grace_is_over(row, now):
             deletable.append(job_id)
     return deletable
 
@@ -143,6 +158,9 @@ def offer_next_task(
     context: OrchestratorContext, worker_row: sqlite3.Row, request: NextTaskRequest
 ) -> NextTaskResponse:
     """The first task this worker may do among the kinds it accepts; an offer, not a lease."""
+    if is_paused(worker_row):
+        # The volunteer paused it (tray icon): nothing new of any kind.
+        return NextTaskResponse(task=None, retry_after_s=EMPTY_QUEUE_RETRY_SECONDS)
     with context.database.transaction() as connection:
         now = context.clock.now()
         sweep_expired_leases(connection, now)
@@ -169,6 +187,10 @@ def offer_next_task(
         if backfill is not None:
             context.task_counters.count_offer(TaskKind.DOWNLOAD_RAW)
             return NextTaskResponse(task=backfill, retry_after_s=0)
+        archive = offer_archive_clip(connection, context.layout, snapshot, worker_row, accepted)
+        if archive is not None:
+            context.task_counters.count_offer(TaskKind.ARCHIVE_CLIP)
+            return NextTaskResponse(task=archive, retry_after_s=0)
     return NextTaskResponse(task=None, retry_after_s=EMPTY_QUEUE_RETRY_SECONDS)
 
 

@@ -47,6 +47,22 @@ def clip_relative_path_in_folder(prova_slug: str, car_number: int, passagem: int
     return str(PurePosixPath(prova_slug, str(car_number), f"{passagem}.mp4"))
 
 
+def archive_relative_path(clip_path: str, version: int) -> str:
+    """Where the master archives one version of a clip (design §11 as amended).
+
+    Version 1 keeps the box path; later versions (after a reprocess) get a
+    ".v<n>" before the extension, so no version replaces another:
+        archive_relative_path("enduro/42/3.mp4", 1) == "enduro/42/3.mp4"
+        archive_relative_path("enduro/42/3.mp4", 2) == "enduro/42/3.v2.mp4"
+    """
+    if version < 1:
+        raise ValueError("clip versions start at 1")
+    if version == 1:
+        return clip_path
+    path = PurePosixPath(clip_path)
+    return str(path.with_name(f"{path.stem}.v{version}{path.suffix}"))
+
+
 def is_safe_relative_path(relative_path: str) -> bool:
     """True if the path stays inside the clip root.
 

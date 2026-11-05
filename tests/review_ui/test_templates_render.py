@@ -18,6 +18,7 @@ from review_ui.job_view import (
     frame_rate_for_stepping,
     intake_text,
 )
+from review_ui.media_info_view import media_panel
 from review_ui.queue_view import STATES_IN_PIPELINE_ORDER, QueueFilter
 from review_ui.settings import ReviewUiSettings
 from review_ui.templating import TEMPLATES_DIR, build_templates
@@ -31,6 +32,7 @@ from tests.review_ui.sample_data import (
     make_manifest,
 )
 from tests.review_ui.sample_events import make_events
+from tests.review_ui.test_media_panel import IPHONE_REPORT
 
 SETTINGS = ReviewUiSettings(public_base_url="https://baja.example.org")
 NAMES = {"w-master-0001": "joao-desktop"}
@@ -55,6 +57,7 @@ def job_context(job) -> dict:
         ],
         "prova_choices": ["Enduro", "Suspensão"],
         "poll_seconds": 5,
+        "media": media_panel(job),
     }
 
 
@@ -105,6 +108,7 @@ CASES = {
     "_job_panel.html": lambda: job_context(failed_job()),
     "_job_status.html": lambda: job_context(delivered_job()),
     "_job_events.html": lambda: job_context(delivered_job()),
+    "_media_info.html": lambda: job_context(make_job(media_info=IPHONE_REPORT)),
     "clips.html": clips_context,
     "fleet.html": fleet_context,
     "_fleet_body.html": fleet_context,
@@ -165,11 +169,12 @@ def test_text_from_senders_and_workers_is_escaped():
     assert "<b>boom</b>" not in html
 
 
-def test_discarded_job_has_no_actions():
+def test_discarded_job_offers_only_restore():
     html = render("job.html", job_context(make_job(state=JobState.DISCARDED)))
 
-    assert "data-action=" not in html
-    assert "No review actions in this state." in html
+    # Restore is the one action left (LIVESTACK-38: a discard can be undone).
+    assert 'data-action="restore"' in html
+    assert html.count("data-action=") == 1
 
 
 def test_car_number_zero_is_shown_not_treated_as_missing():

@@ -9,6 +9,10 @@ The finished clip waits in clips/<job_id>.mp4 next to a small JSON
 after rendering and is offered the same job again with the same inputs,
 it skips the render and resumes the upload. A lost lease (the reviewer
 changed the cut, or the lease expired) deletes the clip.
+
+After a verified delivery the clip is *kept* (design §11 as amended:
+processed clips are the archive) as clips/<job_id>.<sha256>.mp4, until
+the master has archived it (worker.clip_store).
 """
 
 import json
@@ -37,7 +41,7 @@ def run_process(
     with env.storage.pin(task.job_id):
         try:
             clip_path = _reuse_or_render(env, task, raw_path, cancel)
-            deliver_clip(env, lease, task, clip_path, cancel)
+            clip_sha256 = deliver_clip(env, lease, task, clip_path, cancel)
         except TaskCancelledError as cancelled:
             if cancelled.lease_lost:
                 # Docs §5: on lost, discard partial output. (After a
@@ -45,16 +49,29 @@ def run_process(
                 # handles itself without raising.)
                 env.storage.delete_clip(task.job_id)
             raise
-    env.storage.delete_clip(task.job_id)
+    env.storage.clips.keep(clip_path, task.job_id, clip_sha256)
+    env.storage.delete_clip(task.job_id)  # only the sidecar is left by now
 
 
 def render_inputs(task: ProcessTask) -> dict:
     """Everything that changes the rendered picture or sound."""
     fields = (
         "raw_sha256", "cut_in_s", "cut_out_s", "prova", "car_number",
-        "team_name", "passagem", "show_pass", "has_audio",
+        "team_name", "school_short", "passagem", "show_pass", "has_audio",
     )  # fmt: skip
     return {name: getattr(task, name) for name in fields}
+
+
+def overlay_text_for(task: ProcessTask) -> OverlayText:
+    """What the clip overlay shows, straight from the orchestrator's task."""
+    return OverlayText(
+        prova=task.prova,
+        car_number=task.car_number,
+        team_name=task.team_name,
+        passagem=task.passagem,
+        show_pass=task.show_pass,
+        school_short=task.school_short,
+    )
 
 
 def _sidecar_matches(sidecar_path: Path, task: ProcessTask) -> bool:
@@ -83,13 +100,7 @@ def _reuse_or_render(
         # Unreadable raw → scope "job"; a failing ffmpeg render
         # (MediaToolError) → scope "worker" (worker.failures).
         info = probe_input(env.media, raw_path)
-        overlay = OverlayText(
-            prova=task.prova,
-            car_number=task.car_number,
-            team_name=task.team_name,
-            passagem=task.passagem,
-            show_pass=task.show_pass,
-        )
+        overlay = overlay_text_for(task)
         render_overlay_png(overlay_path, overlay, final_frame_width(info.width, info.height))
         env.media.render_final(
             raw_path,

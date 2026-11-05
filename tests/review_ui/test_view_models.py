@@ -49,7 +49,7 @@ from tests.review_ui.sample_events import make_events
         (JobState.DONE, ["save", "reprocess"]),
         (JobState.FAILED, ["save", "retry", "discard"]),
         (JobState.RECEIVED, ["save"]),
-        (JobState.DISCARDED, []),
+        (JobState.DISCARDED, ["restore"]),
     ],
 )
 def test_available_actions_follow_the_api_table(state, expected):
@@ -112,7 +112,11 @@ def test_delivered_job_shows_where_the_clip_is():
     notes = explain_status(delivered_job(), {})
 
     assert notes[0].level == "success"
-    assert notes[-1].text == "On the studio box at suspensao/7/1.mp4."
+    # Where the clip is (LIVESTACK-38): delivered, by which route, and the
+    # studio path; full coverage in test_delivery_view.py.
+    assert any(
+        "Entregue ao estúdio" in note.text and "suspensao/7/1.mp4" in note.text for note in notes
+    )
 
 
 # --- Intake and frame rate ---

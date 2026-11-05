@@ -51,6 +51,7 @@ class ApiTeam:
     name: str
     short_name: str | None
     school: str | None
+    school_short: str | None = None
 
 
 def clean_name(text: object) -> str | None:
@@ -127,6 +128,7 @@ class ResultsApiClient:
                         name=name,
                         short_name=clean_name(entry.get("short_name")),
                         school=clean_name(entry.get("school")),
+                        school_short=clean_name(entry.get("school_short")),
                     )
                 )
         return teams

@@ -18,6 +18,7 @@ from orchestrator.domain.transitions import (
     revoke_job_leases,
 )
 from orchestrator.errors import ApiError, hash_mismatch
+from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
@@ -150,6 +151,20 @@ def report_failure(
         )
         kind = lease.task_kind
         end_lease(connection, lease, now, actor=actor, reason="worker reported a failure")
+        if kind == TaskKind.ARCHIVE_CLIP:
+            # Only the master archives: no exclusion and no job failure,
+            # just a pause before the next try (domain/archive_rules.py).
+            clips_repo.mark_archive_failed(connection, job_id, now)
+            events_repo.record_event(
+                connection,
+                now,
+                actor=actor,
+                kind="archive_failed",
+                job_id=job_id,
+                worker_id=worker_id,
+                reason=request.message[:200],
+            )
+            return JobStateResponse(job_id=job_id, state=JobState(job_row["state"]))
         if kind == TaskKind.DOWNLOAD_RAW:
             drop_unconfirmed_holder(connection, job_id, worker_id)
         leases_repo.add_task_exclusion(connection, job_id, worker_id, kind, now, request.scope)

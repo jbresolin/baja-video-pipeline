@@ -1,0 +1,273 @@
+/*
+ * Ardósia, the on-air theme: the faithful sibling of the scoreboard the stream uses today,
+ * chosen by João at the gate on PR #19. Every visual value a graphic draws with lives here,
+ * as a CSS custom property the renderer sets on its page's :root; custom properties reach
+ * inside every graphic's shadow root, so a graphic reads `var(--panel-base)` and never names
+ * a colour, a size, a face or a duration of its own (packages/theme/README.md).
+ *
+ * This file is the product's copy and the source of truth. The design record it was copied
+ * from, docs/design/directions/ardosia/tokens.css (PR #19), is kept as the record of the
+ * design and is not read by any product code. The token names are the design's; the tokens
+ * removed and added when the file was copied are listed in packages/theme/README.md.
+ */
+:root {
+  /* ---- Brand values (docs/brand, the logo SVG). Yellow is used as text only (the position
+     column, as the scoreboard does), never as a field, so it cannot read as a yellow flag. */
+  --brand-green: #009739;
+  --brand-navy: #003b71;
+  --brand-blue: #386db4;
+  --brand-yellow: #f4c42a;
+  --brand-grey: #383838;
+
+  /* ---- Surfaces: the scoreboard's slate (rgb 20 25 48 at 78%), a touch denser for contrast */
+  --panel-base: rgb(20 25 48 / 0.84);
+  --panel-head: rgb(20 25 48 / 0.94);
+  --shadow: none;
+
+  /* ---- Text and the colour-per-column triad */
+  --text: #e8ecf4;
+  --text-muted: #aab4c8;
+  --text-pos: var(--brand-yellow); /* position: yellow text, no field */
+  --chip-car-background: var(--brand-blue); /* car number: the blue chip */
+  --chip-car-text: #ffffff;
+  --text-laps: #4ade80; /* laps: green text (brand green is 4.5:1 here; this reads at 9.9:1) */
+  --leader-background: var(--brand-green); /* the leader's position becomes a green chip */
+  --leader-text: #ffffff;
+  /* A penalty in a notice ("+30 SEGUNDOS"): the one field a notice uses, brand navy, which
+     is no flag colour, so it can never be read as the clock's flag band. */
+  --notice-penalty-background: var(--brand-navy);
+  --notice-penalty-text: #ffffff;
+  --cue-up: var(--brand-green);
+  --cue-down: var(--brand-blue);
+  --cue-text: #ffffff;
+  /* The ▲ / ▼ drawn in the cue lane after a position change (motion.md). */
+  --cue-width: 14px;
+  --cue-height: 10px;
+
+  /* ---- Status icons (shape carries the meaning; one colour) */
+  --status-icon: #e8ecf4;
+  --status-icon-size: 20px;
+  --status-retired-opacity: 0.55;
+
+  /* ---- Flags: the semantic set, never the brand values */
+  --flag-pre-background: #5b6472;
+  --flag-pre-text: #ffffff;
+  --flag-green-background: #15803d;
+  --flag-green-text: #ffffff;
+  --flag-yellow-background: #ffd600;
+  --flag-yellow-text: #111111;
+  --flag-red-background: #dc2626;
+  --flag-red-text: #ffffff;
+  --flag-checkered-dark: #111111;
+  --flag-checkered-light: #f5f5f5;
+  --flag-checkered-text: #f5f5f5;
+  --flag-checkered-square: 20px;
+  --flag-finished-background: #1f2937;
+  --flag-finished-text: #ffffff;
+
+  /* ---- Type: one face, Bebas Neue (João's gate on PR #19), for every word and number on
+     air. It has one weight and no lowercase, so every weight token is 400 and every graphic
+     sets its text in caps (a lowercase letter would fall back to another face). */
+  --font-display: 'Bebas Neue', 'Arial Narrow', sans-serif;
+  --font-text: 'Bebas Neue', 'Arial Narrow', sans-serif;
+  --weight-display: 400;
+  --weight-number: 400;
+  --weight-row: 400;
+  --weight-caption: 400;
+  --size-title: 34px; /* session name in the clock head (the bug's event word is --size-bug-label) */
+  --size-time: 56px;
+  --size-row: 28px; /* tower rows: positions, car chips, names, laps (Bebas caps) */
+  --size-detail: 26px; /* detailed tower's times and gaps */
+  --size-caption: 22px; /* captions, school names, sponsor line (Bebas caps need 22 to read as 20 of a text face) */
+  --size-flag: 26px;
+  --size-strip: 30px;
+  --size-strip-time: 44px;
+  --size-name: 44px;
+  --size-role: 22px;
+  --tracking-display: 0.04em;
+  --tracking-time: 0.02em;
+  --tracking-caption: 0.06em;
+  --tracking-flag: 0.1em;
+  --tracking-row: 0.02em; /* Bebas Neue is tight by design; a little tracking keeps caps names readable at 720p */
+  --case-rows: uppercase;
+  --case-names: uppercase;
+  --case-title: uppercase;
+
+  /* ---- Geometry: the stage is 1920x1080 and everything on air stays inside its 90%
+     title-safe area (x 96..1824, y 54..1026); the column sits top-right like the
+     scoreboard, the bug top-left */
+  --stage-safe-top: 54px;
+  /* The title-safe edges the bars along the bottom keep (x 96..1824, bottom at y 1026). */
+  --stage-safe-side: 96px;
+  --stage-safe-bottom: 54px;
+  --column-width: 420px;
+  --column-left: auto;
+  --column-right: 96px;
+  --bug-left: 96px;
+  --bug-right: auto;
+  --bug-width: 300px;
+  --bug-logo-height: 64px;
+  /* The bug's event word ("ENDURO") and the sponsor's logo under its caption (BAJAOVRLAY-23):
+     the design's styles.css sets the word at 44px, its tokens.css the logo strip at 34px. */
+  --size-bug-label: 44px;
+  --sponsor-logo-small-height: 34px; /* as tall as two caption lines */
+  --clock-height: 192px; /* 64 head + 88 body (caption line over the time) + 40 flag band */
+  --clock-head-height: 64px;
+  --clock-body-height: 88px;
+  --clock-logo-height: 44px;
+  --flag-band-height: 40px;
+  /* The flag pill in the lower strip's and the message ticker's clock block (BAJAOVRLAY-23):
+     the design's .flag-pill, 32 px tall and at least 96 px wide. */
+  --flag-pill-height: 32px;
+  --flag-pill-min-width: 96px;
+  --stack-gap: 8px;
+  /* The notice slot (fastest lap, penalty): top-left under the bug, the clock's width. */
+  --notice-top: 186px; /* 8 px under the bug, which ends at 178 */
+  --notice-width: 420px; /* the clock's width, mirrored to the left */
+  --notice-head-height: 48px;
+  --notice-row-height: 56px;
+  --tower-top: calc(var(--stage-safe-top) + var(--clock-height) + var(--stack-gap)); /* 254 */
+  --tower-rows-per-page: 20; /* the pills that fit between the clock and the title-safe edge */
+  --head-height: 32px; /* the column-header pill, with air around its captions */
+  --row-height: 34px;
+  --row-gap: 3px; /* the scoreboard's gap between pills */
+  --row-padding: 10px;
+  --column-pos: 36px;
+  --column-cue: 12px;
+  --column-laps: 44px;
+  --column-status: 28px;
+  --chip-width: 44px;
+  --chip-height: 26px;
+  --glyph-nudge: 3px; /* padding-top that centres the face's high-sitting digits in a chip */
+  --radius: 8px;
+  --radius-chip: 4px;
+  --radius-pill: 999px;
+  --detailed-row-height: 34px; /* the same pill as the compact tower: 20 rows fit */
+  /* Detailed tower columns (the tower composes its grid and its width from these; a column
+     turned off takes its width with it). With the default columns the tower is 1072px. */
+  --col-pos: 36px;
+  --col-team: 300px;
+  --col-laps: 84px;
+  --col-gap: 112px;
+  --col-interval: 108px;
+  --col-last-lap: 128px;
+  --col-best-lap: 104px;
+  --col-pit-stops: 96px; /* "PARADAS" needs 96 at 22px */
+  --col-refuels: 84px;
+  --strip-height: 72px;
+  --name-height: 64px;
+  --role-height: 40px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  /* The lower-third slot (lower third, team card): its bottom edge sits at y 940, above the
+     ticker's bar (y 954), as the design draws it. */
+  --lower-third-bottom: 140px;
+  /* The widest a card of the lower-third slot (the lower third's pills, the team card) may
+     grow (BAJAOVRLAY-55): the title-safe width left of the tower's column, 1728 − 420 − 8 =
+     1300 px, so a long name never runs under the tower nor off the safe area; past it the
+     name scrolls inside its box. */
+  --lower-third-max-width: calc(var(--board-stage-width) - var(--column-width) - var(--stack-gap));
+  /* The team card (lower-third slot) and the standings board (fullscreen), from the
+     catalogue of PR #21 (BAJAOVRLAY-24). */
+  --panel-light: rgb(255 255 255 / 0.96); /* the logo's light plate */
+  --chip-large-size: 64px; /* the team card's chip */
+  --size-chip-large: 40px;
+  --team-photo-width: 240px;
+  --team-photo-height: 160px;
+  --team-logo-size: 112px;
+  /* A logo keeps its own shape inside its box; a dark logo, or one on its own white box,
+     sits on the light plate with this much room around it (per team, logoOnLightPlate). */
+  --logo-plate-padding: 6px;
+  --board-row-height: 40px; /* the overall standings' rows */
+  --size-board: 30px;
+  --col-points: 120px; /* one part of the score */
+  --col-total: 160px;
+  /* The narrow boards (countdown, sessions board, intermission, sponsor roll; BAJAOVRLAY-46,
+     from the catalogue of PR #21): 1280 px wide and centred, so the bug and the clock card
+     stay visible beside them. */
+  --board-width: 1280px;
+  --session-row-height: 64px;
+  --session-time-width: 140px;
+  --session-status-icon-size: 22px; /* the slot's state shape, beside its 26 px word */
+  --size-countdown: 160px; /* the waiting screen's count */
+  --size-countdown-small: 96px; /* the intermission's count */
+  --sponsor-tile-height: 240px; /* a sponsor roll tile */
+  --sponsor-tile-logo-width: 340px;
+  --sponsor-tile-logo-height: 150px;
+  --sponsor-logo-line-width: 170px; /* the intermission board's sponsor line */
+  --sponsor-logo-line-height: 52px;
+  --sponsor-line-heading-width: 210px; /* the line's level heading, one width on every page */
+  /* The podium (fullscreen), the battle card and the QR card (lower-third slot), from the
+     catalogue of PR #21 (BAJAOVRLAY-47). */
+  --cue-down-text: #7cb3f5; /* the "down" blue as text on slate (the chip blue is a field colour) */
+  --text-on-light: #111111; /* the QR card's text on its light surface */
+  --battle-height: 72px; /* a two-line pill: name over school */
+  --battle-gap-width: 220px;
+  /* The widest a car's name and school may be on the battle card (BAJAOVRLAY-55): past it
+     they scroll, so two cars and the gap card stay inside the title-safe 1728 px. */
+  --battle-team-max-width: 460px;
+  /* The widest a school may be on the lower strip (BAJAOVRLAY-55): a longer one scrolls in
+     its pill and leaves the other five pills of its page their room, so they stay whole
+     (lowerStripLongSchool.e2e.ts). Measured on the real field: the widest school is 120 px
+     (UFERSA-Mos), and the tightest page has 117 px to spare beside a 42 px school, so the
+     bound lies between 120 and 159 px. */
+  --strip-school-max-width: 140px;
+  --qr-size: 176px; /* the code's box; its cells are this divided by the code's modules */
+  --size-podium-position: 72px;
+  --podium-width: 480px;
+  --podium-height: 460px;
+  --podium-height-winner: 540px;
+  --podium-logo-width: 240px; /* the team's logo crowning a podium card */
+  --podium-logo-height: 112px;
+  /* The elimination bracket (BAJAOVRLAY-25, catalogue entry 4): a round board's match cards
+     are --board-row-height; the tree is laid out over the stage under the wide head. */
+  --board-stage-width: 1728px; /* the title-safe width, 1920 − 2 × 96 */
+  --board-stage-height: 900px; /* the stage under a wide board's head: 972 − 64 − 8 */
+  --bracket-row-height: 48px; /* one car of a match in the tree */
+  --bracket-column-gap: 96px; /* between two rounds of the tree, room for the lines */
+  --bracket-board-gutter: 40px; /* between a round board's two columns, wider than a row gap */
+  --bracket-versus-width: 40px; /* the "×" between the two cars of a board's match card */
+  --bracket-line: rgb(232 236 244 / 0.4); /* the tree's connecting lines */
+  --bracket-line-width: 3px;
+  --bracket-outline-width: 2px; /* the W.O. tag's outline and a bye's dashed slot */
+  --bracket-win-icon-size: 22px; /* the winner's mark of a match with no number */
+
+  /* ---- Motion (docs/design/directions/ardosia/motion.md): the scoreboard's slide-in,
+     faster, with the rows in cascade. Graphics read these through readMotionTokens(). */
+  --motion-in: 400ms;
+  --motion-out: 250ms;
+  --motion-row-stagger: 30ms;
+  --motion-lead: 100ms;
+  --motion-swap: 400ms;
+  --motion-flag: 300ms;
+  --motion-strip-page: 300ms;
+  --motion-strip-hold: 7000ms;
+  --motion-cue-hold: 2000ms;
+  --motion-notice-hold: 8000ms; /* a notice's hold; the server's event rule clears it, not the graphic */
+  --motion-board-hold: 10000ms; /* a standings page stays this long */
+  --motion-page-stagger: 15ms; /* between pieces when a page turns in place */
+  /* A sponsor page (the roll, its corner card, the intermission's line) is held by its
+     level, the higher the longer; Bronze has none of its own and takes --motion-sponsor-hold. */
+  --motion-sponsor-hold: 5000ms;
+  --motion-sponsor-hold-diamante: 8000ms;
+  --motion-sponsor-hold-ouro: 5000ms;
+  --motion-sponsor-hold-prata: 3000ms;
+  --motion-sponsor-hold-apoio: 3000ms;
+  --motion-sponsor-hold-realizacao: 5000ms;
+  --motion-in-offset: 20; /* px a piece rises on entry (and lifts on exit) */
+  --motion-podium-offset: 40; /* px a podium card rises when revealed: twice the usual rise */
+  /* A text too long for its box (a long school name) scrolls inside it (BAJAOVRLAY-55): it
+     holds at its start, scrolls at a constant speed until its end shows, holds there and
+     crossfades back to its start. Starting values; João tunes them on screen. */
+  --motion-text-hold-start: 2500ms;
+  --motion-text-scroll-speed: 60; /* px per second: a longer name takes longer, never faster */
+  --motion-text-hold-end: 1500ms;
+  --motion-text-return: 250ms;
+  --motion-text-edge-fade: 24; /* px of soft fade at the box's edges while the text scrolls */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}

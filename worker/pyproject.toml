@@ -9,6 +9,7 @@ dependencies = [
     "starlette>=0.40",
     "uvicorn>=0.30",
     "pillow>=11",
+    "pystray>=0.19 ; sys_platform == 'win32'",
 ]
 
 [tool.uv.sources]

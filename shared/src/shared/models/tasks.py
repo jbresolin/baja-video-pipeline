@@ -47,6 +47,9 @@ class MakeProxyTask(ApiModel):
     raw_sha256: Sha256Hex
     proxy_upload_url: str
     thumbnail_upload_url: str
+    # PUT the raw's ffprobe report here (ProbeReport JSON) before the proxy.
+    # None from an orchestrator older than contract 1.2.0: skip it then.
+    media_info_upload_url: str | None = None
 
 
 class DeliveryPlan(ApiModel):
@@ -74,7 +77,13 @@ class ProcessTask(ApiModel):
     cut_out_s: Seconds
     prova: str
     car_number: CarNumber
+    # The name the overlay shows for the team (the orchestrator picks the
+    # short name when it knows one); None when the car is unknown.
     team_name: str | None
+    # The school's short name for the overlay's role pill, e.g. "UFMG": the
+    # teams table's school_short (results API, or an admin's correction).
+    # None when unknown; the overlay then leaves it out.
+    school_short: str | None = None
     passagem: PassNumber
     show_pass: bool
     # Where the studio stores the clip, e.g. "enduro/42/3.mp4" (shared.layout).
@@ -96,9 +105,30 @@ class DeliverTask(ApiModel):
     clip_relative_path: str
 
 
-# "Any one of the four task models", picked by looking at the `kind` field.
+class ArchiveClipTask(ApiModel):
+    """Master only: keep a copy of one finished clip version in the archive folder.
+
+    Lowest priority, after live work and raw backfill. If the master has
+    the clip itself (it rendered it), it moves its own copy; otherwise it
+    GETs the first URL that works: the rendering worker's file server
+    ("http://<peer>:8710/clip/<job_id>?sha256=…", no token) or the VPS outbox
+    (Caddy, send your token). Then POST /jobs/{id}/clip-archived.
+    """
+
+    kind: Literal[TaskKind.ARCHIVE_CLIP] = TaskKind.ARCHIVE_CLIP
+    job_id: str
+    version: int = Field(ge=1)
+    sha256: Sha256Hex
+    size_bytes: ByteCount
+    # Where to store it under the archive folder (shared.layout.archive_relative_path).
+    archive_relative_path: str
+    # Sources in order; may be empty when the master itself holds the clip.
+    download_urls: list[str] = Field(default_factory=list)
+
+
+# "Any one of the task models", picked by looking at the `kind` field.
 Task = Annotated[
-    DownloadRawTask | MakeProxyTask | ProcessTask | DeliverTask,
+    DownloadRawTask | MakeProxyTask | ProcessTask | DeliverTask | ArchiveClipTask,
     Field(discriminator="kind"),
 ]
 

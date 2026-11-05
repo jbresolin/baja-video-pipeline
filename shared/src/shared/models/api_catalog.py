@@ -63,6 +63,7 @@ class TeamRow(ApiModel):
     team_name: str
     short_name: str | None = None
     school: str | None = None
+    school_short: str | None = None
     source: CatalogSource
     # Synced teams only: False when the last sync no longer listed the car.
     in_source: bool = True
@@ -72,6 +73,7 @@ class TeamRow(ApiModel):
     synced_team_name: str | None = None
     synced_short_name: str | None = None
     synced_school: str | None = None
+    synced_school_short: str | None = None
 
 
 class TeamsResponse(ApiModel):
@@ -89,6 +91,8 @@ class SaveTeamRequest(ApiModel):
     team_name: str = Field(min_length=1, max_length=100)
     short_name: str | None = Field(default=None, max_length=60)
     school: str | None = Field(default=None, max_length=100)
+    # The school's short name on the clip overlay ("UFMG").
+    school_short: str | None = Field(default=None, max_length=30)
 
 
 # --- Results API sync ---

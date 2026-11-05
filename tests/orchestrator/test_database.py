@@ -76,16 +76,20 @@ def insert_sample_job(connection, job_id="j1"):
     )
 
 
-def test_update_job_bumps_the_version_unless_told_not_to(tmp_path):
+def test_update_job_bumps_the_version_only_when_asked(tmp_path):
+    # `version` is the review version (docs/api.md §4): only reviewer
+    # actions bump it, and they say so with bump_version=True.
     database = open_database(tmp_path)
     with database.transaction() as connection:
         insert_sample_job(connection)
-        # A normal change: version 1 → 2.
-        jobs_repo.update_job(connection, "j1", NOW, {"prova": "Enduro"})
+        # A reviewer's change: version 1 → 2.
+        jobs_repo.update_job(connection, "j1", NOW, {"prova": "Enduro"}, bump_version=True)
         assert jobs_repo.get_job_row(connection, "j1")["version"] == 2
-        # Bookkeeping (VPS dropped its copy): version stays at 2, so a
-        # reviewer editing the job does not get a needless conflict.
-        jobs_repo.update_job(connection, "j1", NOW, {"raw_on_vps": 0}, bump_version=False)
+        # Machine bookkeeping (the VPS dropped its copy, a proxy arrived):
+        # version stays at 2, so a reviewer with the page open does not get
+        # a needless conflict.
+        jobs_repo.update_job(connection, "j1", NOW, {"raw_on_vps": 0})
+        jobs_repo.update_job(connection, "j1", NOW, {"proxy_available": 1})
         assert jobs_repo.get_job_row(connection, "j1")["version"] == 2
     database.close()
 

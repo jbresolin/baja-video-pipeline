@@ -122,6 +122,66 @@ def test_every_bundled_module_becomes_a_hidden_import(tmp_path):
     assert hidden == modules
 
 
+def test_the_overlay_theme_files_are_bundled_as_data(tmp_path):
+    # The clip overlay reads its font (TTF) and tokens.css from the package
+    # worker.overlay_theme. PyInstaller only bundles Python modules unless
+    # told, so without --collect-data the frozen worker would crash when
+    # drawing its first overlay.
+    arguments = build.pyinstaller_arguments([], tmp_path / "dist", tmp_path)
+
+    collected = [arguments[i + 1] for i, a in enumerate(arguments) if a == "--collect-data"]
+    assert "worker.overlay_theme" in collected
+
+
+def test_the_overlay_theme_package_really_holds_the_files_to_bundle():
+    # --collect-data copies the package's data files; make sure they are
+    # there (and are not, say, ignored by git), so the bundle gets them.
+    from importlib import resources
+
+    theme = resources.files("worker.overlay_theme")
+    for name in ("tokens.css", "BebasNeue-Regular.ttf", "BebasNeue-LICENSE.txt", "ORIGIN.md"):
+        assert theme.joinpath(name).is_file(), name
+
+
+def test_the_tray_is_a_windowed_onedir_exe_from_entry_tray(tmp_path):
+    # BajaWorkerTray.exe starts at every logon: a console program would
+    # flash a black window, so it is built --windowed.
+    arguments = build.tray_pyinstaller_arguments(tmp_path / "dist", tmp_path, windows=True)
+    assert Path(arguments[0]).name == "entry_tray.py"
+    assert arguments[arguments.index("--name") + 1] == "BajaWorkerTray"
+    assert "--windowed" in arguments and "--console" not in arguments
+    # pystray loads its Windows backend by name, so it must be listed.
+    hidden = [arguments[i + 1] for i, a in enumerate(arguments) if a == "--hidden-import"]
+    assert hidden == ["pystray._win32"]
+    # On Linux (CI's frozen smoke build) pystray is not installed at all.
+    linux = build.tray_pyinstaller_arguments(tmp_path / "dist", tmp_path, windows=False)
+    assert "--hidden-import" not in linux
+
+
+def test_the_tray_build_is_merged_into_the_worker_folder(tmp_path):
+    # Set-up: two onedir outputs as PyInstaller makes them. Both have
+    # _internal/python312.dll (the same file); only the tray has pystray.
+    worker = tmp_path / "BajaWorker"
+    tray = tmp_path / "BajaWorkerTray"
+    (worker / "_internal").mkdir(parents=True)
+    (worker / "BajaWorker.exe").write_text("worker exe")
+    (worker / "_internal" / "python312.dll").write_text("worker copy")
+    (tray / "_internal" / "pystray").mkdir(parents=True)
+    (tray / "BajaWorkerTray.exe").write_text("tray exe")
+    (tray / "_internal" / "python312.dll").write_text("tray copy")
+    (tray / "_internal" / "pystray" / "_win32.pyc").write_text("backend")
+
+    copied = build.merge_onedir(tray, worker)
+
+    # The tray's exe now sits next to BajaWorker.exe…
+    assert (worker / "BajaWorkerTray.exe").read_text() == "tray exe"
+    # …its extra files were added…
+    assert (worker / "_internal" / "pystray" / "_win32.pyc").exists()
+    # …and files both builds have are left as the worker's.
+    assert (worker / "_internal" / "python312.dll").read_text() == "worker copy"
+    assert len(copied) == 2
+
+
 # --- payload copy and ISCC ------------------------------------------------------
 
 

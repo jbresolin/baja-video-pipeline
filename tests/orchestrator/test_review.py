@@ -79,17 +79,14 @@ def test_actions_not_allowed_in_the_current_state_are_illegal_transitions(harnes
         assert response.json()["error"]["code"] == "illegal_transition"
 
 
-def test_discard_is_final_frees_the_inbox_and_tells_holders_to_delete(harness, job_in_review):
-    master, job_id = job_in_review
-    inbox_file = harness.context.layout.inbox_path(job_id, ".mp4")
-    assert inbox_file.exists()  # only one holder so far
+def test_discard_moves_to_discarded_and_blocks_editing(harness, job_in_review):
+    # What happens to the raws (kept for a grace period, then deleted) and
+    # how "restore" undoes a discard: tests/orchestrator/test_discard_restore.py.
+    _, job_id = job_in_review
     response = patch_review(harness, job_id, action="discard")
     assert response.json()["state"] == "discarded"
-    assert not inbox_file.exists()
-    # The master's next heartbeat says it may delete its copy.
-    answer = harness.heartbeat(master, held_job_ids=[job_id])
-    assert answer["deletable_job_ids"] == [job_id]
-    # Discarded is final: not even "save" is accepted.
+    assert response.json()["discarded_from"] == "awaiting_review"
+    # A discarded job cannot be edited: "save" is refused (only "restore" is accepted).
     assert patch_review(harness, job_id, action="save", prova="x").status_code == 409
 
 
@@ -172,6 +169,7 @@ def test_team_lookup_endpoint(harness):
         "team_name": "Equipe X",
         "school": None,
         "short_name": "X",
+        "school_short": None,
     }
     missing = harness.client.get("/teams/41", auth=harness.reviewer_auth)
     assert missing.status_code == 404

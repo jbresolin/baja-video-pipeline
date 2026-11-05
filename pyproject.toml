@@ -30,6 +30,7 @@ dev = [
     "pyyaml>=6.0",
     # The shared tests run a tiny in-process web app to exercise transfers.
     "fastapi>=0.115",
+    "fonttools[woff]>=4.68.0",
 ]
 installer = [
     "pyinstaller>=6.11",

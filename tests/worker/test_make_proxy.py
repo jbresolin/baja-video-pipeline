@@ -26,7 +26,23 @@ def proxy_task(job) -> MakeProxyTask:
         raw_sha256=job.sha256,
         proxy_upload_url=f"{BASE_URL}/jobs/{job.job_id}/proxy",
         thumbnail_upload_url=f"{BASE_URL}/jobs/{job.job_id}/thumbnail",
+        media_info_upload_url=f"{BASE_URL}/jobs/{job.job_id}/media-info",
     )
+
+
+# A trimmed ffprobe answer for an iPhone video, GPS tag included.
+IPHONE_PROBE = {
+    "format": {
+        "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "duration": "12.0",
+        "tags": {
+            "com.apple.quicktime.make": "Apple",
+            "com.apple.quicktime.model": "iPhone 15 Pro",
+            "com.apple.quicktime.location.ISO6709": "-23.5505-046.6333+760.000/",
+        },
+    },
+    "streams": [{"codec_type": "video", "codec_name": "hevc", "width": 1920, "height": 1080}],
+}
 
 
 def test_thumbnail_then_proxy_are_rendered_and_uploaded(harness, raw_bytes):
@@ -160,3 +176,35 @@ def test_unknown_frame_rate_leaves_the_header_out(harness, raw_bytes):
     assert set(harness.orchestrator.proxy_frame_rate_headers) == {None}
     assert harness.orchestrator.stored_upload("proxies", job.job_id).exists()
     assert harness.orchestrator.failures == []
+
+
+def test_the_raws_probe_report_is_sent_without_its_location(harness, raw_bytes):
+    # Setup: ffprobe's answer for the raw includes the phone's GPS position.
+    harness.media.info = replace(harness.media.info, probe=IPHONE_PROBE)
+    job = hold_raw(harness, raw_bytes)
+
+    harness.claim_and_run(proxy_task(job))
+
+    # The orchestrator got the report: device tags kept...
+    report = harness.orchestrator.media_infos[job.job_id]
+    assert report.format["tags"]["com.apple.quicktime.model"] == "iPhone 15 Pro"
+    assert report.streams[0]["codec_name"] == "hevc"
+    # ...but the coordinates never left the worker; only "there was one".
+    assert "com.apple.quicktime.location.ISO6709" not in report.format["tags"]
+    assert "-23.5505" not in report.model_dump_json()
+    assert report.location_present is True
+    # And the proxy still went up as usual.
+    assert harness.orchestrator.stored_upload("proxies", job.job_id).exists()
+
+
+def test_an_orchestrator_without_the_media_info_route_still_gets_the_proxy(harness, raw_bytes):
+    # An older orchestrator sends no media_info_upload_url: nothing is sent,
+    # nothing fails.
+    harness.media.info = replace(harness.media.info, probe=IPHONE_PROBE)
+    job = hold_raw(harness, raw_bytes)
+    task = proxy_task(job).model_copy(update={"media_info_upload_url": None})
+
+    harness.claim_and_run(task)
+
+    assert harness.orchestrator.media_infos == {}
+    assert harness.orchestrator.stored_upload("proxies", job.job_id).exists()

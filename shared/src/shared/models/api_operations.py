@@ -57,6 +57,13 @@ class AdminSettings(ApiModel):
     # from it (on change, and every 6 h). Case matters: "26br" is not "26BR".
     event_id: str = Field(default="", pattern=EVENT_ID_PATTERN)
     results_api_base_url: str = Field(default="https://api.bajasaebrasil.net", max_length=200)
+    # A discarded job's raws stay on the holders and in the VPS inbox this
+    # long, so "Restaurar" just works (LIVESTACK-38). The end is fixed on
+    # the job at discard time: a change here moves no existing deadline.
+    discard_grace_hours: float = Field(default=24, ge=0, le=720)
+    # An outbox clip the studio already received is kept at most this long
+    # waiting for the master to archive it (master offline), LIVESTACK-38.
+    outbox_keep_unarchived_hours: float = Field(default=72, ge=0, le=720)
 
 
 class UpdateSettingsRequest(ApiModel):
@@ -68,6 +75,8 @@ class UpdateSettingsRequest(ApiModel):
     installer_download_url: str | None = Field(default=None, max_length=500)
     event_id: str | None = Field(default=None, pattern=EVENT_ID_PATTERN)
     results_api_base_url: str | None = Field(default=None, max_length=200)
+    discard_grace_hours: float | None = Field(default=None, ge=0, le=720)
+    outbox_keep_unarchived_hours: float | None = Field(default=None, ge=0, le=720)
 
 
 class EvolutionStatus(ApiModel):

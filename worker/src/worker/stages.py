@@ -53,6 +53,15 @@ class ClaimedTask:
     task: object  # one of the shared task models; its `kind` matches the stage
 
 
+def task_status_details(task: object) -> dict:
+    """What the status page shows about a task: its job, and prova/car when known."""
+    return {
+        "job_id": getattr(task, "job_id", None),
+        "prova": getattr(task, "prova", None),
+        "car_number": getattr(task, "car_number", None),
+    }
+
+
 class StageRunner:
     def __init__(
         self,
@@ -109,7 +118,7 @@ class StageRunner:
         """Run one claimed task to its end (also called directly by tests)."""
         job_id = claimed.task.job_id
         cancel = CancelToken(claimed.lease, self._shutdown)
-        self._status.task_started(self.kind, f"job {job_id}")
+        self._status.task_started(self.kind, f"job {job_id}", **task_status_details(claimed.task))
         with job_context(job_id):
             logger.info("starting %s (lease %s)", self.kind, claimed.lease.lease_id)
             try:

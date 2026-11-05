@@ -26,7 +26,7 @@ from pathlib import Path
 
 from baja_installer.tailscale_cli import TailscaleCli, TailscaleStatus
 from shared.models import WorkerRole
-from worker.config import WorkerConfig, load_config, save_config
+from worker.config import DEFAULT_ORCHESTRATOR_URL, WorkerConfig, load_config, save_config
 from worker.enrollment import TAILSCALE_AUTH_KEY_FILE_NAME
 
 EXIT_JOINED = 0
@@ -39,7 +39,7 @@ STUDIO_HOSTNAME = "baja-studio"
 # which would end up in public certificate logs (infra/tailnet/README.md §2).
 WORKER_HOSTNAME_PREFIX = "baja-w-"
 WORKER_ID_CHARACTERS_IN_HOSTNAME = 8
-LOCAL_ORCHESTRATOR_URL = WorkerConfig.model_fields["orchestrator_url"].default
+LOCAL_ORCHESTRATOR_URL = DEFAULT_ORCHESTRATOR_URL
 
 
 def tailscale_hostname(config: WorkerConfig) -> str:

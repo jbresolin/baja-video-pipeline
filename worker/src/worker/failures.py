@@ -86,7 +86,11 @@ SCOPE_BY_ERROR_TYPE: tuple[tuple[type[BaseException], FailureScope], ...] = (
 # the raw or the clip. So for network trouble in these tasks we let the
 # lease expire instead; the orchestrator offers the same task again later.
 NETWORK_FAILURES_LEFT_TO_EXPIRE = frozenset(
-    {(WorkerRole.MASTER, TaskKind.DOWNLOAD_RAW), (WorkerRole.STUDIO, TaskKind.DELIVER)}
+    {
+        (WorkerRole.MASTER, TaskKind.DOWNLOAD_RAW),
+        (WorkerRole.MASTER, TaskKind.ARCHIVE_CLIP),
+        (WorkerRole.STUDIO, TaskKind.DELIVER),
+    }
 )
 
 # Errors whose message is written for a person already (ffmpeg's last lines,

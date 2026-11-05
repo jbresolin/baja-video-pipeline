@@ -1,19 +1,24 @@
 """Turn a jobs row (+ its holders and leases) into the API's Job model."""
 
+import json
 import sqlite3
 
 from orchestrator.db.database import from_db_time
 from orchestrator.errors import not_found
+from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.storage import VpsLayout
+from shared.layout import archive_relative_path
 from shared.models import (
     ClipInfo,
+    ClipVersion,
     DeliveryRoute,
     IntakeSource,
     Job,
     JobFailure,
     JobState,
+    ProbeReport,
     ReceivedAs,
     TaskKind,
 )
@@ -23,9 +28,36 @@ def _optional_bool(value: int | None) -> bool | None:
     return None if value is None else bool(value)
 
 
-def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Job:
+def _media_info_from_row(row: sqlite3.Row) -> ProbeReport | None:
+    text = row["media_info_json"]
+    return None if text is None else ProbeReport.model_validate(json.loads(text))
+
+
+def clip_versions_of(connection: sqlite3.Connection, job_id: str) -> list[ClipVersion]:
+    return [
+        ClipVersion(
+            version=version["version"],
+            sha256=version["sha256"],
+            size_bytes=version["size_bytes"],
+            relative_path=version["relative_path"],
+            archive_relative_path=archive_relative_path(
+                version["relative_path"], version["version"]
+            ),
+            rendered_by_worker_id=version["rendered_by"],
+            rendered_at=from_db_time(version["rendered_at"]),
+            archived_at=from_db_time(version["archived_at"]),
+        )
+        for version in clips_repo.list_versions(connection, job_id)
+    ]
+
+
+def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLayout) -> Job:
+    """`layout` says whether the VPS outbox still has the clip (ClipInfo.in_outbox)."""
+    versions = clip_versions_of(connection, row["id"])
     clip = None
     if row["clip_sha256"] is not None:
+        current = next((v for v in versions if v.sha256 == row["clip_sha256"]), None)
+        in_outbox = layout.outbox_path(row["id"]).exists()
         clip = ClipInfo(
             sha256=row["clip_sha256"],
             size_bytes=row["clip_size_bytes"],
@@ -33,6 +65,9 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Job:
             route=DeliveryRoute(row["clip_route"]),
             rendered_by_worker_id=row["clip_rendered_by"],
             delivered_at=from_db_time(row["clip_delivered_at"]),
+            version=current.version if current else 1,
+            in_outbox=in_outbox,
+            download_url=VpsLayout.clip_download_public_path(row["id"]) if in_outbox else None,
         )
     failure = None
     if row["failure_message"] is not None:
@@ -63,6 +98,7 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Job:
         size_bytes=row["size_bytes"],
         duration_s=row["duration_s"],
         has_audio=_optional_bool(row["has_audio"]),
+        media_info=_media_info_from_row(row),
         frame_rate=row["frame_rate"],
         raw_on_vps=bool(row["raw_on_vps"]),
         holders=leases_repo.list_holders(connection, row["id"]),
@@ -82,8 +118,11 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Job:
         reviewed_by=row["reviewed_by"],
         reviewed_at=from_db_time(row["reviewed_at"]),
         clip=clip,
+        clip_versions=versions,
         failure=failure,
         failed_from=JobState(row["failed_from"]) if row["failed_from"] else None,
+        discarded_from=JobState(row["discarded_from"]) if row["discarded_from"] else None,
+        discard_grace_ends_at=from_db_time(row["discard_grace_ends_at"]),
         waiting_reason=row["waiting_reason"],
     )
 
@@ -96,5 +135,5 @@ def require_job_row(connection: sqlite3.Connection, job_id: str) -> sqlite3.Row:
     return row
 
 
-def load_job(connection: sqlite3.Connection, job_id: str) -> Job:
-    return job_from_row(connection, require_job_row(connection, job_id))
+def load_job(connection: sqlite3.Connection, job_id: str, layout: VpsLayout) -> Job:
+    return job_from_row(connection, require_job_row(connection, job_id), layout)

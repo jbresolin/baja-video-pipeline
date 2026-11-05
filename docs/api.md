@@ -28,12 +28,12 @@ types**; this page explains the behaviour around them. Design background:
 
 | Port | Where | What |
 | --- | --- | --- |
-| 443 | VPS, public | Caddy: review UI, `/proxies/*`, `/thumbs/*`, `POST /enroll`, `POST /intake/evolution-webhook` |
+| 443 | VPS, public | Caddy: review UI, `/proxies/*`, `/thumbs/*`, `/clip-downloads/*` (outbox clips for reviewers), `POST /enroll`, `POST /intake/evolution-webhook` |
 | 8080 | VPS, Tailscale IP only, plain HTTP | Caddy: the worker/studio API and `/inbox/*`, `/outbox/*` files |
 | 8000 | VPS, compose network only | orchestrator (uvicorn) |
-| 8710 | every master/worker, tailnet | worker file server (`GET /raw/{job_id}`) |
+| 8710 | every master/worker, tailnet | worker file server (`GET /raw/{job_id}`, `GET /clip/{job_id}`) |
 | 8720 | studio, tailnet | studio receiver (`POST /receive/{job_id}`) |
-| 8700 | every worker/studio, 127.0.0.1 only (not on the tailnet) | worker setup/status page |
+| 8700 | every worker/studio, 127.0.0.1 only (not on the tailnet) | worker setup/status page and the localhost JSON API for the tray icon (§7.3) |
 
 ## 2. Authentication
 
@@ -94,7 +94,8 @@ or `GET /outbox/{id}` byte endpoint. Before serving, Caddy calls
 
 Rules: `/inbox/<job_id>.<ext>` is allowed while the caller holds a
 `download_raw` lease on that job; `/outbox/<job_id>.mp4` is allowed for
-studio workers only; any other path, a dot-file, `..`, or a method other
+studio workers, and for the master while it holds an `archive_clip` lease
+on that job; any other path, a dot-file, `..`, or a method other
 than GET/HEAD → 403. Workers never build these URLs themselves: task offers
 carry the absolute `download_url` (§5).
 
@@ -138,6 +139,7 @@ Branch on `error.code`, never on `message`.
 | 409 | `not_claimable` | Job not in a state for that task, or caller not eligible (e.g. not a holder) |
 | 409 | `lease_lost` | Lease expired or revoked; stop the task |
 | 409 | `version_conflict` | `expected_version` is stale (`details.current_version`) |
+| 409 | `raw_unavailable` | `restore` after the discard grace period, and no worker or inbox still has the raw |
 | 409 | `upload_offset_mismatch` | Chunk at the wrong offset (`details.expected_offset`) |
 | 409 | `already_exists` | Admin pages: that username, phone, prova name or clip folder is taken |
 | 409 | `conflict` | Admin pages: not possible now (last enabled admin, revoking a used token, renaming a synced prova) |
@@ -179,14 +181,21 @@ direct push: the studio ACK moves claimed → uploaded → delivered in one call
 | uploaded → delivered → done | `POST /outbox/{id}/ack`, or `POST …/delivered` (direct route, also from claimed) |
 | claimed → ready | process lease expired or revoked |
 | claimed / uploaded / delivered / done → ready | review `action: reprocess` |
-| awaiting_review / ready → discarded | review `action: discard` |
+| awaiting_review / ready → discarded | review `action: discard` (records `discarded_from`) |
+| discarded → `discarded_from` | review `action: restore` |
 | received / proxy_ready / claimed → failed | `POST /jobs/{id}/failed` (records `failed_from`) |
 | failed → received / proxy_ready / ready | review `action: retry` (back to `failed_from`; claimed → ready) |
 | failed → discarded | review `action: discard` |
 
-* **`discarded`** is final. The orchestrator revokes any lease, deletes
-  the VPS inbox copy and lists the job in each holder's heartbeat answer
-  (`deletable_job_ids`), so holders may delete their raw.
+* **`discarded`** can be undone (`restore`, back to `Job.discarded_from`).
+  The orchestrator revokes any lease at once, but deletes nothing for the
+  **discard grace period** (admin Settings `discard_grace_hours`, default 24 h; the
+  end is `Job.discard_grace_ends_at`, fixed at discard time): holders keep
+  the raw and the VPS its inbox copy, so a restore just works. After it,
+  the job is listed in each holder's heartbeat answer
+  (`deletable_job_ids`) and the inbox cleanup drops the VPS copy; restore
+  then works only while some copy is left (a confirmed holder that has not
+  deleted it yet, or the inbox), else 409 `raw_unavailable`.
 * **`failed`**: `Job.failure` holds who failed, under which task, the
   message and exit code; `Job.failed_from` the state it failed from. The
   review queue shows it (`failure_message`). `retry` returns the job to
@@ -200,7 +209,17 @@ direct push: the studio ACK moves claimed → uploaded → delivered in one call
 * **Proxy availability** (`proxy_available`) is also beside the state:
   eviction and `regenerate-proxy` never change the state.
 * `waiting_reason` is a human sentence for the UI when a job is stuck,
-  else `null`. `version` increases on every change of the job.
+  else `null`.
+* **`version` is the review version.** It goes up by one only when a
+  reviewer changes the job: any `PATCH …/review` action (`save`, `ready`,
+  `reprocess`, `discard`, `restore`, `retry`), including the state change
+  that action causes. Machine activity never bumps it: holder
+  confirmations, proxy/thumbnail/media-info uploads, claims, lease
+  expiry, clip upload and delivery, sweepers. So a worker busy with the
+  job cannot make a reviewer's save fail; only another reviewer's change
+  can. (Until 2026-11 it went up on every change, which made every save
+  during processing a `version_conflict`.) Watch `state` and the other
+  fields, not `version`, to notice machine progress.
 
 ## 5. Worker loop
 
@@ -231,7 +250,21 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
   report the task's result.
 * The heartbeat answer's `accepting_new_raws: false` means you are near
   your storage cap (no new `download_raw`, keep processing what you hold);
-  `deletable_job_ids` lists held raws of discarded jobs you may delete.
+  `deletable_job_ids` lists held raws of jobs discarded longer ago than the
+  discard grace period (§4); delete them. Within the grace period they are
+  not listed, because a reviewer may still restore the job.
+* **Pause.** `paused: true` in the heartbeat means the volunteer paused
+  this worker (tray icon or status page, worker/README.md). The worker
+  finishes the task it is on, then asks for nothing new, but keeps
+  heartbeating (its lease is renewed until that task ends) and keeps
+  serving held raws on `:8710`. The orchestrator offers a paused worker
+  nothing (`/next` answers `task: null`; `/claim` → 409 `not_claimable`)
+  and treats it like an offline worker when choosing the second holder,
+  deciding whether the master still counts as a future holder, and
+  picking the studio for direct pushes (a paused studio → `outbox`). It
+  stays a download source for peers. `GET /fleet` lists `paused` per
+  worker; the fleet page shows "pausado". The flag lasts until a heartbeat
+  says `paused: false` ("Retomar"); the worker keeps it across restarts.
 * Report `measurements` (bytes + seconds) in the next heartbeat; the
   orchestrator keeps the rolling `stats`. `held_job_ids` lists every raw on
   your disk so the orchestrator can reconcile holders after crashes.
@@ -239,9 +272,10 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
 | Task kind | Who gets it | What to do | How it ends |
 | --- | --- | --- | --- |
 | `download_raw` | master (always, see backfill below), one more worker; never studio | GET `download_url` with your bearer (Caddy inbox), or the `fallback_download_urls` (peers, port 8710, no token), with `shared.http_transfer.download_file`; ffprobe it | `POST /jobs/{id}/holder-confirm` |
-| `make_proxy` | a confirmed holder | Probe (`shared.media_probe`), render thumbnail and proxy with `tone_map_hdr=info.is_hdr`; `PUT …/thumbnail`, then chunked `POST …/proxy` | completing chunk of `…/proxy` |
+| `make_proxy` | a confirmed holder | Probe (`shared.media_probe`), render thumbnail and proxy with `tone_map_hdr=info.is_hdr`; `PUT …/media-info` (when the task has `media_info_upload_url`), `PUT …/thumbnail`, then chunked `POST …/proxy` | completing chunk of `…/proxy` |
 | `process` | a confirmed holder | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
 | `deliver` | studio only | GET `download_url` (Caddy outbox) with your bearer, verify SHA-256, store at `clip_relative_path`, rewrite `latest.m3u` | `POST /outbox/{id}/ack` |
+| `archive_clip` | master only, lowest priority (after backfill) | Keep one clip version in the archive at `archive_relative_path`: move your own kept copy, else GET the first working `download_urls` entry (peers' `:8710/clip/{job_id}?sha256=…` without token, the Caddy outbox with it), verify SHA-256 | `POST /jobs/{id}/clip-archived` |
 
 **Failures.** `POST /jobs/{id}/failed {lease_id, message, exit_code, scope}`
 ends the lease, and that worker is never offered that task on that job
@@ -259,6 +293,33 @@ review) it cannot fail, so it keeps its state. Whenever the job does not
 fail, `Job.failure` and `waiting_reason` are set, and a `claimed` job whose
 process task failed with scope `worker` goes back to `ready` for another
 holder.
+
+**Clips are kept and archived** (contract 2.1.0; design §11 as amended).
+After a verified delivery the rendering worker keeps its clip
+(`clips/<job_id>.<sha256>.mp4`, §8.3), lists it in every heartbeat's
+`held_clips` and serves it on `:8710 GET /clip/{job_id}`. Every clip that
+reaches the outbox or the studio is a **clip version** of its job
+(`Job.clip_versions`; a reprocess adds version 2, 3, …, never replaces).
+The master is offered `archive_clip` for every version it does not have
+yet, of any job not discarded, after every other task it accepts
+(including raw backfill); sources are the master itself (empty
+`download_urls`), online workers that keep that clip (the renderer first),
+then the outbox while it has that exact clip. A version with no reachable
+source is skipped; one whose copy the master reported failed
+(`POST …/failed`) waits 10 minutes, without any exclusion and without
+touching the job. The heartbeat answer's `archived_clip_sha256s` lists the
+held clips the master has; only those may be evicted, only near the cap
+(under 4 GB free), oldest first. **Outbox copies** are deleted only when
+the studio ACKed **and** the master archived that clip, or once
+`outbox_keep_unarchived_hours` (admin Settings, 72) passed since the ACK; a job is
+`done` at the ACK either way.
+
+**Where the clip is** (for the review UI): `Job.clip.in_outbox` says the
+VPS outbox has the current clip, and `Job.clip.download_url`
+(`/clip-downloads/<job_id>.mp4`, relative to the public base URL, reviewer
+auth like proxies) is where a reviewer downloads it; `ManifestEntry` and
+`JobSummary.clip_download_url` carry the same. `ClipVersion.archived_at`
+says whether the master has each version.
 
 **Delivery decision.** Every `process` offer (and claim answer) carries
 `delivery: {mode, studio_url}`. The orchestrator says `direct`, with
@@ -368,9 +429,11 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `POST /jobs/{job_id}/failed` | `FailedRequest` → `JobStateResponse` | ends the lease (§5) |
 | `POST /jobs/{job_id}/holder-confirm` | `HolderConfirmRequest` → `HolderConfirmResponse` | 422 `hash_mismatch` drops you as holder |
 | `PUT /jobs/{job_id}/thumbnail` | JPEG body, `Lease-Id` → 204 | before the proxy |
+| `PUT /jobs/{job_id}/media-info` | `ProbeReport` JSON, `Lease-Id` → 204 | make_proxy lease; the raw's ffprobe report (contract 2.1.0, below) |
 | `POST /jobs/{job_id}/proxy` | chunk (+ `Frame-Rate`) → `ChunkAccepted` | ends make_proxy lease; sets `Job.frame_rate` |
 | `POST /jobs/{job_id}/clip` | chunk → `ChunkAccepted` | outbox route; claimed → uploaded |
 | `POST /jobs/{job_id}/delivered` | `DeliveredRequest` → `JobStateResponse` | studio; direct route |
+| `POST /jobs/{job_id}/clip-archived` | `ClipArchivedRequest` → `JobStateResponse` | master, `archive_clip` lease; 422 `hash_mismatch` if the sha256 is no version of the job; state unchanged |
 | `GET /review/queue?state=…&limit=…` | → `ReviewQueueResponse` | default `awaiting_review`, oldest first |
 | `GET /jobs/{job_id}` | → `Job` | |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
@@ -420,6 +483,9 @@ its slug), and marks rows the API no longer lists inactive; it never
 deletes. A manual prova with the same clip folder as a new synced one is
 adopted. `ProcessTask.team_name` (the overlay text) is the team's
 `short_name` when it has one; `Job.team_name` keeps the full name.
+`ProcessTask.school_short` (the overlay's role pill, "UFMG") is the API's
+`school_short`, or an admin's correction on the Teams page; both are
+copied onto the job when the car number is set.
 
 **Evolution webhook.** The route is exactly **`POST
 /intake/evolution-webhook`** with the header **`X-Webhook-Secret:
@@ -443,21 +509,61 @@ every check passed. If that fails, no job exists and the bot asks the
 sender to resend. A repeated `data.key.id` (in progress or done) → 200
 `duplicate: true` with the existing `job_id` if any. Inbox above
 `BVP_INBOX_CAP_GB` → 413 `inbox_full`; above `BVP_INBOX_HOLD_GB` the media
-is accepted but the bot asks the sender to hold further videos. Replies to
-the sender go through Evolution `sendText`; every text is in
-`orchestrator/domain/bot_messages.py` (pt-BR). A verified document gets
-`RECEIVED_OK` once its job exists, unless the webhook already answered
-(low_res or hold notice), so each video gets one positive reply.
+is accepted but the bot asks the sender to hold further videos.
+
+**Bot answers** (`orchestrator/domain/bot_replies.py`) are attached to the
+video they are about, because volunteers send several files in a row:
+
+| Situation | Reaction on the video | Text (quoted reply to the video) |
+| --- | --- | --- |
+| verified, job created | ✅ | none |
+| arrived as a WhatsApp video (`low_res`) | ⚠️ | `LOW_RES_RESEND_AS_DOCUMENT` |
+| inbox above the soft cap | ⚠️ | `INBOX_NEARLY_FULL_PLEASE_HOLD` |
+| inbox above the hard cap (413) | ❌ | `INBOX_FULL_RESEND_LATER` |
+| download or a hash check failed | ❌ | `DOWNLOAD_FAILED_PLEASE_RESEND` |
+
+A ⚠️ video gets no ✅ later (the warning stays visible); a later ❌
+replaces it if the download then fails (WhatsApp keeps one reaction per
+message). Reactions go through Evolution `POST /message/sendReaction/{instance}`
+with `{"key": {"remoteJid", "fromMe": false, "id"}, "reaction"}`, the key
+**exactly as it arrived** (an `@lid` `remoteJid` stays `@lid`: reactions
+address the message). Texts go through `sendText` to the phone number
+(`sender_jid`, i.e. `remoteJidAlt` for `@lid` senders) with
+`"quoted": {"key": <same key>, "message": {"documentMessage"|"videoMessage":
+{mimetype, fileName}}}`; sending `message` means Evolution does not need its
+own message store to build the quote. Request shapes verified against
+Evolution 2.3.7 (`src/validate/message.schema.ts`, `src/api/dto/sendMessage.dto.ts`,
+`whatsapp.baileys.service.ts`; see `orchestrator/clients/evolution.py`).
+Every text is in `orchestrator/domain/bot_messages.py` (pt-BR).
+
+**Media info** (contract 2.1.0). The first holder already runs ffprobe
+on the raw to make the proxy; it sends the whole answer
+(`ffprobe -show_format -show_streams`, as `ProbeReport {format, streams,
+location_present}`) to the task's `media_info_upload_url` =
+`PUT /jobs/{id}/media-info`, under its make_proxy lease and before the
+thumbnail. **Location never leaves the worker:** every tag whose name
+mentions location/GPS (`location`, `com.apple.quicktime.location.ISO6709`,
+…) is removed by `shared.media_details.probe_report_from_ffprobe` and only
+`location_present: true` remains; the orchestrator strips them again on
+arrival. The report is stored as `Job.media_info` and fills
+`Job.frame_rate` while that is still empty (the proxy's `Frame-Rate`
+header then replaces it with the proxy's exact rate). Over 512 KB → 413;
+not a `ProbeReport` → 400; no live make_proxy lease → 409 `lease_lost`. A
+refusal never fails the proxy task; a task without the URL (older
+orchestrator) skips the upload. The review UI summarises it under the
+player with `shared.media_details.summarize_probe_report`.
 
 **Review update.** `expected_version` must equal the job's `version`
-(else 409 `version_conflict`).
+(else 409 `version_conflict`). Since `version` only moves on review
+actions (§4), the conflict means another reviewer changed the job.
 
 | `action` | From states | Effect |
 | --- | --- | --- |
 | `save` | any except `discarded` | store fields/cuts only |
 | `ready` | `awaiting_review` | → `ready`; needs all fields |
 | `reprocess` | `claimed`, `uploaded`, `delivered`, `done` | → `ready`; revokes any process lease; needs all fields |
-| `discard` | `awaiting_review`, `ready`, `failed` | → `discarded` (final); fields not needed |
+| `discard` | `awaiting_review`, `ready`, `failed` | → `discarded`, records `discarded_from`; nothing deleted during the grace period (§4); fields not needed |
+| `restore` | `discarded` | → `discarded_from`; 409 `raw_unavailable` after the grace period when no copy of the raw is left; fields not needed |
 | `retry` | `failed` | → `failed_from` (`claimed` → `ready`); clears `failure`; needs all fields only when the target is `ready` (may be corrected in the same call) |
 
 Other combinations → 409 `illegal_transition`. "All fields" = `prova`,
@@ -487,6 +593,7 @@ boundary (design §15); short-lived fetch tokens are a later hardening item.
 | --- | --- | --- | --- |
 | 8710 | `GET /health` | master, worker | `{"status":"ok","worker_id":…,"role":…}` |
 | 8710 | `GET /raw/{job_id}` | master, worker | The held raw, with Range (§6.1). 404 if not held. |
+| 8710 | `GET /clip/{job_id}[?sha256=…]` | master, worker | A kept clip (§5 "Clips are kept and archived"), with Range: exactly that version, or the newest. 404 if not kept. |
 | 8720 | `GET /health` | studio | as above |
 | 8720 | `POST /receive/{job_id}` | studio | Chunked upload (§6.2) plus `Clip-Relative-Path`. |
 
@@ -496,6 +603,24 @@ completing chunk the clip is moved into place, `latest.m3u` is rewritten,
 the studio answers `complete: true` to the worker, and then calls
 `POST /jobs/{job_id}/delivered` on the orchestrator (retrying in the
 background until it succeeds; repeating it is harmless).
+
+### 7.3 Localhost-only endpoints (127.0.0.1:8700)
+
+Served by the worker for the volunteer's own PC: the setup/status page and
+a small JSON API that the tray icon (`BajaWorkerTray.exe`) uses. Never on
+the tailnet, no login. Requests whose `Host` is not `localhost`/`127.0.0.1`
+→ 403; POSTs also need `Content-Type: application/json` and no foreign
+`Origin` (so other web sites cannot press the buttons). Details:
+`worker/README.md` ("Status page, pause and the tray icon").
+
+| Method & path | Behaviour |
+| --- | --- |
+| `GET /` | setup form before enrollment, then the pt-BR status page |
+| `POST /setup` | the setup form (before enrollment only) |
+| `GET /api/status` | status document (`enrolled`, `connection_step_pending`, `paused`, `last_contact_at`, `unreachable_for_s`, `tasks`, `storage`, `held_raws`, `clips_held`, `clips_archived`, `details`); never the bearer token |
+| `POST /api/pause` | "Pausar": finish the current task, take nothing new, heartbeat `paused: true` (§5); stored in `worker.json` |
+| `POST /api/resume` | "Retomar" |
+| `POST /api/stop` | "Desligar o worker": stops the Windows service (`sc stop BajaWorker`) |
 
 ## 8. Folder layouts
 
@@ -517,7 +642,10 @@ slug, so its clips stay in the same folder; a prova name not in the table
 M3U from `render_latest_playlist`: `#EXTM3U`, then per clip
 `#EXTINF:-1,<Prova> - carro <car> [<team>] - passagem <n>` and the
 relative path. Both are written as dot-files and renamed, so OBS never
-sees half a file. A reprocessed clip replaces the old one at the same path.
+sees half a file. A reprocessed clip replaces the old one at the same path
+on the box; the master's archive keeps both (`<passagem>.v2.mp4`, built by
+`shared.layout.archive_relative_path`), and `ManifestEntry.version` says
+which version is current.
 
 ### 8.2 VPS (`BVP_DATA_DIR`, default `/srv/pipeline`)
 
@@ -525,7 +653,10 @@ sees half a file. A reprocessed clip replaces the old one at the same path.
 inbox/<job_id>.<ext>      raws until 2 holders confirm; Caddy :8080 /inbox/*
 proxies/<job_id>.mp4      Caddy :443 /proxies/<job_id>.mp4 (forward_auth → /auth/media)
 thumbs/<job_id>.jpg       Caddy :443 /thumbs/<job_id>.jpg (forward_auth → /auth/media)
-outbox/<job_id>.mp4       fallback clips, deleted on studio ACK; Caddy :8080 /outbox/*
+outbox/<job_id>.mp4       fallback clips; deleted after studio ACK + master archive (or 72 h
+                          after the ACK); Caddy :8080 /outbox/* (studio, archiving master)
+                          and :443 /clip-downloads/* (signed-in users: the Download button;
+                          forward_auth → /auth/media)
 db/bvp.sqlite3            jobs DB (WAL mode)
 reviewers.txt             optional: imported into the users table on a first start (§9)
 ```
@@ -539,7 +670,10 @@ public base URL.
 
 ```
 raws/<job_id>.<ext>       held raws (served on :8710, never evicted, deleted on discard)
-clips/<job_id>.mp4        rendered clips until delivered
+clips/<job_id>.mp4        the clip being rendered/delivered (+ .json sidecar)
+clips/<job_id>.<sha256>.mp4   delivered clips, kept until archived by the master
+                          (served on :8710 /clip; evicted near the cap only once archived)
+clips/<prova>/<car>/<passagem>[.vN].mp4   master only: the archive of every clip version
 tmp/                      proxies, thumbnails, overlays while rendering
 ```
 
@@ -594,6 +728,8 @@ variables keep the names fixed in design §8.
 | `BVP_INSTALLER_DOWNLOAD_URL` | the repo's `releases/latest` page | Shown with new enrollment tokens. First-start default |
 | `BVP_EVENT_ID` | empty | Results API event (e.g. `26BR`). First-start default |
 | `BVP_RESULTS_API_URL` | `https://api.bajasaebrasil.net` | Results API base. First-start default |
+| `BVP_DISCARD_GRACE_HOURS` | `24` | How long a discarded job's raws are kept (holders and inbox) so `restore` works (§4). First-start default |
+| `BVP_OUTBOX_KEEP_UNARCHIVED_HOURS` | `72` | An outbox clip the studio ACKed but the master has not archived is kept this long (master offline). First-start default |
 | `BVP_WHATSAPP_MEDIA_BASE_URL` | `https://mmg.whatsapp.net` | Only media URLs under this are fetched (dev: the fake CDN) |
 | `BVP_EVOLUTION_URL` | `http://evolution:8080` | Evolution API, for `sendText` replies |
 | `BVP_EVOLUTION_API_KEY` | — (required) | Evolution API key (`BVP_EVOLUTION_INSTANCE_TOKEN` is accepted as an alias) |

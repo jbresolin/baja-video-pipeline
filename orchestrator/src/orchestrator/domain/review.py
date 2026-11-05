@@ -6,8 +6,8 @@ from typing import Any
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import to_db_time
 from orchestrator.domain import provas_catalog
+from orchestrator.domain.discard import discard_job, restore_job
 from orchestrator.domain.job_view import load_job, require_job_row
-from orchestrator.domain.raw_copies import drop_inbox_copy
 from orchestrator.domain.transitions import move_job, revoke_job_leases
 from orchestrator.errors import ApiError, illegal_transition
 from orchestrator.repositories import events as events_repo
@@ -26,6 +26,7 @@ from shared.models import (
 from shared.state_machine import (
     DISCARDABLE_STATES,
     REPROCESSABLE_STATES,
+    RESTORABLE_STATES,
     RETRYABLE_STATES,
     retry_target_for,
 )
@@ -51,13 +52,18 @@ CLEARED_FAILURE_COLUMNS = {
 
 
 def _team_names(connection: sqlite3.Connection, car_number: int) -> dict[str, str | None]:
-    """team_name (full, for the review UI and latest.m3u) and overlay_team_name
-    (the short name when the results API has one: the clip overlay shows it).
-    An unknown car leaves both empty (design §18)."""
+    """team_name (full, for the review UI and latest.m3u), overlay_team_name
+    (the short name when the results API has one: the clip overlay shows it)
+    and overlay_school_short (the overlay's role pill, LIVESTACK-38).
+    An unknown car leaves all three empty (design §18)."""
     team = teams_repo.get_team(connection, car_number)
     if team is None:
-        return {"team_name": None, "overlay_team_name": None}
-    return {"team_name": team.team_name, "overlay_team_name": team.short_name or team.team_name}
+        return {"team_name": None, "overlay_team_name": None, "overlay_school_short": None}
+    return {
+        "team_name": team.team_name,
+        "overlay_team_name": team.short_name or team.team_name,
+        "overlay_school_short": team.school_short,
+    }
 
 
 def _check_action_allowed(state: JobState, action: ReviewAction) -> None:
@@ -67,6 +73,7 @@ def _check_action_allowed(state: JobState, action: ReviewAction) -> None:
         ReviewAction.REPROCESS: state in REPROCESSABLE_STATES,
         ReviewAction.DISCARD: state in DISCARDABLE_STATES,
         ReviewAction.RETRY: state in RETRYABLE_STATES,
+        ReviewAction.RESTORE: state in RESTORABLE_STATES,
     }[action]
     if not allowed:
         raise illegal_transition(state, action)
@@ -143,7 +150,7 @@ def update_review(
             changes.update(_team_names(connection, update.car_number))
         actor = events_repo.reviewer_actor(reviewer)
         _apply_action(context, connection, job_row, update.action, changes, merged, actor)
-        return load_job(connection, job_id)
+        return load_job(connection, job_id, context.layout)
 
 
 def _apply_action(
@@ -158,7 +165,7 @@ def _apply_action(
     now = context.clock.now()
     job_id = job_row["id"]
     if action == ReviewAction.SAVE:
-        jobs_repo.update_job(connection, job_id, now, changes)
+        jobs_repo.update_job(connection, job_id, now, changes, bump_version=True)
         events_repo.record_event(connection, now, actor=actor, kind="review_saved", job_id=job_id)
         return
     if action == ReviewAction.READY:
@@ -171,6 +178,7 @@ def _apply_action(
             actor=actor,
             reason="reviewed",
             changes=changes,
+            bump_version=True,
         )
         return
     if action == ReviewAction.REPROCESS:
@@ -192,28 +200,15 @@ def _apply_action(
             actor=actor,
             reason="reprocess",
             changes={**changes, **CLEARED_CLIP_COLUMNS},
+            bump_version=True,
         )
         return
     if action == ReviewAction.DISCARD:
-        revoke_job_leases(connection, job_id, now, actor=actor, reason="job discarded")
-        delete_file_and_partials(context.layout.outbox_path(job_id))
-        move_job(
-            connection,
-            job_row,
-            JobState.DISCARDED,
-            now,
-            actor=actor,
-            reason="discarded",
-            changes={**changes, "proxy_requested": 0, "waiting_reason": None},
-        )
-        drop_inbox_copy(
-            connection,
-            context.layout,
-            require_job_row(connection, job_id),
-            now,
-            actor=actor,
-            reason="job discarded",
-        )
+        # Nothing is deleted yet: raws stay for the grace period (domain/discard.py).
+        discard_job(context, connection, job_row, changes, actor)
+        return
+    if action == ReviewAction.RESTORE:
+        restore_job(context, connection, job_row, changes, actor)
         return
     # RETRY: back to where the job failed (claimed → ready).
     failed_from = JobState(job_row["failed_from"] or JobState.CLAIMED)
@@ -229,6 +224,7 @@ def _apply_action(
         actor=actor,
         reason="retry after failure",
         changes={**changes, **CLEARED_FAILURE_COLUMNS, "waiting_reason": None},
+        bump_version=True,
     )
     if target == JobState.PROXY_READY:
         # The proxy exists (that is what proxy_ready means): straight back to review.

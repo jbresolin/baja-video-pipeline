@@ -156,6 +156,7 @@ def save_team(request: Request, form: dict = Depends(read_form)) -> Response:
             team_name=form_text(form, "team_name") or "",
             short_name=form_text(form, "short_name"),
             school=form_text(form, "school"),
+            school_short=form_text(form, "school_short"),
         )
     except ValueError:
         return _teams_page(

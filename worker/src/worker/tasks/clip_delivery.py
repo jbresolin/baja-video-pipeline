@@ -37,7 +37,8 @@ def deliver_clip(
     task: ProcessTask,
     clip_path: Path,
     cancel: CancelToken,
-) -> None:
+) -> str:
+    """Deliver the clip; returns its SHA-256 (the worker then keeps it under that name)."""
     clip_sha256 = sha256_of_file(clip_path)
     studio_url = direct_push_url(task)
     if studio_url is not None and _push_to_studio(
@@ -45,12 +46,13 @@ def deliver_clip(
     ):
         if _studio_ack_ended_lease(env, lease, cancel):
             logger.info("studio acknowledged the clip; delivery finished")
-            return
+            return clip_sha256
         logger.warning(
             "lease still renewed %.0f s after the push; uploading to the outbox as well",
             env.settings.push_ack_wait_seconds,
         )
     _upload_to_outbox(env, lease, task, clip_path, clip_sha256, cancel)
+    return clip_sha256
 
 
 def direct_push_url(task: ProcessTask) -> str | None:

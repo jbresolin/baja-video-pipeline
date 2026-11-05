@@ -26,6 +26,16 @@
   <label for="proxy_evict_min_free_gb">Apagar proxies antigos quando o disco tiver menos de (GB livres)</label>
   <input id="proxy_evict_min_free_gb" name="proxy_evict_min_free_gb" type="number" step="0.1" min="0"
          value="{{ '%g'|format(values.proxy_evict_min_free_gb) }}" required>
+  <label for="discard_grace_hours">Prazo para restaurar um vídeo descartado (horas)</label>
+  <input id="discard_grace_hours" name="discard_grace_hours" type="number" step="1" min="0" max="720"
+         value="{{ '%g'|format(values.discard_grace_hours) }}" required>
+  <p class="hint">Durante esse prazo o vídeo original fica guardado e “Restaurar” funciona. Vale para os
+    próximos descartes; quem já foi descartado mantém o prazo que tinha.</p>
+  <label for="outbox_keep_unarchived_hours">Guardar na caixa de saída, esperando o arquivo do mestre (horas)</label>
+  <input id="outbox_keep_unarchived_hours" name="outbox_keep_unarchived_hours" type="number" step="1" min="0" max="720"
+         value="{{ '%g'|format(values.outbox_keep_unarchived_hours) }}" required>
+  <p class="hint">Depois que o estúdio recebeu o clipe, a cópia do servidor espera o mestre arquivá-lo
+    por no máximo esse tempo (para o caso de o mestre estar desligado).</p>
   <label for="installer_download_url">Link do instalador (mostrado junto com cada token novo)</label>
   <input id="installer_download_url" name="installer_download_url" type="url" maxlength="500"
          value="{{ values.installer_download_url }}" placeholder="https://github.com/…/releases/…">

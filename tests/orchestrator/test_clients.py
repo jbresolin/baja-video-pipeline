@@ -107,6 +107,49 @@ def test_send_text_posts_the_number_and_text_with_the_api_key():
     )
 
 
+def test_send_text_can_quote_the_message_it_answers():
+    fake = FakeEvolutionApi()
+    client = EvolutionClient(
+        httpx.Client(transport=fake.transport()), FAKE_EVOLUTION_URL, "the-key", "baja-bot"
+    )
+    quoted = {
+        "key": {"remoteJid": "53880532508775@lid", "fromMe": False, "id": "ABC"},
+        "message": {"documentMessage": {"fileName": "VID.mp4", "mimetype": "video/mp4"}},
+    }
+    assert client.send_text("5511999999999@s.whatsapp.net", "olá", quoted=quoted)
+    # The `quoted` object goes through unchanged (Evolution 2.3.7 Quoted {key, message}).
+    assert fake.sent[0].quoted == quoted
+    assert fake.problems == []
+
+
+def test_send_reaction_addresses_the_message_by_its_key():
+    fake = FakeEvolutionApi()
+    client = EvolutionClient(
+        httpx.Client(transport=fake.transport()), FAKE_EVOLUTION_URL, "the-key", "baja-bot"
+    )
+    key = {"remoteJid": "53880532508775@lid", "fromMe": False, "id": "ABC"}
+    assert client.send_reaction(key, "✅")
+    # The key is sent exactly as given, @lid included: reactions address the
+    # message, not the person, so no phone-number rewriting here.
+    [reaction] = fake.reactions
+    assert (reaction.instance, reaction.key, reaction.reaction, reaction.api_key) == (
+        "baja-bot",
+        key,
+        "✅",
+        "the-key",
+    )
+
+
+def test_the_fake_refuses_a_reaction_evolution_would_refuse():
+    # reactionMessageSchema requires key.id, key.remoteJid and key.fromMe.
+    fake = FakeEvolutionApi()
+    client = EvolutionClient(
+        httpx.Client(transport=fake.transport()), FAKE_EVOLUTION_URL, "k", "baja-bot"
+    )
+    assert client.send_reaction({"id": "ABC"}, "✅") is False
+    assert fake.problems
+
+
 def test_a_failing_bot_reply_is_logged_not_raised():
     # Intake must never break because Evolution is down.
     down = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(500)))

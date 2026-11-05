@@ -6,7 +6,9 @@ lease renews it), which raws we hold, and what we measured since the last
 beat. The answer tells us:
   * lease_status: `lost` → the task under that lease must stop;
   * accepting_new_raws: false → do not ask for download_raw (near the cap);
-  * deletable_job_ids: raws of discarded jobs we may delete.
+  * deletable_job_ids: raws of discarded jobs we may delete;
+  * archived_clip_sha256s: kept clips the master has archived; near the
+    cap we evict those (oldest first), never any other (worker.clip_store).
 """
 
 import logging
@@ -15,7 +17,9 @@ import threading
 from shared.models import HeartbeatRequest, HeartbeatResponse, LeaseHeartbeatStatus, WorkerRole
 from shared.protocol import HEARTBEAT_INTERVAL_SECONDS
 from worker.api_client import ApiError, OrchestratorClient, OrchestratorUnreachableError
+from worker.config import CONNECTION_STEP_PENDING_MESSAGE
 from worker.leases import LeaseTracker
+from worker.pause import PauseSwitch
 from worker.status import StatusBoard
 from worker.storage import Storage
 from worker.tasks.environment import MeasurementLog
@@ -37,9 +41,15 @@ class Heartbeater:
         file_server_port: int,
         receiver_port: int,
         fixed_interval_seconds: float | None = None,
+        connection_step_pending: bool = False,
+        pause: PauseSwitch | None = None,
     ) -> None:
         """`fixed_interval_seconds` overrides the orchestrator's
-        heartbeat_interval_s (in-process test runs beat faster)."""
+        heartbeat_interval_s (in-process test runs beat faster).
+        `connection_step_pending` (WorkerConfig.connection_step_pending):
+        the tailnet join is not done, so a failed beat is explained with
+        CONNECTION_STEP_PENDING_MESSAGE rather than the network error.
+        `pause`: the volunteer's switch; each beat reports `paused`."""
         self._api = api
         self._role = role
         self._storage = storage
@@ -50,7 +60,11 @@ class Heartbeater:
         self._file_server_port = file_server_port
         self._receiver_port = receiver_port
         self._fixed_interval_seconds = fixed_interval_seconds
+        self._connection_step_pending = connection_step_pending
+        self._pause = pause
         self.interval_seconds: float = fixed_interval_seconds or HEARTBEAT_INTERVAL_SECONDS
+        # How many of our kept clips the master has archived (status page).
+        self.clips_archived_by_master = 0
         # Until the first answer arrives, assume we may take new raws.
         self._accepting_new_raws = threading.Event()
         self._accepting_new_raws.set()
@@ -79,21 +93,30 @@ class Heartbeater:
             current_lease_ids=self._leases.ids(),
             held_job_ids=[] if is_studio else self._storage.held_job_ids(),
             measurements=self._measurements.drain(),
+            held_clips=[] if is_studio else self._storage.clips.held_clips(),
+            paused=self._pause is not None and self._pause.is_paused,
         )
 
     def beat_once(self) -> HeartbeatResponse | None:
         """Send one heartbeat and act on the answer; None if it failed."""
         request = self.build_request()
+        self._publish_storage(request)
         try:
             answer = self._api.heartbeat(request)
         except (OrchestratorUnreachableError, ApiError) as error:
             # Leases keep running on the orchestrator's side for 45 s, so a
             # single missed beat is harmless; just keep the measurements.
             self._measurements.put_back(request.measurements)
-            self._status.set("orchestrator", f"unreachable: {error}")
+            if self._connection_step_pending and isinstance(error, OrchestratorUnreachableError):
+                self._status.set("orchestrator", CONNECTION_STEP_PENDING_MESSAGE)
+            else:
+                self._status.set("orchestrator", f"unreachable: {error}")
+            self._status.set("last error", str(error))
+            self._status.record_unreachable(str(error))
             logger.warning("heartbeat failed: %s", error)
             return None
 
+        self._status.record_contact()
         self._status.set_now("last heartbeat")
         self._status.set("orchestrator", "connected")
         self.interval_seconds = (
@@ -110,9 +133,36 @@ class Heartbeater:
         else:
             self._accepting_new_raws.clear()
         self._status.set("accepting new raws", "yes" if answer.accepting_new_raws else "no")
+        # The studio never takes raws, so "no" is normal there, not "disk full".
+        is_studio = self._role == WorkerRole.STUDIO
+        self._status.set_near_cap(not answer.accepting_new_raws and not is_studio)
         for job_id in answer.deletable_job_ids:
             self._storage.delete_raw(job_id)
+        archived = set(answer.archived_clip_sha256s)
+        self._storage.clips.evict_archived(archived, self._storage.free_bytes_under_cap)
+        self.clips_archived_by_master = len(archived)
+        self._publish_clips()
         return answer
+
+    def _publish_clips(self) -> None:
+        """Clips kept / archived, for the status page (design §11 as amended)."""
+        if self._role == WorkerRole.STUDIO:
+            return
+        kept = len(self._storage.clips.held_clips())
+        if self._role == WorkerRole.MASTER:
+            # The master's archive is its own: everything in it is archived.
+            in_archive = self._storage.clips.archived_clip_count()
+            self._status.set_clips(held=kept + in_archive, archived=in_archive)
+        else:
+            self._status.set_clips(held=kept, archived=self.clips_archived_by_master)
+
+    def _publish_storage(self, request: HeartbeatRequest) -> None:
+        """Space used vs. cap and the held-raw count, for the status page."""
+        self._status.set_storage(
+            used_bytes=self._storage.used_bytes(),
+            cap_bytes=self._storage.cap_bytes,
+            held_raws=len(request.held_job_ids),
+        )
 
     def run_forever(self, shutdown: threading.Event) -> None:
         """Thread body: beat now, then every interval until shutdown."""

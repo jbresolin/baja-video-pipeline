@@ -152,7 +152,7 @@ def test_discard_sends_only_the_version_and_action(ui, fake_orchestrator):
 
     assert response.status_code == 200
     assert fake_orchestrator.jobs["job-failed-1"].state == JobState.DISCARDED
-    assert response.json()["message"] == "Discarded."
+    assert response.json()["message"].startswith("Discarded.")
 
 
 def test_retry_sends_a_failed_job_back_to_ready_and_clears_the_failure(ui, fake_orchestrator):

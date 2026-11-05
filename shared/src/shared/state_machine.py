@@ -64,8 +64,9 @@ ALLOWED_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
             JobState.DISCARDED,
         }
     ),
-    # Final: a discarded job never comes back.
-    JobState.DISCARDED: frozenset(),
+    # A reviewer chose "restore": back to where it was discarded from
+    # (Job.discarded_from). Only these three states can be discarded.
+    JobState.DISCARDED: frozenset({JobState.AWAITING_REVIEW, JobState.READY, JobState.FAILED}),
     JobState.UPLOADED: frozenset(
         {
             # The studio acknowledged a verified copy.
@@ -95,6 +96,9 @@ REPROCESSABLE_STATES: frozenset[JobState] = frozenset(
 DISCARDABLE_STATES: frozenset[JobState] = frozenset(
     {JobState.AWAITING_REVIEW, JobState.READY, JobState.FAILED}
 )
+
+# States from which a reviewer's "restore" action is accepted.
+RESTORABLE_STATES: frozenset[JobState] = frozenset({JobState.DISCARDED})
 
 # States from which a reviewer's "retry" action is accepted.
 RETRYABLE_STATES: frozenset[JobState] = frozenset({JobState.FAILED})

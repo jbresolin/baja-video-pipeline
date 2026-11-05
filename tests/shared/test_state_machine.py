@@ -14,6 +14,7 @@ from shared.state_machine import (
     DISCARDABLE_STATES,
     FAILABLE_STATES,
     REPROCESSABLE_STATES,
+    RESTORABLE_STATES,
     RETRYABLE_STATES,
     IllegalTransitionError,
     is_transition_allowed,
@@ -54,6 +55,11 @@ LEGAL_TRANSITIONS = [
     (JobState.FAILED, JobState.PROXY_READY),
     (JobState.FAILED, JobState.READY),
     (JobState.FAILED, JobState.DISCARDED),
+    # A reviewer restores a discarded job to where it was discarded from
+    # (LIVESTACK-38: discard can be undone).
+    (JobState.DISCARDED, JobState.AWAITING_REVIEW),
+    (JobState.DISCARDED, JobState.READY),
+    (JobState.DISCARDED, JobState.FAILED),
 ]
 
 
@@ -101,10 +107,10 @@ ILLEGAL_TRANSITIONS = [
     (JobState.CLAIMED, JobState.DONE),
     # "Moving" to the state the job is already in.
     (JobState.READY, JobState.READY),
-    # Discarded is final: no retry, no review, nothing.
-    (JobState.DISCARDED, JobState.READY),
-    (JobState.DISCARDED, JobState.AWAITING_REVIEW),
-    (JobState.DISCARDED, JobState.FAILED),
+    # A restored job goes back to where it was; never past it.
+    (JobState.DISCARDED, JobState.CLAIMED),
+    (JobState.DISCARDED, JobState.DONE),
+    (JobState.DISCARDED, JobState.RECEIVED),
     # Discard is only for jobs a reviewer can see (awaiting_review, ready,
     # failed); a job still without a proxy, or already processing or
     # delivered, cannot be discarded.
@@ -174,20 +180,27 @@ def test_discardable_and_retryable_states_match_the_table():
     assert is_transition_allowed(JobState.FAILED, JobState.READY)
 
 
-def test_discarded_is_a_final_state_and_the_error_says_so():
-    # No move at all is allowed out of "discarded", and the error message
-    # explains that instead of ending with an empty list.
-    assert ALLOWED_TRANSITIONS[JobState.DISCARDED] == frozenset()
+def test_discarded_can_only_go_back_to_where_a_discard_comes_from():
+    # "restore" undoes a discard, so the states a discarded job may go to
+    # are exactly the states a job may be discarded from.
+    discard_sources = {s for s in JobState if is_transition_allowed(s, JobState.DISCARDED)}
+    assert ALLOWED_TRANSITIONS[JobState.DISCARDED] == discard_sources
+    # Anything else is refused, and the error lists the legal targets.
     with pytest.raises(IllegalTransitionError) as caught:
-        validate_transition(JobState.DISCARDED, JobState.READY)
-    assert "final state" in str(caught.value)
+        validate_transition(JobState.DISCARDED, JobState.DONE)
+    assert "awaiting_review, failed, ready" in str(caught.value)
+    assert {JobState.DISCARDED} == RESTORABLE_STATES
 
 
 def test_failable_states_are_exactly_the_states_with_a_move_to_failed():
     # FAILABLE_STATES is the list the orchestrator checks before recording
     # Job.failed_from. It must agree with the transition table, or the
     # orchestrator could record a failure the table then refuses.
-    sources_of_failed = {s for s in JobState if is_transition_allowed(s, JobState.FAILED)}
+    # (discarded → failed is a reviewer's "restore" of a failed job that was
+    # discarded, not a worker failure, so it is left out here.)
+    sources_of_failed = {
+        s for s in JobState if is_transition_allowed(s, JobState.FAILED) and s != JobState.DISCARDED
+    }
     assert sources_of_failed == FAILABLE_STATES
     assert {JobState.RECEIVED, JobState.PROXY_READY, JobState.CLAIMED} == FAILABLE_STATES
 

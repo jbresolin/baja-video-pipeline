@@ -3,6 +3,9 @@
 Peer file server (docs/api.md §7.2), master and worker roles:
     GET /health            {"status": "ok", "worker_id": …, "role": …}
     GET /raw/{job_id}      the held raw, with Range (206) support; 404 if not held
+    GET /clip/{job_id}     a kept clip (worker.clip_store), with Range; the newest
+                           one, or exactly ?sha256=<hex>; 404 if not kept. The
+                           master archives clips from here (archive_clip).
 
 Only complete raws are served: partial downloads are hidden dot-files that
 find_raw() never returns. No app-level auth in v1 (tailnet ACL, design §15).
@@ -36,10 +39,20 @@ def build_peer_file_server_app(storage: Storage, worker_id: str, role: str) -> S
         # FileResponse answers Range requests with 206 + Content-Range.
         return FileResponse(raw_path, media_type="application/octet-stream")
 
+    async def serve_clip(request: Request) -> Response:
+        job_id = request.path_params["job_id"]
+        clip_path = storage.clips.find(job_id, request.query_params.get("sha256"))
+        if clip_path is None:
+            return error_response(404, ErrorCode.NOT_FOUND, f"no kept clip of {job_id} here")
+        logger.info("serving clip to %s", request.client.host if request.client else "?",
+                    extra={"job_id": job_id})  # fmt: skip
+        return FileResponse(clip_path, media_type="video/mp4")
+
     return Starlette(
         routes=[
             Route("/health", health_endpoint(worker_id, role), methods=["GET"]),
             Route("/raw/{job_id}", serve_raw, methods=["GET", "HEAD"]),
+            Route("/clip/{job_id}", serve_clip, methods=["GET", "HEAD"]),
         ]
     )
 

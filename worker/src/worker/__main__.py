@@ -13,7 +13,9 @@ Startup:
 
 import argparse
 import logging
+import os
 import signal
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -25,6 +27,7 @@ from worker.daemon import Daemon, build_api_client
 from worker.enrollment import detect_capabilities, wait_until_enrolled
 from worker.logging_setup import configure_logging
 from worker.media_tools import MediaTools
+from worker.pause import PauseSwitch
 from worker.servers import BackgroundServer
 from worker.setup_page import build_setup_app
 from worker.status import StatusBoard
@@ -41,6 +44,37 @@ def install_stop_signal_handlers(shutdown: threading.Event) -> None:
     for name in ("SIGINT", "SIGTERM", "SIGBREAK"):  # SIGBREAK exists on Windows only
         if hasattr(signal, name):
             signal.signal(getattr(signal, name), request_stop)
+
+
+WINDOWS_SERVICE_NAME = "BajaWorker"
+
+
+def stop_service_action(shutdown: threading.Event):
+    """What "Desligar o worker" on the status page does.
+
+    On Windows, ask the service manager to stop the BajaWorker service:
+    simply exiting would make NSSM start us again 10 s later. Anywhere else
+    (or when we are not that service), stop this process.
+    """
+
+    def stop() -> None:
+        def run() -> None:
+            if os.name == "nt":
+                finished = subprocess.run(
+                    ["sc.exe", "stop", WINDOWS_SERVICE_NAME],
+                    capture_output=True,
+                    check=False,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                if finished.returncode == 0:
+                    return  # the service manager will stop us (CTRL-C via NSSM)
+            logger.info("stop requested from the status page")
+            shutdown.set()
+
+        # In the background: the page's answer must not wait for the stop.
+        threading.Thread(target=run, name="stop-service", daemon=True).start()
+
+    return stop
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -61,8 +95,17 @@ def main(argv: list[str] | None = None) -> int:
     install_stop_signal_handlers(shutdown)
     status = StatusBoard()
     setup_submitted = threading.Event()
+    # One pause switch for the page/tray API and the daemon (worker.pause).
+    pause = PauseSwitch(config_path)
     setup_server = BackgroundServer(
-        build_setup_app(config_path, status, setup_submitted, config.setup_page_port),
+        build_setup_app(
+            config_path,
+            status,
+            setup_submitted,
+            config.setup_page_port,
+            pause=pause,
+            stop_service=stop_service_action(shutdown),
+        ),
         "127.0.0.1",
         config.setup_page_port,
         "setup-page",
@@ -93,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         shutdown,
         media=_media_tools_for(enrolled),
         transport=transport,
+        pause=pause,
     )
     daemon.start()
     # Wait in short steps: on Windows a bare Event.wait() would delay CTRL-C.

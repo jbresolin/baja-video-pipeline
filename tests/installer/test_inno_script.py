@@ -134,3 +134,47 @@ def test_no_code_line_starts_with_a_hash_character_literal():
         if line.lstrip().startswith("#") and line.lstrip()[1:2].isdigit()
     ]
     assert offending == []
+
+
+# --- the tray icon and the service rights (LIVESTACK-38 item 9) ----------------
+
+
+def test_the_tray_icon_starts_at_every_logon_for_all_users():
+    # HKLM (not HKCU): every user who logs on gets the icon. Removed on uninstall.
+    assert '#define TrayExe "BajaWorkerTray.exe"' in ISS
+    run_key = next(line for line in ISS.splitlines() if line.startswith("Root: HKLM"))
+    assert 'Subkey: "Software\\Microsoft\\Windows\\CurrentVersion\\Run"' in run_key
+    assert 'ValueData: """{app}\\{#TrayExe}"""' in run_key
+    assert "uninsdeletevalue" in run_key
+
+
+def test_the_tray_also_starts_right_after_install_as_the_installing_user():
+    # Setup runs elevated; runasoriginaluser makes the icon run as the
+    # volunteer, never as administrator.
+    line = next(ln for ln in ISS.splitlines() if ln.startswith('Filename: "{app}\\{#TrayExe}"'))
+    assert "runasoriginaluser" in line and "nowait" in line
+
+
+def test_tray_icons_are_closed_before_upgrade_and_uninstall():
+    # Otherwise Windows keeps BajaWorkerTray.exe open and the files cannot
+    # be replaced or removed.
+    assert "taskkill.exe'), '/F /IM {#TrayExe}'" in code_procedure("StopTrayIcons")
+    assert "StopTrayIcons" in code_procedure("PrepareToInstall")
+    assert "StopTrayIcons" in code_procedure("CurUninstallStepChanged")
+
+
+def test_users_get_start_stop_rights_after_the_service_is_registered():
+    steps = code_procedure("CurStepChanged")
+    assert "'--grant-service-rights'" in steps
+    # The descriptor can only be set on a service that exists.
+    assert steps.index("RegisterService") < steps.index("--grant-service-rights")
+
+
+def test_the_start_menu_has_the_three_entries_and_the_icon():
+    for name in (
+        "Baja Worker",
+        "Baja Worker - concluir conexão",
+        "Desinstalar Baja Worker",
+        "Baja Worker - ícone perto do relógio",
+    ):
+        assert f'Name: "{{group}}\\{name}"' in ISS

@@ -47,9 +47,17 @@ def authorize_file_request(
             return
         raise forbidden("no download_raw lease on this job")
 
-    if OUTBOX_PATH.match(path):
+    outbox_match = OUTBOX_PATH.match(path)
+    if outbox_match:
         if worker_row["role"] == WorkerRole.STUDIO:
             return
-        raise forbidden("only the studio may download outbox clips")
+        # The master archives clips (archive_clip); the outbox is one source.
+        job_id = outbox_match.group(1)
+        now = context.clock.now()
+        with context.database.transaction() as connection:
+            leases = leases_repo.list_leases_for_job(connection, job_id, TaskKind.ARCHIVE_CLIP)
+        if any(lease.worker_id == worker_row["id"] and lease.expires_at > now for lease in leases):
+            return
+        raise forbidden("only the studio, or the master archiving it, may download outbox clips")
 
     raise forbidden("this path is not served to workers")

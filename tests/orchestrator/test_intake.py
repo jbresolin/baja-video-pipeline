@@ -7,7 +7,6 @@ duplicates, flag low_res videos, and protect the VPS inbox (design §10).
 
 import hashlib
 
-from orchestrator.domain import bot_messages
 from orchestrator.testing.harness import build_harness
 from orchestrator.testing.scenarios import (
     SAMPLE_VIDEO_BYTES,
@@ -47,9 +46,10 @@ def test_a_document_video_becomes_a_received_job_with_the_raw_in_the_inbox(harne
     # The original extension is kept, lowercased (docs/api.md §8.2).
     inbox_file = harness.context.layout.inbox_path(job_id, ".mov")
     assert inbox_file.read_bytes() == SAMPLE_VIDEO_BYTES
-    # Exactly one bot reply for a good document: the "received" confirmation,
-    # sent only after the file was verified and the job created.
-    assert harness.evolution.texts_to("5511999999999") == [bot_messages.RECEIVED_OK]
+    # Exactly one bot answer for a good document: a ✅ reaction on it (no
+    # text), sent only after the file was verified and the job created.
+    assert harness.evolution.reactions_on(payload["data"]["key"]["id"]) == ["✅"]
+    assert harness.evolution.sent == []
 
 
 def test_a_repeated_webhook_is_a_duplicate_pointing_at_the_same_job(harness):
@@ -224,7 +224,9 @@ def test_group_and_broadcast_videos_are_ignored_while_the_same_video_by_dm_is_ac
     dm_job = job_id_for_message(harness, dm_payload["data"]["key"]["id"])
     assert harness.job(dm_job)["state"] == "received"
     assert len(list(harness.context.layout.inbox_dir.iterdir())) == 1
-    # The bot said nothing into the group: its only message is the DM confirmation.
-    assert [(m.number, m.text) for m in harness.evolution.sent] == [
-        ("5511955554444", bot_messages.RECEIVED_OK)
+    # The bot said nothing into the group: no text at all, and its only
+    # reaction is the ✅ on the DM video.
+    assert harness.evolution.sent == []
+    assert [(r.key["id"], r.reaction) for r in harness.evolution.reactions] == [
+        (dm_payload["data"]["key"]["id"], "✅")
     ]

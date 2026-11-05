@@ -1,8 +1,9 @@
 """When the VPS may drop its inbox copy of a raw (design §4, §10).
 
-The inbox is transit only: once two holders confirmed the raw (or the job
-was discarded), the VPS copy goes. Used by holder-confirm (right away),
-discard, and the background inbox cleanup (catches anything missed).
+The inbox is transit only: once two holders confirmed the raw, the VPS
+copy goes. Used by holder-confirm (right away) and the background inbox
+cleanup (catches anything missed, and drops the copy of a discarded job
+once its discard grace period is over: domain/discard.py).
 """
 
 import logging
@@ -28,8 +29,13 @@ def confirmed_holder_count(connection: sqlite3.Connection, job_id: str) -> int:
 
 
 def inbox_copy_is_redundant(connection: sqlite3.Connection, job_row: sqlite3.Row) -> bool:
+    """Two confirmed holders and no inbox download running.
+
+    A discarded job's copy is not "redundant": it is kept until the discard
+    grace period ends, so a restore finds it (background/sweepers.py).
+    """
     if job_row["state"] == JobState.DISCARDED:
-        return True
+        return False
     if confirmed_holder_count(connection, job_row["id"]) < REQUIRED_HOLDER_COUNT:
         return False
     # Never pull the file from under a running inbox download.
@@ -54,8 +60,7 @@ def drop_inbox_copy(
     except OSError as error:
         logger.warning("could not delete %s: %s", path, error)
         return False
-    # Pure bookkeeping for the reviewer: no version bump.
-    jobs_repo.update_job(connection, job_row["id"], now, {"raw_on_vps": 0}, bump_version=False)
+    jobs_repo.update_job(connection, job_row["id"], now, {"raw_on_vps": 0})
     events_repo.record_event(
         connection, now, actor=actor, kind="inbox_copy_deleted", job_id=job_row["id"], reason=reason
     )

@@ -62,6 +62,9 @@ class TaskKind(StrEnum):
     PROCESS = "process"
     # Studio only: pull a clip from the VPS outbox, verify it, store it, ACK.
     DELIVER = "deliver"
+    # Master only: copy a finished clip (any version) into its archive
+    # folder, from the worker that rendered it or the VPS outbox.
+    ARCHIVE_CLIP = "archive_clip"
 
 
 class HolderStatus(StrEnum):
@@ -95,6 +98,9 @@ class ReviewAction(StrEnum):
     DISCARD = "discard"
     # Try again after a worker failure (failed → Job.failed_from; claimed → ready).
     RETRY = "retry"
+    # Undo a discard (discarded → Job.discarded_from). Always works within
+    # the discard grace period; after it only while a raw copy is left.
+    RESTORE = "restore"
 
 
 class DeliveryRoute(StrEnum):

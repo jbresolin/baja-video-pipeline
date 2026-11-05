@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     inbox_hold_gb: float = Field(default=22, gt=0)
     inbox_cap_gb: float = Field(default=25, gt=0)
     proxy_evict_min_free_gb: float = Field(default=10, ge=0)
+    # Also first-start defaults of the Settings page (LIVESTACK-38): how long
+    # a discarded job's raws are kept so "restore" works, and how long an
+    # outbox clip the studio already took waits for the master's archive.
+    discard_grace_hours: float = Field(default=24, ge=0, le=720)
+    outbox_keep_unarchived_hours: float = Field(default=72, ge=0, le=720)
 
     # --- Admin Settings page, first-start defaults (like the two above) ---
     intake_mode: IntakeMode = IntakeMode.OPEN

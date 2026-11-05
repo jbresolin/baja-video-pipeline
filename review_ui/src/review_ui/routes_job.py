@@ -11,6 +11,7 @@ from review_ui.job_view import (
     frame_rate_for_stepping,
     intake_text,
 )
+from review_ui.media_info_view import media_panel
 from review_ui.orchestrator_client import (
     OrchestratorClient,
     OrchestratorError,
@@ -86,6 +87,7 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
         active_nav="queue",
         intake=intake_text(job),
         frame_rate=frame_rate_for_stepping(job),
+        media=media_panel(job),
         actions=[(action.value, ACTION_LABELS[action]) for action in available_actions(job.state)],
         prova_choices=prova_choices(orchestrator, job),
         poll_seconds=JOB_PANEL_POLL_SECONDS,
