@@ -1,6 +1,12 @@
 /* Baja review UI. Neutral palette (no brand colours), light and dark.
    Designed for a laptop; collapses to one column on a phone. */
 
+/* The `hidden` attribute must always hide. The browser's own rule for it is
+   weaker than any class that sets `display` (e.g. `.banner { display: flex }`),
+   so without this line `element.hidden = true` silently does nothing and the
+   "someone changed this job" banner could never disappear. */
+[hidden] { display: none !important; }
+
 :root {
   --bg: #f5f5f3;
   --surface: #ffffff;
