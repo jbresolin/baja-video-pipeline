@@ -249,7 +249,7 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
 | Task kind | Who gets it | What to do | How it ends |
 | --- | --- | --- | --- |
 | `download_raw` | master (always, see backfill below), one more worker; never studio | GET `download_url` with your bearer (Caddy inbox), or the `fallback_download_urls` (peers, port 8710, no token), with `shared.http_transfer.download_file`; ffprobe it | `POST /jobs/{id}/holder-confirm` |
-| `make_proxy` | a confirmed holder | Probe (`shared.media_probe`), render thumbnail and proxy with `tone_map_hdr=info.is_hdr`; `PUT …/thumbnail`, then chunked `POST …/proxy` | completing chunk of `…/proxy` |
+| `make_proxy` | a confirmed holder | Probe (`shared.media_probe`), render thumbnail and proxy with `tone_map_hdr=info.is_hdr`; `PUT …/media-info` (when the task has `media_info_upload_url`), `PUT …/thumbnail`, then chunked `POST …/proxy` | completing chunk of `…/proxy` |
 | `process` | a confirmed holder | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
 | `deliver` | studio only | GET `download_url` (Caddy outbox) with your bearer, verify SHA-256, store at `clip_relative_path`, rewrite `latest.m3u` | `POST /outbox/{id}/ack` |
 
@@ -378,6 +378,7 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `POST /jobs/{job_id}/failed` | `FailedRequest` → `JobStateResponse` | ends the lease (§5) |
 | `POST /jobs/{job_id}/holder-confirm` | `HolderConfirmRequest` → `HolderConfirmResponse` | 422 `hash_mismatch` drops you as holder |
 | `PUT /jobs/{job_id}/thumbnail` | JPEG body, `Lease-Id` → 204 | before the proxy |
+| `PUT /jobs/{job_id}/media-info` | `ProbeReport` JSON, `Lease-Id` → 204 | make_proxy lease; the raw's ffprobe report (contract 1.2.0, below) |
 | `POST /jobs/{job_id}/proxy` | chunk (+ `Frame-Rate`) → `ChunkAccepted` | ends make_proxy lease; sets `Job.frame_rate` |
 | `POST /jobs/{job_id}/clip` | chunk → `ChunkAccepted` | outbox route; claimed → uploaded |
 | `POST /jobs/{job_id}/delivered` | `DeliveredRequest` → `JobStateResponse` | studio; direct route |
@@ -458,6 +459,23 @@ the sender go through Evolution `sendText`; every text is in
 `orchestrator/domain/bot_messages.py` (pt-BR). A verified document gets
 `RECEIVED_OK` once its job exists, unless the webhook already answered
 (low_res or hold notice), so each video gets one positive reply.
+
+**Media info** (contract 1.2.0). The first holder already runs ffprobe
+on the raw to make the proxy; it sends the whole answer
+(`ffprobe -show_format -show_streams`, as `ProbeReport {format, streams,
+location_present}`) to the task's `media_info_upload_url` =
+`PUT /jobs/{id}/media-info`, under its make_proxy lease and before the
+thumbnail. **Location never leaves the worker:** every tag whose name
+mentions location/GPS (`location`, `com.apple.quicktime.location.ISO6709`,
+…) is removed by `shared.media_details.probe_report_from_ffprobe` and only
+`location_present: true` remains; the orchestrator strips them again on
+arrival. The report is stored as `Job.media_info` and fills
+`Job.frame_rate` while that is still empty (the proxy's `Frame-Rate`
+header then replaces it with the proxy's exact rate). Over 512 KB → 413;
+not a `ProbeReport` → 400; no live make_proxy lease → 409 `lease_lost`. A
+refusal never fails the proxy task; a task without the URL (older
+orchestrator) skips the upload. The review UI summarises it under the
+player with `shared.media_details.summarize_probe_report`.
 
 **Review update.** `expected_version` must equal the job's `version`
 (else 409 `version_conflict`). Since `version` only moves on review

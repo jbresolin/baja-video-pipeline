@@ -4,6 +4,10 @@ docs/api.md §5: probe the raw (HDR → tone-map), PUT the JPEG thumbnail,
 then the chunked proxy upload; its completing chunk ends the lease.
 Everything is rendered into tmp/ and deleted afterwards, whatever happens.
 
+Before the thumbnail, the raw's full ffprobe report goes to
+`media_info_upload_url` (PUT /jobs/{id}/media-info), without location
+tags (shared.media_details). The review UI shows it under the player.
+
 Every proxy chunk carries the Frame-Rate header (docs/api.md §6.2) with
 the frame rate ffprobe reads from the rendered proxy; the review UI steps
 single frames with it. When ffprobe cannot tell, the header is left out.
@@ -14,8 +18,11 @@ import time
 from pathlib import Path
 
 from shared.http_transfer import HashMismatchError, UploadFailedError, upload_file_in_chunks
+from shared.media_details import probe_report_from_ffprobe
+from shared.media_probe import MediaInfo
 from shared.models import MakeProxyTask, MeasurementKind
 from shared.protocol import FRAME_RATE_HEADER
+from worker.api_client import ApiError
 from worker.failures import TaskFailedError, TransferGaveUpError, probe_input
 from worker.leases import REASON_LEASE_LOST, ActiveLease, CancelToken, TaskCancelledError
 from worker.media_tools import MediaToolError
@@ -40,15 +47,16 @@ def run_make_proxy(
     proxy_path = env.storage.tmp_path(f"{task.job_id}.proxy.mp4")
     with env.storage.pin(task.job_id):
         try:
-            _render(env, raw_path, thumbnail_path, proxy_path, cancel)
+            raw_info = _render(env, raw_path, thumbnail_path, proxy_path, cancel)
             frame_rate = proxy_frame_rate(env, proxy_path)
+            _upload_media_info(env, lease, task, raw_info, cancel)
             _upload(env, lease, task, thumbnail_path, proxy_path, frame_rate, cancel)
         finally:
             thumbnail_path.unlink(missing_ok=True)
             proxy_path.unlink(missing_ok=True)
 
 
-def _render(env: TaskEnvironment, raw_path, thumbnail_path, proxy_path, cancel) -> None:
+def _render(env: TaskEnvironment, raw_path, thumbnail_path, proxy_path, cancel) -> MediaInfo:
     # An unreadable raw is the job's fault (UndecodableInputError); a
     # failing ffmpeg run is this worker's (MediaToolError). worker.failures
     # turns each into the right failure scope.
@@ -61,6 +69,23 @@ def _render(env: TaskEnvironment, raw_path, thumbnail_path, proxy_path, cancel) 
     logger.info(
         "proxy rendered (%d bytes, HDR tone-mapped: %s)", proxy_path.stat().st_size, info.is_hdr
     )
+    return info
+
+
+def _upload_media_info(env: TaskEnvironment, lease, task: MakeProxyTask, info: MediaInfo, cancel):
+    """Send the raw's ffprobe report; skipped by older orchestrators (no URL) or without one."""
+    if task.media_info_upload_url is None or info.probe is None:
+        return
+    report = probe_report_from_ffprobe(info.probe)
+    try:
+        env.report(
+            lambda: env.api.upload_media_info(task.media_info_upload_url, lease.lease_id, report),
+            cancel,
+            "media info upload",
+        )
+    except ApiError as error:
+        # Nice to have, not needed for review: a refusal must not cost the proxy.
+        logger.warning("the orchestrator refused the media info (%s); continuing", error)
 
 
 def proxy_frame_rate(env: TaskEnvironment, proxy_path: Path) -> float | None:

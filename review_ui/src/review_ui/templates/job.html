@@ -40,6 +40,9 @@
         <span class="playhead" id="playhead"></span>
       </div>
     </div>
+    {% if media %}{% include "_media_info.html" %}{% else %}
+    <p class="hint media-info-missing">File details appear once a holder has probed the raw.</p>
+    {% endif %}
     <details class="shortcuts" id="shortcuts">
       <summary>Keyboard shortcuts <kbd>?</kbd></summary>
       <dl>

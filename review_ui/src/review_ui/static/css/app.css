@@ -295,3 +295,13 @@ table.admin-table tr.muted td { color: var(--muted); }
 .sync-box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 0.5rem 0.8rem; margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
 .sync-box p { margin: 0; }
+/* --- File details under the player (_media_info.html) --- */
+.media-info { margin-top: 0.75rem; padding: 0.6rem 0.8rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.media-info h2 { margin: 0 0 0.4rem; display: flex; gap: 0.4rem; align-items: center; }
+.media-rows { display: grid; grid-template-columns: max-content 1fr; gap: 0.15rem 0.9rem; margin: 0; font-size: 0.9rem; }
+.media-rows dt { color: var(--muted); }
+.media-rows dd { margin: 0; overflow-wrap: anywhere; }
+.media-tags { margin-top: 0.5rem; font-size: 0.85rem; }
+.badge.range-hdr { background: var(--warn-bg); color: var(--warn-ink); }
+.badge.range-sdr { background: var(--surface-2); color: var(--ink); }
+.badge.muted { background: var(--surface-2); color: var(--muted); }

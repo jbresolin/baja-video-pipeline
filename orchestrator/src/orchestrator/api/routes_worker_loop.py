@@ -11,7 +11,7 @@ from orchestrator.api.auth import (
     require_worker_matching_path,
 )
 from orchestrator.context import OrchestratorContext
-from orchestrator.domain import delivery, fleet, task_results, uploads, worker_loop
+from orchestrator.domain import delivery, fleet, media_info, task_results, uploads, worker_loop
 from orchestrator.domain.file_access import authorize_file_request
 from shared.models import (
     ChunkAccepted,
@@ -144,6 +144,24 @@ async def upload_thumbnail(
 ) -> Response:
     jpeg = await request.body()
     await run_in_threadpool(uploads.store_thumbnail, context, worker_row, job_id, lease_id, jpeg)
+    return Response(status_code=204)
+
+
+@router.put("/jobs/{job_id}/media-info", status_code=204, response_class=Response)
+async def upload_media_info(
+    job_id: str,
+    request: Request,
+    lease_id: str = Header(..., alias=LEASE_ID_HEADER),
+    worker_row: sqlite3.Row = Depends(require_worker),
+    context: OrchestratorContext = Depends(get_context),
+) -> Response:
+    # Read the body ourselves so an oversized one is refused before parsing.
+    body = await request.body()
+    media_info.check_media_info_size(body)
+    report = media_info.parse_media_info(body)
+    await run_in_threadpool(
+        media_info.store_media_info, context, worker_row, job_id, lease_id, report
+    )
     return Response(status_code=204)
 
 

@@ -18,6 +18,7 @@ from shared.models import (
     NextTaskRequest,
     NextTaskResponse,
     PeersResponse,
+    ProbeReport,
 )
 from tools.openapi_contract.auth import (
     error_responses,
@@ -234,6 +235,25 @@ def upload_proxy(
     responses=error_responses(400, 401, 404, 409, 413),
 )
 def upload_thumbnail(job_id: str, lease_id: str = Header(..., alias="Lease-Id")) -> None:
+    not_implemented()
+
+
+@router.put(
+    "/jobs/{job_id}/media-info",
+    tags=["worker loop"],
+    summary="Upload the raw's ffprobe report (JSON, single request)",
+    status_code=204,
+    responses=error_responses(400, 401, 404, 409, 413),
+)
+def upload_media_info(
+    job_id: str, body: ProbeReport = Body(...), lease_id: str = Header(..., alias="Lease-Id")
+) -> None:
+    """Under the make_proxy lease, before the thumbnail and proxy. The body
+    is ffprobe's `format` and `streams` for the raw with every location tag
+    removed (`location_present` says there was one; the orchestrator strips
+    them again). Stored as `Job.media_info`; sets `Job.frame_rate` while it
+    is still empty (the proxy's `Frame-Rate` header then replaces it).
+    Over 512 KB → 413. Machine activity: does not bump `Job.version`."""
     not_implemented()
 
 

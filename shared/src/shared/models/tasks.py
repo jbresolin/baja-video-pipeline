@@ -47,6 +47,9 @@ class MakeProxyTask(ApiModel):
     raw_sha256: Sha256Hex
     proxy_upload_url: str
     thumbnail_upload_url: str
+    # PUT the raw's ffprobe report here (ProbeReport JSON) before the proxy.
+    # None from an orchestrator older than contract 1.2.0: skip it then.
+    media_info_upload_url: str | None = None
 
 
 class DeliveryPlan(ApiModel):

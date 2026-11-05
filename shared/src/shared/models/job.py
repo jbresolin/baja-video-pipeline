@@ -1,6 +1,7 @@
 """The Job: one pass video, from WhatsApp intake to a clip on the studio box."""
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import Field, model_validator
 
@@ -79,6 +80,25 @@ class ClipInfo(ApiModel):
     delivered_at: datetime | None = None
 
 
+class ProbeReport(ApiModel):
+    """PUT /jobs/{id}/media-info body, stored as Job.media_info.
+
+    The raw's full ffprobe answer (`-show_format -show_streams`, see
+    shared.media_probe.build_probe_command), as the first holder read it
+    while making the proxy, minus location tags: shared.media_details.
+    strip_location_tags removes every GPS/location tag and the worker
+    (and again the orchestrator) only keeps `location_present`. The inner
+    dicts are ffprobe's own and are kept as they are (any keys).
+    """
+
+    # ffprobe's "format" object: container, duration, size, bit_rate, tags.
+    format: dict[str, Any] = Field(default_factory=dict)
+    # ffprobe's "streams" list: one object per video/audio/data stream.
+    streams: list[dict[str, Any]] = Field(default_factory=list)
+    # True when the file had GPS/location tags (removed before sending).
+    location_present: bool = False
+
+
 class JobFailure(ApiModel):
     """The last unrecoverable error a worker reported (POST /jobs/{id}/failed)."""
 
@@ -113,6 +133,9 @@ class Job(ApiModel):
     # Filled in by the first holder (ffprobe) when it confirms the download.
     duration_s: Seconds | None = None
     has_audio: bool | None = None
+    # The raw's ffprobe report (container, codecs, device tags), sent by the
+    # first holder with the proxy (PUT /jobs/{id}/media-info). None until then.
+    media_info: ProbeReport | None = None
     # Frames per second of the proxy (= the raw's, the proxy keeps a constant
     # frame rate). Reported with the proxy upload; the review UI steps one
     # frame with it and falls back to 30 while it is None.

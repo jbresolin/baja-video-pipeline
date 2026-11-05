@@ -113,6 +113,7 @@ def _evaluate_make_proxy(layout: VpsLayout, job_row: sqlite3.Row) -> TaskDecisio
             raw_sha256=job_row["sha256"],
             proxy_upload_url=layout.api_url(f"/jobs/{job_id}/proxy"),
             thumbnail_upload_url=layout.api_url(f"/jobs/{job_id}/thumbnail"),
+            media_info_upload_url=layout.api_url(f"/jobs/{job_id}/media-info"),
         )
     )
 

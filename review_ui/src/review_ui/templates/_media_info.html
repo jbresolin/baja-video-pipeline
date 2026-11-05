@@ -1,0 +1,18 @@
+{# The raw's file details, directly under the player (review_ui/media_info_view.py). #}
+<section class="media-info" aria-label="File details">
+  <h2>File details
+    {% if media.dynamic_range %}<span class="badge range-{{ media.dynamic_range|lower }}">{{ media.dynamic_range }}</span>{% endif %}
+    {% if media.location_present %}<span class="badge muted" title="The file had GPS tags; the coordinates were removed on the worker and are never stored.">location present</span>{% endif %}
+  </h2>
+  <dl class="media-rows">
+    {% for label, value in media.rows %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}
+  </dl>
+  {% if media.other_tags %}
+  <details class="media-tags">
+    <summary>All tags ({{ media.other_tags|length }})</summary>
+    <dl class="media-rows">
+      {% for name, value in media.other_tags %}<dt><code>{{ name }}</code></dt><dd>{{ value }}</dd>{% endfor %}
+    </dl>
+  </details>
+  {% endif %}
+</section>

@@ -17,6 +17,7 @@ from shared.models import JobState
 UPDATABLE_JOB_COLUMNS = frozenset(
     {
         "state", "finished_at", "duration_s", "has_audio", "frame_rate", "raw_on_vps",
+        "media_info_json",
         "proxy_available", "thumbnail_available", "proxy_requested",
         "prova", "car_number", "team_name", "overlay_team_name", "passagem", "show_pass",
         "cut_in_s", "cut_out_s", "reviewed_by", "reviewed_at",

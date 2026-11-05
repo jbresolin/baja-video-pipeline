@@ -18,6 +18,7 @@ from review_ui.job_view import (
     frame_rate_for_stepping,
     intake_text,
 )
+from review_ui.media_info_view import media_panel
 from review_ui.queue_view import STATES_IN_PIPELINE_ORDER, QueueFilter
 from review_ui.settings import ReviewUiSettings
 from review_ui.templating import TEMPLATES_DIR, build_templates
@@ -31,6 +32,7 @@ from tests.review_ui.sample_data import (
     make_manifest,
 )
 from tests.review_ui.sample_events import make_events
+from tests.review_ui.test_media_panel import IPHONE_REPORT
 
 SETTINGS = ReviewUiSettings(public_base_url="https://baja.example.org")
 NAMES = {"w-master-0001": "joao-desktop"}
@@ -55,6 +57,7 @@ def job_context(job) -> dict:
         ],
         "prova_choices": ["Enduro", "Suspensão"],
         "poll_seconds": 5,
+        "media": media_panel(job),
     }
 
 
@@ -105,6 +108,7 @@ CASES = {
     "_job_panel.html": lambda: job_context(failed_job()),
     "_job_status.html": lambda: job_context(delivered_job()),
     "_job_events.html": lambda: job_context(delivered_job()),
+    "_media_info.html": lambda: job_context(make_job(media_info=IPHONE_REPORT)),
     "clips.html": clips_context,
     "fleet.html": fleet_context,
     "_fleet_body.html": fleet_context,

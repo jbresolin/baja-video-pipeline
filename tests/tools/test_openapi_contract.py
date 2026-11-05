@@ -32,6 +32,7 @@ REQUIRED_ENDPOINTS = {
     ("post", "/jobs/{job_id}/holder-confirm"),
     ("post", "/jobs/{job_id}/proxy"),
     ("put", "/jobs/{job_id}/thumbnail"),
+    ("put", "/jobs/{job_id}/media-info"),
     ("post", "/jobs/{job_id}/clip"),
     ("post", "/jobs/{job_id}/delivered"),
     # Review

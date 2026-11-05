@@ -42,6 +42,7 @@ from shared.models import (
     NextTaskRequest,
     NextTaskResponse,
     OutboxAckRequest,
+    ProbeReport,
     WorkerRole,
     utc_now,
 )
@@ -84,6 +85,8 @@ class FakeOrchestrator:
         self.holder_confirms: list[tuple[str, HolderConfirmRequest]] = []
         self.failures: list[tuple[str, FailedRequest]] = []
         self.thumbnails: dict[str, bytes] = {}
+        # PUT /jobs/{id}/media-info bodies, as received, by job id.
+        self.media_infos: dict[str, ProbeReport] = {}
         self.upload_log: list[tuple[str, int, int]] = []  # (endpoint, status, offset)
         # The Frame-Rate header of every proxy chunk, None where it was absent.
         self.proxy_frame_rate_headers: list[str | None] = []
@@ -128,6 +131,7 @@ class FakeOrchestrator:
             Route("/jobs/{job_id}/claim", self._claim, methods=["POST"]),
             Route("/jobs/{job_id}/holder-confirm", self._holder_confirm, methods=["POST"]),
             Route("/jobs/{job_id}/thumbnail", self._thumbnail, methods=["PUT"]),
+            Route("/jobs/{job_id}/media-info", self._media_info, methods=["PUT"]),
             Route("/jobs/{job_id}/proxy", self._chunk_endpoint("proxies"), methods=["POST"]),
             Route("/jobs/{job_id}/clip", self._chunk_endpoint("outbox"), methods=["POST"]),
             Route("/jobs/{job_id}/failed", self._failed, methods=["POST"]),
@@ -233,6 +237,13 @@ class FakeOrchestrator:
         if not self._lease_is_alive(request.headers.get("lease-id", "")):
             return error(409, "lease_lost")
         self.thumbnails[request.path_params["job_id"]] = await request.body()
+        return Response(status_code=204)
+
+    async def _media_info(self, request: Request) -> Response:
+        if not self._lease_is_alive(request.headers.get("lease-id", "")):
+            return error(409, "lease_lost")
+        report = ProbeReport.model_validate_json(await request.body())
+        self.media_infos[request.path_params["job_id"]] = report
         return Response(status_code=204)
 
     def _chunk_endpoint(self, kind: str):

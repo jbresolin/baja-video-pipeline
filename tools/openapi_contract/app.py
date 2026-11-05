@@ -15,7 +15,9 @@ from tools.openapi_contract import (
 
 # 2.0.0: reviewerBasic replaced by sessionBearer (POST /auth/login) and the
 # admin routes added (admin page, LIVESTACK-37).
-CONTRACT_VERSION = "2.0.0"
+# 2.1.0: media info, quoted bot replies, restore, the clip archive and the
+# worker's paused flag (first real video, LIVESTACK-38).
+CONTRACT_VERSION = "2.1.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

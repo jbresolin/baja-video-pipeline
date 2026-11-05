@@ -7,8 +7,9 @@ if info.is_hdr: ...  # pass tone_map_hdr=True to the ffmpeg builders
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # ffprobe's `color_transfer` values that mean HDR (design §15):
 #   smpte2084    = PQ, used by HDR10 / Dolby Vision (e.g. iPhone "HDR" video)
@@ -38,6 +39,10 @@ class MediaInfo:
     # Frames per second of the first video stream (e.g. 29.97), from
     # avg_frame_rate, else r_frame_rate; None when neither is usable.
     frame_rate: float | None = None
+    # ffprobe's whole answer, parsed (format + streams), for the media-info
+    # report (shared.media_details). Not part of equality: two MediaInfos
+    # with the same facts are equal whatever else ffprobe printed.
+    probe: dict[str, Any] | None = field(default=None, compare=False, repr=False)
 
     @property
     def is_hdr(self) -> bool:
@@ -73,4 +78,5 @@ def parse_probe_output(probe_json: str) -> MediaInfo:
             parse_frame_rate(video.get("avg_frame_rate"))
             or parse_frame_rate(video.get("r_frame_rate"))
         ),
+        probe=probe,
     )

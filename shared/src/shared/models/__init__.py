@@ -117,6 +117,7 @@ from shared.models.job import (
     JobFailure,
     JobSummary,
     Lease,
+    ProbeReport,
 )
 from shared.models.tasks import (
     ClaimRequest,
@@ -202,6 +203,7 @@ __all__ = [
     "OutboxAckRequest",
     "Peer",
     "PeersResponse",
+    "ProbeReport",
     "ProcessTask",
     "Prova",
     "ProvasResponse",

@@ -1,5 +1,6 @@
 """Turn a jobs row (+ its holders and leases) into the API's Job model."""
 
+import json
 import sqlite3
 
 from orchestrator.db.database import from_db_time
@@ -14,6 +15,7 @@ from shared.models import (
     Job,
     JobFailure,
     JobState,
+    ProbeReport,
     ReceivedAs,
     TaskKind,
 )
@@ -21,6 +23,11 @@ from shared.models import (
 
 def _optional_bool(value: int | None) -> bool | None:
     return None if value is None else bool(value)
+
+
+def _media_info_from_row(row: sqlite3.Row) -> ProbeReport | None:
+    text = row["media_info_json"]
+    return None if text is None else ProbeReport.model_validate(json.loads(text))
 
 
 def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Job:
@@ -63,6 +70,7 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Job:
         size_bytes=row["size_bytes"],
         duration_s=row["duration_s"],
         has_audio=_optional_bool(row["has_audio"]),
+        media_info=_media_info_from_row(row),
         frame_rate=row["frame_rate"],
         raw_on_vps=bool(row["raw_on_vps"]),
         holders=leases_repo.list_holders(connection, row["id"]),
