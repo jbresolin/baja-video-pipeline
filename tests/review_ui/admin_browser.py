@@ -40,3 +40,9 @@ def signed_in_browser(harness: OrchestratorHarness, username: str, password: str
 def post_form(browser: httpx.Client, path: str, **fields) -> httpx.Response:
     """Submit a plain HTML form (urlencoded), like a browser does."""
     return browser.post(path, data=fields, headers=FORM_HEADERS)
+
+
+def follow(browser, response):
+    """Open the page a 303 redirect points at (what a browser does next)."""
+    assert response.status_code == 303, response.text
+    return browser.get(response.headers["location"])

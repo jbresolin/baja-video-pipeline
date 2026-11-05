@@ -17,9 +17,17 @@ handled in memory by SyncAsgiTransport: no network, no ports.
 import httpx
 import pytest
 
+from orchestrator.testing.harness import (
+    ADMIN_NAME,
+    ADMIN_PASSWORD,
+    REVIEWER_NAME,
+    REVIEWER_PASSWORD,
+    build_harness,
+)
 from review_ui.app import create_app
 from review_ui.settings import ReviewUiSettings
 from shared.testing.asgi_transport import SyncAsgiTransport
+from tests.review_ui.admin_browser import signed_in_browser
 from tests.review_ui.fake_orchestrator import FakeOrchestrator
 from tests.review_ui.sample_data import (
     SIGNED_IN_COOKIES,
@@ -64,3 +72,26 @@ def ui(fake_orchestrator, settings) -> httpx.Client:
 def anonymous_ui(fake_orchestrator, settings) -> httpx.Client:
     """A browser that has not signed in (no session cookie)."""
     return build_ui(fake_orchestrator, settings)
+
+
+# --- The admin pages run against the REAL orchestrator (admin_browser.py) ---
+
+
+@pytest.fixture
+def harness(tmp_path):
+    """A real in-memory orchestrator (users: joao admin, ana reviewer)."""
+    built = build_harness(tmp_path / "data")
+    yield built
+    built.context.database.close()
+
+
+@pytest.fixture
+def admin(harness):
+    """A browser signed in as the admin, on a review UI wired to `harness`."""
+    return signed_in_browser(harness, ADMIN_NAME, ADMIN_PASSWORD)
+
+
+@pytest.fixture
+def reviewer(harness):
+    """A browser signed in as the reviewer ana."""
+    return signed_in_browser(harness, REVIEWER_NAME, REVIEWER_PASSWORD)

@@ -12,41 +12,11 @@ Two users exist in every test (imported from the harness's reviewers.txt):
 
 import pytest
 
-from orchestrator.testing.harness import (
-    ADMIN_NAME,
-    ADMIN_PASSWORD,
-    REVIEWER_NAME,
-    REVIEWER_PASSWORD,
-    build_harness,
-)
 from orchestrator.testing.scenarios import ensure_prova, job_id_for_message, send_video
 from shared.models import WorkerRole
-from tests.review_ui.admin_browser import post_form, signed_in_browser
+from tests.review_ui.admin_browser import follow, post_form
 
 ADMIN_PAGES = ["users", "contacts", "provas", "teams", "enrollment", "workers", "settings"]
-
-
-@pytest.fixture
-def harness(tmp_path):
-    built = build_harness(tmp_path / "data")
-    yield built
-    built.context.database.close()
-
-
-@pytest.fixture
-def admin(harness):
-    return signed_in_browser(harness, ADMIN_NAME, ADMIN_PASSWORD)
-
-
-@pytest.fixture
-def reviewer(harness):
-    return signed_in_browser(harness, REVIEWER_NAME, REVIEWER_PASSWORD)
-
-
-def follow(browser, response):
-    """Open the page a 303 redirect points at (what a browser does next)."""
-    assert response.status_code == 303, response.text
-    return browser.get(response.headers["location"])
 
 
 # --- Who sees what ---
@@ -183,131 +153,6 @@ def test_a_contact_can_be_added_before_they_write_and_the_list_can_be_filtered(a
     # Filtered to blocked contacts, the row is not in the table.
     blocked_only = admin.get("/review/admin/contacts?status=blocked").text
     assert "<code>5511900001111</code>" not in blocked_only
-
-
-# --- Provas ---
-
-
-def test_provas_add_rename_move_and_deactivate(admin, harness):
-    for name in ("Enduro", "Suspensão"):
-        follow(admin, post_form(admin, "/review/admin/provas/create", name=name))
-    provas = harness.client.get("/provas", headers=harness.admin_headers).json()["provas"]
-    enduro, suspensao = provas
-
-    page = follow(
-        admin, post_form(admin, f"/review/admin/provas/{suspensao['id']}/move", direction="up")
-    )
-    assert "Ordem das provas salva." in page.text
-    follow(admin, post_form(admin, f"/review/admin/provas/{enduro['id']}", name="Enduro 4h"))
-    follow(admin, post_form(admin, f"/review/admin/provas/{enduro['id']}", active="0"))
-
-    provas = harness.client.get("/provas", headers=harness.admin_headers).json()["provas"]
-    assert [(p["name"], p["slug"], p["active"]) for p in provas] == [
-        ("Suspensão", "suspensao", True),
-        ("Enduro 4h", "enduro", False),  # renamed, same folder, deactivated
-    ]
-    # The page shows the fixed folder and the change in the latest changes.
-    page = admin.get("/review/admin/provas").text
-    assert "<code>enduro/</code>" in page
-    assert "renamed &#39;Enduro&#39; → &#39;Enduro 4h&#39;" in page
-
-
-def test_a_taken_prova_name_is_explained(admin):
-    follow(admin, post_form(admin, "/review/admin/provas/create", name="Enduro"))
-    response = post_form(admin, "/review/admin/provas/create", name="ENDURO")
-    assert response.status_code == 409
-    assert "Já existe." in response.text
-
-
-# --- Equipes ---
-
-
-def test_teams_add_edit_inline_delete(admin, harness):
-    follow(
-        admin,
-        post_form(
-            admin, "/review/admin/teams/save", car_number="42", team_name="Trovão", school="UFSC"
-        ),
-    )
-    follow(
-        admin,
-        post_form(
-            admin, "/review/admin/teams/save", car_number="42", team_name="Trovão Baja", school=""
-        ),
-    )
-    team = harness.client.get("/teams/42", auth=harness.reviewer_auth).json()
-    assert (team["team_name"], team["school"]) == ("Trovão Baja", None)
-    page = follow(admin, post_form(admin, "/review/admin/teams/42/delete"))
-    assert "Equipe removida" in page.text
-    assert harness.client.get("/teams/42", auth=harness.reviewer_auth).status_code == 404
-
-
-def set_event(admin, event_id="26BR"):
-    """Save the event on the Settings page (that also syncs provas and teams)."""
-    return post_form(
-        admin,
-        "/review/admin/settings",
-        event_id=event_id,
-        intake_mode="open",
-        inbox_hold_gb="22",
-        proxy_evict_min_free_gb="10",
-        installer_download_url="",
-    )
-
-
-def test_setting_the_event_fills_provas_and_teams_from_the_results_site(admin):
-    # The fake results API has the docs' 26BR example.
-    page = follow(admin, set_event(admin))
-    assert "Configurações salvas." in page.text
-    assert 'value="26BR"' in page.text
-
-    provas = admin.get("/review/admin/provas").text
-    assert "Evento <code>26BR</code>" in provas
-    assert "site <code>END</code>" in provas
-    teams = admin.get("/review/admin/teams").text
-    assert 'value="Equipe FEI Baja"' in teams and 'value="FEI"' in teams
-
-
-def test_the_sync_button_reports_back_on_the_page_it_was_pressed(admin, harness):
-    set_event(admin)
-    harness.results_api.add_team(3, "Equipe Três", "Três")
-    page = follow(admin, post_form(admin, "/review/admin/sync", back="teams"))
-    assert page.url.path == "/review/admin/teams"
-    assert "Sincronizado com o site de resultados." in page.text
-    assert 'value="Equipe Três"' in page.text
-
-
-def test_a_failed_sync_is_explained_on_the_page(admin, harness):
-    set_event(admin)
-    harness.results_api.rate_limited_for_s = 12
-    page = post_form(admin, "/review/admin/sync", back="provas")
-    assert page.status_code == 503
-    assert "rate limit" in page.text
-
-
-def test_correcting_a_synced_team_is_marked_and_can_be_undone(admin, harness):
-    set_event(admin)
-    follow(
-        admin,
-        post_form(
-            admin,
-            "/review/admin/teams/save",
-            car_number="2",
-            team_name="FEI",
-            short_name="FEI Baja",
-        ),
-    )
-    page = admin.get("/review/admin/teams").text
-    assert "corrigida" in page and "Desfazer correção" in page
-    follow(admin, post_form(admin, "/review/admin/teams/2/delete"))
-    team = harness.client.get("/teams/2", auth=harness.reviewer_auth).json()
-    assert team["team_name"] == "Equipe FEI Baja"
-
-
-def test_without_an_event_the_pages_point_to_the_settings(admin):
-    page = admin.get("/review/admin/provas").text
-    assert "Nenhum evento configurado" in page
-    assert 'href="/review/admin/settings"' in page
 
 
 # --- Cadastro de PCs ---
