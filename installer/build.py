@@ -9,7 +9,9 @@ Steps:
  2. write baja_installer/_build_info.py: version, default enroll URL and
     the module list (bundled_modules.py) that `--check` imports;
  3. freeze installer/entry_worker.py with every listed module as a hidden
-    import → installer/dist/BajaWorker/;
+    import → installer/dist/BajaWorker/; then freeze installer/entry_tray.py
+    as the windowed BajaWorkerTray.exe and merge it into the same folder
+    (both exes share one _internal/ folder; see merge_onedir);
  4. copy the bundled ffmpeg (bin folder + LICENSE) to dist/BajaWorker/ffmpeg/
     and nssm.exe to dist/BajaWorker/, from installer/vendor/ (fetch_vendor.py);
  5. with --compile-installer: run Inno Setup's ISCC on BajaWorker.iss →
@@ -20,6 +22,7 @@ On Linux, steps 1–3 work the same (CI and the test suite use that);
 """
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
@@ -32,12 +35,17 @@ INSTALLER_FOLDER = Path(__file__).resolve().parent
 REPO_ROOT = INSTALLER_FOLDER.parent
 VERSION_FILE = INSTALLER_FOLDER / "VERSION"
 ENTRY_SCRIPT = INSTALLER_FOLDER / "entry_worker.py"
+TRAY_ENTRY_SCRIPT = INSTALLER_FOLDER / "entry_tray.py"
 INNO_SCRIPT = INSTALLER_FOLDER / "BajaWorker.iss"
 BUILD_INFO_FILE = INSTALLER_FOLDER / "baja_installer" / "_build_info.py"
 DIST_FOLDER = INSTALLER_FOLDER / "dist"
 WORK_FOLDER = INSTALLER_FOLDER / "build"
 OUTPUT_FOLDER = INSTALLER_FOLDER / "output"
 APP_NAME = "BajaWorker"
+TRAY_APP_NAME = "BajaWorkerTray"
+# pystray picks its backend by name at run time ("pystray._win32"), so
+# PyInstaller cannot see it; only the Windows build has pystray at all.
+TRAY_RUNTIME_IMPORTED_MODULES = ("pystray._win32",)
 DEFAULT_ISCC = Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe")
 VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -161,6 +169,54 @@ def pyinstaller_arguments(modules: list[str], dist: Path, work: Path) -> list[st
     return arguments
 
 
+def tray_pyinstaller_arguments(dist: Path, work: Path, *, windows: bool) -> list[str]:
+    """BajaWorkerTray.exe: windowed (no console flashes at logon), onedir."""
+    arguments = [
+        str(TRAY_ENTRY_SCRIPT),
+        "--name",
+        TRAY_APP_NAME,
+        "--onedir",
+        "--windowed",
+        "--noconfirm",
+        "--clean",
+        "--distpath",
+        str(dist),
+        "--workpath",
+        str(work / "work-tray"),
+        "--specpath",
+        str(work),
+        "--paths",
+        str(INSTALLER_FOLDER),
+        "--exclude-module",
+        "tkinter",
+    ]
+    if windows:
+        for module in TRAY_RUNTIME_IMPORTED_MODULES:
+            arguments += ["--hidden-import", module]
+    return arguments
+
+
+def merge_onedir(source: Path, target: Path) -> list[Path]:
+    """Copy a second onedir build (the tray) into the worker's folder.
+
+    Both are frozen from the same Python and libraries in one build, so a
+    file present in both _internal/ folders is the same file: keep the
+    worker's and add only what is missing (pystray, …). The tray's exe
+    lands next to BajaWorker.exe. Returns the files copied.
+    """
+    copied = []
+    for path in sorted(source.rglob("*")):
+        if path.is_dir():
+            continue
+        destination = target / path.relative_to(source)
+        if destination.exists():
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, destination)
+        copied.append(destination)
+    return copied
+
+
 def run_pyinstaller(arguments: list[str]) -> None:
     import PyInstaller.__main__  # only installed with the "installer" group
 
@@ -261,6 +317,9 @@ def main(argv: list[str] | None = None) -> int:
 
         run_pyinstaller(pyinstaller_arguments(modules, DIST_FOLDER, WORK_FOLDER))
         app_folder = DIST_FOLDER / APP_NAME
+        tray_dist = WORK_FOLDER / "tray-dist"
+        run_pyinstaller(tray_pyinstaller_arguments(tray_dist, WORK_FOLDER, windows=os.name == "nt"))
+        merge_onedir(tray_dist / TRAY_APP_NAME, app_folder)
         if args.ffmpeg_from_path:
             copy_system_ffmpeg(app_folder)
         else:

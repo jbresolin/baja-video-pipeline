@@ -2,6 +2,7 @@
 
 Install folder (C:\\Program Files\\BajaWorker), written by the installer:
     BajaWorker.exe        this program (the worker and the commands in cli.py)
+    BajaWorkerTray.exe    the notification-area icon (worker/tray), started at logon
     _internal\\            Python and the bundled libraries (PyInstaller onedir)
     ffmpeg\\               ffmpeg.exe, ffprobe.exe and their DLLs (BtbN build)
     nssm.exe              the service wrapper

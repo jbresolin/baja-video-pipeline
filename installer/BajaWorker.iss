@@ -11,10 +11,13 @@
 ;   2. install Tailscale silently if tailscale.exe is not there yet;
 ;   3. restrict C:\BajaWorker to SYSTEM + Administrators (it holds the worker's bearer token);
 ;   4. write the installer's keys into C:\BajaWorker\worker.json (BajaWorker.exe --init-config);
-;   5. register and start the NSSM service "BajaWorker";
+;   5. register and start the NSSM service "BajaWorker", and let the Users group
+;      start/stop it (BajaWorker.exe --grant-service-rights, for the tray icon);
 ;   6. open TCP 8710 and 8720 inbound for the tailnet range;
-;   7. after Finish: BajaWorker.exe --first-run (setup page, tailscale up, service restart).
-; The uninstaller undoes 5, 6 and the Baja tailnet login, and keeps C:\BajaWorker.
+;   7. start BajaWorkerTray.exe (the notification-area icon) at every logon, for
+;      all users (HKLM Run key), and once now for the installing user;
+;   8. after Finish: BajaWorker.exe --first-run (setup page, tailscale up, service restart).
+; The uninstaller undoes 5, 6, 7 and the Baja tailnet login, and keeps C:\BajaWorker.
 
 #ifndef AppVersion
   #error Pass /DAppVersion=... (installer/build.py does this)
@@ -30,6 +33,7 @@
 #endif
 
 #define ServiceName "BajaWorker"
+#define TrayExe "BajaWorkerTray.exe"
 ; Initial data folder. Never contains spaces, so it needs no quoting below.
 #define DataDir "{sd}\BajaWorker"
 #define SetupPageUrl "http://localhost:8700"
@@ -82,9 +86,16 @@ Filename: "{app}\Baja Worker.url"; Section: "InternetShortcut"; Key: "URL"; Stri
 [Icons]
 Name: "{group}\Baja Worker"; Filename: "{app}\Baja Worker.url"; Comment: "Página de configuração e status ({#SetupPageUrl})"
 Name: "{group}\Baja Worker - concluir conexão"; Filename: "{app}\BajaWorker.exe"; Parameters: "--first-run --config {#DataDir}\worker.json"; Comment: "Conecta este PC à rede Baja depois de colar o token"
+Name: "{group}\Baja Worker - ícone perto do relógio"; Filename: "{app}\{#TrayExe}"; Comment: "Mostra de novo o ícone do Baja Worker se ele foi fechado"
 Name: "{group}\Desinstalar Baja Worker"; Filename: "{uninstallexe}"
 
+[Registry]
+; The tray icon starts at every logon, for every user, never elevated.
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "BajaWorkerTray"; ValueData: """{app}\{#TrayExe}"""; Flags: uninsdeletevalue
+
 [Run]
+; The icon for the person installing, now (later logons use the Run key).
+Filename: "{app}\{#TrayExe}"; Flags: nowait runasoriginaluser skipifsilent
 ; Runs elevated (as Setup does) after "Concluir"; skipped in silent installs (CI).
 Filename: "{app}\BajaWorker.exe"; Parameters: "--first-run --config {#DataDir}\worker.json"; Description: "Abrir a configuração e conectar à rede Baja"; Flags: postinstall nowait skipifsilent
 
@@ -156,6 +167,13 @@ begin
     RunHidden(ExpandConstant('{sys}\sc.exe'), 'stop {#ServiceName}');
     RunHidden(ExpandConstant('{sys}\sc.exe'), 'delete {#ServiceName}');
   end;
+end;
+
+{ The tray icon keeps BajaWorkerTray.exe open in every session; end it for
+  all users before replacing or removing the files (it restarts at logon). }
+procedure StopTrayIcons;
+begin
+  RunHidden(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#TrayExe}');
 end;
 
 procedure InstallTailscale;
@@ -235,6 +253,7 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   { Upgrade: the running service keeps BajaWorker.exe open; stop it first. }
   StopAndRemoveService;
+  StopTrayIcons;
   Result := '';
 end;
 
@@ -246,6 +265,8 @@ begin
   RestrictDataFolder;
   RunStep('worker.json', ExpandConstant('{app}\BajaWorker.exe'), '--init-config ' + ConfigPath);
   RegisterService;
+  { Users may start/stop this one service, so the tray needs no UAC prompt. }
+  RunStep('service rights', ExpandConstant('{app}\BajaWorker.exe'), '--grant-service-rights');
   AddFirewallRules;
   if FailedSteps <> '' then
     SuppressibleMsgBox('Algumas etapas da instalação falharam:' + FailedSteps + #13#10#13#10 +
@@ -265,6 +286,7 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then begin
     StopAndRemoveService;
+    StopTrayIcons;
     DeleteFirewallRules;
     { tailscale logout, only if this PC is on the Baja tailnet (leave_tailnet.py). }
     RunHidden(ExpandConstant('{app}\BajaWorker.exe'), '--leave-tailnet');

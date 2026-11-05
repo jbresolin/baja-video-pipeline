@@ -51,6 +51,8 @@ jobs:
         run: |
           installer/dist/BajaWorker/BajaWorker --version
           installer/dist/BajaWorker/BajaWorker --check
+          # The tray is frozen into the same folder (it needs Windows to run).
+          test -x installer/dist/BajaWorker/BajaWorkerTray
 
   windows:
     needs: linux
@@ -115,6 +117,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           & $exe --check
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (-not (Test-Path "installer\dist\BajaWorker\BajaWorkerTray.exe")) { exit 1 }
 
       - name: Install, check, upgrade and uninstall the Setup .exe
         shell: pwsh

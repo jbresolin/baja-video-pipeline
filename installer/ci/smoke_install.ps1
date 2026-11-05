@@ -13,6 +13,9 @@ $ErrorActionPreference = "Stop"
 $AppDir = "C:\Program Files\BajaWorker"
 $DataDir = "C:\BajaWorker"
 $RuleNames = @("Baja Worker file server (TCP 8710)", "Baja Worker studio receiver (TCP 8720)")
+$RunKey = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run"
+# What --grant-service-rights adds (installer/baja_installer/service_rights.py).
+$UsersStartStopAce = "(A;;CCLCSWRPWPLORC;;;BU)"
 
 function Fail([string] $Message) {
     Write-Host "::error::$Message"
@@ -39,7 +42,7 @@ function Install-Once([string] $LogName) {
 }
 
 function Assert-Installed {
-    foreach ($file in "BajaWorker.exe", "nssm.exe", "ffmpeg\ffmpeg.exe", "ffmpeg\ffprobe.exe", "unins000.exe") {
+    foreach ($file in "BajaWorker.exe", "BajaWorkerTray.exe", "nssm.exe", "ffmpeg\ffmpeg.exe", "ffmpeg\ffprobe.exe", "unins000.exe") {
         if (-not (Test-Path "$AppDir\$file")) { Fail "missing $AppDir\$file" }
     }
     if (-not (Test-Path "C:\Program Files\Tailscale\tailscale.exe")) { Fail "Tailscale was not installed" }
@@ -78,11 +81,44 @@ function Assert-Installed {
     $exe = "$AppDir\BajaWorker.exe"
     & $exe --check
     if ($LASTEXITCODE -ne 0) { Fail "installed BajaWorker.exe --check failed" }
+
+    # The tray icon starts at every logon, for all users.
+    $run = (Get-ItemProperty $RunKey -ErrorAction SilentlyContinue).BajaWorkerTray
+    if ($run -ne "`"$AppDir\BajaWorkerTray.exe`"") { Fail "HKLM Run BajaWorkerTray is '$run'" }
+
+    # Users may start and stop this service (no UAC prompt in the tray).
+    $sddl = (& sc.exe sdshow BajaWorker | Where-Object { $_.Trim() }) -join ""
+    if (-not $sddl.Contains($UsersStartStopAce)) { Fail "service descriptor lacks $UsersStartStopAce`: $sddl" }
+}
+
+# Stop and start the service as an ordinary (non-admin) local user, the way
+# the tray icon does it: plain sc.exe, no elevation.
+function Assert-NonAdminCanStopAndStart {
+    $name = "bajatray"
+    $password = "Tr4y-" + [guid]::NewGuid().ToString("N").Substring(0, 12) + "!"
+    & net.exe user $name $password /add | Out-Null
+    try {
+        $credential = New-Object System.Management.Automation.PSCredential(
+            ".\$name", (ConvertTo-SecureString $password -AsPlainText -Force))
+        foreach ($command in "stop", "start") {
+            $process = Start-Process -FilePath "$env:SystemRoot\System32\sc.exe" `
+                -ArgumentList $command, "BajaWorker" -Credential $credential `
+                -WorkingDirectory "$env:SystemRoot" -LoadUserProfile -PassThru -Wait -WindowStyle Hidden
+            if ($process.ExitCode -ne 0) { Fail "non-admin 'sc $command BajaWorker' exited with $($process.ExitCode)" }
+            $wanted = if ($command -eq "stop") { "Stopped" } else { "Running" }
+            Wait-Until { (Get-Service BajaWorker).Status -eq $wanted } 90 "service $wanted after non-admin sc $command"
+        }
+    } finally {
+        & net.exe user $name /delete | Out-Null
+    }
 }
 
 Write-Host "== first install"
 Install-Once "setup-install.log"
 Assert-Installed
+
+Write-Host "== a non-admin user stops and starts the service"
+Assert-NonAdminCanStopAndStart
 
 Write-Host "== install again (upgrade path: service re-registered, no duplicate rules)"
 Install-Once "setup-upgrade.log"
@@ -98,5 +134,6 @@ foreach ($name in $RuleNames) {
     if (Get-NetFirewallRule -DisplayName $name -ErrorAction SilentlyContinue) { Fail "firewall rule '$name' is still there" }
 }
 if (-not (Test-Path "$DataDir\worker.json")) { Fail "uninstall removed $DataDir (it must keep the raws)" }
+if ((Get-ItemProperty $RunKey -ErrorAction SilentlyContinue).BajaWorkerTray) { Fail "HKLM Run BajaWorkerTray is still there" }
 
 Write-Host "installer smoke test passed"
