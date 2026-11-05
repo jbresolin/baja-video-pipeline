@@ -3,18 +3,19 @@
 JSON errors use the API's own shape, {"error": {"code", "message", "details"}}
 (docs/api.md §3), so the page scripts read orchestrator errors and the UI's
 own errors the same way.
+
+A 401 means "not signed in" (no cookie, or the session ended): a page
+request is sent to the login page, which comes back here afterwards; a
+page script gets the JSON error and tells the user to sign in again.
 """
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from review_ui.orchestrator_client import OrchestratorError, OrchestratorUnavailableError
 from review_ui.request_context import is_api_request, render_page
-
-# Sent with every 401 so a browser that reached the UI without Caddy (local
-# development) shows its sign-in dialog. Behind Caddy, Caddy asks first.
-BASIC_AUTH_CHALLENGE = {"WWW-Authenticate": 'Basic realm="Baja review", charset="UTF-8"'}
+from review_ui.session import clear_session_cookie, login_redirect_target
 
 # 409 errors that mean "what you see is out of date": the job page reloads
 # and tells the reviewer, instead of letting them retry the same request.
@@ -43,24 +44,25 @@ class UiRequestError(Exception):
 def error_response(
     request: Request, status_code: int, code: str, message: str, details: dict | None = None
 ) -> Response:
-    headers = BASIC_AUTH_CHALLENGE if status_code == 401 else None
     if is_api_request(request):
         body = {
             "error": {"code": code, "message": message, "details": details or {}},
             # Tells the page script to reload the job (see RELOAD_ON_CODES).
             "reload": code in RELOAD_ON_CODES,
         }
-        return JSONResponse(body, status_code=status_code, headers=headers)
+        return JSONResponse(body, status_code=status_code)
+    if status_code == 401:
+        # 303: the browser follows with a GET, whatever the method was.
+        response = RedirectResponse(login_redirect_target(request), status_code=303)
+        clear_session_cookie(response, request.app.state.settings.session_cookie_secure)
+        return response
     context = {
         "title": PAGE_TITLES.get(status_code, "Something went wrong"),
         "status_code": status_code,
         "code": code,
         "message": message,
     }
-    response = render_page(request, "error.html", context, status_code=status_code)
-    if headers:
-        response.headers.update(headers)
-    return response
+    return render_page(request, "error.html", context, status_code=status_code)
 
 
 def register_error_handlers(app: FastAPI) -> None:

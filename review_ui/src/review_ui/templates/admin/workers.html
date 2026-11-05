@@ -1,0 +1,44 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Workers{% endblock %}
+{% block admin_content %}
+<p class="hint">Os PCs cadastrados (a mesma informação da página Fleet). Revogar um worker invalida o token dele na hora:
+  ele para de receber tarefas e deixa de contar como cópia dos vídeos brutos.</p>
+<div class="banner warning">
+  <strong>Depois de revogar, remova o PC do tailnet à mão:</strong> no console do Tailscale
+  (<a href="https://login.tailscale.com/admin/machines" rel="noopener" target="_blank">login.tailscale.com/admin/machines</a>),
+  procure a máquina <code>baja-w-…</code> (ou <code>baja-studio</code>) e escolha <em>Remove</em>.
+</div>
+
+{% if fleet.workers %}
+<table class="admin-table">
+  <thead><tr><th>Nome</th><th>Papel</th><th>Situação</th><th>Último contato</th><th>Brutos guardados</th><th>Cadastrado</th><th></th></tr></thead>
+  <tbody>
+  {% for entry in fleet.workers %}
+    {% set w = entry.worker %}
+    <tr {% if w.revoked_at %}class="muted"{% endif %}>
+      <td><strong>{{ w.name }}</strong> <span class="small"><code>{{ w.id|short_id }}</code></span></td>
+      <td>{{ role_labels[w.role] }}</td>
+      <td>
+        {% if w.revoked_at %}<span class="badge token-revoked">Revogado {{ m.time(w.revoked_at) }}</span>
+        {% elif entry.online %}<span class="badge contact-allowed">Online</span>
+        {% else %}<span class="badge">Offline</span>{% endif %}
+      </td>
+      <td>{% if w.last_heartbeat %}{{ m.time(w.last_heartbeat, relative=true) }}{% else %}—{% endif %}</td>
+      <td>{{ entry.held_job_count }} ({{ entry.held_bytes|bytes }})</td>
+      <td>{{ m.time(w.enrolled_at) }}</td>
+      <td>
+        {% if not w.revoked_at %}
+        <form method="post" action="/review/admin/workers/{{ w.id }}/revoke" class="inline-form"
+              data-confirm="Revogar {{ w.name }}? O PC para de trabalhar na hora e precisa de um token novo para voltar.">
+          <button type="submit" class="danger">Revogar</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">Nenhum worker cadastrado ainda. Gere um token em “Cadastro de PCs”.</p>
+{% endif %}
+{% endblock %}

@@ -78,10 +78,14 @@
       </div>
 
       <label for="prova">Prova</label>
-      <input id="prova" name="prova" list="prova-suggestions" maxlength="64" value="{{ job.prova or '' }}">
-      <datalist id="prova-suggestions">
-        {% for prova in prova_suggestions %}<option value="{{ prova }}">{% endfor %}
-      </datalist>
+      {# The list is kept on the admin Provas page; ready/reprocess need one of these. #}
+      <select id="prova" name="prova">
+        <option value="" {% if not job.prova %}selected{% endif %}>Choose a prova…</option>
+        {% for prova in prova_choices %}
+        <option {% if prova == job.prova %}selected{% endif %}>{{ prova }}</option>
+        {% endfor %}
+      </select>
+      {% if not prova_choices %}<p class="hint">No provas yet: an admin adds them on the Admin → Provas page.</p>{% endif %}
 
       <div class="pair">
         <div>

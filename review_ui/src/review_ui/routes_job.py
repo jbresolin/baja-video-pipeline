@@ -16,24 +16,11 @@ from review_ui.orchestrator_client import (
     OrchestratorError,
     OrchestratorUnavailableError,
 )
-from review_ui.queue_view import distinct_provas
 from review_ui.request_context import orchestrator_for, render_page
 from review_ui.settings import JOB_PANEL_POLL_SECONDS
-from shared.models import Job, JobState
+from shared.models import Job
 
 router = APIRouter()
-
-# Jobs whose prova a reviewer already typed: a source of datalist suggestions.
-_REVIEWED_STATES = [
-    JobState.AWAITING_REVIEW,
-    JobState.READY,
-    JobState.CLAIMED,
-    JobState.UPLOADED,
-    JobState.DELIVERED,
-    JobState.DONE,
-]
-# Enough suggestions for a day of provas without making the list unwieldy.
-MAX_PROVA_SUGGESTIONS = 20
 
 
 def worker_names_or_empty(orchestrator: OrchestratorClient) -> dict[str, str]:
@@ -49,15 +36,18 @@ def worker_names_or_empty(orchestrator: OrchestratorClient) -> dict[str, str]:
     return {entry.worker.id: entry.worker.name for entry in fleet.workers}
 
 
-def recent_provas_or_empty(orchestrator: OrchestratorClient) -> list[str]:
-    """Provas used recently (delivered clips first), for the prova field's datalist."""
-    provas: list[str | None] = []
-    try:
-        provas += [clip.prova for clip in orchestrator.manifest().clips]
-        provas += [item.prova for item in orchestrator.review_queue(_REVIEWED_STATES)]
-    except (OrchestratorError, OrchestratorUnavailableError):
-        pass  # Suggestions are optional; whatever was collected is still useful.
-    return distinct_provas(provas)[:MAX_PROVA_SUGGESTIONS]
+def prova_choices(orchestrator: OrchestratorClient, job: Job) -> list[str]:
+    """The prova select's options: the active provas in the admin's order.
+
+    The job's current prova is added at the end when it is not among them
+    (deactivated since, or typed before the list existed), so opening the
+    page never silently changes it. The orchestrator only accepts provas
+    from its list when a job is made ready.
+    """
+    choices = [prova.name for prova in orchestrator.provas() if prova.active]
+    if job.prova and job.prova not in choices:
+        choices.append(job.prova)
+    return choices
 
 
 def event_lines_or_none(
@@ -97,7 +87,7 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
         intake=intake_text(job),
         frame_rate=frame_rate_for_stepping(job),
         actions=[(action.value, ACTION_LABELS[action]) for action in available_actions(job.state)],
-        prova_suggestions=recent_provas_or_empty(orchestrator),
+        prova_choices=prova_choices(orchestrator, job),
         poll_seconds=JOB_PANEL_POLL_SECONDS,
     )
     return render_page(request, "job.html", context)

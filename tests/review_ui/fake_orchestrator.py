@@ -12,16 +12,19 @@ docs/api.md describes:
     GET   /fleet
     GET   /jobs/{job_id}/events
     GET   /events?worker_id=…&since=…&limit=…
+    POST  /auth/login, /auth/logout, GET /auth/me   (sign-in)
+    GET   /provas
 
-Like the real one, it answers 401 unless the request carries the reviewer's
-Basic credentials (REVIEWER_AUTHORIZATION). It also writes down every
-request it receives, so a test can check exactly what the UI sent.
+Like the real one, it answers 401 unless the request carries the
+reviewer's session token (REVIEWER_AUTHORIZATION); only /auth/login is
+open. It also writes down every request it receives, so a test can check
+exactly what the UI sent. The admin pages are tested against the real
+orchestrator instead (test_admin_pages.py).
 
 The UI talks to it through httpx + SyncAsgiTransport: real HTTP requests
 and responses, but handled in memory, with no network or ports.
 """
 
-import base64
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -38,6 +41,7 @@ from shared.models import (
     JobState,
     JobSummary,
     ManifestResponse,
+    Prova,
     ReviewAction,
     ReviewUpdate,
     Team,
@@ -46,8 +50,12 @@ from shared.state_machine import DISCARDABLE_STATES, REPROCESSABLE_STATES, RETRY
 from shared.testing.asgi_transport import SyncAsgiTransport
 from tests.review_ui.sample_data import (
     REVIEWER_AUTHORIZATION,
+    REVIEWER_PASSWORD,
+    REVIEWER_SESSION_TOKEN,
+    REVIEWER_USERNAME,
     make_fleet,
     make_manifest,
+    make_provas,
     make_teams,
 )
 from tests.review_ui.sample_events import make_events
@@ -95,6 +103,7 @@ class FakeOrchestrator:
     fleet: FleetResponse = field(default_factory=make_fleet)
     # The event log, oldest first (ids count up).
     events: list[Event] = field(default_factory=make_events)
+    provas: list[Prova] = field(default_factory=make_provas)
     requests: list[RecordedRequest] = field(default_factory=list)
     # Switches that make an endpoint fail, to test the UI's error handling.
     fleet_fails: bool = False
@@ -176,11 +185,10 @@ class FakeOrchestrator:
 
 
 def _reviewer_from(request: Request) -> str | None:
-    """The reviewer's user name if the Basic credentials are the accepted ones."""
+    """The reviewer's user name if the request carries the accepted session token."""
     if request.headers.get("authorization") != REVIEWER_AUTHORIZATION:
         return None
-    encoded = REVIEWER_AUTHORIZATION.removeprefix("Basic ")
-    return base64.b64decode(encoded).decode().partition(":")[0]
+    return REVIEWER_USERNAME
 
 
 def build_app(fake: FakeOrchestrator) -> FastAPI:
@@ -198,9 +206,29 @@ def build_app(fake: FakeOrchestrator) -> FastAPI:
                 json_body=json.loads(body) if body else None,
             )
         )
-        if _reviewer_from(request) is None:
+        if request.url.path != "/auth/login" and _reviewer_from(request) is None:
             return _error(401, "unauthenticated", "reviewer credentials required")
         return await call_next(request)
+
+    @app.post("/auth/login")
+    async def login(request: Request):
+        body = json.loads(await request.body())
+        if (body.get("username"), body.get("password")) != (REVIEWER_USERNAME, REVIEWER_PASSWORD):
+            return _error(401, "unauthenticated", "wrong username or password")
+        user = {"username": REVIEWER_USERNAME, "role": "reviewer"}
+        return {"session_token": REVIEWER_SESSION_TOKEN, "user": user, "idle_timeout_s": 43200}
+
+    @app.post("/auth/logout", status_code=204)
+    def logout():
+        return None
+
+    @app.get("/auth/me")
+    def me():
+        return {"username": REVIEWER_USERNAME, "role": "reviewer"}
+
+    @app.get("/provas")
+    def provas():
+        return {"provas": [prova.model_dump(mode="json") for prova in fake.provas]}
 
     @app.get("/review/queue")
     def review_queue(state: list[JobState] = Query([JobState.AWAITING_REVIEW]), limit: int = 100):

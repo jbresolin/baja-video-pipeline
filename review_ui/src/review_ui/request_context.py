@@ -1,54 +1,77 @@
-"""Per-request helpers: the reviewer's orchestrator client, their name, page rendering."""
-
-import base64
-import binascii
+"""Per-request helpers: the user's orchestrator client, who is signed in, page rendering."""
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse
 
-from review_ui.orchestrator_client import OrchestratorClient
-from shared.models import utc_now
+from review_ui.admin_client import AdminClient
+from review_ui.orchestrator_client import (
+    OrchestratorClient,
+    OrchestratorError,
+    OrchestratorUnavailableError,
+)
+from review_ui.session import session_token
+from shared.models import CurrentUser, UserRole, utc_now
+
+
+def _authorization(request: Request) -> str | None:
+    token = session_token(request)
+    return f"Bearer {token}" if token else None
 
 
 def orchestrator_for(request: Request) -> OrchestratorClient:
-    """An orchestrator client that acts as the reviewer who sent this request.
+    """An orchestrator client that acts as the user who sent this request.
 
-    Caddy already checked the browser's `Authorization: Basic …` header; we
-    pass it on untouched, and the orchestrator checks it again (docs/api.md §2).
+    The browser's bvp_session cookie becomes `Authorization: Bearer …`; the
+    orchestrator checks it (docs/api.md §2). Without a cookie the calls go
+    out without credentials and the orchestrator answers 401, which sends
+    the browser to the login page (errors.py).
     """
     return OrchestratorClient(
         request.app.state.orchestrator_http_client,
-        request.headers.get("authorization"),
+        _authorization(request),
+        request.headers.get("x-forwarded-for"),
     )
 
 
-def reviewer_name(request: Request) -> str | None:
-    """Who is signed in, for the page header only (never used for access decisions).
+def admin_client_for(request: Request) -> AdminClient:
+    """The same, with the admin pages' calls (the orchestrator checks the role)."""
+    return AdminClient(
+        request.app.state.orchestrator_http_client,
+        _authorization(request),
+        request.headers.get("x-forwarded-for"),
+    )
 
-    Caddy adds X-Reviewer with the user name it authenticated. Without Caddy
-    (local development) we read the user name out of the Basic header.
+
+def current_user(request: Request) -> CurrentUser | None:
+    """Who is signed in (asked once per request), or None.
+
+    For the page header and the Admin link only. Access decisions are made
+    by the orchestrator on every call, never from this.
     """
-    from_caddy = request.headers.get("x-reviewer")
-    if from_caddy:
-        return from_caddy
-    scheme, _, encoded = request.headers.get("authorization", "").partition(" ")
-    if scheme.lower() != "basic":
-        return None
-    try:
-        decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
-    except (binascii.Error, UnicodeDecodeError):
-        return None
-    username, _, _ = decoded.partition(":")
-    return username or None
+    if not hasattr(request.state, "current_user"):
+        user = None
+        if session_token(request):
+            try:
+                user = orchestrator_for(request).me()
+            except (OrchestratorError, OrchestratorUnavailableError):
+                user = None
+        request.state.current_user = user
+    return request.state.current_user
 
 
 def render_page(
     request: Request, template_name: str, context: dict, status_code: int = 200
 ) -> HTMLResponse:
-    """Render a template with the values every page needs (reviewer, settings, time)."""
+    """Render a template with the values every page needs (user, settings, time).
+
+    Partial templates (names starting with "_", polled by the page scripts)
+    do not show the header, so they skip asking who is signed in.
+    """
     templates = request.app.state.templates
+    user = None if template_name.startswith("_") else current_user(request)
     full_context = {
-        "reviewer": reviewer_name(request),
+        "user": user,
+        "is_admin": user is not None and user.role == UserRole.ADMIN,
         "settings": request.app.state.settings,
         "now": utc_now(),
         **context,

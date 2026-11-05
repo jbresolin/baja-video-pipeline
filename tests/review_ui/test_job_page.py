@@ -30,7 +30,8 @@ def test_page_carries_the_version_the_reviewer_is_looking_at(ui):
 def test_existing_fields_and_cuts_are_filled_in(ui):
     html = ui.get("/review/jobs/job-failed-1").text
 
-    assert 'name="prova" list="prova-suggestions" maxlength="64" value="Enduro"' in html
+    # The prova select has the job's prova chosen.
+    assert "<option selected>Enduro</option>" in html
     # Cuts are shown with millisecond precision.
     assert 'value="3.000"' in html
     assert 'value="40.000"' in html
@@ -89,15 +90,32 @@ def test_missing_proxy_offers_to_request_one(ui, fake_orchestrator):
     assert "The proxy is not on the VPS" in html
 
 
-def test_prova_suggestions_come_from_recent_clips_and_jobs(ui):
+def prova_options(html: str) -> list[str]:
+    """The texts of the <option>s of the prova select, in order."""
+    select = html[html.index('<select id="prova"') :]
+    select = select[: select.index("</select>")]
+    return [part.split(">", 1)[1].split("<", 1)[0] for part in select.split("<option")[1:]]
+
+
+def test_the_prova_is_picked_from_the_active_provas_in_the_admins_order(ui, fake_orchestrator):
     html = ui.get("/review/jobs/job-awaiting-1").text
 
-    # "Enduro" and "Suspensão" are in the manifest; each appears once in
-    # the datalist even though jobs use them too.
-    datalist = html[html.index('<datalist id="prova-suggestions">') :]
-    datalist = datalist[: datalist.index("</datalist>")]
-    assert datalist.count('value="Enduro"') == 1
-    assert datalist.count('value="Suspensão"') == 1
+    # The list comes from GET /provas. "Lama" is deactivated, so it is not
+    # offered; the first option is the empty "choose" one.
+    assert fake_orchestrator.requests_to("GET", "/provas")
+    assert prova_options(html) == ["Choose a prova…", "Enduro", "Suspensão"]
+
+
+def test_a_jobs_prova_that_is_no_longer_active_is_still_shown(ui, fake_orchestrator):
+    # The job was reviewed with "Lama" before the admin deactivated it:
+    # opening the page must not silently change the job's prova.
+    job = fake_orchestrator.jobs["job-awaiting-1"]
+    fake_orchestrator.jobs["job-awaiting-1"] = job.model_copy(update={"prova": "Lama"})
+
+    html = ui.get("/review/jobs/job-awaiting-1").text
+
+    assert prova_options(html)[-1] == "Lama"
+    assert "<option selected>Lama</option>" in html
 
 
 def test_event_log_comes_from_the_orchestrators_log_newest_first(ui, fake_orchestrator):

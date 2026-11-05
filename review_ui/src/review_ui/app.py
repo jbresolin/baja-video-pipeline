@@ -12,7 +12,17 @@ import httpx
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from review_ui import __version__, routes_api, routes_clips_fleet, routes_job, routes_queue
+from review_ui import (
+    __version__,
+    routes_admin_catalog,
+    routes_admin_operations,
+    routes_admin_people,
+    routes_api,
+    routes_auth,
+    routes_clips_fleet,
+    routes_job,
+    routes_queue,
+)
 from review_ui.errors import register_error_handlers
 from review_ui.settings import ReviewUiSettings
 from review_ui.templating import STATIC_DIR, STATIC_URL_PREFIX, build_templates
@@ -53,6 +63,10 @@ def create_app(
     app.include_router(routes_job.router)
     app.include_router(routes_clips_fleet.router)
     app.include_router(routes_api.router)
+    app.include_router(routes_auth.router)
+    app.include_router(routes_admin_people.router)
+    app.include_router(routes_admin_catalog.router)
+    app.include_router(routes_admin_operations.router)
     register_error_handlers(app)
 
     @app.get("/healthz", include_in_schema=False)
