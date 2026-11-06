@@ -280,6 +280,9 @@ textarea { font: inherit; font-family: var(--mono); font-size: 0.85rem; width: 1
 .inline-fields label { margin: 0; }
 .inline-fields input, .inline-fields select { width: auto; min-width: 9rem; }
 .stacked { max-width: 34rem; }
+/* History folded at the bottom of an admin page (revoked workers, used tokens). */
+.folded-section { margin-top: 1.25rem; }
+.folded-section > summary { cursor: pointer; color: var(--muted); font-weight: 600; margin-bottom: 0.5rem; }
 .stacked button { margin-top: 1rem; }
 .login { max-width: 22rem; margin: 3rem auto; }
 .subnav { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.75rem; }

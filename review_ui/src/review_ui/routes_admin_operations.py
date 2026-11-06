@@ -14,12 +14,14 @@ from review_ui.admin_view import (
     orchestrator_error_text,
 )
 from review_ui.catalog import text
+from review_ui.clips_and_fleet_view import active_workers
 from review_ui.forms import read_form
 from review_ui.orchestrator_client import OrchestratorError
 from review_ui.request_context import admin_client_for, render_page
 from shared.models import (
     AdminArea,
     CreateEnrollmentTokenRequest,
+    EnrollmentTokenStatus,
     UpdateSettingsRequest,
     WorkerRole,
 )
@@ -41,10 +43,13 @@ def _enrollment_page(
     request: Request, error: str | None = None, status_code: int = 200, created=None
 ):
     admin = admin_client_for(request)
+    tokens = admin.enrollment_tokens().tokens
     context = admin_context(
         request,
         "enrollment",
-        tokens=admin.enrollment_tokens().tokens,
+        # Still to hand out on top; used, expired and revoked ones folded below.
+        unused_tokens=[token for token in tokens if token.status == EnrollmentTokenStatus.UNUSED],
+        other_tokens=[token for token in tokens if token.status != EnrollmentTokenStatus.UNUSED],
         # Shown once, right after it was issued; never stored by this UI.
         created=created,
         roles=[(role.value, WORKER_ROLE_LABELS[role.value]) for role in WorkerRole],
@@ -101,10 +106,13 @@ def revoke_token(request: Request, token_id: str, form: dict = Depends(read_form
 def _workers_page(request: Request, error: str | None = None, status_code: int = 200):
     admin = admin_client_for(request)
     # Reuses the fleet data (GET /fleet): who is online, what they hold.
+    fleet = admin.fleet()
     context = admin_context(
         request,
         "workers",
-        fleet=admin.fleet(),
+        active_workers=active_workers(fleet),
+        # Revoked ones go to a folded "Revogados" section at the bottom.
+        revoked_workers=[entry for entry in fleet.workers if entry.worker.revoked_at is not None],
         role_labels=WORKER_ROLE_LABELS,
         audit=audit_lines(admin.audit(AdminArea.WORKERS)),
     )
