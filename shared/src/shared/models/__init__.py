@@ -4,6 +4,7 @@ The models are split over several files only to keep each file short:
     enums.py            fixed value lists (JobState, WorkerRole, ...)
     common.py           field types, ErrorResponse
     job.py              Job, Lease, Holder, ClipInfo
+    render_inputs.py    what a clip was rendered from, compared with the review
     worker.py           Worker, WorkerCapabilities, EnrollmentToken
     tasks.py            the four task kinds handed out by /next
     api_worker_loop.py  heartbeat, holder-confirm, uploads, ACKs, peers
@@ -127,6 +128,12 @@ from shared.models.job import (
     Lease,
     ProbeReport,
 )
+from shared.models.render_inputs import (
+    ClipInputsComparison,
+    RenderInputField,
+    RenderInputs,
+    RenderInputsReport,
+)
 from shared.models.tasks import (
     ArchiveClipTask,
     ClaimRequest,
@@ -154,6 +161,10 @@ __all__ = [
     "ClipArchiveProgress",
     "ClipArchivedRequest",
     "ClipVersion",
+    "ClipInputsComparison",
+    "RenderInputField",
+    "RenderInputs",
+    "RenderInputsReport",
     "HeldClip",
     "ClaimRequest",
     "ClaimResponse",

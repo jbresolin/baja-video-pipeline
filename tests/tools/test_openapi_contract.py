@@ -40,6 +40,8 @@ REQUIRED_ENDPOINTS = {
     ("get", "/jobs/{job_id}/original"),
     ("post", "/jobs/{job_id}/original"),
     ("post", "/jobs/{job_id}/original-upload"),
+    # What a clip was rendered from (LIVESTACK-43).
+    ("put", "/jobs/{job_id}/render-inputs"),
     # Review
     ("get", "/review/queue"),
     ("get", "/jobs/{job_id}"),

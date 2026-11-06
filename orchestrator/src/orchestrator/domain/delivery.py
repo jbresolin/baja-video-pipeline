@@ -16,6 +16,7 @@ from orchestrator.domain.clip_archive import outbox_copy_still_needed, record_cl
 from orchestrator.domain.clip_names import clip_names_for_job, name_styles
 from orchestrator.domain.job_view import clip_download_file_name, require_job_row
 from orchestrator.domain.leases import require_active_lease, sweep_expired_leases
+from orchestrator.domain.render_inputs import compare_newest_clip
 from orchestrator.domain.transitions import end_lease, move_job, revoke_job_leases
 from orchestrator.errors import ApiError, forbidden, from_illegal_transition, hash_mismatch
 from orchestrator.repositories import clips as clips_repo
@@ -23,7 +24,7 @@ from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.storage import VpsLayout, delete_file_and_partials
-from shared.layout import is_safe_relative_path, slugify_prova
+from shared.layout import is_safe_relative_path, slugify_prova, unversioned_clip_relative_path
 from shared.models import (
     DeliveredRequest,
     DeliveryRoute,
@@ -226,9 +227,12 @@ def _manifest_from_rows(context, connection, rows, since, wanted_slug) -> Manife
     entries = []
     seen_paths = set()
     for row in rows:  # newest delivery first, so the first one per path wins
-        if row["clip_relative_path"] in seen_paths:
+        # A reprocess is delivered as "…-v2.mp4" (LIVESTACK-43); it is still
+        # the same pass as "….mp4" of an older job.
+        pass_path = unversioned_clip_relative_path(row["clip_relative_path"])
+        if pass_path in seen_paths:
             continue
-        seen_paths.add(row["clip_relative_path"])
+        seen_paths.add(pass_path)
         delivered_at = from_db_time(row["clip_delivered_at"])
         in_outbox = context.layout.outbox_path(row["id"]).exists()
         if since is not None and delivered_at <= since:
@@ -259,6 +263,7 @@ def _manifest_from_rows(context, connection, rows, since, wanted_slug) -> Manife
                 ),
                 clip_team_name=names.team,
                 clip_school_name=names.school,
+                clip_inputs=compare_newest_clip(connection, row, styles),
             )
         )
     return ManifestResponse(clips=entries, generated_at=context.clock.now())

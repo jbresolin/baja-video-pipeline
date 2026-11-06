@@ -21,6 +21,7 @@ from shared.models.enums import (
     ReceivedAs,
     TaskKind,
 )
+from shared.models.render_inputs import ClipInputsComparison, RenderInputs
 
 
 def check_cut_order(cut_in_s: float | None, cut_out_s: float | None) -> None:
@@ -110,6 +111,9 @@ class ClipVersion(ApiModel):
     rendered_at: datetime
     # When the master confirmed its archive copy (sha256 checked); None until then.
     archived_at: datetime | None = None
+    # What this version was rendered from (LIVESTACK-43); None for clips
+    # rendered before the orchestrator recorded it.
+    render_inputs: RenderInputs | None = None
 
 
 class ProbeReport(ApiModel):
@@ -201,6 +205,11 @@ class Job(ApiModel):
     clip: ClipInfo | None = None
     # Every rendering ever made, oldest first, with its archive status.
     clip_versions: list[ClipVersion] = Field(default_factory=list)
+    # The newest clip version's render inputs next to what a render would
+    # use now (LIVESTACK-43). `changed` not empty = the clip is out of date
+    # and only a reprocess fixes it. None without a clip version, for a
+    # version rendered before inputs were recorded, and for a discarded job.
+    clip_inputs: ClipInputsComparison | None = None
     # Set when a worker reported a failure; shown to the reviewer, who then
     # chooses retry or discard. Cleared by "retry".
     failure: JobFailure | None = None
@@ -248,6 +257,8 @@ class JobSummary(ApiModel):
     # Where a reviewer can download the clip while the VPS outbox has it
     # (ClipInfo.download_url), else None.
     clip_download_url: str | None = None
+    # True when the newest clip no longer matches the review (Job.clip_inputs).
+    clip_outdated: bool = False
 
     @classmethod
     def from_job(cls, job: Job) -> "JobSummary":
@@ -269,4 +280,5 @@ class JobSummary(ApiModel):
             waiting_reason=job.waiting_reason,
             failure_message=job.failure.message if job.failure else None,
             clip_download_url=job.clip.download_url if job.clip else None,
+            clip_outdated=bool(job.clip_inputs and job.clip_inputs.changed),
         )

@@ -17,13 +17,21 @@ from datetime import datetime
 
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import from_db_time
+from orchestrator.domain import provas_catalog
 from orchestrator.domain.job_view import require_job_row
 from orchestrator.domain.leases import require_active_lease, sweep_expired_leases
+from orchestrator.domain.render_inputs import inputs_json_for_clip
 from orchestrator.domain.transitions import end_lease
 from orchestrator.errors import forbidden, hash_mismatch
 from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import events as events_repo
+from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import workers as workers_repo
+from shared.layout import (
+    clip_relative_path_in_folder,
+    unversioned_clip_relative_path,
+    versioned_clip_relative_path,
+)
 from shared.models import (
     ClipArchivedRequest,
     ClipArchiveProgress,
@@ -47,13 +55,48 @@ def record_clip_version(
     rendered_by: str | None,
     now: datetime,
 ) -> int:
-    """Remember a finished clip as the job's next version; same sha256 = same version."""
+    """Remember a finished clip as the job's next version; same sha256 = same version.
+
+    `relative_path` may be a version's studio name ("…-p3-v2.mp4",
+    LIVESTACK-43); the version keeps the first name, from which archive
+    and download names are built. The version also keeps what it was
+    rendered from (render_inputs.py): the worker's report, else the
+    orchestrator's snapshot of the claim.
+    """
+    job_row = jobs_repo.get_job_row(connection, job_id)
+    inputs_json = inputs_json_for_clip(job_row, sha256) if job_row is not None else None
     existing = clips_repo.get_version_by_sha(connection, job_id, sha256)
     if existing is not None:
+        if existing["render_inputs_json"] is None and inputs_json is not None:
+            clips_repo.set_render_inputs(connection, job_id, sha256, inputs_json)
         return existing["version"]
     return clips_repo.insert_version(
-        connection, job_id, sha256, size_bytes, relative_path, rendered_by, now
+        connection,
+        job_id,
+        sha256,
+        size_bytes,
+        unversioned_clip_relative_path(relative_path),
+        rendered_by,
+        now,
+        inputs_json,
     )
+
+
+def next_clip_relative_path(connection: sqlite3.Connection, job_row: sqlite3.Row) -> str:
+    """Where the studio stores the job's next clip version.
+
+    The first rendering gets the plain name ("enduro/42/enduro-042-p3.mp4");
+    a reprocess gets its version name ("…-p3-v2.mp4", LIVESTACK-43), so the
+    clip on air is never written over: the studio puts the new version
+    beside it and at the top of latest.m3u.
+    """
+    first_name = clip_relative_path_in_folder(
+        provas_catalog.clip_folder_for(connection, job_row["prova"]),
+        job_row["car_number"],
+        job_row["passagem"],
+    )
+    version = clips_repo.next_version_number(connection, job_row["id"])
+    return versioned_clip_relative_path(first_name, version)
 
 
 def confirm_clip_archived(

@@ -27,6 +27,7 @@ UPDATABLE_JOB_COLUMNS = frozenset(
         "clip_rendered_by", "clip_delivered_at",
         "failure_worker_id", "failure_task_kind", "failure_message",
         "failure_exit_code", "failure_at", "failed_from", "waiting_reason",
+        "claimed_render_inputs_json", "reported_render_inputs_json",
     }
 )  # fmt: skip
 

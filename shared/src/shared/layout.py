@@ -91,8 +91,10 @@ def versioned_clip_relative_path(clip_path: str, version: int) -> str:
     "-v<n>" before the extension, so no version replaces another:
         versioned_clip_relative_path("enduro/42/enduro-042-p3.mp4", 2)
             == "enduro/42/enduro-042-p3-v2.mp4"
-    Used by the master's archive (every version) and by the studio when the
-    file on air is locked and a reprocessed clip must go beside it.
+    Used by the master's archive (every version), by the orchestrator for
+    the studio path of a reprocessed clip (LIVESTACK-43: the version on air
+    is never written over), and by the studio when a file is locked and a
+    clip must go beside it.
     """
     if version < 1:
         raise ValueError("clip versions start at 1")
@@ -104,6 +106,32 @@ def versioned_clip_relative_path(clip_path: str, version: int) -> str:
         # archived as "3.v2.mp4", and files on disk are never renamed.
         return str(path.with_name(f"{path.stem}.v{version}{path.suffix}"))
     return str(path.with_name(f"{path.stem}-v{version}{path.suffix}"))
+
+
+def unversioned_clip_relative_path(clip_path: str) -> str:
+    """The first version's name, from the name of any version (the reverse of the above).
+
+        unversioned_clip_relative_path("enduro/42/enduro-042-p3-v2.mp4")
+            == "enduro/42/enduro-042-p3.mp4"
+        unversioned_clip_relative_path("enduro/42/3.v2.mp4") == "enduro/42/3.mp4"
+
+    Since LIVESTACK-43 a reprocessed clip is rendered and delivered under
+    its version name, so a studio path can end in "-v2"; clip versions keep
+    the first name, from which every version's name (archive, download) is
+    built. Any other name comes back unchanged.
+    """
+    path = PurePosixPath(clip_path)
+    match = _VERSIONED_READABLE_STEM.fullmatch(path.stem) or _VERSIONED_NUMBER_STEM.fullmatch(
+        path.stem
+    )
+    if match is None:
+        return clip_path
+    return str(path.with_name(f"{match['first']}{path.suffix}"))
+
+
+# "enduro-042-p3-v2" (item 12 names) and "3.v2" (names from before them).
+_VERSIONED_READABLE_STEM = re.compile(r"(?P<first>.*-p\d+)-v\d+")
+_VERSIONED_NUMBER_STEM = re.compile(r"(?P<first>\d+)\.v\d+")
 
 
 def archive_relative_path(clip_path: str, version: int) -> str:

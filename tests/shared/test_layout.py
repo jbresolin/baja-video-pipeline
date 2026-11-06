@@ -13,6 +13,7 @@ from shared.layout import (
     raw_file_name,
     render_latest_playlist,
     slugify_prova,
+    unversioned_clip_relative_path,
     versioned_clip_relative_path,
 )
 
@@ -135,6 +136,29 @@ def test_clips_named_before_the_change_keep_their_old_version_names():
     # Files on disk are never renamed: an old "3.mp4" archived its second
     # version as "3.v2.mp4", and the job page must keep saying so.
     assert archive_relative_path("enduro/42/3.mp4", 2) == "enduro/42/3.v2.mp4"
+
+
+@pytest.mark.parametrize(
+    ("studio_path", "first_name"),
+    [
+        # A reprocess is delivered under its version name (LIVESTACK-43);
+        # the clip version keeps the first name, so archive and download
+        # names are built from it and never get "-v2-v2".
+        ("enduro/42/enduro-042-p3-v2.mp4", "enduro/42/enduro-042-p3.mp4"),
+        ("enduro/42/enduro-042-p12-v10.mp4", "enduro/42/enduro-042-p12.mp4"),
+        ("enduro/42/3.v2.mp4", "enduro/42/3.mp4"),
+        # Names without a version suffix come back unchanged.
+        ("enduro/42/enduro-042-p3.mp4", "enduro/42/enduro-042-p3.mp4"),
+        ("enduro/42/3.mp4", "enduro/42/3.mp4"),
+        # A prova whose slug ends like a version is not mistaken for one:
+        # only a "-v<n>" right after "-p<passagem>" is a version.
+        ("teste-v2/42/teste-v2-042-p3.mp4", "teste-v2/42/teste-v2-042-p3.mp4"),
+    ],
+)
+def test_the_first_name_of_any_version(studio_path, first_name):
+    assert unversioned_clip_relative_path(studio_path) == first_name
+    # And back: version 2 of the first name is the "-v2" name again.
+    assert versioned_clip_relative_path(first_name, 1) == first_name
 
 
 @pytest.mark.parametrize(

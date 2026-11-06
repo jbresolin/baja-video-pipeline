@@ -7,6 +7,7 @@ from pydantic import Field
 from shared.models.common import ApiModel, ByteCount, CarNumber, PassNumber, Sha256Hex
 from shared.models.enums import WorkerRole
 from shared.models.job import Lease
+from shared.models.render_inputs import ClipInputsComparison
 from shared.models.worker import Worker, WorkerCapabilities
 
 # --- Intake ---
@@ -164,6 +165,9 @@ class ManifestEntry(ApiModel):
     # LIVESTACK-42); team_name above stays the full name.
     clip_team_name: str | None = None
     clip_school_name: str | None = None
+    # This clip's render inputs next to the review now (LIVESTACK-43), as
+    # Job.clip_inputs: `changed` not empty = out of date. None when unknown.
+    clip_inputs: ClipInputsComparison | None = None
 
 
 class ManifestResponse(ApiModel):

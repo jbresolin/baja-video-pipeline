@@ -20,6 +20,7 @@ from shared.models import (
     NextTaskResponse,
     PeersResponse,
     ProbeReport,
+    RenderInputsReport,
 )
 from tools.openapi_contract.auth import (
     error_responses,
@@ -258,6 +259,31 @@ def upload_media_info(
     them again). Stored as `Job.media_info`; sets `Job.frame_rate` while it
     is still empty (the proxy's `Frame-Rate` header then replaces it).
     Over 512 KB → 413. Machine activity: does not bump `Job.version`."""
+    not_implemented()
+
+
+@router.put(
+    "/jobs/{job_id}/render-inputs",
+    tags=["worker loop"],
+    summary="Say what the clip about to be delivered was rendered from",
+    status_code=204,
+    responses=error_responses(400, 401, 404, 409, 422),
+)
+def report_render_inputs(
+    job_id: str,
+    body: RenderInputsReport = Body(...),
+    lease_id: str = Header(..., alias="Lease-Id"),
+) -> None:
+    """Under the process lease, after rendering and before the outbox
+    upload or the studio push (LIVESTACK-43). The values the clip was
+    rendered from, the overlay texts as drawn, the overlay theme version
+    (SHA-256 of the worker's tokens.css) and the clip's SHA-256. When that
+    clip becomes a version it keeps these as `ClipVersion.render_inputs`
+    (with the Settings' name choices from the claim). Without a report the
+    version keeps the orchestrator's snapshot of the claim. 422 if
+    `raw_sha256` is not the job's; no live process lease → 409
+    `lease_lost`. Never changes the job's state or `Job.version`; a worker
+    that gets an error delivers anyway."""
     not_implemented()
 
 

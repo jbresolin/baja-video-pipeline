@@ -10,6 +10,7 @@ from orchestrator.domain.discard import discard_grace_is_over
 from orchestrator.domain.fleet_snapshot import FleetSnapshot, accepts_new_raws, is_paused
 from orchestrator.domain.job_view import require_job_row
 from orchestrator.domain.leases import renew_lease, require_active_lease, sweep_expired_leases
+from orchestrator.domain.render_inputs import remember_claimed_inputs
 from orchestrator.domain.task_rules import evaluate_task
 from orchestrator.domain.transitions import move_job, new_lease
 from orchestrator.errors import ApiError
@@ -255,6 +256,8 @@ def claim_task(
         ]
         if existing:
             # Claiming again (e.g. the first answer was lost) renews the same lease.
+            if kind == TaskKind.PROCESS:
+                remember_claimed_inputs(connection, job_id, decision.task, now)
             return ClaimResponse(
                 lease=renew_lease(connection, existing[0], now), task=decision.task
             )
@@ -275,6 +278,7 @@ def claim_task(
         if kind == TaskKind.DOWNLOAD_RAW:
             leases_repo.add_assigned_holder(connection, job_id, worker_id, now)
         if kind == TaskKind.PROCESS:
+            remember_claimed_inputs(connection, job_id, decision.task, now)
             move_job(
                 connection,
                 job_row,

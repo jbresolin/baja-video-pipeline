@@ -46,7 +46,10 @@ def test_only_0009_runs_and_the_rows_survive_with_empty_new_columns(tmp_path):
     database_at_schema_8(tmp_path)
 
     database = Database(tmp_path / "db" / "bvp.sqlite3")
-    assert database.apply_migrations() == ["0009_worker_real_use.sql"]
+    # 0009 runs first; later migrations (LIVESTACK-43's 0010) follow it.
+    applied = database.apply_migrations()
+    assert applied[0] == "0009_worker_real_use.sql"
+    assert applied == [name for number, name, _ in list_migrations() if number > 8]
 
     with database.transaction() as connection:
         job = connection.execute("SELECT * FROM jobs WHERE id = 'job-1'").fetchone()
@@ -65,5 +68,5 @@ def test_a_second_start_applies_nothing(tmp_path):
     open_database(tmp_path).close()
     database = open_database(tmp_path)
     assert database.apply_migrations() == []
-    assert database.schema_version == len(list_migrations()) == 9
+    assert database.schema_version == len(list_migrations())
     database.close()
