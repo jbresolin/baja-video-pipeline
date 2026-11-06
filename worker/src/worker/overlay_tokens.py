@@ -14,6 +14,7 @@ pixel values added and subtracted. Anything else raises ThemeTokenError,
 so a token that changed form fails the tests instead of drawing garbage.
 """
 
+import hashlib
 import re
 from importlib import resources
 
@@ -105,12 +106,23 @@ def load_vendored_tokens() -> dict[str, str]:
     return parse_tokens(css_text)
 
 
+def vendored_theme_version() -> str:
+    """SHA-256 of the vendored tokens.css: which look this worker draws (LIVESTACK-43).
+
+    Reported with every clip's render inputs, so a clip drawn before a
+    theme refresh can be told apart from one drawn after it.
+    """
+    css_bytes = resources.files(THEME_PACKAGE).joinpath(TOKENS_FILE).read_bytes()
+    return hashlib.sha256(css_bytes).hexdigest()
+
+
 def font_path() -> str:
     """Filesystem path of the vendored Bebas Neue TTF (Pillow wants a path)."""
     return str(resources.files(THEME_PACKAGE).joinpath(FONT_FILE))
 
 
 _TOKENS = load_vendored_tokens()
+THEME_VERSION = vendored_theme_version()
 
 # --- Where the lower third sits on the 1920x1080 stage ---
 STAGE_HEIGHT_PX = 1080

@@ -29,6 +29,7 @@ from shared.models import (
     NextTaskResponse,
     OutboxAckRequest,
     ProbeReport,
+    RenderInputsReport,
     TaskKind,
 )
 from shared.protocol import LEASE_ID_HEADER
@@ -139,6 +140,16 @@ class OrchestratorClient:
     def upload_media_info(self, url: str, lease_id: str, report: ProbeReport) -> None:
         headers = {LEASE_ID_HEADER: lease_id, "Content-Type": "application/json"}
         self._send("PUT", url, content=report.model_dump_json().encode(), headers=headers)
+
+    def report_render_inputs(self, job_id: str, lease_id: str, report: RenderInputsReport) -> None:
+        """PUT /jobs/{id}/render-inputs: what the clip about to be delivered was rendered from."""
+        headers = {LEASE_ID_HEADER: lease_id, "Content-Type": "application/json"}
+        self._send(
+            "PUT",
+            f"/jobs/{job_id}/render-inputs",
+            content=report.model_dump_json().encode(),
+            headers=headers,
+        )
 
     def clip_archived(self, job_id: str, request: ClipArchivedRequest) -> JobStateResponse:
         response = self._post_json(f"/jobs/{job_id}/clip-archived", request)

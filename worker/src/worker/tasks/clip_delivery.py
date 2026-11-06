@@ -47,9 +47,14 @@ def deliver_clip(
     task: ProcessTask,
     clip_path: Path,
     cancel: CancelToken,
+    *,
+    clip_sha256: str | None = None,
 ) -> str:
-    """Deliver the clip; returns its SHA-256 (the worker then keeps it under that name)."""
-    clip_sha256 = sha256_of_file(clip_path)
+    """Deliver the clip; returns its SHA-256 (the worker then keeps it under that name).
+
+    `clip_sha256` saves hashing the file again when the caller already did.
+    """
+    clip_sha256 = clip_sha256 or sha256_of_file(clip_path)
     studio_url = direct_push_url(task)
     if studio_url is not None and not env.studio_reachability.reachable(
         studio_url, env.transfer_transport
