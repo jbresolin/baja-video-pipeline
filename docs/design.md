@@ -594,3 +594,35 @@ Fixes and additions, with the decisions taken while building them (the PR
   without UAC (service rights for Users), a pt-BR status page and a local
   JSON API on 127.0.0.1:8700; a pending tailnet join is explained in pt-BR
   instead of a `ConnectError`.
+
+## 23. Admin polish from real use (LIVESTACK-42, 2026-11-05)
+
+After a day of real use (brief "05 — Worker and admin polish from real
+use", items 6-11; the worker items are LIVESTACK-41). Contract 2.2.0.
+
+* **Names on the clips.** Settings has two independent choices, team
+  full/short and school full/sigla (default short/sigla, the old look); a
+  missing name falls back to the other. Applied when a render is offered
+  (`domain/clip_names.py`), so a change affects every clip rendered
+  afterwards, and in what the UI shows for a clip (job page, clips page).
+  `ProcessTask.school_short` carries the full school name under "completo"
+  rather than adding a field, so workers need no change. `latest.m3u` keeps
+  the full team name. Migration 0008 stores the full school name on jobs;
+  older jobs fall back to the sigla.
+* **Worker display name.** `Worker.name` is the display name (typed on the
+  token form, prefilled with the host name; changed on Admin → Workers);
+  `Worker.hostname` is shown beside it.
+* **One master, switched in the UI.** "Tornar master" promotes a worker and
+  demotes the master in one step; only master ↔ worker (a studio has
+  tag:studio and enrolls again). Workers send their running role in the
+  heartbeat and get the orchestrator's back (never to workers that do not
+  send it, since older parsers refuse unknown fields); on a difference they
+  save it and restart through NSSM. Deploy the orchestrator before workers
+  that send `role`.
+* **History out of the way.** Revoked workers are off Frota and folded at
+  the bottom of Admin → Workers; spent tokens are folded on Cadastro de PCs.
+* **Banners** keep their text in a `<p>`; only a banner with a button beside
+  its text is a flex row.
+* **In-place admin toggles.** Provas activate/order and contacts
+  allow/block answer with re-rendered rows over JSON; no reload.
+
