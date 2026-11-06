@@ -14,7 +14,7 @@ the same time (one upload per job at a time is the rule anyway).
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -82,11 +82,25 @@ class ChunkedUploadReceiver:
     the new upload must start at offset 0.
     """
 
-    def __init__(self, final_path: Path, max_bytes: int | None = None) -> None:
+    def __init__(
+        self,
+        final_path: Path,
+        max_bytes: int | None = None,
+        *,
+        place: Callable[[Path, str], None] | None = None,
+        known_sha256: Callable[[Path], str | None] | None = None,
+    ) -> None:
+        """`place(partial_path, sha256)` moves the verified file into place
+        (default: rename over final_path). `known_sha256(final_path)` gives
+        an existing final file's hash, or None (default: read the file).
+        The studio passes both (worker.studio.placement: lock-tolerant
+        rename, cached hashes); the orchestrator keeps the defaults."""
         self.final_path = final_path
         self.partial_path = partial_path_for(final_path)
         self.metadata_path = final_path.with_name(f".{final_path.name}.part.json")
         self.max_bytes = max_bytes
+        self._place = place
+        self._known_sha256 = known_sha256
 
     def accept_chunk(self, upload: UploadHeaders, chunk: bytes) -> ChunkAccepted:
         if self.max_bytes is not None and upload.total_length > self.max_bytes:
@@ -118,9 +132,12 @@ class ChunkedUploadReceiver:
         if actual_sha256 != upload.sha256:
             self._discard_partial()
             raise UploadHashMismatchError(f"expected {upload.sha256}, got {actual_sha256}")
-        # replace() overwrites an older final file, e.g. a reprocessed clip.
-        self.partial_path.replace(self.final_path)
         self.metadata_path.unlink(missing_ok=True)
+        if self._place is not None:
+            self._place(self.partial_path, upload.sha256)
+        else:
+            # replace() overwrites an older final file, e.g. a reprocessed clip.
+            self.partial_path.replace(self.final_path)
         return ChunkAccepted(received_bytes=upload.total_length, complete=True)
 
     def _partial_belongs_to(self, upload: UploadHeaders) -> bool:
@@ -130,11 +147,11 @@ class ChunkedUploadReceiver:
         return metadata == {"total_length": upload.total_length, "sha256": upload.sha256}
 
     def _final_file_already_matches(self, upload: UploadHeaders) -> bool:
-        return (
-            self.final_path.exists()
-            and self.final_path.stat().st_size == upload.total_length
-            and sha256_of_file(self.final_path) == upload.sha256
-        )
+        if not self.final_path.exists() or self.final_path.stat().st_size != upload.total_length:
+            return False
+        if self._known_sha256 is not None:
+            return self._known_sha256(self.final_path) == upload.sha256
+        return sha256_of_file(self.final_path) == upload.sha256
 
     def _start_fresh(self, upload: UploadHeaders) -> None:
         self.final_path.parent.mkdir(parents=True, exist_ok=True)

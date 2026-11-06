@@ -21,6 +21,7 @@ from orchestrator.background.sweepers import clean_outbox_once
 from orchestrator.testing.scenarios import (
     SAMPLE_CLIP,
     ask_next,
+    claim,
     claim_ok,
     hold_raw,
     make_proxy,
@@ -340,3 +341,46 @@ def test_a_revoked_worker_is_no_longer_a_clip_source(harness, fleet):
     assert row["clips_held"] == 0
     harness.heartbeat(master, held_job_ids=[job_id])
     assert ask_next(harness, master, [TaskKind.ARCHIVE_CLIP]) is None
+
+
+# --- LIVESTACK-41 item 13: why the studio got the same clip twice ------------
+# The race seen live: the worker pushed the clip straight to the studio, the
+# studio stored it, but its "delivered" ACK reached the orchestrator later
+# than the worker's 60 s wait. The worker then also uploaded the clip to the
+# outbox, which made the job "uploaded" and offered a "deliver" (an outbox
+# pull) to the studio, whose rename onto the file already on air failed.
+
+
+def test_a_late_direct_ack_after_the_outbox_fallback_ends_the_delivery(harness, fleet):
+    master, volunteer, studio = fleet
+    job_id = outbox_delivery(harness, fleet)  # the worker's fallback upload: "uploaded"
+    task = ask_next(harness, studio, [TaskKind.DELIVER])
+    assert task is not None and task["job_id"] == job_id  # the second delivery, offered
+
+    # The studio's ACK for the direct push it already stored finally arrives.
+    response = harness.client.post(
+        f"/jobs/{job_id}/delivered",
+        json={
+            "sha256": CLIP_SHA256,
+            "size_bytes": len(SAMPLE_CLIP),
+            "relative_path": task["clip_relative_path"],
+        },
+        headers=studio.headers,
+    )
+
+    # The job is finished, and the studio is not offered that clip again.
+    assert response.status_code == 200 and response.json()["state"] == "done"
+    assert ask_next(harness, studio, [TaskKind.DELIVER]) is None
+    # A pull that was already under way still gets a friendly answer: the
+    # repeated ACK of the same clip is accepted, nothing fails.
+    assert claim(harness, studio, job_id, TaskKind.DELIVER).status_code == 409
+    repeated = harness.client.post(
+        f"/jobs/{job_id}/delivered",
+        json={
+            "sha256": CLIP_SHA256,
+            "size_bytes": len(SAMPLE_CLIP),
+            "relative_path": task["clip_relative_path"],
+        },
+        headers=studio.headers,
+    )
+    assert repeated.status_code == 200

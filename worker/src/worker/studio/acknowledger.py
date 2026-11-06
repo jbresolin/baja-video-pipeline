@@ -63,11 +63,17 @@ class DeliveryAcknowledger:
         self._lock = threading.Lock()
         self._pending: list[PendingDelivery] = self._file.load() if self._file else []
         self._new_delivery = threading.Event()
+        # (job, sha256) of clips whose ACK the orchestrator accepted while we
+        # ran: a second delivery of the same clip (item 13) needs no second ACK.
+        self._acknowledged: set[tuple[str, str]] = set()
         if self._pending:
             logger.info("%d delivered ACK(s) left from the last run; replaying", len(self._pending))
 
     def submit(self, delivery: PendingDelivery) -> None:
         with self._lock:
+            if (delivery.job_id, delivery.sha256) in self._acknowledged:
+                logger.info("clip of job %s already acknowledged; no second ACK", delivery.job_id)
+                return
             # A newer push of the same job (reprocessed clip) replaces an
             # older ACK that was still waiting: only the latest one counts.
             self._pending = [d for d in self._pending if d.job_id != delivery.job_id]
@@ -127,6 +133,8 @@ class DeliveryAcknowledger:
                 logger.warning("delivered ACK no longer applies, dropping it: %s", error)
                 return True
             logger.info("delivered ACK sent; job is now %s", answer.state)
+            with self._lock:
+                self._acknowledged.add((delivery.job_id, delivery.sha256))
             return True
 
     def _add_to_playlist(self, delivery: PendingDelivery) -> None:
