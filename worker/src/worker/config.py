@@ -135,10 +135,22 @@ class WorkerConfig(BaseModel):
 
 
 def load_config(config_path: Path) -> WorkerConfig:
-    """Read the config file; a missing file means "all defaults" (first run)."""
+    """Read the config file; a missing file means "all defaults" (first run).
+
+    Raises on a broken file (JSON syntax, unknown key, wrong type). Code
+    that must keep running whatever the file says (the status page, the
+    startup sequence) uses worker.config_problems.read_config instead,
+    which explains the problem to the volunteer.
+    """
     if not config_path.exists():
         return WorkerConfig()
-    return WorkerConfig.model_validate_json(config_path.read_text(encoding="utf-8"))
+    return WorkerConfig.model_validate_json(read_config_text(config_path))
+
+
+def read_config_text(config_path: Path) -> str:
+    """The file's text. "utf-8-sig" also accepts the byte-order mark that
+    Windows Notepad may put at the start of a file it saved."""
+    return config_path.read_text(encoding="utf-8-sig")
 
 
 def save_config(config_path: Path, config: WorkerConfig) -> None:
@@ -161,3 +173,29 @@ def write_text_atomically(path: Path, text: str) -> None:
         file.flush()
         os.fsync(file.fileno())
     os.replace(temporary, path)
+
+
+def config_without_identity(config: WorkerConfig) -> WorkerConfig:
+    """ "Registrar de novo": forget who this PC is in the Baja fleet, keep the rest.
+
+    Cleared: worker id, bearer token, role, Caddy's tailnet URL and the
+    saved tailnet address (all from the old enrollment), and any leftover
+    enrollment token. Kept: everything the installer wrote (enroll_url,
+    ffmpeg_path, …) and everything the volunteer chose (working folder,
+    cap, studio clip folder, paused). raws/ and clips/ are not touched.
+
+    `orchestrator_url` goes back to the built-in default only when the join
+    step wrote it (it equals the old tailnet_base_url); a URL someone typed
+    in stays. The next enrollment and join write it again.
+    """
+    updates: dict[str, object] = {
+        "worker_id": None,
+        "bearer_token": None,
+        "role": None,
+        "tailnet_base_url": None,
+        "tailnet_address": None,
+        "enrollment_token": None,
+    }
+    if config.tailnet_base_url and config.orchestrator_url == config.tailnet_base_url:
+        updates["orchestrator_url"] = DEFAULT_ORCHESTRATOR_URL
+    return config.model_copy(update=updates)
