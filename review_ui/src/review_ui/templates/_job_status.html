@@ -1,6 +1,16 @@
 {# The status strip. data-version lets the page notice changes by others. #}
 {% import "macros.html" as m with context %}
 <div id="status-strip" class="status-strip" data-version="{{ job.version }}" data-state="{{ job.state }}" aria-live="polite">
+  {# The clip on air no longer matches the review (LIVESTACK-43): every difference. #}
+  {% if outdated %}
+  <div class="banner warning clip-outdated" id="clip-outdated">
+    <p><strong>{{ t("outdated.title", version=outdated.version) }}</strong></p>
+    <ul>
+      {% for difference in outdated.differences %}<li>{{ difference }}</li>{% endfor %}
+    </ul>
+    <p>{{ outdated.next_step }}</p>
+  </div>
+  {% endif %}
   {% for note in notes %}
   <p class="note {{ note.level }}">{{ note.text }}{% if note.detail %} {{ m.english(note.detail) }}{% endif %}{% if note.at %} {{ m.time(note.at) }}.{% endif %}</p>
   {% endfor %}

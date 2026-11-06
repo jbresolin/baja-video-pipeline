@@ -222,6 +222,12 @@ tests. Therefore:
   say what the test sets up, what it does, and why the assertion proves
   the behaviour.
 * No cleverness that saves lines at the cost of readability.
+* **A client never breaks because the server added a field:** in
+  `shared/models`, what the orchestrator receives (requests, uploads,
+  heartbeats, worker reports) derives from `ReceivedByServer`
+  (`extra="forbid"`), everything a worker, the studio or the review UI
+  reads from it derives from `ReadByClients` (`extra="ignore"`), and each
+  model's docstring says which.
 * **Test credentials are obvious placeholders in one place.** Every username,
   password, token or key a test needs comes from
   `shared/testing/credentials.py`, named and valued so nobody (and no secret
@@ -664,3 +670,40 @@ from real use", items 1–5 and 12–15; installer 0.3.0, contract 2.3.0):
 * **"Baixar original"**: task kind `upload_original`, temporary
   `originals/` on the VPS (24 h after the last request, 10 GB cap, both
   Settings values), served by Caddy under the raw's readable name.
+
+## 25. Edits after delivery (LIVESTACK-43, 2026-11-06)
+
+João changed the cut-in of a job whose clip was already on the studio
+box: the save worked, but nothing said the clip on air no longer matched,
+and no re-render followed (brief "06 — Edits after delivery are visible
+and reprocessable"). Contract 2.4.0.
+
+* **Clips remember their render inputs.** Each clip version keeps what it
+  was rendered from (cuts, review fields, name choices and the overlay
+  texts they give, overlay theme version = SHA-256 of the worker's
+  `tokens.css`, the raw's sha256). The worker reports them
+  (`PUT /jobs/{id}/render-inputs`) before delivering; the orchestrator
+  snapshots the task it handed out at every process claim, which supplies
+  the name choices (workers only see chosen names) and stands in when a
+  worker reports nothing. No `ProcessTask` field was added; but `Job`
+  gained `clip_inputs` (and `ClipVersion.render_inputs`), and workers
+  before this one refuse unknown fields when they read `GET /jobs/{id}`
+  (studio playlist titles, outbox deliver, the direct-push fallback
+  check). So, as for 2.3.0, **upgrade the workers together with the
+  orchestrator** this time. From this version on, clients ignore fields
+  they do not know (§14), so later additions need no lockstep upgrade.
+* **Mismatch is computed by the orchestrator** (it knows the Settings),
+  newest version against the review now: `Job.clip_inputs`,
+  `ManifestEntry.clip_inputs`, `JobSummary.clip_outdated`,
+  `GET /review/queue?outdated=true`. Texts are compared, not choices, so a
+  choice that draws the same name is no difference. Clips rendered before
+  this have no recorded inputs and show no warning rather than a guessed one.
+* **Reprocess is the obvious action after delivery.** "Salvar e
+  reprocessar" is the existing `reprocess` action (it always saved the
+  fields it carries), now the primary button whenever a clip exists; it
+  was already offered for enviado/entregue/concluído on main, but looked
+  like a second-rank button next to "Salvar". The next rendering is
+  delivered under its `-vN` name, so the version on air is never written
+  over; `latest.m3u` moves to it. With no holder online the reprocess is
+  accepted and the job says it waits for one, at once.
+

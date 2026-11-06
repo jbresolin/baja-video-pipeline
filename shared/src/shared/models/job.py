@@ -6,10 +6,10 @@ from typing import Any
 from pydantic import Field, model_validator
 
 from shared.models.common import (
-    ApiModel,
     ByteCount,
     CarNumber,
     PassNumber,
+    ReadByClients,
     Seconds,
     Sha256Hex,
     utc_now,
@@ -21,6 +21,7 @@ from shared.models.enums import (
     ReceivedAs,
     TaskKind,
 )
+from shared.models.render_inputs import ClipInputsComparison, RenderInputs
 
 
 def check_cut_order(cut_in_s: float | None, cut_out_s: float | None) -> None:
@@ -29,11 +30,13 @@ def check_cut_order(cut_in_s: float | None, cut_out_s: float | None) -> None:
         raise ValueError(f"cut_out_s ({cut_out_s}) must be greater than cut_in_s ({cut_in_s})")
 
 
-class Lease(ApiModel):
+class Lease(ReadByClients):
     """Permission for one worker to do one task on one job until expires_at.
 
     Heartbeats (or /lease/renew) push expires_at forward. When it passes, the
     orchestrator drops the lease and the task can be handed to someone else.
+
+    Read by clients: unknown fields are ignored.
     """
 
     lease_id: str
@@ -44,8 +47,11 @@ class Lease(ApiModel):
     expires_at: datetime
 
 
-class Holder(ApiModel):
-    """A worker that has (or is fetching) a verified copy of the job's raw."""
+class Holder(ReadByClients):
+    """A worker that has (or is fetching) a verified copy of the job's raw.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     worker_id: str
     status: HolderStatus
@@ -53,8 +59,11 @@ class Holder(ApiModel):
     confirmed_at: datetime | None = None
 
 
-class IntakeSource(ApiModel):
-    """Where the raw came from. Kept for support and duplicate detection."""
+class IntakeSource(ReadByClients):
+    """Where the raw came from. Kept for support and duplicate detection.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     # WhatsApp message id (Evolution data.key.id). Used to ignore retries of
     # the same webhook. Test uploads get a generated id.
@@ -73,8 +82,11 @@ class IntakeSource(ApiModel):
     raw_file_name: str | None = None
 
 
-class ClipInfo(ApiModel):
-    """The finished, rendered clip (the current version)."""
+class ClipInfo(ReadByClients):
+    """The finished, rendered clip (the current version).
+
+    Read by clients: unknown fields are ignored.
+    """
 
     sha256: Sha256Hex
     size_bytes: ByteCount
@@ -96,8 +108,11 @@ class ClipInfo(ApiModel):
     download_file_name: str | None = None
 
 
-class ClipVersion(ApiModel):
-    """One rendering of a job's clip. Reprocessing adds a version; none is replaced."""
+class ClipVersion(ReadByClients):
+    """One rendering of a job's clip. Reprocessing adds a version; none is replaced.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     version: int = Field(ge=1)
     sha256: Sha256Hex
@@ -110,9 +125,12 @@ class ClipVersion(ApiModel):
     rendered_at: datetime
     # When the master confirmed its archive copy (sha256 checked); None until then.
     archived_at: datetime | None = None
+    # What this version was rendered from (LIVESTACK-43); None for clips
+    # rendered before the orchestrator recorded it.
+    render_inputs: RenderInputs | None = None
 
 
-class ProbeReport(ApiModel):
+class ProbeReport(ReadByClients):
     """PUT /jobs/{id}/media-info body, stored as Job.media_info.
 
     The raw's full ffprobe answer (`-show_format -show_streams`, see
@@ -121,6 +139,9 @@ class ProbeReport(ApiModel):
     strip_location_tags removes every GPS/location tag and the worker
     (and again the orchestrator) only keeps `location_present`. The inner
     dicts are ffprobe's own and are kept as they are (any keys).
+
+    Read by clients: unknown fields are ignored. The orchestrator also receives
+    it (PUT /jobs/{id}/media-info); clients reading Job.media_info win.
     """
 
     # ffprobe's "format" object: container, duration, size, bit_rate, tags.
@@ -131,8 +152,11 @@ class ProbeReport(ApiModel):
     location_present: bool = False
 
 
-class JobFailure(ApiModel):
-    """The last unrecoverable error a worker reported (POST /jobs/{id}/failed)."""
+class JobFailure(ReadByClients):
+    """The last unrecoverable error a worker reported (POST /jobs/{id}/failed).
+
+    Read by clients: unknown fields are ignored.
+    """
 
     worker_id: str
     task_kind: TaskKind
@@ -142,8 +166,11 @@ class JobFailure(ApiModel):
     failed_at: datetime
 
 
-class Job(ApiModel):
-    """Full job record, as returned by GET /jobs/{id}."""
+class Job(ReadByClients):
+    """Full job record, as returned by GET /jobs/{id}.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     id: str
     state: JobState
@@ -201,6 +228,11 @@ class Job(ApiModel):
     clip: ClipInfo | None = None
     # Every rendering ever made, oldest first, with its archive status.
     clip_versions: list[ClipVersion] = Field(default_factory=list)
+    # The newest clip version's render inputs next to what a render would
+    # use now (LIVESTACK-43). `changed` not empty = the clip is out of date
+    # and only a reprocess fixes it. None without a clip version, for a
+    # version rendered before inputs were recorded, and for a discarded job.
+    clip_inputs: ClipInputsComparison | None = None
     # Set when a worker reported a failure; shown to the reviewer, who then
     # chooses retry or discard. Cleared by "retry".
     failure: JobFailure | None = None
@@ -225,8 +257,11 @@ class Job(ApiModel):
         return self
 
 
-class JobSummary(ApiModel):
-    """The slice of a Job shown in lists (review queue, fleet view)."""
+class JobSummary(ReadByClients):
+    """The slice of a Job shown in lists (review queue, fleet view).
+
+    Read by clients: unknown fields are ignored.
+    """
 
     id: str
     state: JobState
@@ -248,6 +283,8 @@ class JobSummary(ApiModel):
     # Where a reviewer can download the clip while the VPS outbox has it
     # (ClipInfo.download_url), else None.
     clip_download_url: str | None = None
+    # True when the newest clip no longer matches the review (Job.clip_inputs).
+    clip_outdated: bool = False
 
     @classmethod
     def from_job(cls, job: Job) -> "JobSummary":
@@ -269,4 +306,5 @@ class JobSummary(ApiModel):
             waiting_reason=job.waiting_reason,
             failure_message=job.failure.message if job.failure else None,
             clip_download_url=job.clip.download_url if job.clip else None,
+            clip_outdated=bool(job.clip_inputs and job.clip_inputs.changed),
         )

@@ -30,19 +30,44 @@ def insert_version(
     relative_path: str,
     rendered_by: str | None,
     now: datetime,
+    render_inputs_json: str | None = None,
 ) -> int:
     """Add the next version of a job's clip and return its number."""
+    version = next_version_number(connection, job_id)
+    connection.execute(
+        "INSERT INTO clip_versions (job_id, version, sha256, size_bytes, relative_path,"
+        " rendered_by, rendered_at, render_inputs_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            job_id,
+            version,
+            sha256,
+            size_bytes,
+            relative_path,
+            rendered_by,
+            to_db_time(now),
+            render_inputs_json,
+        ),
+    )
+    return version
+
+
+def next_version_number(connection: sqlite3.Connection, job_id: str) -> int:
+    """The number the job's next clip version will get (1 when it has none)."""
     row = connection.execute(
         "SELECT COALESCE(MAX(version), 0) + 1 AS next FROM clip_versions WHERE job_id = ?",
         (job_id,),
     ).fetchone()
-    version = row["next"]
+    return row["next"]
+
+
+def set_render_inputs(
+    connection: sqlite3.Connection, job_id: str, sha256: str, render_inputs_json: str
+) -> None:
+    """Store what a version was rendered from (a worker's report arriving after the version)."""
     connection.execute(
-        "INSERT INTO clip_versions (job_id, version, sha256, size_bytes, relative_path,"
-        " rendered_by, rendered_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (job_id, version, sha256, size_bytes, relative_path, rendered_by, to_db_time(now)),
+        "UPDATE clip_versions SET render_inputs_json = ? WHERE job_id = ? AND sha256 = ?",
+        (render_inputs_json, job_id, sha256),
     )
-    return version
 
 
 def mark_archived(connection: sqlite3.Connection, job_id: str, sha256: str, now: datetime) -> None:

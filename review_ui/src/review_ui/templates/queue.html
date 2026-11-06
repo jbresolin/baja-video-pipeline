@@ -9,6 +9,8 @@
 <nav class="presets" aria-label="{{ t('queue.presets') }}">
   <a class="chip" href="/review/">{{ t("queue.preset.needs_human") }}</a>
   <a class="chip{% if filter.states|length == 1 and filter.states[0].value == "discarded" %} active{% endif %}" href="/review/?state=discarded">{{ t("queue.preset.discarded") }}</a>
+  {# Clips on air that no longer match their review (LIVESTACK-43). #}
+  <a class="chip{% if filter.outdated_only %} active{% endif %}" href="/review/?outdated=1">{{ t("queue.preset.outdated") }}</a>
 </nav>
 
 <form class="filters" method="get" action="/review/" id="queue-filters">
@@ -30,6 +32,7 @@
     </select>
   </label>
   <label class="chip"><input type="checkbox" name="flagged" value="1" {% if filter.flagged_only %}checked{% endif %}> {{ t("queue.filter.low_res_only") }}</label>
+  <label class="chip"><input type="checkbox" name="outdated" value="1" {% if filter.outdated_only %}checked{% endif %}> {{ t("queue.filter.outdated_only") }}</label>
   <noscript><button type="submit">{{ t("filter.apply") }}</button></noscript>
 </form>
 

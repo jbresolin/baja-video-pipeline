@@ -4,12 +4,16 @@ from datetime import datetime
 
 from pydantic import Field
 
-from shared.models.common import ApiModel, ByteCount
+from shared.models.common import ByteCount, ReadByClients
 from shared.models.enums import WorkerRole
 
 
-class WorkerCapabilities(ApiModel):
-    """What the worker's machine can do. Reported at enrollment and on change."""
+class WorkerCapabilities(ReadByClients):
+    """What the worker's machine can do. Reported at enrollment and on change.
+
+    Read by clients: unknown fields are ignored. The orchestrator also receives
+    it (POST /enroll); clients reading Worker.capabilities win.
+    """
 
     # True when ffmpeg lists h264_nvenc AND a one-frame test encode worked.
     has_nvenc: bool
@@ -21,11 +25,13 @@ class WorkerCapabilities(ApiModel):
     gpu_name: str | None = None
 
 
-class WorkerStats(ApiModel):
+class WorkerStats(ReadByClients):
     """Rolling averages the orchestrator computes from worker measurements.
 
     None means "not measured yet": there is no calibration phase (design §5),
     so a new worker starts with no numbers and gets them from its first jobs.
+
+    Read by clients: unknown fields are ignored.
     """
 
     download_mbps: float | None = Field(default=None, ge=0)
@@ -34,8 +40,11 @@ class WorkerStats(ApiModel):
     upload_mbps: float | None = Field(default=None, ge=0)
 
 
-class Worker(ApiModel):
-    """A machine running the worker app, as the orchestrator stores it."""
+class Worker(ReadByClients):
+    """A machine running the worker app, as the orchestrator stores it.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     id: str
     # The display name every page, event line and the fleet show. Starts as
@@ -68,11 +77,13 @@ class Worker(ApiModel):
     shared_tailnet: bool = False
 
 
-class EnrollmentToken(ApiModel):
+class EnrollmentToken(ReadByClients):
     """A one-time token an admin gives a volunteer to join the fleet.
 
     The orchestrator stores only a hash of the token; the plaintext is shown
     once, in the response to POST /admin/enrollment-tokens.
+
+    Read by clients: unknown fields are ignored.
     """
 
     token_sha256: str

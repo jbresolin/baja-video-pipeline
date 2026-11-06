@@ -16,6 +16,7 @@ from orchestrator.domain import (
     delivery,
     fleet,
     media_info,
+    render_inputs_report,
     task_results,
     uploads,
     worker_loop,
@@ -38,6 +39,7 @@ from shared.models import (
     NextTaskRequest,
     NextTaskResponse,
     PeersResponse,
+    RenderInputsReport,
 )
 from shared.protocol import FRAME_RATE_HEADER, LEASE_ID_HEADER
 
@@ -177,6 +179,19 @@ async def upload_media_info(
     await run_in_threadpool(
         media_info.store_media_info, context, worker_row, job_id, lease_id, report
     )
+    return Response(status_code=204)
+
+
+@router.put("/jobs/{job_id}/render-inputs", status_code=204, response_class=Response)
+def report_render_inputs(
+    job_id: str,
+    body: RenderInputsReport,
+    lease_id: str = Header(..., alias=LEASE_ID_HEADER),
+    worker_row: sqlite3.Row = Depends(require_worker),
+    context: OrchestratorContext = Depends(get_context),
+) -> Response:
+    """What the clip about to be delivered was rendered from (LIVESTACK-43)."""
+    render_inputs_report.store_render_inputs_report(context, worker_row, job_id, lease_id, body)
     return Response(status_code=204)
 
 

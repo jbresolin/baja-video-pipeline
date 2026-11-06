@@ -107,6 +107,49 @@ def available_actions(state: JobState) -> list[ReviewAction]:
     return actions
 
 
+@dataclass(frozen=True)
+class ActionButton:
+    value: str
+    label: str
+    # The one button that moves the job forward (Ctrl+Enter): drawn first
+    # and in the accent colour.
+    primary: bool
+
+
+# The "move it forward" actions; a state offers at most one of them.
+PRIMARY_ACTIONS = (ReviewAction.READY, ReviewAction.REPROCESS, ReviewAction.RETRY)
+
+
+def action_buttons(state: JobState) -> list[ActionButton]:
+    """The job page's buttons, in order (LIVESTACK-43).
+
+    Once a clip exists (claimed, uploaded, delivered, done), the obvious
+    action after an edit is to render it again: "Salvar e reprocessar"
+    (the reprocess action, which saves the fields in the same request)
+    comes first as the primary button, and plain "Salvar" follows as a
+    secondary one. Elsewhere "Salvar" stays first.
+    """
+    actions = available_actions(state)
+    if ReviewAction.REPROCESS in actions:
+        actions.remove(ReviewAction.REPROCESS)
+        actions.insert(0, ReviewAction.REPROCESS)
+    return [
+        ActionButton(action.value, ACTION_LABELS[action], action in PRIMARY_ACTIONS)
+        for action in actions
+    ]
+
+
+def save_message(job: Job) -> str:
+    """What the page says after a plain save.
+
+    On a job whose clip is made or being made, saving changes nothing on
+    the studio box: only "Salvar e reprocessar" does, and the message says so.
+    """
+    if job.state in REPROCESSABLE_STATES:
+        return text("action_done.save_clip_unchanged")
+    return text("action_done.save")
+
+
 def _state_level(state: JobState) -> str:
     if state == JobState.FAILED:
         return "error"

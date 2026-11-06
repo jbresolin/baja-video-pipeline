@@ -22,11 +22,30 @@ from shared.models import (
 NO_HOLDER_ONLINE = "waiting for a holder of the raw to come back online (or be resumed)"
 
 
-def review_queue(context: OrchestratorContext, states: list[JobState], limit: int):
+def review_queue(
+    context: OrchestratorContext, states: list[JobState], limit: int, *, outdated_only=False
+):
+    """Jobs in `states`, oldest first; with `outdated_only`, only those whose
+    newest clip no longer matches the review (LIVESTACK-43, "Clipes
+    desatualizados"), filtered before the limit so none is cut off."""
     with context.database.transaction() as connection:
-        rows = jobs_repo.list_job_rows_in_states(connection, states, limit)
-        jobs = [job_from_row(connection, row, context.layout) for row in rows]
+        if outdated_only:
+            rows = jobs_repo.list_job_rows_in_states(connection, states)
+            jobs = [job_from_row(connection, row, context.layout) for row in rows]
+            jobs = [job for job in jobs if job.clip_inputs and job.clip_inputs.changed][:limit]
+        else:
+            rows = jobs_repo.list_job_rows_in_states(connection, states, limit)
+            jobs = [job_from_row(connection, row, context.layout) for row in rows]
     return ReviewQueueResponse(items=[JobSummary.from_job(job) for job in jobs])
+
+
+def holder_available(connection, job_id: str, now) -> bool:
+    """True when a confirmed holder of the raw is online and not paused."""
+    snapshot = FleetSnapshot.take(connection, now)
+    return any(
+        holder.status == HolderStatus.CONFIRMED and snapshot.is_available_for_work(holder.worker_id)
+        for holder in leases_repo.list_holders(connection, job_id)
+    )
 
 
 def get_job(context: OrchestratorContext, job_id: str) -> Job:
@@ -61,13 +80,7 @@ def regenerate_proxy(
         if job_row["state"] in (JobState.DISCARDED, JobState.FAILED):
             reason = f"job is {job_row['state']}; no proxy will be rendered"
             return RegenerateProxyResponse(job_id=job_id, queued=False, waiting_reason=reason)
-        snapshot = FleetSnapshot.take(connection, now)
-        holder_online = any(
-            holder.status == HolderStatus.CONFIRMED
-            and snapshot.is_available_for_work(holder.worker_id)
-            for holder in leases_repo.list_holders(connection, job_id)
-        )
-        waiting_reason = None if holder_online else NO_HOLDER_ONLINE
+        waiting_reason = None if holder_available(connection, job_id, now) else NO_HOLDER_ONLINE
         jobs_repo.update_job(
             connection, job_id, now, {"proxy_requested": 1, "waiting_reason": waiting_reason}
         )

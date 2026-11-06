@@ -9,11 +9,11 @@ from dataclasses import replace
 
 import pytest
 
+from review_ui.clip_inputs_view import outdated_clip
 from review_ui.clips_and_fleet_view import build_worker_rows, jobs_by_state_in_order, online_count
 from review_ui.event_log_view import event_lines_newest_first
 from review_ui.job_view import (
-    ACTION_LABELS,
-    available_actions,
+    action_buttons,
     explain_status,
     frame_rate_for_stepping,
     intake_text,
@@ -26,6 +26,7 @@ from shared.models import CurrentUser, JobState, JobSummary
 from tests.review_ui.sample_data import (
     T0,
     delivered_job,
+    edited_after_delivery_job,
     failed_job,
     make_fleet,
     make_job,
@@ -52,9 +53,8 @@ def job_context(job) -> dict:
         "event_lines": event_lines_newest_first(job_events, NAMES),
         "intake": intake_text(job),
         "frame_rate": frame_rate_for_stepping(job),
-        "actions": [
-            (action.value, ACTION_LABELS[action]) for action in available_actions(job.state)
-        ],
+        "outdated": outdated_clip(job.clip_inputs, job.state),
+        "actions": action_buttons(job.state),
         "prova_choices": ["Enduro", "Suspensão"],
         "poll_seconds": 5,
         "media": media_panel(job),
@@ -75,7 +75,9 @@ def queue_context() -> dict:
 def clips_context() -> dict:
     manifest = make_manifest()
     return {
-        "rows": [(clip, clip.relative_path) for clip in manifest.clips],
+        "rows": [
+            (clip, clip.relative_path, outdated_clip(clip.clip_inputs)) for clip in manifest.clips
+        ],
         "prova_options": ["Enduro", "Suspensão"],
         "chosen_prova": "",
         "total_count": 2,
@@ -106,7 +108,8 @@ CASES = {
     "_queue_rows.html": queue_context,
     "job.html": lambda: job_context(make_job()),
     "_job_panel.html": lambda: job_context(failed_job()),
-    "_job_status.html": lambda: job_context(delivered_job()),
+    # A clip edited after delivery: the status strip carries the warning banner.
+    "_job_status.html": lambda: job_context(edited_after_delivery_job()),
     "_job_events.html": lambda: job_context(delivered_job()),
     "_media_info.html": lambda: job_context(make_job(media_info=IPHONE_REPORT)),
     "clips.html": clips_context,

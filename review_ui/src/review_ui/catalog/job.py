@@ -14,6 +14,8 @@ TEXT: dict[str, str] = {
     "filter.prova": "Prova",
     "filter.any_prova": "Qualquer",
     "queue.filter.low_res_only": "Só baixa qualidade",
+    "queue.preset.outdated": "Clipes desatualizados",
+    "queue.filter.outdated_only": "Só clipes desatualizados",
     "filter.apply": "Aplicar",
     "queue.count.one": "{count} vídeo",
     "queue.count.other": "{count} vídeos",
@@ -25,6 +27,8 @@ TEXT: dict[str, str] = {
     "badge.low_res": "baixa qualidade",
     "badge.low_res.title": "Chegou como vídeo do WhatsApp (recomprimido)",
     "badge.no_proxy": "sem proxy",
+    "badge.outdated": "desatualizado",
+    "badge.outdated.title": "O clipe no ar não corresponde mais à revisão",
     # --- Job page: header and player ---
     "job.title": "Vídeo {id}",
     "job.back": "← Fila",
@@ -49,7 +53,7 @@ TEXT: dict[str, str] = {
     "shortcuts.nudge": "mover a última marca um quadro para trás / para a frente",
     "shortcuts.play_cut": "tocar o corte, do início ao fim",
     "shortcuts.save": "salvar",
-    "shortcuts.primary": "pronto / reprocessar / tentar de novo",
+    "shortcuts.primary": "pronto / salvar e reprocessar / tentar de novo",
     "shortcuts.leave_field": "sair de um campo de texto (os atalhos voltam a funcionar)",
     # --- Job page: review form ---
     "job.form": "Revisão",
@@ -77,6 +81,34 @@ TEXT: dict[str, str] = {
     ),
     "job.rerender_proxy": "Renderizar o proxy de novo",
     "job.rerender_proxy.title": "Pedir a um worker com o original que renderize o proxy de novo",
+    # --- The clip on air no longer matches the review (clip_inputs_view.py) ---
+    "outdated.title": "O clipe no ar (versão {version}) não corresponde mais à revisão:",
+    "outdated.cut": "O clipe no ar usa corte {clip}; a revisão agora diz {now}.",
+    "outdated.prova": "O clipe no ar é da prova {clip}; a revisão agora diz {now}.",
+    "outdated.car_number": "O clipe no ar mostra o carro {clip}; a revisão agora diz {now}.",
+    "outdated.passagem": "O clipe no ar mostra a passagem {clip}; a revisão agora diz {now}.",
+    "outdated.show_pass.hidden_now": (
+        "O clipe no ar mostra o número da passagem; a revisão agora diz para não mostrar."
+    ),
+    "outdated.show_pass.shown_now": (
+        "O clipe no ar não mostra o número da passagem; a revisão agora diz para mostrar."
+    ),
+    "outdated.team_name": "O clipe no ar mostra a equipe “{clip}”; agora seria “{now}”{why}.",
+    "outdated.school_name": "O clipe no ar mostra a escola “{clip}”; agora seria “{now}”{why}.",
+    "outdated.style_changed": " ({style} nas Configurações)",
+    "outdated.style.team.full": "nome completo",
+    "outdated.style.team.short": "nome curto",
+    "outdated.style.school.full": "nome completo",
+    "outdated.style.school.short": "sigla",
+    "outdated.raw": "O clipe no ar foi feito de outro arquivo original.",
+    "outdated.no_value": "nenhum",
+    "outdated.reprocess_to_fix": (
+        "Nada muda no ar até você usar “Salvar e reprocessar”: isso gera a versão {version}, "
+        "e a versão no ar continua até a nova chegar."
+    ),
+    "outdated.new_version_coming": (
+        "A versão {version} já está na fila com a revisão atual; a do ar continua até ela chegar."
+    ),
     # --- Job page: where the raw came from (intake_text) ---
     "intake.text": "{sender}, como {received_as}",
     "intake.with_filename": "{sender}, como {received_as} ({filename})",

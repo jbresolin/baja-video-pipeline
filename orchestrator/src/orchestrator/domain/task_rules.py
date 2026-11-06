@@ -16,8 +16,8 @@ import sqlite3
 from datetime import timedelta
 
 from orchestrator.db.database import from_db_time
-from orchestrator.domain import provas_catalog
 from orchestrator.domain.archive_rules import evaluate_archive_clip
+from orchestrator.domain.clip_archive import next_clip_relative_path
 from orchestrator.domain.clip_names import clip_names_for_job, name_styles
 from orchestrator.domain.fleet_snapshot import (
     FleetSnapshot,
@@ -29,7 +29,6 @@ from orchestrator.domain.originals import evaluate_upload_original
 from orchestrator.domain.task_decision import TaskDecision, refuse
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.storage import VpsLayout
-from shared.layout import clip_relative_path_in_folder
 from shared.models import (
     DeliverTask,
     DeliveryPlan,
@@ -174,11 +173,7 @@ def _evaluate_process(
             school_short=names.school,
             passagem=job_row["passagem"],
             show_pass=bool(job_row["show_pass"]),
-            clip_relative_path=clip_relative_path_in_folder(
-                provas_catalog.clip_folder_for(connection, job_row["prova"]),
-                job_row["car_number"],
-                job_row["passagem"],
-            ),
+            clip_relative_path=next_clip_relative_path(connection, job_row),
             outbox_upload_url=layout.api_url(f"/jobs/{job_id}/clip"),
             delivery=delivery_plan(snapshot, job_id, worker_row),
         )

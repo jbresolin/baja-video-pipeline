@@ -14,7 +14,7 @@ types**; this page explains the behaviour around them. Design background:
 | --- | --- |
 | Transport | HTTP/1.1. Workers and the studio reach the orchestrator through Caddy's **tailnet listener** `http://<vps tailscale ip>:8080`. Reviewers, Evolution and `/enroll` use the public 443 site. Locally everything also works on plain `http://127.0.0.1:8000`. |
 | Bodies | JSON (`application/json`, UTF-8) unless stated. Chunked uploads use `application/octet-stream`. |
-| Unknown fields | Rejected with 400 `validation_error` (all our models use `extra="forbid"`). The Evolution webhook is the one exception. |
+| Unknown fields | In a request: rejected with 400 `validation_error` (request models derive from `ReceivedByServer`, `extra="forbid"`). In an answer: ignored by every client (answer models derive from `ReadByClients`, `extra="ignore"`), so adding a field to an answer breaks no client from contract 2.4.0 on (design §14). The Evolution webhook is the one exception. |
 | Ids | Opaque strings (the orchestrator uses UUID4 hex). Never parse them. |
 | Times | ISO 8601 with timezone, always UTC, e.g. `2026-10-25T14:03:07Z`. |
 | Sizes | Integers, bytes. |
@@ -281,7 +281,7 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
 | --- | --- | --- | --- |
 | `download_raw` | master (always, see backfill below), one more worker; never studio | GET `download_url` with your bearer (Caddy inbox), or the `fallback_download_urls` (peers, port 8710, no token), with `shared.http_transfer.download_file`; ffprobe it | `POST /jobs/{id}/holder-confirm` |
 | `make_proxy` | a confirmed holder | Probe (`shared.media_probe`), render thumbnail and proxy with `tone_map_hdr=info.is_hdr`; `PUT …/media-info` (when the task has `media_info_upload_url`), `PUT …/thumbnail`, then chunked `POST …/proxy` | completing chunk of `…/proxy` |
-| `process` | a confirmed holder | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
+| `process` | a confirmed holder | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`). Report what it was rendered from (`PUT …/render-inputs`, below). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
 | `deliver` | studio only | GET `download_url` (Caddy outbox) with your bearer, verify SHA-256, store at `clip_relative_path`, rewrite `latest.m3u` | `POST /outbox/{id}/ack` |
 | `upload_original` | a confirmed holder that is online, the master first (LIVESTACK-41 item 15) | A reviewer asked for the original: chunked upload of the held raw to `upload_url` (`POST /jobs/{id}/original-upload`, `Lease-Id`, `Upload-SHA256` = the job's sha256). Offered right after proxies. A failure report never fails the job; that holder is just not asked again for it | completing chunk of `…/original-upload` |
 | `archive_clip` | master only, lowest priority (after backfill) | Keep one clip version in the archive at `archive_relative_path`: move your own kept copy, else GET the first working `download_urls` entry (peers' `:8710/clip/{job_id}?sha256=…` without token, the Caddy outbox with it), verify SHA-256 | `POST /jobs/{id}/clip-archived` |
@@ -329,6 +329,47 @@ VPS outbox has the current clip, and `Job.clip.download_url`
 auth like proxies) is where a reviewer downloads it; `ManifestEntry` and
 `JobSummary.clip_download_url` carry the same. `ClipVersion.archived_at`
 says whether the master has each version.
+
+**Render inputs** (contract 2.4.0, LIVESTACK-43). Every clip version
+remembers what it was rendered from, so the review UI can say when a clip
+on air no longer matches the review (a reviewer edited the job after
+delivery). `ClipVersion.render_inputs` (`RenderInputs`): raw sha256, cuts,
+prova, car, passagem, show-pass flag, the Settings' name choices
+(`team_name_style`, `school_name_style`), the names the overlay shows
+(`overlay_team_name`, `overlay_school_name`), the overlay theme version
+(SHA-256 of the worker's vendored `tokens.css`) and
+`reported_by_worker`. Where they come from:
+
+1. At every `process` claim the orchestrator snapshots the task it hands
+   out, with the name choices in force (workers only get the chosen
+   names).
+2. After rendering and **before** uploading or pushing, the worker sends
+   `PUT /jobs/{id}/render-inputs` (`RenderInputsReport`, header
+   `Lease-Id` = its process lease): the values it rendered, the overlay
+   texts as drawn, its theme version and the clip's `clip_sha256`. 204;
+   422 `hash_mismatch` if `raw_sha256` is not the job's; no live process
+   lease → 409 `lease_lost`. It never changes the state or `Job.version`.
+   A worker that gets an error (an older orchestrator answers 404)
+   delivers anyway.
+3. When the clip becomes a version (outbox upload complete, or the
+   studio's ACK), it keeps the report whose `clip_sha256` is that clip,
+   else the snapshot (`reported_by_worker: false`, no theme version).
+   Versions from before 2.4.0 have `render_inputs: null`.
+
+`Job.clip_inputs` (`ClipInputsComparison`) puts the **newest** version's
+inputs (`clip`) next to what a render would use now (`now`: the review as
+saved, the Settings' name choices as they are) and lists in `changed`
+every input that differs: `cut` (in and out together, 0.5 ms tolerance),
+`prova`, `car_number`, `passagem`, `show_pass`, `team_name`,
+`school_name` (the texts, so a name choice that draws the same text is no
+difference), `raw`. The theme version is recorded, not compared (only
+workers know theirs). `clip_inputs` is null without a clip version, for a
+version without recorded inputs and for a discarded job;
+`JobSummary.clip_outdated` is true when `changed` is not empty;
+`ManifestEntry.clip_inputs` is the same comparison for the clips page;
+`GET /review/queue?outdated=true` returns only outdated jobs (filtered
+before `limit`). A reprocess (§7.1 "Review update") is the only fix:
+saving never touches a clip that exists.
 
 **Delivery decision.** Every `process` offer (and claim answer) carries
 `delivery: {mode, studio_url}`. The orchestrator says `direct`, with
@@ -462,9 +503,10 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `POST /jobs/{job_id}/delivered` | `DeliveredRequest` → `JobStateResponse` | studio; direct route |
 | `POST /jobs/{job_id}/clip-archived` | `ClipArchivedRequest` → `JobStateResponse` | master, `archive_clip` lease; 422 `hash_mismatch` if the sha256 is no version of the job; state unchanged |
 | `POST /jobs/{job_id}/original-upload` | chunk → `ChunkAccepted` | `upload_original` lease; Upload-SHA256 must be the job's (422); ends the lease; state unchanged |
+| `PUT /jobs/{job_id}/render-inputs` | `RenderInputsReport` JSON, `Lease-Id` → 204 | process lease, before the upload or push; what the clip was rendered from (§5 "Render inputs"); state unchanged |
 | `GET /jobs/{job_id}/original` | → `OriginalDownload` | where "Baixar original" stands; no side effects |
 | `POST /jobs/{job_id}/original` | → `OriginalDownload` | "Baixar original"; see below |
-| `GET /review/queue?state=…&limit=…` | → `ReviewQueueResponse` | default `awaiting_review`, oldest first |
+| `GET /review/queue?state=…&limit=…&outdated=…` | → `ReviewQueueResponse` | default `awaiting_review`, oldest first; `outdated=true`: only jobs whose clip no longer matches the review (§5 "Render inputs") |
 | `GET /jobs/{job_id}` | → `Job` | |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
 | `POST /jobs/{job_id}/regenerate-proxy` | → 202 `RegenerateProxyResponse` | no state change |
@@ -636,7 +678,7 @@ actions (§4), the conflict means another reviewer changed the job.
 | --- | --- | --- |
 | `save` | any except `discarded` | store fields/cuts only |
 | `ready` | `awaiting_review` | → `ready`; needs all fields |
-| `reprocess` | `claimed`, `uploaded`, `delivered`, `done` | → `ready`; revokes any process lease; needs all fields |
+| `reprocess` | `claimed`, `uploaded`, `delivered`, `done` | stores the fields sent with it and → `ready` in one request (the review UI's "Salvar e reprocessar"); revokes any process lease; needs all fields; accepted with no holder online (`waiting_reason` then says so at once). The next rendering is the next clip version, delivered under its `-vN` name (§8.1) |
 | `discard` | `awaiting_review`, `ready`, `failed` | → `discarded`, records `discarded_from`; nothing deleted during the grace period (§4); fields not needed |
 | `restore` | `discarded` | → `discarded_from`; 409 `raw_unavailable` after the grace period when no copy of the raw is left; fields not needed |
 | `retry` | `failed` | → `failed_from` (`claimed` → `ready`); clears `failure`; needs all fields only when the target is `ready` (may be corrected in the same call) |
@@ -729,10 +771,16 @@ M3U from `render_latest_playlist`: `#EXTM3U`, then per clip
 relative path. Both are written as dot-files and renamed, so OBS never
 sees half a file. File names say what the clip is (LIVESTACK-41 item 12,
 `shared.layout.clip_file_stem`, one line to change the format); clips
-stored before keep their `<passagem>.mp4` names. A reprocessed clip
-replaces the old one at the same path on the box, unless the old one is
-locked (on air): then it goes beside it as `…-v2.mp4` (§7.2) and the old
-one is deleted once free. The master's archive keeps every version
+stored before keep their `<passagem>.mp4` names. A reprocessed clip is
+rendered and delivered **under its version name** (LIVESTACK-43): the
+`process` task's `clip_relative_path` (and the outbox `deliver` task's)
+is `enduro/42/enduro-042-p3-v2.mp4` for version 2, so the clip on air is
+never written over; the studio puts the new version at the top of
+`latest.m3u` and deletes the older version once nothing holds it open. (A
+file that is locked anyway still gets the next free `-vN` beside it,
+§7.2.) Clip versions keep the first name (`relative_path`), from which
+archive and download names are built; `Job.clip.relative_path` and
+`ManifestEntry.relative_path` are the studio's actual path. The master's archive keeps every version
 (`enduro-042-p3-v2.mp4`, `shared.layout.archive_relative_path`), and
 `ManifestEntry.version` says which version is current. Downloads of a
 clip are named the same way: `/clip-downloads/<job_id>/enduro-042-p3.mp4`

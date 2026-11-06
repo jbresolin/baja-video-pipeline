@@ -221,7 +221,15 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   are downloaded from the worker that keeps it (`:8710/clip/…`, no token)
   or the VPS outbox (with the token), hash-checked, then confirmed with
   `POST /jobs/{id}/clip-archived`.
-* **process** delivers the clip the way the offer's `delivery` says (the
+* **process** first tells the orchestrator what the clip was rendered
+  from (LIVESTACK-43, `PUT /jobs/{id}/render-inputs` under the lease:
+  cuts, review fields, the overlay texts as drawn, the SHA-256 of the
+  vendored `overlay_theme/tokens.css` and of the clip), so the review UI
+  can warn when a reviewer edits a job whose clip is already on air. A
+  refused report is logged and the clip is delivered anyway. A reprocess
+  arrives with a `…-vN.mp4` `clip_relative_path`, so the studio puts the
+  new version beside the one on air instead of over it.
+  Then it delivers the clip the way the offer's `delivery` says (the
   orchestrator decides; the worker never looks at `GET /workers`):
   `outbox` → chunked upload to the outbox; `direct` → check the studio
   answers `GET /health` within 3 s (else the outbox at once, and the studio

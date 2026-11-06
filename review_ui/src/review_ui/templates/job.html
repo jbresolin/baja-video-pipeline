@@ -111,8 +111,9 @@
         {{ t("job.show_pass") }}</label>
 
       <div class="actions">
-        {% for value, label in actions %}
-        <button type="button" class="action action-{{ value }}" data-action="{{ value }}">{{ label }}</button>
+        {# Primary first ("Salvar e reprocessar" once a clip exists, LIVESTACK-43). #}
+        {% for button in actions %}
+        <button type="button" class="action action-{{ button.value }}{% if button.primary %} primary{% endif %}" data-action="{{ button.value }}">{{ button.label }}</button>
         {% else %}
         <p class="hint">{{ t("job.no_actions") }}</p>
         {% endfor %}

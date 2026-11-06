@@ -20,7 +20,7 @@ from orchestrator.errors import ApiError
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
 from shared.http_transfer import partial_path_for
-from shared.layout import clip_relative_path_in_folder
+from shared.layout import clip_relative_path_in_folder, versioned_clip_relative_path
 from shared.models import ChunkAccepted, DeliveryRoute, ErrorCode, JobState, TaskKind
 from shared.upload_receiver import (
     ChunkedUploadReceiver,
@@ -212,20 +212,23 @@ def accept_clip_chunk(
         return accepted
 
     def clip_is_in_outbox(connection: sqlite3.Connection, job_row: sqlite3.Row) -> None:
-        relative_path = clip_relative_path_in_folder(
+        first_name = clip_relative_path_in_folder(
             provas_catalog.clip_folder_for(connection, job_row["prova"]),
             job_row["car_number"],
             job_row["passagem"],
         )
-        record_clip_version(
+        version = record_clip_version(
             connection,
             job_id,
             sha256=upload.sha256,
             size_bytes=upload.total_length,
-            relative_path=relative_path,
+            relative_path=first_name,
             rendered_by=worker_row["id"],
             now=context.clock.now(),
         )
+        # The studio stores it under its version's name (LIVESTACK-43):
+        # a reprocess never writes over the clip on air.
+        relative_path = versioned_clip_relative_path(first_name, version)
         move_job(
             connection,
             job_row,

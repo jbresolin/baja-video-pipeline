@@ -100,6 +100,11 @@ h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .banner > p { margin: 0; }
 .banner > p + p { margin-top: 0.4rem; }
 .banner.with-action { display: flex; align-items: center; gap: 1rem; }
+/* "The clip on air no longer matches the review" (LIVESTACK-43): one line per difference. */
+.banner ul { margin: 0.35rem 0 0.4rem 1.2rem; padding: 0; }
+details.outdated { margin-top: 0.25rem; }
+details.outdated summary { cursor: pointer; }
+details.outdated ul { margin: 0.3rem 0 0 1rem; padding: 0; font-size: 0.85rem; max-width: 32rem; }
 
 /* Badges */
 .badge {

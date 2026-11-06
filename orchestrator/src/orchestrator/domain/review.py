@@ -8,6 +8,7 @@ from orchestrator.db.database import to_db_time
 from orchestrator.domain import provas_catalog
 from orchestrator.domain.discard import discard_job, restore_job
 from orchestrator.domain.job_view import load_job, require_job_row
+from orchestrator.domain.review_queue import NO_HOLDER_ONLINE, holder_available
 from orchestrator.domain.transitions import move_job, revoke_job_leases
 from orchestrator.errors import ApiError, illegal_transition
 from orchestrator.repositories import events as events_repo
@@ -200,6 +201,9 @@ def _apply_action(
             kinds={TaskKind.PROCESS, TaskKind.DELIVER},
         )
         delete_file_and_partials(context.layout.outbox_path(job_id))
+        # Accepted even with every holder of the raw offline; the job page
+        # says it waits for one (the sweeper keeps this sentence current).
+        waiting = None if holder_available(connection, job_id, now) else NO_HOLDER_ONLINE
         move_job(
             connection,
             job_row,
@@ -207,7 +211,7 @@ def _apply_action(
             now,
             actor=actor,
             reason="reprocess",
-            changes={**changes, **CLEARED_CLIP_COLUMNS},
+            changes={**changes, **CLEARED_CLIP_COLUMNS, "waiting_reason": waiting},
             bump_version=True,
         )
         return

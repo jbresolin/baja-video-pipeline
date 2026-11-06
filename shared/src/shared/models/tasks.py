@@ -11,10 +11,11 @@ from typing import Annotated, Literal
 from pydantic import Field
 
 from shared.models.common import (
-    ApiModel,
     ByteCount,
     CarNumber,
     PassNumber,
+    ReadByClients,
+    ReceivedByServer,
     Seconds,
     Sha256Hex,
 )
@@ -22,12 +23,14 @@ from shared.models.enums import DeliveryRoute, TaskKind
 from shared.models.job import Lease
 
 
-class DownloadRawTask(ApiModel):
+class DownloadRawTask(ReadByClients):
     """Fetch a raw and become one of its holders.
 
     Every URL is absolute and ready to GET with Range. The VPS inbox is
     "http://<vps tailscale ip>:8080/inbox/<name>" (Caddy, send your bearer
     token); a peer is "http://<peer tailscale ip>:8710/raw/<job_id>".
+
+    Read by clients: unknown fields are ignored.
     """
 
     kind: Literal[TaskKind.DOWNLOAD_RAW] = TaskKind.DOWNLOAD_RAW
@@ -44,7 +47,9 @@ class DownloadRawTask(ApiModel):
     raw_file_name: str | None = None
 
 
-class MakeProxyTask(ApiModel):
+class MakeProxyTask(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     kind: Literal[TaskKind.MAKE_PROXY] = TaskKind.MAKE_PROXY
     job_id: str
     # The raw the worker already holds (it is a confirmed holder).
@@ -56,13 +61,15 @@ class MakeProxyTask(ApiModel):
     media_info_upload_url: str | None = None
 
 
-class DeliveryPlan(ApiModel):
+class DeliveryPlan(ReadByClients):
     """How a process task should deliver its clip; decided by the orchestrator.
 
     "direct": a studio heartbeated in the last 45 s; push the clip to
     `studio_url` (and fall back to the outbox if that push fails).
     "outbox": no studio is online; upload straight to the outbox.
     The worker never works this out itself from GET /workers (design §17).
+
+    Read by clients: unknown fields are ignored.
     """
 
     mode: DeliveryRoute
@@ -71,7 +78,9 @@ class DeliveryPlan(ApiModel):
     studio_url: str | None = None
 
 
-class ProcessTask(ApiModel):
+class ProcessTask(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     kind: Literal[TaskKind.PROCESS] = TaskKind.PROCESS
     job_id: str
     raw_sha256: Sha256Hex
@@ -99,8 +108,11 @@ class ProcessTask(ApiModel):
     delivery: DeliveryPlan
 
 
-class DeliverTask(ApiModel):
-    """Studio only: pull a clip from the VPS outbox."""
+class DeliverTask(ReadByClients):
+    """Studio only: pull a clip from the VPS outbox.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     kind: Literal[TaskKind.DELIVER] = TaskKind.DELIVER
     job_id: str
@@ -111,7 +123,7 @@ class DeliverTask(ApiModel):
     clip_relative_path: str
 
 
-class ArchiveClipTask(ApiModel):
+class ArchiveClipTask(ReadByClients):
     """Master only: keep a copy of one finished clip version in the archive folder.
 
     Lowest priority, after live work and raw backfill. If the master has
@@ -119,6 +131,8 @@ class ArchiveClipTask(ApiModel):
     GETs the first URL that works: the rendering worker's file server
     ("http://<peer>:8710/clip/<job_id>?sha256=…", no token) or the VPS outbox
     (Caddy, send your token). Then POST /jobs/{id}/clip-archived.
+
+    Read by clients: unknown fields are ignored.
     """
 
     kind: Literal[TaskKind.ARCHIVE_CLIP] = TaskKind.ARCHIVE_CLIP
@@ -132,7 +146,7 @@ class ArchiveClipTask(ApiModel):
     download_urls: list[str] = Field(default_factory=list)
 
 
-class UploadOriginalTask(ApiModel):
+class UploadOriginalTask(ReadByClients):
     """A holder sends the raw to the VPS for a reviewer (LIVESTACK-41 item 15).
 
     The 480p proxy is too small to read a car number or judge a close
@@ -140,6 +154,8 @@ class UploadOriginalTask(ApiModel):
     it (it is transit only), so a holder uploads it, chunked and resumable
     like a clip, to `upload_url`; the VPS keeps it in originals/ for a day.
     The upload ends the lease. Never counts as a holder.
+
+    Read by clients: unknown fields are ignored.
     """
 
     kind: Literal[TaskKind.UPLOAD_ORIGINAL] = TaskKind.UPLOAD_ORIGINAL
@@ -162,21 +178,25 @@ Task = Annotated[
 ]
 
 
-class NextTaskRequest(ApiModel):
+class NextTaskRequest(ReceivedByServer):
     """Body of POST /workers/{id}/next: which kinds the worker can take now.
 
     Design §5: at most one job per stage, so a worker that is already
     processing omits "process" from this list.
+
+    Received by the orchestrator: unknown fields are refused.
     """
 
     accept_kinds: list[TaskKind] = Field(min_length=1)
 
 
-class NextTaskResponse(ApiModel):
+class NextTaskResponse(ReadByClients):
     """An offer, not a reservation: the worker must claim it before working.
 
     If two workers receive the same offer, only the first claim wins; the
     other gets 409 already_claimed and simply asks /next again.
+
+    Read by clients: unknown fields are ignored.
     """
 
     # None means "nothing for you right now".
@@ -184,11 +204,15 @@ class NextTaskResponse(ApiModel):
     retry_after_s: int = Field(default=5, ge=0)
 
 
-class ClaimRequest(ApiModel):
+class ClaimRequest(ReceivedByServer):
+    """Received by the orchestrator: unknown fields are refused."""
+
     task_kind: TaskKind
 
 
-class ClaimResponse(ApiModel):
+class ClaimResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     lease: Lease
     # The task again, with up-to-date details (e.g. cuts edited meanwhile).
     task: Task

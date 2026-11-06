@@ -44,6 +44,7 @@ from shared.models import (
     NextTaskResponse,
     OutboxAckRequest,
     ProbeReport,
+    RenderInputsReport,
     WorkerRole,
     utc_now,
 )
@@ -95,6 +96,14 @@ class FakeOrchestrator:
         self.clip_archived: list[tuple[str, ClipArchivedRequest]] = []
         # PUT /jobs/{id}/media-info bodies, as received, by job id.
         self.media_infos: dict[str, ProbeReport] = {}
+        # PUT /jobs/{id}/render-inputs bodies (job id, report), in order.
+        self.render_inputs: list[tuple[str, RenderInputsReport]] = []
+        # (status, code) to refuse every render-inputs report with, e.g.
+        # (404, "not_found") like an orchestrator older than contract 2.4.0.
+        self.render_inputs_refusal: tuple[int, str] | None = None
+        # Render-inputs reports and upload chunks, in arrival order, as
+        # "PUT /jobs/<id>/render-inputs" / "POST /jobs/<id>/clip" (what came first).
+        self.request_log: list[str] = []
         self.upload_log: list[tuple[str, int, int]] = []  # (endpoint, status, offset)
         # The Frame-Rate header of every proxy chunk, None where it was absent.
         self.proxy_frame_rate_headers: list[str | None] = []
@@ -140,6 +149,7 @@ class FakeOrchestrator:
             Route("/jobs/{job_id}/holder-confirm", self._holder_confirm, methods=["POST"]),
             Route("/jobs/{job_id}/thumbnail", self._thumbnail, methods=["PUT"]),
             Route("/jobs/{job_id}/media-info", self._media_info, methods=["PUT"]),
+            Route("/jobs/{job_id}/render-inputs", self._render_inputs, methods=["PUT"]),
             Route("/jobs/{job_id}/proxy", self._chunk_endpoint("proxies"), methods=["POST"]),
             Route("/jobs/{job_id}/clip", self._chunk_endpoint("outbox"), methods=["POST"]),
             Route(
@@ -269,11 +279,22 @@ class FakeOrchestrator:
         self.media_infos[request.path_params["job_id"]] = report
         return Response(status_code=204)
 
+    async def _render_inputs(self, request: Request) -> Response:
+        self.request_log.append(f"PUT {request.url.path}")
+        if self.render_inputs_refusal is not None:
+            return error(*self.render_inputs_refusal)
+        if not self._lease_is_alive(request.headers.get("lease-id", "")):
+            return error(409, "lease_lost")
+        report = RenderInputsReport.model_validate_json(await request.body())
+        self.render_inputs.append((request.path_params["job_id"], report))
+        return Response(status_code=204)
+
     def _chunk_endpoint(self, kind: str):
         async def receive_chunk(request: Request) -> Response:
             job_id = request.path_params["job_id"]
             lease_id = request.headers.get("lease-id", "")
             offset = int(request.headers.get("upload-offset", "-1"))
+            self.request_log.append(f"POST {request.url.path}")
             if kind == "proxies":
                 self.proxy_frame_rate_headers.append(request.headers.get(FRAME_RATE_HEADER))
             if not self._authorized(request):

@@ -41,9 +41,10 @@ router = APIRouter()
 def list_review_queue(
     state: list[JobState] = Query([JobState.AWAITING_REVIEW]),
     limit: int = Query(100, ge=1, le=500),
+    outdated: bool = Query(False),
     context: OrchestratorContext = Depends(get_context),
 ) -> ReviewQueueResponse:
-    return review_queue.review_queue(context, state, limit)
+    return review_queue.review_queue(context, state, limit, outdated_only=outdated)
 
 
 @router.get(

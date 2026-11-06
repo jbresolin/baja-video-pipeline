@@ -4,6 +4,10 @@ Render (docs/api.md §5, contract §30): trim to the reviewer's cuts, draw
 the overlay PNG bottom-left, loudnorm, tone-map HDR. Delivery is in
 worker.tasks.clip_delivery (direct push to the studio, else the outbox).
 
+Before delivering, the worker tells the orchestrator what the clip was
+rendered from (PUT /jobs/{id}/render-inputs, LIVESTACK-43), so the review
+UI can say when a clip on air no longer matches the review.
+
 The finished clip waits in clips/<job_id>.mp4 next to a small JSON
 "sidecar" naming the inputs it was rendered from. If the worker crashes
 after rendering and is offered the same job again with the same inputs,
@@ -21,7 +25,10 @@ import logging
 import time
 from pathlib import Path, PurePosixPath
 
-from shared.models import MeasurementKind, ProcessTask
+from shared.hashing import sha256_of_file
+from shared.models import MeasurementKind, ProcessTask, RenderInputsReport
+from worker import overlay_tokens
+from worker.api_client import ApiError, OrchestratorUnreachableError
 from worker.failures import TaskFailedError, probe_input
 from worker.leases import ActiveLease, CancelToken, TaskCancelledError
 from worker.overlay import OverlayText, final_frame_width, render_overlay_png
@@ -42,7 +49,9 @@ def run_process(
     with env.storage.pin(task.job_id):
         try:
             clip_path = _reuse_or_render(env, task, raw_path, cancel)
-            clip_sha256 = deliver_clip(env, lease, task, clip_path, cancel)
+            clip_sha256 = sha256_of_file(clip_path)
+            report_render_inputs(env, lease, task, clip_sha256)
+            deliver_clip(env, lease, task, clip_path, cancel, clip_sha256=clip_sha256)
         except TaskCancelledError as cancelled:
             if cancelled.lease_lost:
                 # Docs §5: on lost, discard partial output. (After a
@@ -62,6 +71,44 @@ def render_inputs(task: ProcessTask) -> dict:
         "team_name", "school_short", "passagem", "show_pass", "has_audio",
     )  # fmt: skip
     return {name: getattr(task, name) for name in fields}
+
+
+def render_inputs_report(task: ProcessTask, clip_sha256: str) -> RenderInputsReport:
+    """What the clip was rendered from, for the orchestrator (LIVESTACK-43).
+
+    The task's values are what the render used (a reused clip matched them
+    exactly, see _sidecar_matches), plus this worker's overlay theme.
+    """
+    overlay = overlay_text_for(task)
+    return RenderInputsReport(
+        clip_sha256=clip_sha256,
+        raw_sha256=task.raw_sha256,
+        cut_in_s=task.cut_in_s,
+        cut_out_s=task.cut_out_s,
+        prova=task.prova,
+        car_number=task.car_number,
+        passagem=task.passagem,
+        show_pass=task.show_pass,
+        overlay_team_name=overlay.team_name,
+        overlay_school_name=overlay.school_short,
+        overlay_theme_version=overlay_tokens.THEME_VERSION,
+    )
+
+
+def report_render_inputs(
+    env: TaskEnvironment, lease: ActiveLease, task: ProcessTask, clip_sha256: str
+) -> None:
+    """Send the report before delivering; a refusal never stops the delivery.
+
+    Without it the orchestrator keeps its own record of the task it handed
+    out (an orchestrator older than contract 2.4.0 answers 404: fine too).
+    """
+    try:
+        env.api.report_render_inputs(
+            task.job_id, lease.lease_id, render_inputs_report(task, clip_sha256)
+        )
+    except (ApiError, OrchestratorUnreachableError) as error:
+        logger.warning("render inputs not reported (%s); delivering anyway", error)
 
 
 def overlay_text_for(task: ProcessTask) -> OverlayText:

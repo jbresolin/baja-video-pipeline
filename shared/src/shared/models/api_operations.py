@@ -6,7 +6,7 @@ from pydantic import Field
 
 from shared.models.api_admin import ServerDisk
 from shared.models.api_catalog import ResultsSyncReport
-from shared.models.common import ApiModel
+from shared.models.common import ReadByClients, ReceivedByServer
 from shared.models.enums import (
     EnrollmentTokenStatus,
     IntakeMode,
@@ -18,8 +18,11 @@ from shared.models.enums import (
 # --- Enrollment tokens ---
 
 
-class EnrollmentTokenInfo(ApiModel):
-    """One token on the admin Enrollment page. The token itself is never shown again."""
+class EnrollmentTokenInfo(ReadByClients):
+    """One token on the admin Enrollment page. The token itself is never shown again.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     # Short public id (the first 16 hex characters of the token's SHA-256),
     # used to revoke it. Reveals nothing about the token.
@@ -35,7 +38,9 @@ class EnrollmentTokenInfo(ApiModel):
     revoked_at: datetime | None = None
 
 
-class EnrollmentTokensResponse(ApiModel):
+class EnrollmentTokensResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     # Newest first.
     tokens: list[EnrollmentTokenInfo]
 
@@ -43,11 +48,13 @@ class EnrollmentTokensResponse(ApiModel):
 # --- Workers ---
 
 
-class UpdateWorkerRequest(ApiModel):
+class UpdateWorkerRequest(ReceivedByServer):
     """PATCH /admin/workers/{worker_id}: the worker's display name (LIVESTACK-42).
 
     The display name is what every page shows instead of the host name,
     which may mean nothing ("DESKTOP-8F3K2LQ"). Blank names are refused.
+
+    Received by the orchestrator: unknown fields are refused.
     """
 
     name: str = Field(min_length=1, max_length=100, pattern=r"\S")
@@ -60,8 +67,11 @@ class UpdateWorkerRequest(ApiModel):
 EVENT_ID_PATTERN = r"^([A-Za-z0-9]{4})?$"
 
 
-class AdminSettings(ApiModel):
-    """Settings the operator edits in the UI. The .env values are only first-start defaults."""
+class AdminSettings(ReadByClients):
+    """Settings the operator edits in the UI. The .env values are only first-start defaults.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     # Who may send videos: everyone but blocked senders, or allowed ones only.
     intake_mode: IntakeMode
@@ -96,8 +106,11 @@ class AdminSettings(ApiModel):
     originals_cap_gb: float = Field(default=10, ge=0)
 
 
-class UpdateSettingsRequest(ApiModel):
-    """PATCH /admin/settings. Fields left out keep their value."""
+class UpdateSettingsRequest(ReceivedByServer):
+    """PATCH /admin/settings. Fields left out keep their value.
+
+    Received by the orchestrator: unknown fields are refused.
+    """
 
     intake_mode: IntakeMode | None = None
     inbox_hold_gb: float | None = Field(default=None, gt=0)
@@ -113,8 +126,11 @@ class UpdateSettingsRequest(ApiModel):
     originals_cap_gb: float | None = Field(default=None, ge=0)
 
 
-class EvolutionStatus(ApiModel):
-    """What Evolution says about the Baja Bot instance, asked live."""
+class EvolutionStatus(ReadByClients):
+    """What Evolution says about the Baja Bot instance, asked live.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     instance: str
     # "open" (connected), "connecting", "close"; None if Evolution did not answer.
@@ -125,8 +141,11 @@ class EvolutionStatus(ApiModel):
     error: str | None = None
 
 
-class SettingsStatus(ApiModel):
-    """The read-only block of the Settings page."""
+class SettingsStatus(ReadByClients):
+    """The read-only block of the Settings page.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     evolution: EvolutionStatus
     # Each secret from .env by name ("BVP_ADMIN_TOKEN", ...): configured or missing.
@@ -138,6 +157,8 @@ class SettingsStatus(ApiModel):
     results_sync: ResultsSyncReport | None = None
 
 
-class SettingsResponse(ApiModel):
+class SettingsResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     settings: AdminSettings
     status: SettingsStatus

@@ -1,7 +1,8 @@
 """Filters for the queue page (GET /review/).
 
-The orchestrator filters by state. Prova and the "flagged" (low_res) filter
-are applied here, on the list it returned.
+The orchestrator filters by state and by "clip out of date" (LIVESTACK-43).
+Prova and the "flagged" (low_res) filter are applied here, on the list it
+returned.
 """
 
 from dataclasses import dataclass, field
@@ -12,6 +13,16 @@ from shared.models import JobState, JobSummary
 
 # What the queue shows when no state is chosen: work that needs a human.
 DEFAULT_QUEUE_STATES = [JobState.AWAITING_REVIEW, JobState.FAILED]
+
+# "Clipes desatualizados" without a chosen state: every state a job with a
+# clip can be in (a reprocess sends it back to ready, then claimed).
+OUTDATED_DEFAULT_STATES = [
+    JobState.READY,
+    JobState.CLAIMED,
+    JobState.UPLOADED,
+    JobState.DELIVERED,
+    JobState.DONE,
+]
 
 # Every state, in the order of the pipeline, for the filter checkboxes.
 STATES_IN_PIPELINE_ORDER = [
@@ -35,6 +46,8 @@ class QueueFilter:
     prova: str = ""
     # Only jobs flagged low_res (arrived as a recompressed WhatsApp video).
     flagged_only: bool = False
+    # Only jobs whose clip no longer matches the review ("Clipes desatualizados").
+    outdated_only: bool = False
 
     def query_string(self) -> str:
         """The same filter as URL parameters, for links and the polling URL."""
@@ -43,10 +56,17 @@ class QueueFilter:
             params.append(("prova", self.prova))
         if self.flagged_only:
             params.append(("flagged", "1"))
+        if self.outdated_only:
+            params.append(("outdated", "1"))
         return urlencode(params)
 
 
-def parse_queue_filter(states: list[str], prova: str | None, flagged: str | None) -> QueueFilter:
+TRUE_VALUES = {"1", "true", "on"}
+
+
+def parse_queue_filter(
+    states: list[str], prova: str | None, flagged: str | None, outdated: str | None = None
+) -> QueueFilter:
     """Build a QueueFilter from query parameters, ignoring unknown state names.
 
     A bad link (e.g. ?state=nonsense) then shows the default queue instead
@@ -56,10 +76,13 @@ def parse_queue_filter(states: list[str], prova: str | None, flagged: str | None
     chosen = [JobState(value) for value in states if value in known_values]
     # Keep pipeline order and drop duplicates, so the URL is stable.
     ordered = [state for state in STATES_IN_PIPELINE_ORDER if state in chosen]
+    outdated_only = outdated in TRUE_VALUES
+    default_states = OUTDATED_DEFAULT_STATES if outdated_only else DEFAULT_QUEUE_STATES
     return QueueFilter(
-        states=ordered or list(DEFAULT_QUEUE_STATES),
+        states=ordered or list(default_states),
         prova=(prova or "").strip(),
-        flagged_only=flagged in {"1", "true", "on"},
+        flagged_only=flagged in TRUE_VALUES,
+        outdated_only=outdated_only,
     )
 
 

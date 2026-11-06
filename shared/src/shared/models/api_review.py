@@ -4,23 +4,35 @@ from datetime import datetime
 
 from pydantic import Field, model_validator
 
-from shared.models.common import ApiModel, ByteCount, CarNumber, PassNumber, Seconds
+from shared.models.common import (
+    ByteCount,
+    CarNumber,
+    PassNumber,
+    ReadByClients,
+    ReceivedByServer,
+    Seconds,
+)
 from shared.models.enums import JobState, OriginalState, ReviewAction
 from shared.models.job import JobSummary, check_cut_order
 
 
-class ReviewQueueResponse(ApiModel):
-    """GET /review/queue: oldest first, so nothing waits forever."""
+class ReviewQueueResponse(ReadByClients):
+    """GET /review/queue: oldest first, so nothing waits forever.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     items: list[JobSummary]
 
 
-class ReviewUpdate(ApiModel):
+class ReviewUpdate(ReceivedByServer):
     """PATCH /jobs/{id}/review.
 
     Fields left out (None) keep their current value. With action "ready" or
     "reprocess", the job must end up with prova, car_number, passagem and
     both cuts set, otherwise the answer is 422 missing_review_fields.
+
+    Received by the orchestrator: unknown fields are refused.
     """
 
     # The Job.version the reviewer was looking at; 409 version_conflict if
@@ -40,7 +52,9 @@ class ReviewUpdate(ApiModel):
         return self
 
 
-class RegenerateProxyResponse(ApiModel):
+class RegenerateProxyResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     job_id: str
     # True when a make_proxy task is now waiting for a holder.
     queued: bool
@@ -48,8 +62,11 @@ class RegenerateProxyResponse(ApiModel):
     waiting_reason: str | None = None
 
 
-class Team(ApiModel):
-    """GET /teams/{car_number}: the team of a car (teams table, synced from the results API)."""
+class Team(ReadByClients):
+    """GET /teams/{car_number}: the team of a car (teams table, synced from the results API).
+
+    Read by clients: unknown fields are ignored.
+    """
 
     car_number: CarNumber
     team_name: str
@@ -65,15 +82,21 @@ class Team(ApiModel):
     clip_school_name: str | None = None
 
 
-class ReviewQueueFilter(ApiModel):
-    """Query parameters of GET /review/queue, as a model for validation."""
+class ReviewQueueFilter(ReceivedByServer):
+    """Query parameters of GET /review/queue, as a model for validation.
+
+    Received by the orchestrator: unknown fields are refused.
+    """
 
     states: list[JobState] = Field(default_factory=lambda: [JobState.AWAITING_REVIEW])
     limit: int = Field(default=100, ge=1, le=500)
 
 
-class OriginalDownload(ApiModel):
-    """GET/POST /jobs/{job_id}/original: the job page's "Baixar original" (item 15)."""
+class OriginalDownload(ReadByClients):
+    """GET/POST /jobs/{job_id}/original: the job page's "Baixar original" (item 15).
+
+    Read by clients: unknown fields are ignored.
+    """
 
     state: OriginalState
     # Relative to the public base URL, e.g.

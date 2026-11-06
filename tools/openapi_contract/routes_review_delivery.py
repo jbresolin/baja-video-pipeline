@@ -56,6 +56,11 @@ def review_queue(
         description="Repeat to include several states, e.g. ?state=awaiting_review&state=ready",
     ),
     limit: int = Query(100, ge=1, le=500),
+    outdated: bool = Query(
+        False,
+        description="Only jobs whose newest clip no longer matches the review "
+        "(JobSummary.clip_outdated), e.g. ?outdated=true&state=done",
+    ),
 ) -> ReviewQueueResponse:
     not_implemented()
 

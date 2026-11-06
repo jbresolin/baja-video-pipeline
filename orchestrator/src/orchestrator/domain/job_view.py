@@ -5,12 +5,17 @@ import sqlite3
 from pathlib import PurePosixPath
 
 from orchestrator.db.database import from_db_time
+from orchestrator.domain.render_inputs import compare_newest_clip
 from orchestrator.errors import not_found
 from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.storage import VpsLayout
-from shared.layout import archive_relative_path, versioned_clip_relative_path
+from shared.layout import (
+    archive_relative_path,
+    unversioned_clip_relative_path,
+    versioned_clip_relative_path,
+)
 from shared.models import (
     ClipInfo,
     ClipVersion,
@@ -21,6 +26,7 @@ from shared.models import (
     JobState,
     ProbeReport,
     ReceivedAs,
+    RenderInputs,
     TaskKind,
 )
 
@@ -47,14 +53,24 @@ def clip_versions_of(connection: sqlite3.Connection, job_id: str) -> list[ClipVe
             rendered_by_worker_id=version["rendered_by"],
             rendered_at=from_db_time(version["rendered_at"]),
             archived_at=from_db_time(version["archived_at"]),
+            render_inputs=(
+                RenderInputs.model_validate_json(version["render_inputs_json"])
+                if version["render_inputs_json"] is not None
+                else None
+            ),
         )
         for version in clips_repo.list_versions(connection, job_id)
     ]
 
 
 def clip_download_file_name(relative_path: str, version: int) -> str:
-    """ "enduro-042-p3.mp4" for version 1, "enduro-042-p3-v2.mp4" after a reprocess."""
-    return PurePosixPath(versioned_clip_relative_path(relative_path, version)).name
+    """ "enduro-042-p3.mp4" for version 1, "enduro-042-p3-v2.mp4" after a reprocess.
+
+    `relative_path` may already be the version's name (the studio path of
+    a reprocess, LIVESTACK-43); the version suffix is never doubled.
+    """
+    first_name = unversioned_clip_relative_path(relative_path)
+    return PurePosixPath(versioned_clip_relative_path(first_name, version)).name
 
 
 def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLayout) -> Job:
@@ -132,6 +148,8 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
         reviewed_at=from_db_time(row["reviewed_at"]),
         clip=clip,
         clip_versions=versions,
+        # Does the newest clip still match the review? (LIVESTACK-43)
+        clip_inputs=compare_newest_clip(connection, row) if versions else None,
         failure=failure,
         failed_from=JobState(row["failed_from"]) if row["failed_from"] else None,
         discarded_from=JobState(row["discarded_from"]) if row["discarded_from"] else None,

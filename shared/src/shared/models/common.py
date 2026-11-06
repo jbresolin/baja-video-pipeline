@@ -27,10 +27,23 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-class ApiModel(BaseModel):
-    """Base for every model: reject unknown fields so typos fail loudly."""
+class ReceivedByServer(BaseModel):
+    """Base for bodies the orchestrator receives: requests, uploads, worker reports.
+
+    Unknown fields are refused (422), so a client's typo fails loudly.
+    """
 
     model_config = ConfigDict(extra="forbid")
+
+
+class ReadByClients(BaseModel):
+    """Base for what a client reads from the orchestrator: jobs, tasks, answers.
+
+    Unknown fields are ignored, so a worker, the studio or the review UI
+    never breaks because a newer orchestrator added a field (design §14).
+    """
+
+    model_config = ConfigDict(extra="ignore")
 
 
 class ErrorCode(StrEnum):
@@ -74,7 +87,9 @@ class ErrorCode(StrEnum):
     DEV_MODE_DISABLED = "dev_mode_disabled"
 
 
-class ErrorBody(ApiModel):
+class ErrorBody(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     code: ErrorCode
     # One sentence for humans (logs, the review UI). Not meant for parsing.
     message: str
@@ -82,7 +97,10 @@ class ErrorBody(ApiModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
-class ErrorResponse(ApiModel):
-    """The shape of every non-2xx response body: {"error": {...}}."""
+class ErrorResponse(ReadByClients):
+    """The shape of every non-2xx response body: {"error": {...}}.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     error: ErrorBody
