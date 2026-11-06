@@ -152,3 +152,7 @@ jobs:
           fi
           gh release upload "$GITHUB_REF_NAME" installer/output/BajaWorker-Setup-*.exe \
             installer/output/SHA256SUMS.txt --clobber
+          # Deleting a tag turns its Release back into a draft, and re-pushing
+          # the tag finds that draft above instead of creating a new Release.
+          # Publish explicitly so a re-tagged version never stays hidden.
+          gh release edit "$GITHUB_REF_NAME" --draft=false
