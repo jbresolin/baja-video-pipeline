@@ -626,3 +626,41 @@ use", items 6-11; the worker items are LIVESTACK-41). Contract 2.2.0.
 * **In-place admin toggles.** Provas activate/order and contacts
   allow/block answer with re-rendered rows over JSON; no reload.
 
+## 24. Worker polish from real use (LIVESTACK-41, 2026-11-05)
+
+João upgraded his desktop worker to 0.2.0, re-enrolled it and ran the
+first studio. The worker-side fixes (brief "05 — Worker and admin polish
+from real use", items 1–5 and 12–15; installer 0.3.0, contract 2.3.0):
+
+* **The status page always comes up** (`worker/lifecycle.py`). Page and
+  local API start first, unconditionally; then visible phases: broken
+  `worker.json` (shown with file, line, column and a pt-BR hint, never a
+  crash), token form, studio clip folder, waiting for the tailnet address
+  ("Esta máquina não está conectada à rede Baja.", and explicitly when the
+  saved address is not this PC's any more), running. `BajaWorker.exe
+  --service` no longer waits for Tailscale before starting the worker.
+* **"Registrar de novo"** (page and tray) clears only the identity and
+  returns to the token form in the same process; offered automatically
+  when a heartbeat gets 401 (revoked).
+* **"Usar a rede atual"** (`--first-run`, non-studio, only when Caddy's
+  tailnet listener already answers `/health`): the PC stays on its own
+  tailnet, heartbeats say `shared_tailnet`, and the orchestrator never
+  makes it a second holder or a peer source and tells it "outbox".
+* **Studio clip folder** chosen at setup (default `C:\BajaClips`), Users
+  get inherited read access (by SID); the page shows `latest.m3u` for OBS.
+* **The page never reloads**: only its live region is refreshed in place;
+  a form in use is never replaced.
+* **File names people can read**: clips `<prova>/<car>/<prova>-<car 3
+  digits>-p<passagem>[-vN].mp4` everywhere (studio, archive, kept clips,
+  downloads); raws on workers `<sender>-<YYYYMMDD-HHMMSS>-<job id first
+  8>.<ext>`, fixed at intake; the VPS inbox keeps `<job_id>.<ext>`.
+  Nothing on disk is renamed.
+* **Delivery to the studio is idempotent and lock-tolerant**: same content
+  = delivered, locks retried, a locked clip on air is never overwritten
+  (new version beside it as `-v2`). The double delivery came from the
+  worker's 60 s outbox fallback racing a late studio ACK; the worker now
+  checks the job first. Workers probe the studio (3 s) before pushing and
+  remember an unreachable one for 5 minutes.
+* **"Baixar original"**: task kind `upload_original`, temporary
+  `originals/` on the VPS (24 h after the last request, 10 GB cap, both
+  Settings values), served by Caddy under the raw's readable name.

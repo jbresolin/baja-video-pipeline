@@ -28,7 +28,7 @@ types**; this page explains the behaviour around them. Design background:
 
 | Port | Where | What |
 | --- | --- | --- |
-| 443 | VPS, public | Caddy: review UI, `/proxies/*`, `/thumbs/*`, `/clip-downloads/*` (outbox clips for reviewers), `POST /enroll`, `POST /intake/evolution-webhook` |
+| 443 | VPS, public | Caddy: review UI, `/proxies/*`, `/thumbs/*`, `/clip-downloads/*` (outbox clips for reviewers), `/original-downloads/*` (originals reviewers asked for), `POST /enroll`, `POST /intake/evolution-webhook` |
 | 8080 | VPS, Tailscale IP only, plain HTTP | Caddy: the worker/studio API and `/inbox/*`, `/outbox/*` files |
 | 8000 | VPS, compose network only | orchestrator (uvicorn) |
 | 8710 | every master/worker, tailnet | worker file server (`GET /raw/{job_id}`, `GET /clip/{job_id}`) |
@@ -69,7 +69,7 @@ types**; this page explains the behaviour around them. Design background:
 | `POST /auth/login` | none (the password is the credential; 20 per source IP per 600 s) |
 | `/admin/*`, `POST /intake/test-upload`, `GET /metrics` | sessionBearer (role admin) **or** adminBearer |
 | worker loop, `/workers`, `/auth/file`, `/outbox/{id}/ack` | workerBearer |
-| `/review/queue`, `PATCH …/review`, `…/regenerate-proxy`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
+| `/review/queue`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
 | `GET /auth/media` | sessionCookie |
 | `GET /jobs/{job_id}`, `GET /manifest` | sessionBearer **or** workerBearer |
 | `GET /fleet`, `GET /jobs/{job_id}/events`, `GET /events`, `GET /provas` | sessionBearer **or** adminBearer |
@@ -283,6 +283,7 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
 | `make_proxy` | a confirmed holder | Probe (`shared.media_probe`), render thumbnail and proxy with `tone_map_hdr=info.is_hdr`; `PUT …/media-info` (when the task has `media_info_upload_url`), `PUT …/thumbnail`, then chunked `POST …/proxy` | completing chunk of `…/proxy` |
 | `process` | a confirmed holder | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
 | `deliver` | studio only | GET `download_url` (Caddy outbox) with your bearer, verify SHA-256, store at `clip_relative_path`, rewrite `latest.m3u` | `POST /outbox/{id}/ack` |
+| `upload_original` | a confirmed holder that is online, the master first (LIVESTACK-41 item 15) | A reviewer asked for the original: chunked upload of the held raw to `upload_url` (`POST /jobs/{id}/original-upload`, `Lease-Id`, `Upload-SHA256` = the job's sha256). Offered right after proxies. A failure report never fails the job; that holder is just not asked again for it | completing chunk of `…/original-upload` |
 | `archive_clip` | master only, lowest priority (after backfill) | Keep one clip version in the archive at `archive_relative_path`: move your own kept copy, else GET the first working `download_urls` entry (peers' `:8710/clip/{job_id}?sha256=…` without token, the Caddy outbox with it), verify SHA-256 | `POST /jobs/{id}/clip-archived` |
 
 **Failures.** `POST /jobs/{id}/failed {lease_id, message, exit_code, scope}`
@@ -333,8 +334,21 @@ says whether the master has each version.
 `delivery: {mode, studio_url}`. The orchestrator says `direct`, with
 `studio_url = http://<studio tailnet address>:<receiver_port>/receive/<job_id>`,
 when a studio heartbeated within the last 45 s and reported an address;
-otherwise `outbox` with `studio_url: null`. Workers do not look at
-`GET /workers` to decide.
+otherwise `outbox` with `studio_url: null`. A worker on a shared tailnet
+(below) always gets `outbox`. Workers do not look at `GET /workers` to
+decide. Before pushing, a worker checks `GET <studio>/health` with a 3 s
+timeout and uses the outbox at once if it fails, remembering that studio
+as unreachable for 5 minutes (LIVESTACK-41 item 13).
+
+**Shared tailnet ("rede compartilhada", LIVESTACK-41 item 4).** A worker
+whose heartbeats say `shared_tailnet: true` stays on its own tailnet, into
+which the VPS is shared ("Usar a rede atual" in `--first-run`). It reaches
+the orchestrator and Caddy, but peers and the studio cannot reach it, nor
+it them. So it is never chosen as second holder, never listed as a peer
+source (raws or clips), only gets VPS sources itself, and delivers through
+the outbox. `Worker.shared_tailnet` shows it; the fleet page says "rede
+compartilhada". The master is still always a holder (do not run the
+master that way during an event).
 
 **Master backfill.** The master must end up holding every raw (design §4),
 also those that reached two holders while it was offline. So `/next`
@@ -348,8 +362,13 @@ still has the raw, else online confirmed holders on `:8710`.
 `complete: true` to your push, keep listing the lease in heartbeats. The
 studio ACKs to the orchestrator, which ends the lease; your next heartbeat
 reports it `lost`, which for a pushed clip simply means "finished". If the
-lease is still being `renewed` 60 s after the push completed, upload the
-clip to the outbox instead.
+lease is still being `renewed` 60 s after the push completed, look the job
+up: delivered or done with this clip means the ACK arrived meanwhile and
+you are finished; otherwise upload the clip to the outbox. (Without that
+check, a late ACK made the studio receive the same clip twice, the second
+time as an outbox pull onto the file playing on air: the live
+`[WinError 5]` of 2026-11-05.) Once the studio's ACK is in, the job is
+`delivered`/`done` and no `deliver` is offered for it.
 
 ## 6. Transfers
 
@@ -442,6 +461,9 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `POST /jobs/{job_id}/clip` | chunk → `ChunkAccepted` | outbox route; claimed → uploaded |
 | `POST /jobs/{job_id}/delivered` | `DeliveredRequest` → `JobStateResponse` | studio; direct route |
 | `POST /jobs/{job_id}/clip-archived` | `ClipArchivedRequest` → `JobStateResponse` | master, `archive_clip` lease; 422 `hash_mismatch` if the sha256 is no version of the job; state unchanged |
+| `POST /jobs/{job_id}/original-upload` | chunk → `ChunkAccepted` | `upload_original` lease; Upload-SHA256 must be the job's (422); ends the lease; state unchanged |
+| `GET /jobs/{job_id}/original` | → `OriginalDownload` | where "Baixar original" stands; no side effects |
+| `POST /jobs/{job_id}/original` | → `OriginalDownload` | "Baixar original"; see below |
 | `GET /review/queue?state=…&limit=…` | → `ReviewQueueResponse` | default `awaiting_review`, oldest first |
 | `GET /jobs/{job_id}` | → `Job` | |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
@@ -573,6 +595,22 @@ Evolution 2.3.7 (`src/validate/message.schema.ts`, `src/api/dto/sendMessage.dto.
 `whatsapp.baileys.service.ts`; see `orchestrator/clients/evolution.py`).
 Every text is in `orchestrator/domain/bot_messages.py` (pt-BR).
 
+**Originals for reviewers** (contract 2.3.0, LIVESTACK-41 item 15).
+`POST /jobs/{id}/original` records the request (time of the last one).
+While the inbox still has the raw it is hard-linked into
+`originals/<job_id>.<ext>` and the answer is `ready` at once; otherwise
+an online confirmed holder (the master first) is offered `upload_original`
+and the answer is `preparing`, or `no_holder_online` when none is. `ready`
+carries `download_url` = `/original-downloads/<job_id>/<raw_file_name>`
+(relative to the public base URL; Caddy serves `originals/<job_id>.<ext>`
+with the same `forward_auth` as proxies, saved under that readable name),
+`file_name`, `size_bytes` and `expires_at`. Originals stay
+`originals_keep_hours` (Settings, 24) after the last request and are
+evicted earlier, oldest request first, when `originals/` passes
+`originals_cap_gb` (Settings, 10) or free disk drops below
+`proxy_evict_min_free_gb`. They are never holders and never a source for
+processing.
+
 **Media info** (contract 2.1.0). The first holder already runs ffprobe
 on the raw to make the proxy; it sends the whole answer
 (`ffprobe -show_format -show_streams`, as `ProbeReport {format, streams,
@@ -639,7 +677,14 @@ Studio `POST /receive/{job_id}`: reject a `Clip-Relative-Path` that fails
 completing chunk the clip is moved into place, `latest.m3u` is rewritten,
 the studio answers `complete: true` to the worker, and then calls
 `POST /jobs/{job_id}/delivered` on the orchestrator (retrying in the
-background until it succeeds; repeating it is harmless).
+background until it succeeds; repeating it is harmless). Moving into
+place (LIVESTACK-41 item 13): if the folder already holds a clip with the
+same SHA-256 (under the path or a `-vN` name), the push is complete at
+once and nothing is renamed; a rename that hits a Windows lock is retried
+for a few seconds; a file that stays locked (on air) is never
+overwritten: the new clip is stored as `…-v2.mp4` (next free number), and
+that path is the one in `latest.m3u` and in the ACK's `relative_path`. A
+second push of a clip already ACKed sends no second ACK.
 
 ### 7.3 Localhost-only endpoints (127.0.0.1:8700)
 
@@ -652,22 +697,25 @@ the tailnet, no login. Requests whose `Host` is not `localhost`/`127.0.0.1`
 
 | Method & path | Behaviour |
 | --- | --- |
-| `GET /` | setup form before enrollment, then the pt-BR status page |
-| `POST /setup` | the setup form (before enrollment only) |
-| `GET /api/status` | status document (`enrolled`, `connection_step_pending`, `paused`, `last_contact_at`, `unreachable_for_s`, `tasks`, `storage`, `held_raws`, `clips_held`, `clips_archived`, `details`); never the bearer token |
+| `GET /` | always answers, even with a broken `worker.json`: the problem (file, line, column, hint), the token form before enrollment, a studio's clip-folder form, then the pt-BR status page. It never reloads itself |
+| `POST /setup` | the token form (before enrollment only) |
+| `POST /setup/studio-folder` | a studio's clip folder (only while it has none) |
+| `GET /api/status` | status document (`phase`, `enrolled`, `connection_step_pending`, `config_problem`, `tailnet_problem`, `identity_rejected`, `can_re_register`, `paused`, `last_contact_at`, `unreachable_for_s`, `tasks`, `storage`, `held_raws`, `clips_held`, `clips_archived`, `studio`, `details`); never the bearer token |
+| `GET /api/page` | the page's live parts as HTML, for the in-place refresh |
 | `POST /api/pause` | "Pausar": finish the current task, take nothing new, heartbeat `paused: true` (§5); stored in `worker.json` |
 | `POST /api/resume` | "Retomar" |
 | `POST /api/stop` | "Desligar o worker": stops the Windows service (`sc stop BajaWorker`) |
+| `POST /api/re-register` | "Registrar de novo": clears only the identity in `worker.json` (worker id, token, role, tailnet URL and address, `shared_tailnet`), keeps every other setting and the videos, and goes back to the token form |
 
 ## 8. Folder layouts
 
 ### 8.1 Studio box (design §7)
 
 ```
-<clip root>/                       chosen at studio setup
+<clip root>/                       chosen at studio setup (default C:\BajaClips)
 ├── latest.m3u                     newest first, max 50, relative paths
-└── <prova-slug>/<car>/<passagem>.mp4
-    e.g. enduro/42/3.mp4, suspensao/7/1.mp4
+└── <prova-slug>/<car>/<prova-slug>-<car, 3 digits>-p<passagem>[-vN].mp4
+    e.g. enduro/42/enduro-042-p3.mp4, suspensao/7/suspensao-007-p1.mp4
 ```
 
 Built from the prova's **stored slug** (`provas.slug`, made by
@@ -679,10 +727,16 @@ slug, so its clips stay in the same folder; a prova name not in the table
 M3U from `render_latest_playlist`: `#EXTM3U`, then per clip
 `#EXTINF:-1,<Prova> - carro <car> [<team>] - passagem <n>` and the
 relative path. Both are written as dot-files and renamed, so OBS never
-sees half a file. A reprocessed clip replaces the old one at the same path
-on the box; the master's archive keeps both (`<passagem>.v2.mp4`, built by
-`shared.layout.archive_relative_path`), and `ManifestEntry.version` says
-which version is current.
+sees half a file. File names say what the clip is (LIVESTACK-41 item 12,
+`shared.layout.clip_file_stem`, one line to change the format); clips
+stored before keep their `<passagem>.mp4` names. A reprocessed clip
+replaces the old one at the same path on the box, unless the old one is
+locked (on air): then it goes beside it as `…-v2.mp4` (§7.2) and the old
+one is deleted once free. The master's archive keeps every version
+(`enduro-042-p3-v2.mp4`, `shared.layout.archive_relative_path`), and
+`ManifestEntry.version` says which version is current. Downloads of a
+clip are named the same way: `/clip-downloads/<job_id>/enduro-042-p3.mp4`
+(`ClipInfo.download_file_name`).
 
 ### 8.2 VPS (`BVP_DATA_DIR`, default `/srv/pipeline`)
 
@@ -690,6 +744,8 @@ which version is current.
 inbox/<job_id>.<ext>      raws until 2 holders confirm; Caddy :8080 /inbox/*
 proxies/<job_id>.mp4      Caddy :443 /proxies/<job_id>.mp4 (forward_auth → /auth/media)
 thumbs/<job_id>.jpg       Caddy :443 /thumbs/<job_id>.jpg (forward_auth → /auth/media)
+originals/<job_id>.<ext>  raws a reviewer asked for (item 15), temporary; Caddy :443
+                          /original-downloads/<job_id>/<readable name> (forward_auth → /auth/media)
 outbox/<job_id>.mp4       fallback clips; deleted after studio ACK + master archive (or 72 h
                           after the ACK); Caddy :8080 /outbox/* (studio, archiving master)
                           and :443 /clip-downloads/* (signed-in users: the Download button;
@@ -706,11 +762,16 @@ public base URL.
 ### 8.3 Worker working folder (recommended)
 
 ```
-raws/<job_id>.<ext>       held raws (served on :8710, never evicted, deleted on discard)
+raws/<raw_file_name>      held raws, e.g. joao-guilherme-bresolin-20261104-232909-2f2510a3.mp4
+                          (DownloadRawTask.raw_file_name: sender, when the bot received it
+                          in São Paulo time, job id start; older jobs: <job_id>.<ext>);
+                          served on :8710, never evicted, deleted on discard
+raws/.raw-names.json      readable raw name → full job id
 clips/<job_id>.mp4        the clip being rendered/delivered (+ .json sidecar)
-clips/<job_id>.<sha256>.mp4   delivered clips, kept until archived by the master
-                          (served on :8710 /clip; evicted near the cap only once archived)
-clips/<prova>/<car>/<passagem>[.vN].mp4   master only: the archive of every clip version
+clips/<clip name>.<job_id>.<sha256>.mp4   delivered clips (e.g. enduro-042-p3.…), kept until
+                          archived by the master (served on :8710 /clip; evicted near the cap
+                          only once archived)
+clips/<prova>/<car>/<prova>-<car>-p<passagem>[-vN].mp4   master only: the archive of every version
 tmp/                      proxies, thumbnails, overlays while rendering
 ```
 

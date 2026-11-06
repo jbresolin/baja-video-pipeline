@@ -74,15 +74,24 @@ Duas coisas abrem:
 
 > ![Página de configuração com os três campos](docs/img/06-configuracao.png)
 
-A página (em inglês) tem três campos:
+A página tem três campos:
 
 | Campo | O que colocar |
 | --- | --- |
-| **Enrollment token** | O token que a equipe Baja mandou. Cole exatamente como veio |
-| **Working folder** | A pasta onde os vídeos ficam. Já vem `C:\BajaWorker`. Se o disco C: estiver cheio, use outro disco, por exemplo `D:\BajaWorker` (sempre o caminho completo, começando pela letra do disco) |
-| **Storage cap in GB** | Quanto espaço o Baja Worker pode usar no máximo, em GB. Ele nunca passa disso; perto do limite ele para de pegar vídeos novos |
+| **Token de inscrição** | O token que a equipe Baja mandou. Cole exatamente como veio |
+| **Pasta de trabalho** | A pasta onde os vídeos ficam. Já vem `C:\BajaWorker`. Se o disco C: estiver cheio, use outro disco, por exemplo `D:\BajaWorker` (sempre o caminho completo, começando pela letra do disco) |
+| **Limite de espaço em GB** | Quanto espaço o Baja Worker pode usar no máximo, em GB. Ele nunca passa disso; perto do limite ele para de pegar vídeos novos |
 
-Clique em **Save and connect**.
+Clique em **Salvar e conectar**. A página não recarrega sozinha enquanto
+você digita: pode colar o token com calma.
+
+### Só no PC do estúdio: a pasta dos clipes
+
+Se o token for de **estúdio** (o PC da transmissão, com o OBS), a página
+pergunta mais uma coisa logo depois: a **pasta dos clipes**, onde os
+vídeos prontos vão chegar. Já vem `C:\BajaClips`; troque se quiser outro
+disco (caminho completo). Clique em **Salvar pasta**. O Baja Worker cria
+a pasta e deixa os usuários do PC (e o OBS) lerem os vídeos dela.
 
 ## 6. Conexão com a rede Baja
 
@@ -100,6 +109,17 @@ Aperte **Enter** para fechar a janela. Acabou!
 janela pergunta se pode trocar para a rede Baja, porque o Windows só fica
 em uma rede Tailscale por vez. Responda `s` para continuar ou `n` para
 cancelar e falar com a equipe antes.
+
+**Se o servidor da Baja já aparece na sua rede Tailscale** (a equipe
+compartilhou o servidor com ela), a janela oferece três opções:
+
+* `1` **Entrar na rede Baja** (recomendado): como acima, troca de rede;
+* `2` **Usar a rede atual**: o PC continua na rede dele e fala com o
+  servidor por ela. **Atenção:** assim os outros PCs da equipe e o estúdio
+  não conseguem acessar este PC. Ele não guarda vídeos para os outros, e
+  entrega os clipes pelo servidor. Não use isso no PC que é o *master*
+  durante um evento. O PC do estúdio nunca vê essa opção;
+* `3` **Cancelar**.
 
 **Fechou a janela sem querer ou reiniciou o PC no meio?** Abra o menu
 Iniciar → **Baja Worker - concluir conexão**. O Windows pede permissão de
@@ -119,8 +139,8 @@ Baja Worker está, sem precisar abrir nada:
 | --- | --- | --- |
 | 🟢 **Verde** | Trabalhando: está baixando, preparando ou editando um vídeo | Nada |
 | 🔵 **Azul** | Conectado e esperando vídeos | Nada |
-| 🟡 **Amarelo** | Pausado, ou esperando você: falta concluir a conexão, falta o token, ou está iniciando | Veja a frase ao passar o mouse; se for "conexão não concluída", use **Concluir conexão** no menu do ícone |
-| 🔴 **Vermelho** | Problema: sem conexão com o servidor há mais de 1 minuto, disco quase no limite, token recusado, ou o serviço parou sozinho | Passe o mouse para ver qual; se não resolver em alguns minutos, fale com a equipe Baja |
+| 🟡 **Amarelo** | Pausado, ou esperando você: falta concluir a conexão, não está conectado à rede Baja, falta o token, falta escolher a pasta dos clipes (estúdio), ou está iniciando | Veja a frase ao passar o mouse e abra o painel: ele diz o que fazer |
+| 🔴 **Vermelho** | Problema: erro no arquivo de configuração, este PC foi removido da equipe, sem conexão com o servidor há mais de 1 minuto, disco quase no limite, token recusado, ou o serviço parou sozinho | Abra o painel para ver qual e o que fazer; se não resolver em alguns minutos, fale com a equipe Baja |
 | ⚪ **Cinza** | Desligado (o serviço não está rodando) | Se foi sem querer: menu do ícone → **Ligar o worker** |
 
 Passando o mouse sobre o ícone aparece uma frase, por exemplo
@@ -136,19 +156,23 @@ servidor"*.
 | **Abrir painel** | Abre a página de status `http://localhost:8700` (clicar duas vezes no ícone faz o mesmo) |
 | **Pausar** / **Retomar** | Pausar: termina o vídeo que está fazendo e não pega nenhum novo, mas continua ligado e ajudando os outros PCs com os vídeos que já guardou. Continua pausado mesmo se o PC reiniciar, até você clicar em **Retomar**. Não pede senha de administrador |
 | **Desligar o worker** / **Ligar o worker** | Desliga ou liga o serviço do Windows de vez. Não pede senha de administrador |
-| **Concluir conexão** | Só aparece enquanto falta o passo 6. Abre a janela de conexão (pede permissão de administrador) |
+| **Concluir conexão** | Só aparece enquanto falta o passo 6, ou quando o PC não está conectado à rede Baja. Abre a janela de conexão (pede permissão de administrador) |
+| **Registrar de novo** | Para quando a equipe pede: o PC esquece a identidade na equipe Baja e volta para a página do token (peça um token novo). As configurações e os vídeos guardados ficam. Pede confirmação antes |
 | **Sair do ícone** | Fecha só o ícone. **O Baja Worker continua funcionando**; o ícone volta no próximo login, ou pelo menu Iniciar → **Baja Worker - ícone perto do relógio** |
 
 O ícone só mostra **avisos do Windows** para coisas em que você precisa
-agir: falta concluir a conexão, disco quase no limite, token recusado,
-serviço parou sozinho. Nunca um aviso por vídeo.
+agir: falta concluir a conexão, não está conectado à rede Baja, erro no
+arquivo de configuração, PC removido da equipe, disco quase no limite,
+token recusado, serviço parou sozinho. Nunca um aviso por vídeo.
 
 > ![Aviso do Windows do Baja Worker](docs/img/11-aviso.png)
 
 ## 8. A página de status
 
 Menu do ícone → **Abrir painel**, ou menu Iniciar → **Baja Worker**, abre
-`http://localhost:8700`. Ela se atualiza sozinha a cada 5 segundos:
+`http://localhost:8700`. Ela sempre abre, mesmo quando algo está errado,
+e se atualiza sozinha a cada 5 segundos (só os números e as frases; ela
+nunca recarrega a página inteira):
 
 > ![Página de status](docs/img/07-status.png)
 
@@ -160,8 +184,15 @@ Menu do ícone → **Abrir painel**, ou menu Iniciar → **Baja Worker**, abre
 * **Último contato com o servidor** (deve ser "há poucos segundos");
 * os botões **Pausar** / **Retomar** e **Desligar o worker** (os mesmos do
   ícone);
+* quando você precisa agir, um **quadro** explica o que houve e já traz o
+  botão que resolve (por exemplo **Registrar de novo**);
+* no PC do **estúdio**: a **pasta dos clipes** e o caminho completo da
+  **playlist para o OBS** (`latest.m3u`), com um botão **Copiar**. No OBS,
+  adicione uma fonte **Fonte de vídeo VLC** (VLC Video Source) e coloque
+  nela essa playlist;
 * **Detalhes** (clique para abrir): informações técnicas para a equipe
-  Baja, como o número deste PC, endereços, versão e o último erro.
+  Baja, como o número deste PC, endereços, versão e o último erro, e o
+  botão **Registrar de novo**.
 
 Para saber se está tudo certo: o ícone está **verde** ou **azul**, e o
 "último contato" é de poucos segundos atrás. O PC pode ficar com a tela
@@ -173,8 +204,11 @@ coloque "Suspender" em **Nunca** enquanto estiver emprestando o PC.
 
 | O que aparece | O que fazer |
 | --- | --- |
-| A página diz *"the enrollment token was refused"* | O token está errado, já foi usado ou venceu. Peça um novo à equipe e cole de novo |
-| A página diz *"cannot enroll yet … retrying"* | Sem internet ou o servidor está fora do ar. Ele tenta de novo sozinho a cada 30 segundos |
+| A página diz *"O token de inscrição foi recusado"* | O token está errado, já foi usado ou venceu. Peça um novo à equipe e cole de novo |
+| A página diz *"Ainda não consegui falar com o servidor"* | Sem internet ou o servidor está fora do ar. Ele tenta de novo sozinho a cada 30 segundos |
+| A página diz *"Esta máquina não está conectada à rede Baja."* | Logo depois de ligar o PC, espere um minuto. Se continuar: menu do ícone → **Concluir conexão**. Se a página disser que o endereço salvo não é mais deste PC, ou se a equipe disser que o PC foi removido da rede, use **Registrar de novo** com um token novo |
+| A página diz *"O servidor não reconhece mais este PC"* | O PC foi removido da equipe. Peça um token novo e use **Registrar de novo** (os vídeos guardados ficam) |
+| A página mostra *"O arquivo tem um erro de formato na linha …"* | Alguém editou o `worker.json` à mão. A página mostra a linha, a coluna e o que conferir (vírgulas, aspas, `\\` nos caminhos). Corrija e salve: o Baja Worker continua sozinho |
 | A janela preta diz *"Não foi possível entrar na rede Baja"* | Responda `s` para apagar o registro, peça um **novo token** à equipe e repita o passo 5 |
 | A página `http://localhost:8700` não abre | Espere um minuto (o serviço pode estar iniciando). Se continuar, reinicie o PC |
 | A página ou o ícone dizem *"Conexão não concluída"* | Falta o passo 6: menu do ícone → **Concluir conexão** (ou menu Iniciar → **Baja Worker - concluir conexão**) |
