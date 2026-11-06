@@ -200,8 +200,13 @@ class WorkerLifecycle:
             self._should_stop(self._daemon_retry_seconds)
             return
         self.status.set_phase(Phase.RUNNING)
-        while not self._should_stop(1.0):
+        # Also leave when the daemon set its own stop event: it asked for a
+        # fresh start (e.g. the orchestrator changed its role). The loop in
+        # run() then reads worker.json again and starts a new daemon.
+        while not self._should_stop(1.0) and not stop.is_set():
             pass
+        if stop.is_set() and not self.shutdown.is_set():
+            logger.info("the daemon stopped itself; starting again from worker.json")
         daemon.stop()
         if not self.shutdown.is_set():
             self.status.set_phase(Phase.STARTING)

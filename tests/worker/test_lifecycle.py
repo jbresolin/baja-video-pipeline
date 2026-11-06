@@ -44,8 +44,9 @@ JSON = {"Content-Type": "application/json"}
 class FakeDaemon:
     """Stands in for worker.daemon.Daemon: remembers its config and its stop."""
 
-    def __init__(self, config: WorkerConfig) -> None:
+    def __init__(self, config: WorkerConfig, stop_event: threading.Event) -> None:
         self.config = config
+        self.stop_event = stop_event
         self.stopped = False
 
     def stop(self) -> None:
@@ -99,7 +100,7 @@ class Harness:
         self.thread = threading.Thread(target=self.lifecycle.run, daemon=True)
 
     def _start_daemon(self, config, stop):
-        daemon = FakeDaemon(config)
+        daemon = FakeDaemon(config, stop)
         self.daemons.append(daemon)
         return daemon
 
@@ -391,3 +392,21 @@ def test_the_studio_status_page_shows_the_folder_and_the_playlist_for_obs(harnes
     # A copy button carrying the full path, and the one-line OBS hint.
     assert f"data-copy='{playlist}'" in html
     assert "Fonte de vídeo VLC" in html
+
+
+def test_a_daemon_that_stops_itself_is_started_again_from_worker_json(harness):
+    # The daemon may ask for a fresh start by setting its own stop event,
+    # e.g. after the orchestrator changed its role and it rewrote worker.json
+    # (LIVESTACK-42 item 8). The process and the page stay up; a new daemon
+    # starts with what the file says now.
+    h = harness()
+    h.write_config(**enrolled_worker())
+    h.start()
+    wait_until(lambda: len(h.daemons) == 1)
+
+    h.write_config(**enrolled_worker(role=WorkerRole.MASTER))
+    h.daemons[0].stop_event.set()
+
+    wait_until(lambda: len(h.daemons) == 2)
+    assert h.daemons[0].stopped
+    assert h.daemons[1].config.role == WorkerRole.MASTER
