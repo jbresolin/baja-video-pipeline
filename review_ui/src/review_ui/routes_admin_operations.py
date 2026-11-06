@@ -125,6 +125,20 @@ def workers_page(request: Request) -> HTMLResponse:
     return _workers_page(request)
 
 
+@router.post("/workers/{worker_id}/rename")
+def rename_worker(request: Request, worker_id: str, form: dict = Depends(read_form)) -> Response:
+    """The name field of a worker row: the display name every page shows."""
+    name = form_text(form, "name")
+    if name is None:
+        return _workers_page(request, text("workers.name_required"), 400)
+    return apply_change(
+        lambda: admin_client_for(request).rename_worker(worker_id, name),
+        WORKERS_PATH,
+        "worker_renamed",
+        lambda error, status: _workers_page(request, error, status),
+    )
+
+
 @router.post("/workers/{worker_id}/revoke")
 def revoke_worker(request: Request, worker_id: str, form: dict = Depends(read_form)) -> Response:
     return apply_change(

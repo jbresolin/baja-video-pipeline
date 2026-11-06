@@ -2653,6 +2653,72 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /admin/workers/{worker_id}:
+    patch:
+      tags:
+      - admin
+      summary: Set a worker's display name (shown everywhere instead of the host name)
+      description: '`Worker.name` is the display name: every page, event line and the
+
+        fleet show it, with `Worker.hostname` (as reported at enrollment) as
+
+        secondary text. Revoked workers can be renamed too. Recorded in the
+
+        audit as `worker_renamed`.'
+      operationId: rename_worker_admin_workers__worker_id__patch
+      security:
+      - sessionBearer: []
+      - adminBearer: []
+      parameters:
+      - name: worker_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Worker Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkerRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          description: Malformed request (validation_error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or wrong credentials (unauthenticated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated but not allowed (forbidden)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No such job / worker / team / user / ... (not_found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /admin/workers/{worker_id}/revoke:
     post:
       tags:
@@ -5829,6 +5895,25 @@ components:
       type: object
       title: UpdateUserRequest
       description: PATCH /admin/users/{username}. Fields left out keep their value.
+    UpdateWorkerRequest:
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          pattern: \S
+          title: Name
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: UpdateWorkerRequest
+      description: 'PATCH /admin/workers/{worker_id}: the worker''s display name (LIVESTACK-42).
+
+
+        The display name is what every page shows instead of the host name,
+
+        which may mean nothing ("DESKTOP-8F3K2LQ"). Blank names are refused.'
     User:
       properties:
         username:
@@ -5945,6 +6030,11 @@ components:
             minimum: 1.0
           - type: 'null'
           title: Receiver Port
+        hostname:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Hostname
         enrolled_at:
           type: string
           format: date-time

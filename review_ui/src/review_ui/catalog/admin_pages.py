@@ -142,4 +142,8 @@ TEXT: dict[str, str] = {
     ),
     "workers.empty": "Nenhum worker cadastrado ainda. Gere um token em “Cadastro de PCs”.",
     "workers.revoked_section": "Revogados ({count})",
+    "workers.name_of": "Nome de exibição de {name}",
+    "workers.rename": "Salvar nome",
+    "workers.name_required": "Informe um nome para o worker.",
+    "workers.hostname": "PC: {hostname}",
 }

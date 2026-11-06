@@ -98,6 +98,7 @@ TEXT: dict[str, str] = {
     "event.archive_failed": "falha ao arquivar o clipe",
     "event.worker_enrolled": "worker cadastrado",
     "event.worker_revoked": "worker revogado",
+    "event.worker_renamed": "worker renomeado",
     "event.enrollment_token_created": "token de cadastro criado",
     "event.enrollment_token_revoked": "token de cadastro revogado",
     "event.results_synced": "sincronizado com o site de resultados",

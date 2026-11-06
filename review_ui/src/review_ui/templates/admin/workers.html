@@ -11,7 +11,14 @@
   {% for entry in active_workers %}
     {% set w = entry.worker %}
     <tr>
-      <td><strong>{{ w.name }}</strong> <span class="small"><code>{{ w.id|short_id }}</code></span></td>
+      <td>
+        {# The display name every page shows; the PC's host name stays below it. #}
+        <form method="post" action="/review/admin/workers/{{ w.id }}/rename" class="inline-fields">
+          <input name="name" value="{{ w.name }}" required maxlength="100" aria-label="{{ t('workers.name_of', name=w.name) }}">
+          <button type="submit">{{ t("workers.rename") }}</button>
+        </form>
+        <span class="small">{% if w.hostname and w.hostname != w.name %}{{ t("workers.hostname", hostname=w.hostname) }} · {% endif %}<code>{{ w.id|short_id }}</code></span>
+      </td>
       <td>{{ role_labels[w.role] }}</td>
       <td>
         {% if entry.online %}<span class="badge contact-allowed">{{ t("worker.online") }}</span>
@@ -44,7 +51,7 @@
     {% for entry in revoked_workers %}
       {% set w = entry.worker %}
       <tr class="muted">
-        <td><strong>{{ w.name }}</strong> <span class="small"><code>{{ w.id|short_id }}</code></span></td>
+        <td><strong>{{ w.name }}</strong> <span class="small">{% if w.hostname and w.hostname != w.name %}{{ t("workers.hostname", hostname=w.hostname) }} · {% endif %}<code>{{ w.id|short_id }}</code></span></td>
         <td>{{ role_labels[w.role] }}</td>
         <td><span class="badge token-revoked">{{ t("workers.revoked_at", time=m.time(w.revoked_at)) }}</span></td>
         <td>{{ m.time(w.enrolled_at) }}</td>

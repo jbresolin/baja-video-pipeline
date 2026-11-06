@@ -1,4 +1,4 @@
-"""Admin Enrollment and Workers pages: list and revoke tokens, revoke workers.
+"""Admin Enrollment and Workers pages: list and revoke tokens, rename and revoke workers.
 
 Revoking a worker makes its bearer token stop working at once (401 on
 every call), ends its leases so their tasks go to other workers, and
@@ -24,6 +24,7 @@ from shared.models import (
     EnrollmentTokensResponse,
     EnrollmentTokenStatus,
     ErrorCode,
+    UpdateWorkerRequest,
     Worker,
     WorkerRole,
 )
@@ -133,6 +134,39 @@ def revoke_worker(context: OrchestratorContext, actor: AdminActor, worker_id: st
                 f" holder of {len(held)} raw(s) dropped",
                 before={"worker_id": worker_id, "name": row["name"], "revoked": False},
                 after={"worker_id": worker_id, "name": row["name"], "revoked": True},
+                worker_id=worker_id,
+            )
+        return workers_repo.worker_from_row(
+            connection, workers_repo.get_worker_row(connection, worker_id)
+        )
+
+
+def rename_worker(
+    context: OrchestratorContext, actor: AdminActor, worker_id: str, request: UpdateWorkerRequest
+) -> Worker:
+    """Set the worker's display name (LIVESTACK-42 item 7).
+
+    Host names may mean nothing ("DESKTOP-8F3K2LQ"), so the admin gives the
+    PC a name people recognise. Pages and event lines show it; the host
+    name stays on the worker as secondary text. Works on revoked workers
+    too, so old event lines can still be labelled.
+    """
+    name = request.name.strip()
+    now = context.clock.now()
+    with context.database.transaction() as connection:
+        row = workers_repo.get_worker_row(connection, worker_id)
+        if row is None:
+            raise not_found("worker")
+        if row["name"] != name:
+            workers_repo.rename_worker(connection, worker_id, name)
+            record_admin_change(
+                connection,
+                now,
+                actor,
+                "worker_renamed",
+                f"{row['role']} '{row['name']}' renamed to '{name}'",
+                before={"worker_id": worker_id, "name": row["name"]},
+                after={"worker_id": worker_id, "name": name},
                 worker_id=worker_id,
             )
         return workers_repo.worker_from_row(

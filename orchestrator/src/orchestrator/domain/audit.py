@@ -22,7 +22,7 @@ KINDS_BY_AREA: dict[AdminArea, list[str]] = {
     AdminArea.PROVAS: ["prova_created", "prova_updated", "provas_reordered", "results_synced"],
     AdminArea.TEAMS: ["team_saved", "team_deleted", "results_synced"],
     AdminArea.ENROLLMENT: ["enrollment_token_created", "enrollment_token_revoked"],
-    AdminArea.WORKERS: ["worker_revoked"],
+    AdminArea.WORKERS: ["worker_revoked", "worker_renamed"],
     AdminArea.SETTINGS: ["settings_updated"],
 }
 

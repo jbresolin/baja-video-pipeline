@@ -60,7 +60,10 @@ class EnrollRequest(ApiModel):
     """POST /enroll, sent once by the worker's first-run setup page."""
 
     enrollment_token: str
+    # The display name (Worker.name): what the volunteer typed on the token
+    # form, prefilled with the host name. An admin may change it later.
     worker_name: str = Field(min_length=1, max_length=100)
+    # The PC's host name (Worker.hostname), shown as secondary text.
     hostname: str | None = None
     capabilities: WorkerCapabilities
     storage_cap_bytes: ByteCount

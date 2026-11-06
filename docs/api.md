@@ -463,9 +463,18 @@ the event log with `details: {before, after}`, readable at `GET
 | `GET /admin/teams`, `PUT/DELETE /admin/teams/{car_number}` | `SaveTeamRequest` → `TeamRow` | on a synced team PUT stores a correction kept across syncs, DELETE removes it |
 | `POST /admin/results-sync` | → `ResultsSyncReport` | see "Results API" below; 422 unknown event, 503 API down/limited |
 | `GET /admin/enrollment-tokens`, `POST …/{token_id}/revoke` | → `EnrollmentTokensResponse` / `EnrollmentTokenInfo` | unused/used/expired/revoked; 409 for a used one |
+| `PATCH /admin/workers/{worker_id}` | `UpdateWorkerRequest` → `Worker` | the display name (below); revoked workers too |
 | `POST /admin/workers/{worker_id}/revoke` | → `Worker` | its token answers 401, leases end, holder rows dropped |
 | `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing |
 | `GET /admin/audit?area=&limit=` | → `EventsResponse` | newest first |
+
+**Worker names** (LIVESTACK-42). `Worker.name` is the **display name**:
+what the volunteer typed on the token form (prefilled with the host name,
+sent as `EnrollRequest.worker_name`), changed later by an admin with
+`PATCH /admin/workers/{id}` (audit kind `worker_renamed`). Every page,
+event line and the fleet show it. `Worker.hostname` is the PC's host name
+as reported at enrollment (`EnrollRequest.hostname`), shown as secondary
+text; nothing changes it.
 
 **Contacts.** Every sender of a private message is recorded (status
 `unknown`, display name from `pushName`). For a video: `blocked` → 200

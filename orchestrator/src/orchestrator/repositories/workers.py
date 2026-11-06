@@ -114,6 +114,7 @@ def worker_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Worker:
         tailnet_address=row["tailnet_address"],
         file_server_port=row["file_server_port"],
         receiver_port=row["receiver_port"],
+        hostname=row["hostname"],
         enrolled_at=from_db_time(row["enrolled_at"]),
         last_heartbeat=from_db_time(row["last_heartbeat"]),
         revoked_at=from_db_time(row["revoked_at"]),
@@ -236,6 +237,11 @@ def revoke_enrollment_token(
         (to_db_time(now), token_sha256),
     )
     return cursor.rowcount == 1
+
+
+def rename_worker(connection: sqlite3.Connection, worker_id: str, name: str) -> None:
+    """Set the display name (workers.name); the host name stays as reported."""
+    connection.execute("UPDATE workers SET name = ? WHERE id = ?", (name, worker_id))
 
 
 def revoke_worker(connection: sqlite3.Connection, worker_id: str, now: datetime) -> bool:

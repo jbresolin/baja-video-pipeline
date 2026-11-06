@@ -38,6 +38,9 @@ class Worker(ApiModel):
     """A machine running the worker app, as the orchestrator stores it."""
 
     id: str
+    # The display name every page, event line and the fleet show. Starts as
+    # what the volunteer typed on the token form (prefilled with the PC's
+    # host name); an admin may change it on Admin → Workers (LIVESTACK-42).
     name: str
     role: WorkerRole
     capabilities: WorkerCapabilities
@@ -52,6 +55,9 @@ class Worker(ApiModel):
     file_server_port: int | None = Field(default=None, ge=1, le=65535)
     # Studio only: the clip receiver for direct pushes (default 8720).
     receiver_port: int | None = Field(default=None, ge=1, le=65535)
+    # The PC's own host name, as reported at enrollment. Shown beside the
+    # display name as secondary text; never changed by the orchestrator.
+    hostname: str | None = None
     enrolled_at: datetime
     last_heartbeat: datetime | None = None
     # Set when an admin revoked the worker: its bearer token stopped working.

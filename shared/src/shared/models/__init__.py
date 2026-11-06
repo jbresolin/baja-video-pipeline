@@ -64,6 +64,7 @@ from shared.models.api_operations import (
     SettingsResponse,
     SettingsStatus,
     UpdateSettingsRequest,
+    UpdateWorkerRequest,
 )
 from shared.models.api_review import (
     RegenerateProxyResponse,
@@ -238,6 +239,7 @@ __all__ = [
     "UpdateContactRequest",
     "UpdateProvaRequest",
     "UpdateSettingsRequest",
+    "UpdateWorkerRequest",
     "UpdateUserRequest",
     "User",
     "UserRole",

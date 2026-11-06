@@ -34,6 +34,19 @@ class EnrollmentTokensResponse(ApiModel):
     tokens: list[EnrollmentTokenInfo]
 
 
+# --- Workers ---
+
+
+class UpdateWorkerRequest(ApiModel):
+    """PATCH /admin/workers/{worker_id}: the worker's display name (LIVESTACK-42).
+
+    The display name is what every page shows instead of the host name,
+    which may mean nothing ("DESKTOP-8F3K2LQ"). Blank names are refused.
+    """
+
+    name: str = Field(min_length=1, max_length=100, pattern=r"\S")
+
+
 # --- Settings ---
 
 # An event id of the results API: 4 letters or digits ("26BR"), case kept.

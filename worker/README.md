@@ -101,7 +101,7 @@ Written by the installer and the setup page. Unknown keys are refused.
 | `enrollment_token` | `null` | One-time token. Removed after a successful enrollment. |
 | `worker_id`, `bearer_token`, `role` | `null` | Saved by enrollment. All three set = enrolled. Keep the file private: the token is the worker's identity. |
 | `tailnet_base_url` | `null` | Saved by enrollment from the `/enroll` answer: Caddy's tailnet listener that serves `/inbox/*` and `/outbox/*`. The second (and last) origin that gets the bearer token. `null` in configs enrolled before it existed: then only `orchestrator_url` gets the token. |
-| `worker_name` | host name | Shown in the fleet view. |
+| `worker_name` | host name | The display name, sent at enrollment: the token form asks for it, prefilled with the host name (`display_name.py`). Afterwards an admin changes it on Admin → Workers; editing it here after enrollment changes nothing. |
 | `working_folder` | the config file's folder | Where `raws/`, `clips/`, `tmp/`, `logs/` live. |
 | `storage_cap_bytes` | 100 GiB | Upper limit for everything in the working folder. Volunteers stop taking new raws near it; held raws are never evicted. The master ignores it for raws (only real disk space stops it). |
 | `ffmpeg_path` | `ffmpeg` | The bundled BtbN build on Windows. |

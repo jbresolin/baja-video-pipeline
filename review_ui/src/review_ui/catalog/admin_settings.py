@@ -17,6 +17,7 @@ TEXT: dict[str, str] = {
     "done.team_deleted": "Equipe removida (ou correção desfeita).",
     "done.synced": "Sincronizado com o site de resultados.",
     "done.token_revoked": "Token revogado.",
+    "done.worker_renamed": "Nome do worker salvo.",
     "done.worker_revoked": "Worker revogado. Remova o PC do tailnet no console do Tailscale.",
     "done.settings_updated": "Configurações salvas.",
     # --- Results-site sync box (Provas and Equipes) ---

@@ -23,6 +23,7 @@ from starlette.responses import HTMLResponse, PlainTextResponse, RedirectRespons
 from starlette.routing import Route
 
 from worker.config import GIGABYTE, load_config, save_config
+from worker.display_name import display_name_change, display_name_input
 from worker.local_api import build_api_endpoints, build_status_document
 from worker.pause import PauseSwitch
 from worker.status import StatusBoard
@@ -94,6 +95,7 @@ def build_setup_app(
                 "enrollment_token": token,
                 "working_folder": folder,
                 "storage_cap_bytes": cap_bytes,
+                **display_name_change(fields),
             }
         )
         save_config(config_path, updated)
@@ -123,6 +125,7 @@ def _form_page(config, config_path: Path, status: StatusBoard) -> HTMLResponse:
         "<form method='post' action='/setup'>"
         "<label>Enrollment token (from the Baja team)"
         "<input name='token' required autocomplete='off'></label>"
+        f"{display_name_input(config)}"
         "<label>Working folder (raws and clips are stored here)"
         f"<input name='folder' required value='{html.escape(str(folder))}'></label>"
         "<label>Storage cap in GB (the worker never uses more)"

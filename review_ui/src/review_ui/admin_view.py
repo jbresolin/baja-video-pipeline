@@ -50,6 +50,7 @@ DONE_KEYS = {
     "synced",
     "token_revoked",
     "worker_revoked",
+    "worker_renamed",
     "settings_updated",
 }
 

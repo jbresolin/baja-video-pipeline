@@ -14,6 +14,7 @@ from shared.models import (
     ResultsSyncReport,
     SettingsResponse,
     UpdateSettingsRequest,
+    UpdateWorkerRequest,
     Worker,
 )
 
@@ -43,6 +44,16 @@ def revoke_enrollment_token(
     context: OrchestratorContext = Depends(get_context),
 ) -> EnrollmentTokenInfo:
     return workers_admin.revoke_enrollment_token(context, actor, token_id)
+
+
+@router.patch("/admin/workers/{worker_id}", tags=["admin"], response_model=Worker)
+def rename_worker(
+    worker_id: str,
+    body: UpdateWorkerRequest,
+    actor: AdminActor = Depends(require_admin),
+    context: OrchestratorContext = Depends(get_context),
+) -> Worker:
+    return workers_admin.rename_worker(context, actor, worker_id, body)
 
 
 @router.post("/admin/workers/{worker_id}/revoke", tags=["admin"], response_model=Worker)
