@@ -6,7 +6,7 @@
     BajaWorker.exe --first-run [--config P]  after install: join the Baja tailnet
     BajaWorker.exe --leave-tailnet           uninstaller: tailscale logout
     BajaWorker.exe --grant-service-rights    installer: Users may start/stop the service
-    BajaWorker.exe --service --config P …    NSSM: wait for Tailscale, then run the worker
+    BajaWorker.exe --service --config P …    NSSM: run the worker (the same as no command)
     BajaWorker.exe [--config P] [--console]  run the worker (= python -m worker)
 
 Anything this module does not recognise is passed on to the worker's own
@@ -27,7 +27,6 @@ from baja_installer.first_run import EXIT_CANCELLED, FirstRunEnvironment, run_fi
 from baja_installer.init_config import write_installer_config
 from baja_installer.leave_tailnet import leave_baja_tailnet
 from baja_installer.service_rights import grant_service_rights
-from baja_installer.service_start import EXIT_TAILNET_NOT_READY, wait_for_tailnet_address
 from baja_installer.tailscale_cli import TailscaleCli, find_tailscale_executable
 
 
@@ -46,6 +45,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="let the Users group start and stop the BajaWorker service",
     )
+    # Kept because the NSSM service of every install runs `--service`. It
+    # used to wait for the Tailscale address first; the worker does that
+    # itself now, with its status page already up (worker.tailnet_wait).
     command.add_argument("--service", action="store_true", help="run as the NSSM service")
     parser.add_argument("--config", type=Path, help="worker.json (default: C:\\BajaWorker)")
     return parser
@@ -76,8 +78,6 @@ def main(argv: list[str] | None = None) -> int:
         return leave_baja_tailnet(TailscaleCli(find_tailscale_executable()))
     if args.grant_service_rights:
         return grant_service_rights()
-    if args.service and not wait_for_tailnet_address(config_path):
-        return EXIT_TAILNET_NOT_READY
     return run_worker(config_path, worker_arguments)
 
 

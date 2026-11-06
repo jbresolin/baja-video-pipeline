@@ -8,7 +8,6 @@ Modules:
     layout         install folder layout (ffmpeg, nssm), service name, default paths
     check          `--check`: imports everything, probes the bundled ffmpeg
     init_config    `--init-config`: the installer's part of worker.json
-    service_start  `--service`: wait for the Tailscale address, then run the worker
     tailscale_cli  runs and parses the `tailscale` command
     first_run      `--first-run`: setup page, `tailscale up`, service restart
     leave_tailnet  `--leave-tailnet`: `tailscale logout` from the uninstaller

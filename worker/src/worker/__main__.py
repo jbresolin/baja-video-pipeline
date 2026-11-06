@@ -6,9 +6,12 @@ no interactive input, settings from the config file, logs to
 (Windows) CTRL-BREAK, which is how NSSM asks a console program to stop.
 
 Startup:
- 1. read the config; start the localhost setup/status page;
- 2. if not enrolled, wait for the setup page, then POST /enroll;
- 3. run the daemon for the enrolled role until asked to stop.
+ 1. start the localhost setup/status page and its JSON API, first and
+    unconditionally (even with a broken worker.json), so a volunteer can
+    always see what is wrong;
+ 2. worker.lifecycle: fix worker.json if needed, enroll, (studio) choose
+    the clip folder, wait for the tailnet address, then run the daemon for
+    the enrolled role until asked to stop.
 """
 
 import argparse
@@ -22,9 +25,11 @@ from pathlib import Path
 
 import httpx
 
-from worker.config import CONFIG_FILE_NAME, WorkerConfig, load_config
+from worker.config import CONFIG_FILE_NAME, DEFAULT_SETUP_PAGE_PORT, WorkerConfig
+from worker.config_problems import read_config
 from worker.daemon import Daemon, build_api_client
-from worker.enrollment import detect_capabilities, wait_until_enrolled
+from worker.enrollment import detect_capabilities
+from worker.lifecycle import WorkerLifecycle
 from worker.logging_setup import configure_logging
 from worker.media_tools import MediaTools
 from worker.pause import PauseSwitch
@@ -86,8 +91,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     config_path = Path(args.config).resolve()
-    config = load_config(config_path)
-    log_folder = config.resolved_working_folder(config_path) / LOGS_FOLDER
+    # A broken worker.json must not stop us here: log next to it until it is fixed.
+    reading = read_config(config_path)
+    log_folder = (
+        reading.config.resolved_working_folder(config_path)
+        if reading.config is not None
+        else config_path.parent
+    ) / LOGS_FOLDER
     configure_logging(log_folder, also_to_console=args.console)
     logger.info("worker starting with config %s", config_path)
 
@@ -97,52 +107,55 @@ def main(argv: list[str] | None = None) -> int:
     setup_submitted = threading.Event()
     # One pause switch for the page/tray API and the daemon (worker.pause).
     pause = PauseSwitch(config_path)
+
+    def start_daemon(config: WorkerConfig, stop: threading.Event) -> Daemon:
+        daemon = Daemon(
+            config,
+            config_path,
+            status,
+            stop,
+            media=_media_tools_for(config),
+            transport=httpx.HTTPTransport(),
+            pause=pause,
+        )
+        daemon.start()
+        return daemon
+
+    def use_log_folder_of(config: WorkerConfig) -> None:
+        nonlocal log_folder
+        new_log_folder = config.resolved_working_folder(config_path) / LOGS_FOLDER
+        if new_log_folder != log_folder:  # the setup page chose another working folder
+            configure_logging(new_log_folder, also_to_console=args.console)
+            log_folder = new_log_folder
+
+    enrollment_transport = httpx.HTTPTransport()
+    lifecycle = WorkerLifecycle(
+        config_path,
+        status,
+        shutdown,
+        setup_submitted=setup_submitted,
+        start_daemon=start_daemon,
+        enroll_api_for=lambda current: build_api_client(current, enrollment_transport),
+        capabilities_for=lambda current: detect_capabilities(current.ffmpeg_path),
+        on_enrolled=use_log_folder_of,
+    )
+    page_port = reading.config.setup_page_port if reading.config else DEFAULT_SETUP_PAGE_PORT
     setup_server = BackgroundServer(
         build_setup_app(
             config_path,
             status,
             setup_submitted,
-            config.setup_page_port,
+            page_port,
             pause=pause,
             stop_service=stop_service_action(shutdown),
+            re_register=lifecycle.re_register,
         ),
         "127.0.0.1",
-        config.setup_page_port,
+        page_port,
         "setup-page",
     )
     setup_server.start()
-
-    transport = httpx.HTTPTransport()
-    enrolled = wait_until_enrolled(
-        config_path,
-        api_for=lambda current: build_api_client(current, transport),
-        capabilities_for=lambda current: detect_capabilities(current.ffmpeg_path),
-        status=status,
-        setup_submitted=setup_submitted,
-        shutdown=shutdown,
-    )
-    if enrolled is None:
-        setup_server.stop()
-        return 0
-
-    new_log_folder = enrolled.resolved_working_folder(config_path) / LOGS_FOLDER
-    if new_log_folder != log_folder:  # the setup page chose another working folder
-        configure_logging(new_log_folder, also_to_console=args.console)
-
-    daemon = Daemon(
-        enrolled,
-        config_path,
-        status,
-        shutdown,
-        media=_media_tools_for(enrolled),
-        transport=transport,
-        pause=pause,
-    )
-    daemon.start()
-    # Wait in short steps: on Windows a bare Event.wait() would delay CTRL-C.
-    while not shutdown.wait(1.0):
-        pass
-    daemon.stop()
+    lifecycle.run()
     setup_server.stop()
     return 0
 

@@ -20,8 +20,6 @@ SETUP_PAGE_URL = "http://localhost:8700"
 DATA_FOLDER_NAME = "BajaWorker"
 CONFIG_FILE_NAME = "worker.json"
 FFMPEG_FOLDER_NAME = "ffmpeg"
-# Tailscale's MSI installs here by default (worker_join.md §1).
-WINDOWS_TAILSCALE_EXE = Path(r"C:\Program Files\Tailscale\tailscale.exe")
 
 
 def executable_name(stem: str) -> str:
