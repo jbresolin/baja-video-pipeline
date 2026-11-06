@@ -3,7 +3,8 @@
 //
 // This is the COMPLETE policy file: admin console → Access controls → paste
 // → Save. It is the existing policy of 2026-11-03 plus the video-pipeline
-// section (LIVESTACK-29). See infra/tailnet/README.md.
+// section (LIVESTACK-29). See infra/tailnet/README.md. Last synced from the
+// live console on 2026-11-05: keep this file and the console identical.
 //
 // How isolation works here
 // ------------------------
@@ -60,12 +61,6 @@
 		// Monitoring probe -> origin HTTPS only (pre-existing).
 		{"src": ["tag:monitor"], "dst": ["baja-origin"], "ip": ["tcp:443"]},
 
-		// Monitoring probe -> Evolution's tailnet listener on the staging VPS,
-		// so Uptime Kuma can send WhatsApp alerts through the Baja Bot
-		// (notification type "Evolution", URL http://100.82.21.71:8081).
-		// 8081 only: not the pipeline's 8080, not SSH.
-		{"src": ["tag:monitor"], "dst": ["baja-staging"], "ip": ["tcp:8081"]},
-
 		// --- Video pipeline ---------------------------------------------
 		// Workers → staging VPS: orchestrator API and inbox/outbox files,
 		// through Caddy's tailnet-side listener on 8080. Nothing else on
@@ -81,6 +76,29 @@
 		// Studio → staging VPS: heartbeats, clip manifest, ACKs and the
 		// outbox fallback pull, through Caddy on 8080.
 		{"src": ["tag:studio"], "dst": ["baja-staging"], "ip": ["tcp:8080"]},
+
+		// João's personal-tailnet devices, which reach the staging VPS through
+		// a node share (they are not members here): its admin surfaces. A
+		// share recipient is named by login; autogroup:shared is not accepted
+		// in grants on this tailnet. Never prod, never workers.
+		{
+			"src": ["joaobresolin@gmail.com"],
+			"dst": ["baja-staging"],
+			"ip":  ["tcp:22", "tcp:8080", "tcp:8081", "tcp:9443"],
+		},
+
+		// João's personal-tailnet PCs (studio shared to them) may push finished
+		// clips to the studio's receiver, so his desktop worker can deliver
+		// directly instead of through the VPS outbox.
+		{
+			"src": ["joaobresolin@gmail.com"],
+			"dst": ["tag:studio"],
+			"ip":  ["tcp:8720"],
+		},
+
+		// Uptime Kuma (tag:monitor) → Evolution's tailnet listener, so Kuma can
+		// send WhatsApp alerts through the Baja Bot. 8081 only.
+		{"src": ["tag:monitor"], "dst": ["baja-staging"], "ip": ["tcp:8081"]},
 
 		// Intentionally absent: any grant with src baja-staging or baja-prod
 		// towards workers. The VPS never opens connections to workers or the
@@ -127,10 +145,18 @@
 			// ...and nothing else: never prod, never the monitor, nothing on
 			// the VPS but 8080, no studio-only port on peers.
 			"deny": [
-				"baja-prod:22", "baja-prod:443", "baja-prod:80",
-				"baja-staging:22", "baja-staging:443", "baja-staging:8081", "baja-staging:8000",
-				"tag:monitor:3001", "tag:monitor:22",
-				"tag:worker:8720", "tag:studio:8710", "tag:worker:22",
+				"baja-prod:22",
+				"baja-prod:443",
+				"baja-prod:80",
+				"baja-staging:22",
+				"baja-staging:443",
+				"baja-staging:8081",
+				"baja-staging:8000",
+				"tag:monitor:3001",
+				"tag:monitor:22",
+				"tag:worker:8720",
+				"tag:studio:8710",
+				"tag:worker:22",
 			],
 		},
 
@@ -139,14 +165,49 @@
 			"src":    "tag:studio",
 			"proto":  "tcp",
 			"accept": ["baja-staging:8080"],
-			"deny":   ["baja-staging:22", "baja-staging:8081", "baja-prod:22", "baja-prod:443", "tag:worker:8710", "tag:worker:8720"],
+			"deny": [
+				"baja-staging:22",
+				"baja-staging:8081",
+				"baja-prod:22",
+				"baja-prod:443",
+				"tag:worker:8710",
+				"tag:worker:8720",
+			],
 		},
 
 		// The VPS and prod initiate nothing towards workers or the studio.
-		{"src": "baja-staging", "proto": "tcp", "deny": ["tag:worker:8710", "tag:studio:8720", "tag:worker:22"]},
-		{"src": "baja-prod",    "proto": "tcp", "deny": ["tag:worker:8710", "tag:studio:8720", "tag:worker:22"]},
+		{
+			"src":   "baja-staging",
+			"proto": "tcp",
+			"deny":  ["tag:worker:8710", "tag:studio:8720", "tag:worker:22"],
+		},
+		{
+			"src":   "baja-prod",
+			"proto": "tcp",
+			"deny":  ["tag:worker:8710", "tag:studio:8720", "tag:worker:22"],
+		},
 
 		// The monitor cannot see the pipeline either.
-		{"src": "tag:monitor", "proto": "tcp", "deny": ["baja-staging:8080", "tag:worker:8710", "tag:studio:8720"]},
+		{
+			"src":   "tag:monitor",
+			"proto": "tcp",
+			"deny":  ["baja-staging:8080", "tag:worker:8710", "tag:studio:8720"],
+		},
+
+		// João's shared-in devices: VPS admin surfaces yes, prod and workers no.
+		{
+			"src":    "joaobresolin@gmail.com",
+			"proto":  "tcp",
+			"accept": ["baja-staging:8081"],
+			"deny":   ["baja-prod:22", "baja-prod:443", "tag:worker:8710"],
+		},
+
+		// ...and the studio's clip receiver only, nothing else on the studio.
+		{
+			"src":    "joaobresolin@gmail.com",
+			"proto":  "tcp",
+			"accept": ["tag:studio:8720"],
+			"deny":   ["tag:studio:22", "tag:studio:8710"],
+		},
 	],
 }
