@@ -1,4 +1,4 @@
--- LIVESTACK-41: worker polish from real use.
+-- LIVESTACK-41: worker polish from real use (0008 is LIVESTACK-42's clip name choices).
 
 -- Item 4: 1 while the worker's last heartbeat said `shared_tailnet: true`:
 -- the volunteer chose "Usar a rede atual" (the PC stays on its own
