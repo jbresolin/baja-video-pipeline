@@ -277,6 +277,9 @@ textarea { font: inherit; font-family: var(--mono); font-size: 0.85rem; width: 1
   border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
 .inline-form { display: inline-flex; gap: 0.4rem; align-items: center; margin: 0; }
 .row-actions { white-space: nowrap; }
+/* "Prova desativada." beside the button, after an in-place change (admin.js). */
+.inline-note { margin-left: 0.5rem; font-size: 0.85rem; color: var(--ok-ink); }
+.inline-note.error-text { color: var(--error-ink); }
 .inline-fields { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: flex-end; margin: 0; }
 .inline-fields label { margin: 0; }
 .inline-fields input, .inline-fields select { width: auto; min-width: 9rem; }

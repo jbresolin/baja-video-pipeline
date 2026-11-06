@@ -13,6 +13,8 @@ TEXT: dict[str, str] = {
     "done.prova_created": "Prova adicionada.",
     "done.prova_updated": "Prova atualizada.",
     "done.provas_reordered": "Ordem das provas salva.",
+    "provas.inline.activated": "Prova reativada.",
+    "provas.inline.deactivated": "Prova desativada.",
     "done.team_saved": "Equipe salva.",
     "done.team_deleted": "Equipe removida (ou correção desfeita).",
     "done.synced": "Sincronizado com o site de resultados.",

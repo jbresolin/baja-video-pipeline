@@ -65,6 +65,8 @@ TEXT: dict[str, str] = {
     "contacts.col.last_message": "Última mensagem",
     "contacts.whatsapp_name": "WhatsApp: {name}",
     "contacts.allow": "Permitir",
+    "contacts.inline.allowed": "Contato permitido.",
+    "contacts.inline.blocked": "Contato bloqueado.",
     "contacts.block": "Bloquear",
     "contacts.name_of": "Nome de {phone}",
     "contacts.default_prova_of": "Prova padrão de {phone}",

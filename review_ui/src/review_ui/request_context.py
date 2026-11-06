@@ -79,6 +79,18 @@ def render_page(
     return templates.TemplateResponse(request, template_name, full_context, status_code=status_code)
 
 
+def render_fragment(request: Request, template_name: str, context: dict) -> str:
+    """A piece of a page as HTML text, for a page script to put in place.
+
+    The inline admin actions (routes_admin_inline.py) answer with the rows
+    they changed, rendered by the same template the full page includes, so
+    the swapped-in rows are exactly what a reload would show.
+    """
+    templates = request.app.state.templates
+    full_context = {"settings": request.app.state.settings, "now": utc_now(), **context}
+    return templates.env.get_template(template_name).render(full_context)
+
+
 def is_api_request(request: Request) -> bool:
     """True for the JSON endpoints the page scripts call (they want JSON errors)."""
     return request.url.path.startswith("/review/api/")
