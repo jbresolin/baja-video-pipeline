@@ -92,7 +92,14 @@ h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .flash.success, .note.success { background: var(--ok-bg); color: var(--ok-ink); }
 .flash.warning, .banner.warning, .note.warning { background: var(--warn-bg); color: var(--warn-ink); }
 .flash.error, .note.error { background: var(--error-bg); color: var(--error-ink); }
-.banner { display: flex; align-items: center; gap: 1rem; }
+.banner { display: block; }
+/* A banner's text always sits in its own block (<p>), never loose inside the
+   banner: a flex banner turns every loose inline piece (text, link, <code>,
+   <em>) into a column of its own (LIVESTACK-42 item 10). Only a banner with
+   a button beside its text is a flex row. */
+.banner > p { margin: 0; }
+.banner > p + p { margin-top: 0.4rem; }
+.banner.with-action { display: flex; align-items: center; gap: 1rem; }
 
 /* Badges */
 .badge {
@@ -259,8 +266,8 @@ table.data tr.worker-events td { padding-top: 0; }
 }
 
 /* --- Sign-in and admin pages (admin page, LIVESTACK-37) --- */
-.banner.ok { background: var(--ok-bg); color: var(--ok-ink); display: block; }
-.banner.error { background: var(--error-bg); color: var(--error-ink); display: block; }
+.banner.ok { background: var(--ok-bg); color: var(--ok-ink); }
+.banner.error { background: var(--error-bg); color: var(--error-ink); }
 .error-text { color: var(--error-ink); }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }

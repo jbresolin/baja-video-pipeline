@@ -4,7 +4,7 @@
 <section class="login">
   <h1>{{ t("login.title") }}</h1>
   <p class="hint">{{ t("login.hint") }}</p>
-  {% if error %}<p class="banner error" role="alert">{{ error }}</p>{% endif %}
+  {% if error %}<div class="banner error" role="alert"><p>{{ error }}</p></div>{% endif %}
   <form method="post" action="/review/login" class="stacked">
     <input type="hidden" name="next" value="{{ next_path }}">
     <label for="username">{{ t("login.username") }}</label>

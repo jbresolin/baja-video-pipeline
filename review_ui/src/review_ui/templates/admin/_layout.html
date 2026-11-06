@@ -11,8 +11,8 @@
     {% endfor %}
   </nav>
 </div>
-{% if done %}<p class="banner ok" role="status">{{ done }}</p>{% endif %}
-{% if error %}<p class="banner error" role="alert">{{ error }}</p>{% endif %}
+{% if done %}<div class="banner ok" role="status"><p>{{ done }}</p></div>{% endif %}
+{% if error %}<div class="banner error" role="alert"><p>{{ error }}</p></div>{% endif %}
 
 {% block admin_content %}{% endblock %}
 

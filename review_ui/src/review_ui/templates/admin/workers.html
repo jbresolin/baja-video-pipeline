@@ -2,7 +2,7 @@
 {% block title %}{{ t("admin.section.workers") }}{% endblock %}
 {% block admin_content %}
 <p class="hint">{{ t("workers.hint") }}</p>
-<div class="banner warning">{{ t("workers.tailnet_warning") }}</div>
+<div class="banner warning"><p>{{ t("workers.tailnet_warning") }}</p></div>
 
 {% if fleet.workers %}
 <table class="admin-table">
