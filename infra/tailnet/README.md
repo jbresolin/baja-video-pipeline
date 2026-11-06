@@ -306,6 +306,27 @@ and **Expiry disabled**.
 
 ---
 
+## 12. Reaching pipeline machines from another tailnet (node sharing)
+
+Some PCs must stay on another tailnet (e.g. João's desktop, which he reaches
+remotely through his personal tailnet). They can still take part through
+Tailscale node sharing, set up on 2026-11-05:
+
+* **Share the VPS and the studio into the other tailnet**: admin console
+  (Baja tailnet) → Machines → `baja-teste1` / `baja-studio` → ⋯ → Share…,
+  accepted with the personal login. Link-sharing a **tagged** device
+  (`baja-studio`, `tag:studio`) works, although Tailscale's docs only mention
+  tags for declarative sharing. A shared node keeps its 100.x address, so the
+  orchestrator's URLs work unchanged on the other side.
+* **Access is decided by this tailnet's policy**, by login: see the grants
+  for `joaobresolin@gmail.com` in `acl.hujson` (VPS admin ports + 8080, and
+  the studio's 8720 only) and their tests.
+* **What a share cannot do**: nothing on the Baja tailnet can open a
+  connection to the shared-in PC. Other workers cannot fetch raws from it
+  and it cannot be a studio, so such a PC should not be the master during an
+  event. Configure the worker on it with "Usar a rede atual" (LIVESTACK-41)
+  rather than "Concluir conexão".
+
 ## Troubleshooting
 
 ### Key expiry on tagged nodes
