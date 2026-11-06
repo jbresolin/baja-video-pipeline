@@ -125,9 +125,12 @@ class OrchestratorClient:
         """Every prova in display order, inactive ones included (flagged)."""
         return self._parse(ProvasResponse, self._request("GET", "/provas")).provas
 
-    def review_queue(self, states: list[JobState]) -> list[JobSummary]:
+    def review_queue(self, states: list[JobState], *, outdated: bool = False) -> list[JobSummary]:
+        """`outdated`: only jobs whose clip no longer matches the review (LIVESTACK-43)."""
         # A list of tuples repeats the parameter: ?state=a&state=b.
         params = [("state", state.value) for state in states] + [("limit", QUEUE_LIMIT)]
+        if outdated:
+            params.append(("outdated", "true"))
         response = self._request("GET", "/review/queue", params=params)
         return self._parse(ReviewQueueResponse, response).items
 

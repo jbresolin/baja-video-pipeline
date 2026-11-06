@@ -232,8 +232,15 @@ def build_app(fake: FakeOrchestrator) -> FastAPI:
         return {"provas": [prova.model_dump(mode="json") for prova in fake.provas]}
 
     @app.get("/review/queue")
-    def review_queue(state: list[JobState] = Query([JobState.AWAITING_REVIEW]), limit: int = 100):
+    def review_queue(
+        state: list[JobState] = Query([JobState.AWAITING_REVIEW]),
+        limit: int = 100,
+        outdated: bool = False,
+    ):
         matching = [job for job in fake.jobs.values() if job.state in state]
+        if outdated:
+            # Like the orchestrator: only jobs whose clip no longer matches the review.
+            matching = [job for job in matching if JobSummary.from_job(job).clip_outdated]
         oldest_first = sorted(matching, key=lambda job: job.created_at)[:limit]
         items = [JobSummary.from_job(job).model_dump(mode="json") for job in oldest_first]
         return {"items": items}

@@ -23,9 +23,9 @@ public. So the page scripts call the UI's own JSON endpoints under
 
 | Path | What |
 | --- | --- |
-| `/review/` | Queue: awaiting review + failed by default; filters by state, prova, low-res; auto-refresh every 5 s; `↑↓`/`j k` + `Enter` |
+| `/review/` | Queue: awaiting review + failed by default; filters by state, prova, low-res, "Clipes desatualizados" (`?outdated=1`: clips that no longer match their review, badge "desatualizado"); auto-refresh every 5 s; `↑↓`/`j k` + `Enter` |
 | `/review/jobs/{id}` | Proxy player, cut in/out marks, fields, actions, status strip, event log from `GET /jobs/{id}/events` (refreshes every 5 s; if the log cannot be read the page still works and says so) |
-| `/review/clips` | Delivery manifest, newest first, prova filter, copyable studio path |
+| `/review/clips` | Delivery manifest, newest first, prova filter, copyable studio path; a clip that no longer matches its review is marked "desatualizado" with the differences on expand |
 | `/review/fleet` | Workers (role, online, heartbeat age, held raws, storage vs cap, stats, leases, last 5 events from `GET /events?worker_id=…&limit=5`), VPS disk, jobs per state; refreshes every 10 s |
 | `/healthz` | Container health check (not routed by Caddy) |
 
@@ -36,6 +36,20 @@ ready/reprocess/retry, `?` shows the list. A frame is `1 / Job.frame_rate`
 seconds (the proxy's fps, measured by the holder that uploaded it), or
 1/30 s when the job has no frame rate yet; the server puts the value in
 `data-frame-rate` on the page and the shortcut list shows it.
+
+**Edits after delivery** (LIVESTACK-43). Once a clip exists (claimed,
+uploaded, delivered, done), the primary button is **"Salvar e
+reprocessar"**: the `reprocess` action, which saves the fields in the same
+request and renders the next clip version (`…-v2.mp4` on the box; the
+version on air is never written over). Plain "Salvar" stays as a secondary
+button; on such a job its confirmation says the clip on air does not
+change until reprocessed, and the page reloads. Whenever the newest clip
+no longer matches the review (`Job.clip_inputs.changed`, computed by the
+orchestrator, including a name choice changed in Settings), the status
+strip shows a warning banner with one sentence per difference
+(`clip_inputs_view.py`), e.g. "O clipe no ar usa corte 0:03–0:12; a
+revisão agora diz 0:05–0:12." It is part of the polled panel, so it goes
+away by itself when the new version arrives.
 
 Every action sends the version of the job the page was loaded with
 (`expected_version`). If someone else changed the job first, the
@@ -115,6 +129,7 @@ base Caddy as `bvp-review-ui:8001` on `baja-edge`.
 | `routes_admin_inline.py` | JSON endpoints behind the admin toggles that change a row in place (provas active/order, contacts allow/block): they answer with the re-rendered rows (`templates/admin/_provas_rows.html`, `_contact_row.html`) and `static/js/admin.js` swaps them in, so the page neither reloads nor scrolls |
 | `errors.py` | Error page for browsers, JSON errors for scripts, 401 sign-in challenge |
 | `job_view.py`, `queue_view.py`, `clips_and_fleet_view.py` | Plain functions that turn API data into what the pages show |
+| `clip_inputs_view.py` | A clip that no longer matches its review, in sentences (job page banner, clips page detail) |
 | `event_log_view.py` | Orchestrator events (`Event`) in words: actor names, state changes, reasons; used by the job and fleet pages |
 | `catalog/` | Every pt-BR text the UI shows, by English key (see "Language") |
 | `formatting.py` | Dates (São Paulo time) and numbers (decimal comma) for the templates |

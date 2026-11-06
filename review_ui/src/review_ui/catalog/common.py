@@ -27,14 +27,21 @@ TEXT: dict[str, str] = {
     # --- Review actions: button text (tests check every ReviewAction) ---
     "action.save": "Salvar",
     "action.ready": "Pronto",
-    "action.reprocess": "Reprocessar",
+    "action.reprocess": "Salvar e reprocessar",
     "action.retry": "Tentar de novo",
     "action.discard": "Descartar",
     "action.restore": "Restaurar",
     # What the page says after each action worked (shown by the script).
     "action_done.save": "Salvo.",
     "action_done.ready": "Marcado como pronto. Um worker com o original vai renderizar o clipe.",
-    "action_done.reprocess": "Voltou para pronto; o clipe vai ser renderizado de novo.",
+    "action_done.reprocess": (
+        "Salvo e enviado para reprocessar: a próxima versão do clipe substitui a do ar "
+        "quando ficar pronta."
+    ),
+    # A plain save on a job whose clip is already made (LIVESTACK-43).
+    "action_done.save_clip_unchanged": (
+        "Salvo. O clipe no ar não muda até você usar “Salvar e reprocessar”."
+    ),
     "action_done.retry": "Tentando de novo: o vídeo voltou para pronto.",
     "action_done.discard": (
         "Descartado. O original fica guardado por um tempo; “Restaurar” desfaz o descarte."

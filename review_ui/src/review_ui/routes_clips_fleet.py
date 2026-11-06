@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
+from review_ui.clip_inputs_view import outdated_clip
 from review_ui.clips_and_fleet_view import (
     active_workers,
     build_worker_rows,
@@ -37,8 +38,12 @@ def clips_page(request: Request, prova: str | None = None) -> HTMLResponse:
     clips = filter_clips_by_prova(manifest.clips, chosen_prova)
     context = {
         "active_nav": "clips",
-        # (clip, path to copy) pairs; the manifest is already newest first.
-        "rows": [(clip, studio_path(clip.relative_path, clip_root)) for clip in clips],
+        # (clip, path to copy, what no longer matches the review or None)
+        # triples; the manifest is already newest first.
+        "rows": [
+            (clip, studio_path(clip.relative_path, clip_root), outdated_clip(clip.clip_inputs))
+            for clip in clips
+        ],
         "prova_options": distinct_provas([clip.prova for clip in manifest.clips]),
         "chosen_prova": chosen_prova,
         "total_count": len(manifest.clips),

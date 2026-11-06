@@ -76,8 +76,12 @@ export function setupReviewForm({ form, jobElement }) {
       jobElement.dataset.version = String(version);
       unsavedChanges = false;
       markMissing([]);
-      if (action === "save") {
+      if (action === "save" && !result.data.refresh_page) {
         showFlash(t("script.saved_version", { message: result.data.message, version }), "success");
+      } else if (action === "save") {
+        // A clip exists: reload so the warning about the clip on air shows now.
+        flashAfterReload(t("script.saved_version", { message: result.data.message, version }), "warning");
+        window.location.reload();
       } else {
         // The state changed, so the buttons and status do too: reload.
         flashAfterReload(result.data.message, "success");

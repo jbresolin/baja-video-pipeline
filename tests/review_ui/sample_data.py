@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 from shared.models import (
     ClipInfo,
+    ClipInputsComparison,
     DeliveryRoute,
     FleetResponse,
     FleetWorker,
@@ -21,8 +22,11 @@ from shared.models import (
     Lease,
     ManifestEntry,
     ManifestResponse,
+    NameStyle,
     Prova,
     ReceivedAs,
+    RenderInputField,
+    RenderInputs,
     ServerDisk,
     TaskKind,
     Team,
@@ -132,6 +136,45 @@ def delivered_job(job_id: str = "job-done-1") -> Job:
     )
 
 
+def rendered_inputs(**changes) -> RenderInputs:
+    """What delivered_job()'s clip was rendered from (the worker's report)."""
+    fields = {
+        "raw_sha256": "a" * 64,
+        "cut_in_s": 1.0,
+        "cut_out_s": 20.0,
+        "prova": "Suspensão",
+        "car_number": 7,
+        "passagem": 1,
+        "show_pass": True,
+        "team_name_style": NameStyle.SHORT,
+        "school_name_style": NameStyle.SHORT,
+        "overlay_team_name": "Equipe Ipê",
+        "overlay_school_name": None,
+        "overlay_theme_version": "7" * 64,
+        "reported_by_worker": True,
+    }
+    fields.update(changes)
+    return RenderInputs(**fields)
+
+
+def comparison(clip: RenderInputs, now: RenderInputs, *changed: RenderInputField, version=1):
+    """Job.clip_inputs as the orchestrator computes it."""
+    return ClipInputsComparison(version=version, clip=clip, now=now, changed=list(changed))
+
+
+def edited_after_delivery_job(job_id: str = "job-edited-1") -> Job:
+    """delivered_job() whose cut-in a reviewer moved from 1 s to 3 s after delivery
+    (LIVESTACK-43): the clip on air no longer matches the review."""
+    clip = rendered_inputs()
+    now = rendered_inputs(cut_in_s=3.0, overlay_theme_version=None, reported_by_worker=False)
+    return delivered_job(job_id).model_copy(
+        update={
+            "cut_in_s": 3.0,
+            "clip_inputs": comparison(clip, now, RenderInputField.CUT),
+        }
+    )
+
+
 def make_teams() -> dict[int, Team]:
     return {
         # clip_*: what the real orchestrator adds under the default name
@@ -170,6 +213,12 @@ def make_manifest() -> ManifestResponse:
         sha256="b" * 64,
         size_bytes=80_000_000,
         delivered_at=T0 + timedelta(minutes=20),
+        # Its passagem was changed to 2 after delivery (LIVESTACK-43).
+        clip_inputs=comparison(
+            rendered_inputs(),
+            rendered_inputs(passagem=2, overlay_theme_version=None),
+            RenderInputField.PASSAGEM,
+        ),
     )
     return ManifestResponse(clips=[newer, older], generated_at=T0 + timedelta(hours=1))
 

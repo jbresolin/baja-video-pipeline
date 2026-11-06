@@ -17,7 +17,9 @@ router = APIRouter()
 
 
 def _queue_context(request: Request, queue_filter: QueueFilter) -> dict:
-    all_items = orchestrator_for(request).review_queue(queue_filter.states)
+    all_items = orchestrator_for(request).review_queue(
+        queue_filter.states, outdated=queue_filter.outdated_only
+    )
     return {
         "items": apply_local_filters(all_items, queue_filter),
         # Prova choices come from the unfiltered list, so picking one prova
@@ -40,8 +42,9 @@ def queue_page(
     state: list[str] = Query(default_factory=list),
     prova: str | None = None,
     flagged: str | None = None,
+    outdated: str | None = None,
 ) -> HTMLResponse:
-    queue_filter = parse_queue_filter(state, prova, flagged)
+    queue_filter = parse_queue_filter(state, prova, flagged, outdated)
     context = _queue_context(request, queue_filter)
     context.update(
         active_nav="queue",
@@ -57,7 +60,8 @@ def queue_rows_partial(
     state: list[str] = Query(default_factory=list),
     prova: str | None = None,
     flagged: str | None = None,
+    outdated: str | None = None,
 ) -> HTMLResponse:
     """Only the rows, for the page's auto-refresh (same filters as the page)."""
-    queue_filter = parse_queue_filter(state, prova, flagged)
+    queue_filter = parse_queue_filter(state, prova, flagged, outdated)
     return render_page(request, "_queue_rows.html", _queue_context(request, queue_filter))

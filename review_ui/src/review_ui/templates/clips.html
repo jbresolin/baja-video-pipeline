@@ -51,9 +51,17 @@
       <tr><th>{{ t("clips.col.delivered") }}</th><th>{{ t("clips.col.prova") }}</th><th class="num">{{ t("clips.col.car") }}</th><th>{{ t("clips.col.team") }}</th><th class="num">{{ t("clips.col.pass") }}</th><th>{{ t("clips.col.studio_path") }}</th><th>{{ t("clips.col.download") }}</th></tr>
     </thead>
     <tbody>
-      {% for clip, path in rows %}
+      {% for clip, path, outdated in rows %}
       <tr>
-        <td>{{ m.time(clip.delivered_at) }}</td>
+        <td>{{ m.time(clip.delivered_at) }}
+          {# The clip no longer matches its review (LIVESTACK-43): the differences on expand. #}
+          {% if outdated %}
+          <details class="outdated" title="{{ outdated.differences|join(' ') }}">
+            <summary><span class="badge flag">{{ t("badge.outdated") }}</span></summary>
+            <ul>{% for difference in outdated.differences %}<li>{{ difference }}</li>{% endfor %}</ul>
+          </details>
+          {% endif %}
+        </td>
         <td>{{ clip.prova }}</td>
         <td class="num">{{ clip.car_number }}</td>
         {# As the clip names them (Settings: full or short names). #}

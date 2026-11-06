@@ -3,10 +3,10 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
+from review_ui.clip_inputs_view import outdated_clip
 from review_ui.event_log_view import EventLine, event_lines_newest_first
 from review_ui.job_view import (
-    ACTION_LABELS,
-    available_actions,
+    action_buttons,
     explain_status,
     frame_rate_for_stepping,
     intake_text,
@@ -72,6 +72,8 @@ def panel_context(job: Job, orchestrator: OrchestratorClient) -> dict:
     return {
         "job": job,
         "notes": explain_status(job, worker_names),
+        # The clip on air no longer matches the review (LIVESTACK-43), or None.
+        "outdated": outdated_clip(job.clip_inputs, job.state),
         # None means "could not load"; an empty list means "no events yet".
         "event_lines": event_lines_or_none(orchestrator, job.id, worker_names),
     }
@@ -88,7 +90,7 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
         intake=intake_text(job),
         frame_rate=frame_rate_for_stepping(job),
         media=media_panel(job),
-        actions=[(action.value, ACTION_LABELS[action]) for action in available_actions(job.state)],
+        actions=action_buttons(job.state),
         prova_choices=prova_choices(orchestrator, job),
         team=team_or_none(orchestrator, job),
         poll_seconds=JOB_PANEL_POLL_SECONDS,

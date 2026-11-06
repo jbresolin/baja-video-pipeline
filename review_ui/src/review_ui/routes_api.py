@@ -19,7 +19,7 @@ from pydantic import ValidationError
 
 from review_ui.catalog import text
 from review_ui.errors import UiRequestError
-from review_ui.job_view import describe_waiting_reason
+from review_ui.job_view import describe_waiting_reason, save_message
 from review_ui.request_context import orchestrator_for
 from review_ui.templating import media_url
 from shared.models import ReviewAction, ReviewUpdate
@@ -58,8 +58,17 @@ async def update_review(request: Request, job_id: str) -> JSONResponse:
     orchestrator = orchestrator_for(request)
     # The orchestrator call blocks, so it runs in a worker thread.
     job = await run_in_threadpool(orchestrator.update_review, job_id, update)
+    message = SUCCESS_MESSAGES[update.action]
+    if update.action == ReviewAction.SAVE:
+        message = save_message(job)
     return JSONResponse(
-        {"job": job.model_dump(mode="json"), "message": SUCCESS_MESSAGES[update.action]}
+        {
+            "job": job.model_dump(mode="json"),
+            "message": message,
+            # A save on a job with a clip reloads the page, so the warning
+            # about the clip on air (LIVESTACK-43) appears at once.
+            "refresh_page": update.action == ReviewAction.SAVE and job.clip_inputs is not None,
+        }
     )
 
 
