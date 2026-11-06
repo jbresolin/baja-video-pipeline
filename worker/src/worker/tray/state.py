@@ -7,11 +7,13 @@ the colour, the one-line pt-BR tooltip, which menu items to show, and
 
 Colours, most urgent first (the first rule that matches wins):
   grey    the service is not running (and nobody needs to act)
-  red     a problem the volunteer must act on: the service stopped by
-          itself, the server unreachable for over a minute, disk near the
-          storage cap, enrollment token refused
-  yellow  paused, or waiting: connection step not finished, waiting for
-          the enrollment token, the service still starting
+  red     a problem the volunteer must act on: worker.json broken, this
+          PC removed from the team (token revoked), the service stopped
+          by itself, the server unreachable for over a minute, disk near
+          the storage cap, enrollment token refused
+  yellow  paused, or waiting: connection step not finished, not on the
+          Baja tailnet, studio clip folder not chosen, waiting for the
+          enrollment token, the service still starting
   green   working: at least one task running
   blue    idle and connected
 """
@@ -50,6 +52,9 @@ class Toast(StrEnum):
     DISK_NEAR_CAP = "disk_near_cap"
     ENROLLMENT_REFUSED = "enrollment_refused"
     SERVICE_STOPPED_UNEXPECTEDLY = "service_stopped_unexpectedly"
+    CONFIG_PROBLEM = "config_problem"
+    IDENTITY_REJECTED = "identity_rejected"
+    NOT_ON_BAJA_TAILNET = "not_on_baja_tailnet"
 
 
 TOAST_TEXT = {
@@ -66,7 +71,22 @@ TOAST_TEXT = {
     Toast.SERVICE_STOPPED_UNEXPECTEDLY: (
         'O Baja Worker parou sozinho. Clique no ícone e escolha "Ligar o worker".'
     ),
+    Toast.CONFIG_PROBLEM: (
+        "O arquivo de configuração (worker.json) tem um erro. Clique no ícone e "
+        'escolha "Abrir painel" para ver onde.'
+    ),
+    Toast.IDENTITY_REJECTED: (
+        "O servidor não reconhece mais este PC. Peça um token novo à equipe Baja "
+        'e use "Registrar de novo" no menu do ícone.'
+    ),
+    Toast.NOT_ON_BAJA_TAILNET: (
+        "Esta máquina não está conectada à rede Baja. Clique no ícone e escolha "
+        '"Abrir painel" para ver o que fazer.'
+    ),
 }
+# Tailnet waits worth a notification. "Tailscale not answering" is normal
+# for the first seconds after a boot, so it only colours the icon.
+TOAST_TAILNET_KINDS = frozenset({"not_connected", "address_not_on_this_pc"})
 EXIT_BALLOON_TEXT = (
     "O ícone foi fechado, mas o Baja Worker continua funcionando. Ele volta "
     "no próximo login, ou pelo menu Iniciar."
@@ -83,6 +103,7 @@ class MenuState:
     stop: bool = False  # "Desligar o worker"
     start: bool = False  # "Ligar o worker"
     finish_connection: bool = False  # "Concluir conexão"
+    re_register: bool = False  # "Registrar de novo"
     exit_icon: bool = True  # "Sair do ícone"
 
 
@@ -122,6 +143,12 @@ def current_alerts(status: dict | None, service: ServiceState, stopped_by_us: bo
         alerts.add(Toast.DISK_NEAR_CAP)
     if status.get("enrollment_refused"):
         alerts.add(Toast.ENROLLMENT_REFUSED)
+    if status.get("config_problem"):
+        alerts.add(Toast.CONFIG_PROBLEM)
+    if status.get("identity_rejected"):
+        alerts.add(Toast.IDENTITY_REJECTED)
+    if (status.get("tailnet_problem") or {}).get("kind") in TOAST_TAILNET_KINDS:
+        alerts.add(Toast.NOT_ON_BAJA_TAILNET)
     return alerts
 
 
@@ -157,19 +184,30 @@ def view_for(
         pause=not paused,
         resume=paused,
         stop=True,
-        finish_connection=bool(status.get("connection_step_pending")),
+        finish_connection=bool(
+            status.get("connection_step_pending") or status.get("tailnet_problem")
+        ),
+        re_register=bool(status.get("can_re_register")),
     )
     return TrayView(*_colour_and_headline(status, paused), menu, alerts)
 
 
 def _colour_and_headline(status: dict, paused: bool) -> tuple[Colour, str]:
     unreachable_for = status.get("unreachable_for_s")
+    if status.get("config_problem"):
+        return Colour.RED, "erro no arquivo de configuração (worker.json)"
+    if status.get("identity_rejected"):
+        return Colour.RED, "este PC foi removido da equipe Baja"
     if status.get("enrollment_refused"):
         return Colour.RED, "token de inscrição recusado"
     if (status.get("storage") or {}).get("near_cap"):
         return Colour.RED, "disco quase cheio (limite de armazenamento)"
     if status.get("connection_step_pending"):
         return Colour.YELLOW, "conexão não concluída"
+    if status.get("tailnet_problem"):
+        return Colour.YELLOW, "não conectado à rede Baja"
+    if status.get("phase") == "studio_folder":
+        return Colour.YELLOW, "falta escolher a pasta dos clipes"
     if (
         status.get("enrolled")
         and unreachable_for is not None

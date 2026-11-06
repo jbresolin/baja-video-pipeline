@@ -102,3 +102,29 @@ def test_studio_heartbeat_has_receiver_port_and_no_raws(tmp_path):
     [sent] = harness.orchestrator.heartbeats
     assert sent.receiver_port == 8720 and sent.file_server_port is None
     assert sent.held_job_ids == []
+
+
+def test_a_refused_token_marks_the_identity_rejected_until_a_beat_succeeds(harness):
+    # An admin revoked this worker: the orchestrator answers 401 to its
+    # bearer token. The status page and the tray then offer "Registrar de
+    # novo" (LIVESTACK-41 item 2). We simulate it by making the worker send
+    # a token the fake orchestrator does not know.
+    good_token = harness.env.api.bearer_token
+    harness.env.api.bearer_token = "a-token-the-server-revoked"
+
+    assert harness.heartbeater.beat_once() is None
+    assert harness.status.facts().identity_rejected is True
+
+    # A plain network error is not a revocation, and a later good beat
+    # clears the flag (e.g. the admin's revoke was a mistake and got undone).
+    harness.env.api.bearer_token = good_token
+    harness.heartbeater.beat_once()
+    assert harness.status.facts().identity_rejected is False
+
+
+def test_a_server_error_is_not_mistaken_for_a_revocation(harness):
+    harness.orchestrator.heartbeats_to_fail = 1  # 503
+
+    harness.heartbeater.beat_once()
+
+    assert harness.status.facts().identity_rejected is False

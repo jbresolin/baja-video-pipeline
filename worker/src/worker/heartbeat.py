@@ -29,6 +29,9 @@ from worker.tasks.environment import MeasurementLog
 
 logger = logging.getLogger(__name__)
 
+# What the orchestrator answers to a bearer token it does not accept.
+UNAUTHENTICATED_STATUS = 401
+
 
 class Heartbeater:
     def __init__(
@@ -122,10 +125,16 @@ class Heartbeater:
                 self._status.set("orchestrator", f"unreachable: {error}")
             self._status.set("last error", str(error))
             self._status.record_unreachable(str(error))
+            if isinstance(error, ApiError) and error.status_code == UNAUTHENTICATED_STATUS:
+                # Our bearer token is refused: an admin revoked this worker
+                # (design §21). Only "Registrar de novo" gets it working again,
+                # so the status page and the tray offer exactly that.
+                self._status.set_identity_rejected(True)
             logger.warning("heartbeat failed: %s", error)
             return None
 
         self._status.record_contact()
+        self._status.set_identity_rejected(False)
         self._status.set_now("last heartbeat")
         self._status.set("orchestrator", "connected")
         self.interval_seconds = (

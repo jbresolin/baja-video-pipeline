@@ -209,3 +209,50 @@ def test_stopping_the_service_on_purpose_raises_no_notification():
     tracker.new_toasts(running(status_document()))
     stopped = view_for(None, ServiceState.STOPPED, stopped_by_us=True, was_running=True)
     assert tracker.new_toasts(stopped) == []
+
+
+# --- LIVESTACK-41: broken worker.json, revoked, tailnet, studio folder ------
+
+
+def test_a_broken_worker_json_is_red_and_notifies():
+    problem = {"file": "C:\\BajaWorker\\worker.json", "message": "…", "hint": "…", "line": 3}
+    view = running(status_document(enrolled=False, config_problem=problem))
+    assert view.colour == Colour.RED
+    assert view.tooltip == "Baja Worker: erro no arquivo de configuração (worker.json)"
+    assert Toast.CONFIG_PROBLEM in view.alerts
+
+
+def test_a_revoked_worker_is_red_and_offers_registrar_de_novo():
+    view = running(status_document(identity_rejected=True, can_re_register=True))
+    assert view.colour == Colour.RED
+    assert view.tooltip == "Baja Worker: este PC foi removido da equipe Baja"
+    assert view.menu.re_register
+    assert Toast.IDENTITY_REJECTED in view.alerts
+
+
+def test_waiting_for_the_tailnet_is_yellow_and_offers_both_fixes():
+    problem = {"kind": "not_connected", "saved_address": "100.64.0.9", "current_address": None}
+    view = running(status_document(tailnet_problem=problem, can_re_register=True))
+    assert view.colour == Colour.YELLOW
+    assert view.tooltip == "Baja Worker: não conectado à rede Baja"
+    assert view.menu.finish_connection and view.menu.re_register
+    assert Toast.NOT_ON_BAJA_TAILNET in view.alerts
+
+
+def test_tailscale_still_starting_after_a_boot_colours_but_does_not_notify():
+    # The first seconds after a boot are normal: no notification for them.
+    problem = {"kind": "tailscale_not_answering", "saved_address": "100.64.0.9"}
+    view = running(status_document(tailnet_problem=problem))
+    assert view.colour == Colour.YELLOW
+    assert Toast.NOT_ON_BAJA_TAILNET not in view.alerts
+
+
+def test_a_studio_without_its_clip_folder_is_yellow():
+    view = running(status_document(phase="studio_folder"))
+    assert view.colour == Colour.YELLOW
+    assert view.tooltip == "Baja Worker: falta escolher a pasta dos clipes"
+
+
+def test_registrar_de_novo_is_not_offered_before_enrollment():
+    view = running(status_document(enrolled=False, can_re_register=False))
+    assert not view.menu.re_register

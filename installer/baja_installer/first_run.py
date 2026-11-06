@@ -26,7 +26,14 @@ from pathlib import Path
 
 from baja_installer.tailscale_cli import TailscaleCli, TailscaleStatus
 from shared.models import WorkerRole
-from worker.config import DEFAULT_ORCHESTRATOR_URL, WorkerConfig, load_config, save_config
+from worker.config import (
+    DEFAULT_ORCHESTRATOR_URL,
+    WorkerConfig,
+    config_without_identity,
+    load_config,
+    save_config,
+)
+from worker.config_problems import read_config
 from worker.enrollment import TAILSCALE_AUTH_KEY_FILE_NAME
 
 EXIT_JOINED = 0
@@ -61,19 +68,6 @@ def config_after_join(config: WorkerConfig, status: TailscaleStatus) -> WorkerCo
     return config.model_copy(update=updates)
 
 
-def config_without_enrollment(config: WorkerConfig) -> WorkerConfig:
-    """Forget the identity so the setup page asks for a new token."""
-    return config.model_copy(
-        update={
-            "worker_id": None,
-            "bearer_token": None,
-            "role": None,
-            "tailnet_base_url": None,
-            "enrollment_token": None,
-        }
-    )
-
-
 @dataclass
 class FirstRunEnvironment:
     """Everything the flow touches outside worker.json; tests pass fakes."""
@@ -104,14 +98,27 @@ def run_first_run(env: FirstRunEnvironment) -> int:
 def wait_for_enrollment(env: FirstRunEnvironment) -> WorkerConfig:
     """Block until worker.json says "enrolled". Closing the window stops it."""
     told_the_volunteer = False
+    told_about_a_problem = None
     while True:
-        config = load_config(env.config_path)
+        reading = read_config(env.config_path)
+        config = reading.config
+        if reading.problem is not None:
+            # A hand-edited worker.json that does not parse: the page says where.
+            if reading.problem.message != told_about_a_problem:
+                env.say(
+                    f"O arquivo worker.json tem um erro: {reading.problem.message} "
+                    "Veja os detalhes em http://localhost:8700."
+                )
+                told_about_a_problem = reading.problem.message
+            env.sleep(env.poll_seconds)
+            continue
+        assert config is not None
         if config.is_enrolled:
             return config
         if not told_the_volunteer:
             env.say(
                 "Aguardando: cole o token de inscrição na página de configuração "
-                'e clique em "Save and connect". Pode deixar esta janela aberta.'
+                'e clique em "Salvar e conectar". Pode deixar esta janela aberta.'
             )
             told_the_volunteer = True
         env.sleep(env.poll_seconds)
@@ -174,7 +181,7 @@ def report_join_failure(env: FirstRunEnvironment, config: WorkerConfig, detail: 
         env.say(f"Detalhe: {detail.strip()}")
     env.say("A chave de acesso só vale uma vez, então é preciso um novo token de inscrição.")
     if env.ask_yes_no("Apagar o registro deste PC para usar um novo token?"):
-        save_config(env.config_path, config_without_enrollment(load_config(env.config_path)))
+        save_config(env.config_path, config_without_identity(load_config(env.config_path)))
         env.restart_service()
         env.say("Registro apagado. Peça um novo token à equipe Baja e rode isto de novo.")
     return EXIT_JOIN_FAILED
