@@ -32,7 +32,7 @@ def database_at_schema_7(data_dir):
     connection.execute(
         "INSERT INTO workers (id, name, role, capabilities_json, bearer_token_sha256,"
         " storage_cap_bytes, enrolled_at, paused) VALUES ('w-1', 'desktop', 'master',"
-        " '{\"has_nvenc\": true, \"video_encoder\": \"h264_nvenc\"}', ?, 1, ?, 1)",
+        ' \'{"has_nvenc": true, "video_encoder": "h264_nvenc"}\', ?, 1, ?, 1)',
         ("b" * 64, WHEN),
     )
     connection.commit()
