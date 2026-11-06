@@ -37,6 +37,8 @@ from shared.upload_receiver import (
 MAX_PROXY_BYTES = 1_000_000_000
 MAX_CLIP_BYTES = 4_000_000_000
 MAX_THUMBNAIL_BYTES = 5_000_000
+# An original is the raw: WhatsApp documents stop at ~2 GB.
+MAX_ORIGINAL_BYTES = 4_000_000_000
 JPEG_MAGIC = b"\xff\xd8\xff"
 
 
@@ -242,4 +244,44 @@ def accept_clip_chunk(
         )
 
     _finish_under_lease(context, worker_row, job_id, lease_id, TaskKind.PROCESS, clip_is_in_outbox)
+    return accepted
+
+
+def accept_original_chunk(
+    context: OrchestratorContext,
+    worker_row: sqlite3.Row,
+    job_id: str,
+    lease_id: str,
+    headers: Mapping[str, str],
+    chunk: bytes,
+) -> ChunkAccepted:
+    """POST /jobs/{id}/original-upload (item 15): a holder sends the raw for a reviewer.
+
+    Same chunk protocol as clips; the bytes go to originals/<job_id>.<ext>
+    and must hash to the job's sha256 (the raw itself). The job's state
+    never changes; the completing chunk ends the upload_original lease.
+    """
+    upload = parse_upload_headers(headers)
+    job_row = _check_lease(context, worker_row, job_id, lease_id, TaskKind.UPLOAD_ORIGINAL)
+    if upload.sha256 != job_row["sha256"]:
+        raise ApiError(422, ErrorCode.HASH_MISMATCH, "that is not this job's raw")
+    path = context.layout.original_path(job_id, job_row["raw_extension"])
+    accepted = _receive_chunk(context, path, MAX_ORIGINAL_BYTES, upload, chunk)
+    if not accepted.complete:
+        return accepted
+
+    def original_is_on_the_vps(connection: sqlite3.Connection, job_row: sqlite3.Row) -> None:
+        events_repo.record_event(
+            connection,
+            context.clock.now(),
+            actor=events_repo.worker_actor(worker_row["id"]),
+            kind="original_uploaded",
+            job_id=job_id,
+            worker_id=worker_row["id"],
+            reason="the original is ready for download",
+        )
+
+    _finish_under_lease(
+        context, worker_row, job_id, lease_id, TaskKind.UPLOAD_ORIGINAL, original_is_on_the_vps
+    )
     return accepted

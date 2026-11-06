@@ -67,6 +67,7 @@ from shared.models.api_operations import (
     UpdateWorkerRequest,
 )
 from shared.models.api_review import (
+    OriginalDownload,
     RegenerateProxyResponse,
     ReviewQueueFilter,
     ReviewQueueResponse,
@@ -105,6 +106,7 @@ from shared.models.enums import (
     LeaseHeartbeatStatus,
     MeasurementKind,
     NameStyle,
+    OriginalState,
     ReceivedAs,
     ReviewAction,
     SecretState,
@@ -137,10 +139,14 @@ from shared.models.tasks import (
     NextTaskResponse,
     ProcessTask,
     Task,
+    UploadOriginalTask,
 )
 from shared.models.worker import EnrollmentToken, Worker, WorkerCapabilities, WorkerStats
 
 __all__ = [
+    "OriginalDownload",
+    "OriginalState",
+    "UploadOriginalTask",
     "AdminArea",
     "AdminSettings",
     "ArchiveClipTask",

@@ -71,6 +71,10 @@ TEXT: dict[str, str] = {
     "job.no_actions": "Nenhuma ação de revisão neste estado.",
     "job.download_clip": "Baixar clipe",
     "job.download_clip.title": "O clipe como está na caixa de saída do servidor",
+    "job.download_original": "Baixar original",
+    "job.download_original.title": (
+        "O vídeo como chegou pelo WhatsApp, em qualidade total (o proxy é só 480p)"
+    ),
     "job.rerender_proxy": "Renderizar o proxy de novo",
     "job.rerender_proxy.title": "Pedir a um worker com o original que renderize o proxy de novo",
     # --- Job page: where the raw came from (intake_text) ---
@@ -128,11 +132,13 @@ TEXT: dict[str, str] = {
     "task.doing.process": "renderizando o clipe",
     "task.doing.deliver": "entregando o clipe ao estúdio",
     "task.doing.archive_clip": "arquivando o clipe",
+    "task.doing.upload_original": "enviando o original para download",
     "task.verb.download_raw": "baixar o original",
     "task.verb.make_proxy": "renderizar o proxy",
     "task.verb.process": "renderizar o clipe",
     "task.verb.deliver": "entregar o clipe ao estúdio",
     "task.verb.archive_clip": "arquivar o clipe",
+    "task.verb.upload_original": "enviar o original para download",
     # --- File details under the player (media_info_view.py) ---
     "media.title": "Detalhes do arquivo",
     "media.location_present": "tinha localização",

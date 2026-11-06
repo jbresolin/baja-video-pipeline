@@ -46,6 +46,14 @@
   <input id="outbox_keep_unarchived_hours" name="outbox_keep_unarchived_hours" type="number" step="1" min="0" max="720"
          value="{{ '%g'|format(values.outbox_keep_unarchived_hours) }}" required>
   <p class="hint">{{ t("settings.outbox_keep.hint") }}</p>
+  {# "Baixar original" on the job page (LIVESTACK-41 item 15). #}
+  <label for="originals_keep_hours">{{ t("settings.originals_keep") }}</label>
+  <input id="originals_keep_hours" name="originals_keep_hours" type="number" step="1" min="0" max="720"
+         value="{{ '%g'|format(values.originals_keep_hours) }}" required>
+  <label for="originals_cap_gb">{{ t("settings.originals_cap") }}</label>
+  <input id="originals_cap_gb" name="originals_cap_gb" type="number" step="1" min="0"
+         value="{{ '%g'|format(values.originals_cap_gb) }}" required>
+  <p class="hint">{{ t("settings.originals.hint") }}</p>
   <label for="installer_download_url">{{ t("settings.installer_url") }}</label>
   <input id="installer_download_url" name="installer_download_url" type="url" maxlength="500"
          value="{{ values.installer_download_url }}" placeholder="https://github.com/…/releases/…">

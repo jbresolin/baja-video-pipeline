@@ -221,3 +221,26 @@ def list_outbox_deliver_candidates(connection: sqlite3.Connection) -> list[sqlit
         "SELECT * FROM jobs WHERE state = 'uploaded' AND clip_route = 'outbox'"
         " ORDER BY updated_at, id"
     ).fetchall()
+
+
+def list_original_request_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Jobs a reviewer asked the original of ("Baixar original"), oldest request first."""
+    return connection.execute(
+        "SELECT * FROM jobs WHERE original_requested_at IS NOT NULL"
+        " ORDER BY original_requested_at, id"
+    ).fetchall()
+
+
+def set_original_requested_at(
+    connection: sqlite3.Connection, job_id: str, when: datetime | None
+) -> None:
+    """Remember (or forget, with None) a reviewer's "Baixar original".
+
+    Not through update_job: asking for a download is not a change to the
+    job, so updated_at stays (the job page would otherwise think someone
+    edited it).
+    """
+    connection.execute(
+        "UPDATE jobs SET original_requested_at = ? WHERE id = ?",
+        (to_db_time(when) if when is not None else None, job_id),
+    )

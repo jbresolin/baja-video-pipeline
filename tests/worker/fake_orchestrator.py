@@ -74,6 +74,9 @@ class FakeOrchestrator:
         self.accepting_new_raws = True
         self.deletable_job_ids: list[str] = []
         self.heartbeats_to_fail = 0
+        # Task kinds this "orchestrator" is too old to know: a /next naming
+        # one is refused with 400 validation_error, like a real older one.
+        self.unknown_task_kinds: set[str] = set()
         self.delivered_calls_to_fail = 0
         # (status, code) to refuse every /delivered with, e.g. (409, "illegal_transition").
         self.delivered_refusal: tuple[int, str] | None = None
@@ -139,6 +142,11 @@ class FakeOrchestrator:
             Route("/jobs/{job_id}/media-info", self._media_info, methods=["PUT"]),
             Route("/jobs/{job_id}/proxy", self._chunk_endpoint("proxies"), methods=["POST"]),
             Route("/jobs/{job_id}/clip", self._chunk_endpoint("outbox"), methods=["POST"]),
+            Route(
+                "/jobs/{job_id}/original-upload",
+                self._chunk_endpoint("originals"),
+                methods=["POST"],
+            ),
             Route("/jobs/{job_id}/failed", self._failed, methods=["POST"]),
             Route("/jobs/{job_id}/delivered", self._delivered, methods=["POST"]),
             Route("/jobs/{job_id}/clip-archived", self._clip_archived, methods=["POST"]),
@@ -204,7 +212,10 @@ class FakeOrchestrator:
         return JSONResponse(answer.model_dump(mode="json", exclude_none=True))
 
     async def _next(self, request: Request) -> Response:
-        body = NextTaskRequest.model_validate(await request.json())
+        raw_body = await request.json()
+        if self.unknown_task_kinds & set(raw_body.get("accept_kinds", [])):
+            return error(400, "validation_error")
+        body = NextTaskRequest.model_validate(raw_body)
         self.next_requests.append(body)
         task = next((t for t in self.offers if t.kind in body.accept_kinds), None)
         answer = NextTaskResponse(task=task, retry_after_s=1)

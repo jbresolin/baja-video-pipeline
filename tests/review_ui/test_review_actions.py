@@ -190,3 +190,28 @@ def test_request_proxy_relays_to_regenerate_proxy(ui, fake_orchestrator):
     assert len(fake_orchestrator.requests_to("POST", "/jobs/job-awaiting-1/regenerate-proxy")) == 1
     # The orchestrator's waiting reason comes back for the page to show.
     assert response.json()["waiting_reason"] == "no holder is online"
+
+
+def test_baixar_original_relays_and_gives_the_browser_the_link(ui, fake_orchestrator):
+    # LIVESTACK-41 item 15: the job page's button asks the orchestrator; the
+    # link goes through media_url like proxies (absolute when the UI knows
+    # its public base URL, else the same-site path, as in this test setup).
+    response = ui.post("/review/api/jobs/job-awaiting-1/original", json={})
+
+    assert response.status_code == 200
+    assert len(fake_orchestrator.requests_to("POST", "/jobs/job-awaiting-1/original")) == 1
+    answer = response.json()
+    assert answer["state"] == "ready"
+    assert answer["download_url"] == f"/original-downloads/job-awaiting-1/{answer['file_name']}"
+
+
+def test_baixar_original_needs_a_json_body(ui):
+    # Same CSRF rule as every other action: a plain form cannot trigger it.
+    response = ui.post("/review/api/jobs/job-awaiting-1/original", data={"x": "1"})
+    assert response.status_code == 415
+
+
+def test_the_page_polls_the_original_status_without_side_effects(ui, fake_orchestrator):
+    response = ui.get("/review/api/jobs/job-awaiting-1/original")
+    assert response.json()["state"] == "preparing"
+    assert fake_orchestrator.requests_to("POST", "/jobs/job-awaiting-1/original") == []

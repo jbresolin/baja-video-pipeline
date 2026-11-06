@@ -25,6 +25,7 @@ from orchestrator.domain.fleet_snapshot import (
     on_shared_tailnet,
     peer_raw_url,
 )
+from orchestrator.domain.originals import evaluate_upload_original
 from orchestrator.domain.task_decision import TaskDecision, refuse
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.storage import VpsLayout
@@ -77,6 +78,8 @@ def evaluate_task(
         return refuse(ErrorCode.NOT_CLAIMABLE, f"this worker already failed {kind} on this job")
     if kind == TaskKind.DOWNLOAD_RAW:
         return _evaluate_download(connection, layout, snapshot, job_row, worker_row)
+    if kind == TaskKind.UPLOAD_ORIGINAL:
+        return evaluate_upload_original(connection, layout, snapshot, job_row, worker_row)
 
     # make_proxy and process are for confirmed holders only (reprocess included).
     holders = {h.worker_id: h for h in leases_repo.list_holders(connection, job_row["id"])}

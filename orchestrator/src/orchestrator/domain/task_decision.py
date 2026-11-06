@@ -9,14 +9,21 @@ from shared.models import (
     ErrorCode,
     MakeProxyTask,
     ProcessTask,
+    UploadOriginalTask,
 )
 
 
 @dataclass(frozen=True)
 class TaskDecision:
-    task: DownloadRawTask | MakeProxyTask | ProcessTask | DeliverTask | ArchiveClipTask | None = (
-        None
-    )
+    task: (
+        DownloadRawTask
+        | MakeProxyTask
+        | ProcessTask
+        | DeliverTask
+        | ArchiveClipTask
+        | UploadOriginalTask
+        | None
+    ) = None
     refusal: ErrorCode | None = None
     reason: str = ""
 

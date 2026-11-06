@@ -13,7 +13,7 @@ from orchestrator.api.auth import (
     require_worker,
 )
 from orchestrator.context import OrchestratorContext
-from orchestrator.domain import delivery, event_log, fleet, review, review_queue
+from orchestrator.domain import delivery, event_log, fleet, originals, review, review_queue
 from shared.models import (
     EventsResponse,
     FleetResponse,
@@ -21,6 +21,7 @@ from shared.models import (
     JobState,
     JobStateResponse,
     ManifestResponse,
+    OriginalDownload,
     OutboxAckRequest,
     RegenerateProxyResponse,
     ReviewQueueResponse,
@@ -77,6 +78,26 @@ def regenerate_proxy(
     context: OrchestratorContext = Depends(get_context),
 ) -> RegenerateProxyResponse:
     return review_queue.regenerate_proxy(context, reviewer, job_id)
+
+
+@router.get("/jobs/{job_id}/original", tags=["review"], response_model=OriginalDownload)
+def get_original(
+    job_id: str,
+    reviewer: str = Depends(require_reviewer),
+    context: OrchestratorContext = Depends(get_context),
+) -> OriginalDownload:
+    """Where "Baixar original" stands (LIVESTACK-41 item 15); no side effects."""
+    return originals.get_original(context, job_id)
+
+
+@router.post("/jobs/{job_id}/original", tags=["review"], response_model=OriginalDownload)
+def request_original(
+    job_id: str,
+    reviewer: str = Depends(require_reviewer),
+    context: OrchestratorContext = Depends(get_context),
+) -> OriginalDownload:
+    """ "Baixar original": ready at once while the inbox has the raw, else a holder uploads it."""
+    return originals.request_original(context, job_id, reviewer)
 
 
 @router.get(

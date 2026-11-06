@@ -132,9 +132,32 @@ class ArchiveClipTask(ApiModel):
     download_urls: list[str] = Field(default_factory=list)
 
 
+class UploadOriginalTask(ApiModel):
+    """A holder sends the raw to the VPS for a reviewer (LIVESTACK-41 item 15).
+
+    The 480p proxy is too small to read a car number or judge a close
+    finish, so the job page can ask for the original. The VPS no longer has
+    it (it is transit only), so a holder uploads it, chunked and resumable
+    like a clip, to `upload_url`; the VPS keeps it in originals/ for a day.
+    The upload ends the lease. Never counts as a holder.
+    """
+
+    kind: Literal[TaskKind.UPLOAD_ORIGINAL] = TaskKind.UPLOAD_ORIGINAL
+    job_id: str
+    raw_sha256: Sha256Hex
+    size_bytes: ByteCount
+    # POST chunks here (Lease-Id header), like POST /jobs/{id}/clip.
+    upload_url: str
+
+
 # "Any one of the task models", picked by looking at the `kind` field.
 Task = Annotated[
-    DownloadRawTask | MakeProxyTask | ProcessTask | DeliverTask | ArchiveClipTask,
+    DownloadRawTask
+    | MakeProxyTask
+    | ProcessTask
+    | DeliverTask
+    | ArchiveClipTask
+    | UploadOriginalTask,
     Field(discriminator="kind"),
 ]
 

@@ -2,10 +2,11 @@
 
 The VPS database was created and migrated by main's code: migrations
 0001-0004 (the last two are LIVESTACK-37's admin page and results API).
-LIVESTACK-38 added 0005-0007 (later branches add more: LIVESTACK-42's 0008
-is test_migration_0008.py, LIVESTACK-41's 0009 test_migration_upgrade_0009.py). These tests build a database
-exactly as main left it then, put typical rows in it, then open it with
-this code, which applies the new migrations at startup, and check that:
+LIVESTACK-38 added 0005-0007; later branches add more (LIVESTACK-42's 0008
+is tested in test_migration_0008.py, LIVESTACK-41's 0009 in
+test_migration_upgrade_0009.py). These tests build a database exactly as
+main left it then, put typical rows in it, then open it with this code,
+which applies the new migrations at startup, and check that:
 
 * only 0005 and later run, in order, and the version becomes the newest;
 * every existing row survives, and the new columns get the values the

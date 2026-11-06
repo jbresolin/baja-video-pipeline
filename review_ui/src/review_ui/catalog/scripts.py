@@ -32,6 +32,13 @@ TEXT: dict[str, str] = {
     ),
     "script.proxy_requested_waiting": "Proxy pedido. {reason}",
     "script.saved_version": "{message} (v{version})",
+    "script.original.preparing": (
+        "Preparando o original… um PC da equipe está enviando ao servidor."
+    ),
+    "script.original.ready": "Original pronto:",
+    "script.original.no_holder": (
+        "Nenhum PC que guarda o original está ligado agora. Tente de novo mais tarde."
+    ),
     "script.confirm_discard": "Descartar este vídeo? Dá para restaurar em “Descartados”.",
     "script.version_conflict": (
         "Outra pessoa alterou este vídeo; a página foi recarregada com a versão dela."

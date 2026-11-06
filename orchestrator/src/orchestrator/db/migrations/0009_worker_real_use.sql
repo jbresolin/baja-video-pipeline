@@ -16,3 +16,9 @@ ALTER TABLE workers ADD COLUMN shared_tailnet INTEGER NOT NULL DEFAULT 0;
 -- from before: workers then keep "<job_id>.<ext>". The VPS inbox always
 -- keeps "<job_id>.<ext>".
 ALTER TABLE jobs ADD COLUMN raw_file_name TEXT;
+
+-- Item 15: "Baixar original" on the job page. When a reviewer last asked
+-- for the original (NULL = never). While that is within the Settings
+-- value originals_keep_hours, a holder is offered upload_original until
+-- originals/<job_id>.<ext> exists; after it, the sweeper deletes the copy.
+ALTER TABLE jobs ADD COLUMN original_requested_at TEXT;

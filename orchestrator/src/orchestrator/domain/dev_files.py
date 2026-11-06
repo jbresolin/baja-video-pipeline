@@ -14,7 +14,7 @@ the same paths itself, with the same rules. These functions only decide
 
 import re
 import sqlite3
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from orchestrator.context import OrchestratorContext
 from orchestrator.domain.file_access import authorize_file_request
@@ -55,6 +55,14 @@ def review_media_path(context: OrchestratorContext, folder: str, file_name: str)
     if not pattern.match(file_name):
         raise not_found("file")
     return _existing_file(folder_path / file_name)
+
+
+def original_path(context: OrchestratorContext, job_id: str, file_name: str) -> Path:
+    """originals/<job_id><ext of file_name>, or raise 404 (item 15)."""
+    extension = PurePosixPath(file_name).suffix.lower()
+    if not re.fullmatch(r"[0-9a-f]{32}", job_id) or not re.fullmatch(r"\.[a-z0-9]{1,5}", extension):
+        raise not_found("file")
+    return _existing_file(context.layout.original_path(job_id, extension))
 
 
 def _existing_file(path: Path) -> Path:

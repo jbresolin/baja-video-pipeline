@@ -36,6 +36,10 @@ REQUIRED_ENDPOINTS = {
     ("post", "/jobs/{job_id}/clip"),
     ("post", "/jobs/{job_id}/delivered"),
     ("post", "/jobs/{job_id}/clip-archived"),
+    # "Baixar original" (LIVESTACK-41 item 15).
+    ("get", "/jobs/{job_id}/original"),
+    ("post", "/jobs/{job_id}/original"),
+    ("post", "/jobs/{job_id}/original-upload"),
     # Review
     ("get", "/review/queue"),
     ("get", "/jobs/{job_id}"),

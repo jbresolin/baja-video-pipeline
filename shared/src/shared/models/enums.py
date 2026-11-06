@@ -65,6 +65,22 @@ class TaskKind(StrEnum):
     # Master only: copy a finished clip (any version) into its archive
     # folder, from the worker that rendered it or the VPS outbox.
     ARCHIVE_CLIP = "archive_clip"
+    # A holder uploads the raw to the VPS's originals/ folder because a
+    # reviewer asked for the original on the job page (LIVESTACK-41 item 15).
+    UPLOAD_ORIGINAL = "upload_original"
+
+
+class OriginalState(StrEnum):
+    """Where a reviewer's "Baixar original" stands (GET/POST /jobs/{id}/original)."""
+
+    # Nobody asked yet (or the copy expired): the button only asks.
+    NOT_REQUESTED = "not_requested"
+    # Asked; a holder is online and was offered the upload.
+    PREPARING = "preparing"
+    # On the VPS: download_url works now.
+    READY = "ready"
+    # Asked, but no worker that holds the raw is online right now.
+    NO_HOLDER_ONLINE = "no_holder_online"
 
 
 class HolderStatus(StrEnum):

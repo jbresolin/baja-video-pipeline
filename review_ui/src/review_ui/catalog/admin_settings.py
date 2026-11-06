@@ -142,6 +142,13 @@ TEXT: dict[str, str] = {
         "os próximos descartes; quem já foi descartado mantém o prazo que tinha."
     ),
     "settings.outbox_keep": ("Guardar na caixa de saída, esperando o arquivo do mestre (horas)"),
+    "settings.originals_keep": "Guardar os originais baixados pelos revisores (horas)",
+    "settings.originals_cap": "Espaço máximo dos originais baixados (GB)",
+    "settings.originals.hint": (
+        "Quando um revisor pede o original de um vídeo, o servidor guarda uma cópia "
+        "temporária. Ela é apagada esse tempo depois do último pedido, ou antes, a mais "
+        "antiga primeiro, se a pasta passar do espaço máximo ou o disco ficar cheio."
+    ),
     "settings.outbox_keep.hint": (
         "Depois que o estúdio recebeu o clipe, a cópia do servidor espera o mestre arquivá-lo "
         "por no máximo esse tempo (para o caso de o mestre estar desligado)."

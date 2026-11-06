@@ -246,3 +246,10 @@ def test_status_panel_fragment_has_strip_and_log_with_current_version(ui, fake_o
     assert 'id="event-log"' in response.text
     # The page compares this version with its own to notice changes by others.
     assert 'data-version="3"' in response.text
+
+
+def test_the_job_page_offers_baixar_original(ui):
+    # LIVESTACK-41 item 15: for when the 480p proxy is not enough.
+    html = ui.get("/review/jobs/job-awaiting-1").text
+    assert "data-original" in html and "Baixar original" in html
+    assert 'id="original-status"' in html

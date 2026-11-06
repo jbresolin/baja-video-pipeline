@@ -7,6 +7,7 @@ docs/api.md describes:
     GET   /jobs/{job_id}
     PATCH /jobs/{job_id}/review          (expected_version, actions, 409/422)
     POST  /jobs/{job_id}/regenerate-proxy
+    GET   /jobs/{job_id}/original, POST /jobs/{job_id}/original
     GET   /teams/{car_number}
     GET   /manifest
     GET   /fleet
@@ -256,6 +257,23 @@ def build_app(fake: FakeOrchestrator) -> FastAPI:
         if job_id not in fake.jobs:
             return _error(404, "not_found", f"no job {job_id}")
         return {"job_id": job_id, "queued": True, "waiting_reason": "no holder is online"}
+
+    @app.post("/jobs/{job_id}/original")
+    def request_original(job_id: str):
+        if job_id not in fake.jobs:
+            return _error(404, "not_found", f"no job {job_id}")
+        name = f"voluntario-20261025-090000-{job_id[:8]}.mp4"
+        return {
+            "state": "ready",
+            "download_url": f"/original-downloads/{job_id}/{name}",
+            "file_name": name,
+            "size_bytes": 10,
+            "expires_at": "2026-10-26T12:00:00Z",
+        }
+
+    @app.get("/jobs/{job_id}/original")
+    def original_status(job_id: str):
+        return {"state": "preparing"}
 
     @app.get("/teams/{car_number}")
     def get_team(car_number: int):

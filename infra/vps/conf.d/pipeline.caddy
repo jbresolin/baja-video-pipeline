@@ -97,6 +97,24 @@ ${PIPELINE_DOMAIN} {
 		}
 	}
 
+	# Originals a reviewer asked for on the job page ("Baixar original",
+	# LIVESTACK-41 item 15): /original-downloads/<job_id>/<readable raw name>
+	# -> originals/<job_id>.<ext>, the extension taken from the name. Same
+	# sign-in check as proxies; saved under the readable name (item 12).
+	handle_path /original-downloads/* {
+		header Cache-Control "private, no-store"
+		header Content-Disposition "attachment; filename=\"{http.request.orig_uri.path.file}\""
+		forward_auth bvp-orchestrator:8000 {
+			uri /auth/media
+		}
+		@bvp_named_original path_regexp bvp_named_original ^/([0-9a-f]{32})/[A-Za-z0-9._-]*(\.[a-z0-9]{1,5})$
+		rewrite @bvp_named_original /{re.bvp_named_original.1}{re.bvp_named_original.2}
+		root * ${CADDY_PIPELINE_DIR}/originals
+		file_server {
+			hide .* *.part *.part.json
+		}
+	}
+
 	# Review UI: its own service (design §16), with its own login page. It
 	# turns the bvp_session cookie into a bearer token for the orchestrator,
 	# which checks it on every call (docs/api.md §2). X-Forwarded-For (set

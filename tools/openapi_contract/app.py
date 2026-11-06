@@ -19,7 +19,9 @@ from tools.openapi_contract import (
 # worker's paused flag (first real video, LIVESTACK-38).
 # 2.2.0: worker display name and host name, "Tornar master" with the role in
 # heartbeats, the clip name choices (admin polish from real use, LIVESTACK-42).
-CONTRACT_VERSION = "2.2.0"
+# 2.3.0: shared_tailnet, readable file names, "Baixar original" with the
+# upload_original task and the originals settings (LIVESTACK-41).
+CONTRACT_VERSION = "2.3.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

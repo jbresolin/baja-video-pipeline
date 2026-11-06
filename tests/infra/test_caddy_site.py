@@ -92,6 +92,22 @@ def test_a_clip_download_is_named_after_the_readable_part_of_its_address():
     assert downloads.index("forward_auth") < downloads.index("rewrite")
 
 
+def test_originals_are_served_like_clip_downloads_with_their_readable_name():
+    # LIVESTACK-41 item 15: /original-downloads/<job_id>/<readable raw name>
+    # serves originals/<job_id>.<ext> to a signed-in browser only.
+    originals = block(site_text(), "handle_path /original-downloads/*")
+    assert re.search(r"forward_auth bvp-orchestrator:8000 \{\s*uri /auth/media\s*\}", originals)
+    assert originals.index("forward_auth") < originals.index("file_server")
+    assert "/originals" in originals
+    # The extension comes from the name; the job id must be 32 hex.
+    assert "^/([0-9a-f]{32})/[A-Za-z0-9._-]*(\\.[a-z0-9]{1,5})$" in originals
+    assert "rewrite @bvp_named_original /{re.bvp_named_original.1}{re.bvp_named_original.2}" in (
+        originals
+    )
+    assert 'filename=\\"{http.request.orig_uri.path.file}\\"' in originals
+    assert "hide .* *.part *.part.json" in originals
+
+
 def test_the_forward_auth_target_is_in_the_contract_and_reads_the_same_cookie():
     contract = OPENAPI_PATH.read_text(encoding="utf-8")
     assert "  /auth/media:" in contract

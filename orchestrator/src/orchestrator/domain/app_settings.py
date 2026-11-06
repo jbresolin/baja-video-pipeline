@@ -78,6 +78,14 @@ class AdminSettingsStore:
     def outbox_keep_unarchived(self) -> timedelta:
         return timedelta(hours=self.current.outbox_keep_unarchived_hours)
 
+    @property
+    def originals_keep(self) -> timedelta:
+        return timedelta(hours=self.current.originals_keep_hours)
+
+    @property
+    def originals_cap_bytes(self) -> int:
+        return int(self.current.originals_cap_gb * BYTES_PER_GB)
+
     def update(
         self, actor: AdminActor, request: UpdateSettingsRequest, now: datetime
     ) -> AdminSettings:

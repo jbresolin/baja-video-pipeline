@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from orchestrator.background import sweepers
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain.originals import sweep_originals
 from orchestrator.domain.results_sync import sync_if_due
 from orchestrator.domain.sessions import delete_idle_sessions
 
@@ -30,6 +31,8 @@ PERIODIC_TASKS = [
     PeriodicTask("inbox-cleanup", 30, sweepers.clean_inbox_once),
     PeriodicTask("proxy-eviction", 60, sweepers.evict_proxies_once),
     PeriodicTask("outbox-cleanup", 60, sweepers.clean_outbox_once),
+    # Originals reviewers downloaded (item 15): by age, folder cap, disk.
+    PeriodicTask("originals-eviction", 60, sweep_originals),
     # Provas and teams from the results API: every 6 h while an event is set
     # (checked every 10 min; it also retries a failed sync after 15 min).
     PeriodicTask("results-sync", 600, sync_if_due),

@@ -6,6 +6,7 @@ from worker.tasks.deliver import run_deliver
 from worker.tasks.download_raw import run_download_raw
 from worker.tasks.make_proxy import run_make_proxy
 from worker.tasks.process import run_process
+from worker.tasks.upload_original import run_upload_original
 
 TASK_HANDLERS = {
     TaskKind.DOWNLOAD_RAW: run_download_raw,
@@ -13,4 +14,5 @@ TASK_HANDLERS = {
     TaskKind.PROCESS: run_process,
     TaskKind.DELIVER: run_deliver,
     TaskKind.ARCHIVE_CLIP: run_archive_clip,
+    TaskKind.UPLOAD_ORIGINAL: run_upload_original,
 }
