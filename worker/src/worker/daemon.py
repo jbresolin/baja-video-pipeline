@@ -153,6 +153,7 @@ class Daemon:
             on_role_answer=lambda role: adopt_role_from_heartbeat(
                 config_path, self.role, role, restart=self.shutdown.set
             ),
+            shared_tailnet=config.shared_tailnet,
         )
         self.stage_freed = threading.Event()
         self.stages: dict[TaskKind, StageRunner] = {

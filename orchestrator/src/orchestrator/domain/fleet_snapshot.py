@@ -53,10 +53,21 @@ def accepts_new_raws(worker_row: sqlite3.Row) -> bool:
     )
 
 
+def on_shared_tailnet(worker_row: sqlite3.Row) -> bool:
+    """The volunteer chose "Usar a rede atual" (LIVESTACK-41 item 4).
+
+    Such a worker stays on its own tailnet, into which the VPS is shared:
+    it reaches the orchestrator and Caddy, but it neither reaches other
+    workers or the studio nor is reached by them.
+    """
+    return bool(worker_row["shared_tailnet"])
+
+
 def peer_raw_url(worker_row: sqlite3.Row, job_id: str) -> str | None:
-    """http://<tailnet address>:8710/raw/<job_id>, or None if the worker has no address yet."""
+    """http://<tailnet address>:8710/raw/<job_id>, or None if peers cannot reach that worker
+    (no address yet, or on a shared tailnet)."""
     address = worker_row["tailnet_address"]
-    if not address:
+    if not address or on_shared_tailnet(worker_row):
         return None
     port = worker_row["file_server_port"] or DEFAULT_WORKER_FILE_SERVER_PORT
     return f"http://{address}:{port}/raw/{job_id}"

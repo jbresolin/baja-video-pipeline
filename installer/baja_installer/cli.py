@@ -23,7 +23,12 @@ from pathlib import Path
 
 from baja_installer import build_info, layout, windows
 from baja_installer.check import run_check
-from baja_installer.first_run import EXIT_CANCELLED, FirstRunEnvironment, run_first_run
+from baja_installer.first_run import (
+    EXIT_CANCELLED,
+    FirstRunEnvironment,
+    run_first_run,
+    server_health_answers,
+)
 from baja_installer.init_config import write_installer_config
 from baja_installer.leave_tailnet import leave_baja_tailnet
 from baja_installer.service_rights import grant_service_rights
@@ -111,6 +116,8 @@ def first_run_command(config_path: Path, install: Path) -> int:
         ask_yes_no=windows.ask_yes_no,
         say=print,
         sleep=time.sleep,
+        server_answers=server_health_answers,
+        ask_choice=windows.ask_choice,
     )
     try:
         return run_first_run(environment)

@@ -4339,6 +4339,10 @@ components:
           anyOf:
           - $ref: '#/components/schemas/WorkerRole'
           - type: 'null'
+        shared_tailnet:
+          type: boolean
+          title: Shared Tailnet
+          default: false
       additionalProperties: false
       type: object
       required:
@@ -6172,6 +6176,10 @@ components:
             format: date-time
           - type: 'null'
           title: Revoked At
+        shared_tailnet:
+          type: boolean
+          title: Shared Tailnet
+          default: false
       additionalProperties: false
       type: object
       required:

@@ -63,6 +63,11 @@ TEXT: dict[str, str] = {
     "fleet.col.doing": "Fazendo",
     "fleet.paused": "pausado",
     "fleet.paused.title": "não pega tarefas novas; continua servindo os originais que guarda",
+    "fleet.shared_tailnet": "rede compartilhada",
+    "fleet.shared_tailnet.title": (
+        "fica na rede Tailscale do próprio PC: os outros PCs e o estúdio não o alcançam, "
+        "então ele não guarda originais para os outros e entrega os clipes pela caixa de saída"
+    ),
     "fleet.last_contact": "último contato {age}",
     "fleet.master_archive": "{archived} de {total} clipes arquivados",
     "fleet.worker_clips": "{held} clipes guardados · {archived} arquivados",

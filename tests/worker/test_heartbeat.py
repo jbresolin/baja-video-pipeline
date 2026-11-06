@@ -128,3 +128,33 @@ def test_a_server_error_is_not_mistaken_for_a_revocation(harness):
     harness.heartbeater.beat_once()
 
     assert harness.status.facts().identity_rejected is False
+
+
+def test_the_shared_tailnet_choice_rides_in_every_heartbeat(harness):
+    # "Usar a rede atual" (LIVESTACK-41 item 4) sets shared_tailnet in
+    # worker.json; the daemon passes it to the heartbeat, and the orchestrator
+    # then treats this worker as "rede compartilhada".
+    from worker.heartbeat import Heartbeater
+
+    beater = Heartbeater(
+        api=harness.env.api,
+        role=WorkerRole.WORKER,
+        storage=harness.storage,
+        leases=harness.leases,
+        measurements=harness.env.measurements,
+        status=harness.status,
+        tailnet_address="100.80.0.1",
+        file_server_port=8710,
+        receiver_port=8720,
+        shared_tailnet=True,
+    )
+    beater.beat_once()
+    assert harness.orchestrator.heartbeats[-1].shared_tailnet is True
+
+
+def test_registrar_de_novo_also_forgets_the_shared_tailnet_choice():
+    # The choice belongs to the old join; a new enrollment joins afresh.
+    from worker.config import WorkerConfig, config_without_identity
+
+    config = WorkerConfig(worker_id="w", role=WorkerRole.MASTER, shared_tailnet=True)
+    assert config_without_identity(config).shared_tailnet is False

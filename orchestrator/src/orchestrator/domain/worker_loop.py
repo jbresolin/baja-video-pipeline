@@ -61,6 +61,7 @@ def process_heartbeat(
             file_server_port=request.file_server_port,
             receiver_port=request.receiver_port,
             paused=request.paused,
+            shared_tailnet=request.shared_tailnet,
         )
         for measurement in request.measurements:
             workers_repo.insert_stat_sample(

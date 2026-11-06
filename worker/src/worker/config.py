@@ -82,9 +82,16 @@ class WorkerConfig(BaseModel):
     # current task, take nothing new. Kept here so it survives a reboot.
     paused: bool = False
 
-    # Studio only: the folder OBS plays from (<prova>/<car>/<passagem>.mp4
-    # plus latest.m3u). None = "<working folder>/box".
+    # Studio only: the folder OBS plays from (<prova>/<car>/<file>.mp4 plus
+    # latest.m3u). Asked on the setup page right after enrollment
+    # (worker.studio.clip_folder); None = not chosen yet.
     studio_clip_root: Path | None = None
+
+    # "Usar a rede atual" at "Concluir conexão" (LIVESTACK-41 item 4): this PC
+    # stays on the tailnet it was already on, into which the VPS is shared.
+    # Sent in every heartbeat; the orchestrator then never makes it a second
+    # holder or a peer source, and tells it to deliver through the outbox.
+    shared_tailnet: bool = False
 
     @property
     def is_enrolled(self) -> bool:
@@ -195,6 +202,7 @@ def config_without_identity(config: WorkerConfig) -> WorkerConfig:
         "tailnet_base_url": None,
         "tailnet_address": None,
         "enrollment_token": None,
+        "shared_tailnet": False,
     }
     if config.tailnet_base_url and config.orchestrator_url == config.tailnet_base_url:
         updates["orchestrator_url"] = DEFAULT_ORCHESTRATOR_URL

@@ -87,7 +87,11 @@ def simulate_service_enrolling(config_path, role=WorkerRole.WORKER):
     (config_path.parent / TAILSCALE_AUTH_KEY_FILE_NAME).write_text("tskey-auth-SECRET\n")
 
 
-def make_environment(tmp_path, tailscale, recorder, on_sleep=None):
+def make_environment(
+    tmp_path, tailscale, recorder, on_sleep=None, server_answers=False, choice=None
+):
+    """`server_answers`: does GET <tailnet_base_url>/health work without switching?
+    `choice`: what the volunteer types at the numbered question (recorded)."""
     config_path = tmp_path / "worker.json"
 
     def sleep(seconds):
@@ -101,6 +105,10 @@ def make_environment(tmp_path, tailscale, recorder, on_sleep=None):
     def restart():
         recorder.service_restarts += 1
 
+    def ask_choice(question, answers):
+        recorder.questions.append(question)
+        return choice
+
     return FirstRunEnvironment(
         config_path=config_path,
         tailscale=tailscale,
@@ -109,6 +117,8 @@ def make_environment(tmp_path, tailscale, recorder, on_sleep=None):
         ask_yes_no=recorder.ask,
         say=recorder.messages.append,
         sleep=sleep,
+        server_answers=lambda url: server_answers and url == TAILNET_BASE_URL,
+        ask_choice=ask_choice,
     )
 
 
@@ -286,3 +296,100 @@ def test_enrolled_without_a_key_and_not_on_the_tailnet_needs_a_new_token(tmp_pat
 
     assert run_first_run(environment) == EXIT_JOIN_FAILED
     assert tailscale.up_calls == []
+
+
+# --- "Usar a rede atual" (LIVESTACK-41 item 4) ---------------------------------
+# João's desktop stays on his personal tailnet, into which the VPS is shared;
+# the orchestrator answers there on the same 100.x address. He used to make
+# it work by hand-editing worker.json.
+
+
+def test_when_the_server_answers_on_the_current_tailnet_both_choices_are_offered(tmp_path):
+    simulate_service_enrolling(tmp_path / "worker.json")
+    recorder = Recorder()
+    environment = make_environment(
+        tmp_path, FakeTailscale([OTHER_TAILNET]), recorder, server_answers=True, choice="3"
+    )
+
+    assert run_first_run(environment) == EXIT_CANCELLED
+
+    [question] = recorder.questions
+    assert "Entrar na rede Baja" in question and "Usar a rede atual" in question
+    # The warning says what the volunteer gives up.
+    assert "não conseguem acessar este PC" in question
+    assert "não deve ser o master durante um evento" in question
+    assert "não pode ser o estúdio" in question
+
+
+def test_using_the_current_tailnet_writes_the_addresses_and_drops_the_key(tmp_path):
+    config_path = tmp_path / "worker.json"
+    simulate_service_enrolling(config_path)
+    tailscale = FakeTailscale([OTHER_TAILNET])
+    recorder = Recorder()
+    environment = make_environment(tmp_path, tailscale, recorder, server_answers=True, choice="2")
+
+    assert run_first_run(environment) == EXIT_JOINED
+
+    config = load_config(config_path)
+    # Exactly what João typed by hand: the VPS's tailnet URL and our own address.
+    assert config.orchestrator_url == TAILNET_BASE_URL
+    assert config.tailnet_address == OTHER_TAILNET.ipv4
+    # The heartbeat reports it, so the orchestrator treats it as "rede compartilhada".
+    assert config.shared_tailnet is True
+    # No join: tailscale up never ran, and the unused key is deleted.
+    assert tailscale.up_calls == []
+    assert not (tmp_path / TAILSCALE_AUTH_KEY_FILE_NAME).exists()
+    assert recorder.service_restarts == 1
+
+
+def test_choosing_the_baja_tailnet_joins_as_before(tmp_path):
+    config_path = tmp_path / "worker.json"
+    simulate_service_enrolling(config_path)
+    tailscale = FakeTailscale([OTHER_TAILNET, ON_BAJA])
+    environment = make_environment(tmp_path, tailscale, Recorder(), server_answers=True, choice="1")
+
+    assert run_first_run(environment) == EXIT_JOINED
+
+    assert tailscale.up_calls == [("baja-w-1234abcd", True, "tskey-auth-SECRET")]
+    assert load_config(config_path).shared_tailnet is False
+
+
+def test_the_studio_is_never_offered_the_current_tailnet(tmp_path):
+    # Workers push clips to the studio over the Baja tailnet: a studio on
+    # another tailnet would receive nothing.
+    simulate_service_enrolling(tmp_path / "worker.json", role=WorkerRole.STUDIO)
+    recorder = Recorder(answers=[False])
+    environment = make_environment(
+        tmp_path, FakeTailscale([OTHER_TAILNET]), recorder, server_answers=True, choice="2"
+    )
+
+    assert run_first_run(environment) == EXIT_CANCELLED
+    # Only the old yes/no question about switching.
+    assert recorder.questions == [
+        "Este PC está conectado a outra rede Tailscale. Entrar na rede Baja vai "
+        "desconectá-lo dela. Continuar?"
+    ]
+
+
+def test_without_an_answer_from_the_server_only_switching_is_offered(tmp_path):
+    simulate_service_enrolling(tmp_path / "worker.json")
+    recorder = Recorder(answers=[False])
+    environment = make_environment(
+        tmp_path, FakeTailscale([OTHER_TAILNET]), recorder, server_answers=False, choice="2"
+    )
+
+    assert run_first_run(environment) == EXIT_CANCELLED
+    assert "Usar a rede atual" not in recorder.questions[0]
+
+
+def test_running_it_again_on_a_shared_tailnet_refreshes_the_address(tmp_path):
+    # "Concluir conexão" later (e.g. the PC got a new address on its tailnet):
+    # no key file any more, and it must not offer to erase the registration.
+    config_path = tmp_path / "worker.json"
+    save_config(config_path, enrolled_config().model_copy(update={"shared_tailnet": True}))
+    environment = make_environment(
+        tmp_path, FakeTailscale([OTHER_TAILNET]), Recorder(), server_answers=True
+    )
+
+    assert run_first_run(environment) == EXIT_JOINED
+    assert load_config(config_path).tailnet_address == OTHER_TAILNET.ipv4

@@ -117,6 +117,8 @@ def build_status_document(
             "orchestrator_url": known.resolved_orchestrator_url(),
             "tailnet_base_url": known.tailnet_base_url,
             "tailnet_address": known.tailnet_address,
+            # "Usar a rede atual" (item 4): on the PC's own tailnet.
+            "shared_tailnet": known.shared_tailnet,
             "version": worker_version(),
             "last_error": facts.last_error,
             "notes": values,

@@ -66,6 +66,8 @@
             <span class="dot {{ 'online' if entry.online else 'offline' }}"></span>{{ t("worker.online") if entry.online else t("worker.offline") }}
             {# Paused by the volunteer (tray icon): heartbeats, serves held raws, takes no tasks. #}
             {% if entry.paused %}<span class="badge paused" title="{{ t('fleet.paused.title') }}">{{ t("fleet.paused") }}</span>{% endif %}
+            {# "Usar a rede atual" (LIVESTACK-41 item 4): reaches the server, but peers and the studio cannot reach it. #}
+            {% if worker.shared_tailnet %}<span class="badge shared-tailnet" title="{{ t('fleet.shared_tailnet.title') }}">{{ t("fleet.shared_tailnet") }}</span>{% endif %}
             <div class="small">{{ t("fleet.last_contact", age=age(worker.last_heartbeat, now)) }}</div>
           </td>
           <td class="num">{{ entry.held_job_count }}<div class="small">{{ entry.held_bytes|bytes }}</div>

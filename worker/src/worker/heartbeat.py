@@ -50,6 +50,7 @@ class Heartbeater:
         connection_step_pending: bool = False,
         pause: PauseSwitch | None = None,
         on_role_answer: Callable[[WorkerRole], None] | None = None,
+        shared_tailnet: bool = False,
     ) -> None:
         """`fixed_interval_seconds` overrides the orchestrator's
         heartbeat_interval_s (in-process test runs beat faster).
@@ -58,7 +59,8 @@ class Heartbeater:
         CONNECTION_STEP_PENDING_MESSAGE rather than the network error.
         `pause`: the volunteer's switch; each beat reports `paused`.
         `on_role_answer`: called with the answer's `role` after every
-        successful beat (worker.role_change decides what to do with it)."""
+        successful beat (worker.role_change decides what to do with it).
+        `shared_tailnet`: WorkerConfig.shared_tailnet, reported in every beat."""
         self._api = api
         self._role = role
         self._storage = storage
@@ -72,6 +74,7 @@ class Heartbeater:
         self._connection_step_pending = connection_step_pending
         self._pause = pause
         self._on_role_answer = on_role_answer
+        self._shared_tailnet = shared_tailnet
         self.interval_seconds: float = fixed_interval_seconds or HEARTBEAT_INTERVAL_SECONDS
         # How many of our kept clips the master has archived (status page).
         self.clips_archived_by_master = 0
@@ -107,6 +110,7 @@ class Heartbeater:
             paused=self._pause is not None and self._pause.is_paused,
             # Also asks the orchestrator to answer with our role (role_change).
             role=self._role,
+            shared_tailnet=self._shared_tailnet,
         )
 
     def beat_once(self) -> HeartbeatResponse | None:

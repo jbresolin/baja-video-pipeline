@@ -259,6 +259,11 @@ def _details(document: dict) -> str:
         "Servidor": details.get("orchestrator_url"),
         "Rede Baja (Caddy)": details.get("tailnet_base_url"),
         "Endereço na rede": details.get("tailnet_address") or "—",
+        "Rede": (
+            "compartilhada (a rede Tailscale deste PC; os outros PCs não o alcançam)"
+            if details.get("shared_tailnet")
+            else "Baja"
+        ),
         "Versão": details.get("version"),
         "Último erro": details.get("last_error") or "—",
         "Pausado": "sim" if document.get("paused") else "não",
