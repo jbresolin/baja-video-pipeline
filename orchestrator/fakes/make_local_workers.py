@@ -51,6 +51,10 @@ def write_worker_config(folder: Path, orchestrator_url: str, token: str, extra: 
         "storage_cap_bytes": LOCAL_STORAGE_CAP_BYTES,
         **extra,
     }
+    if "receiver_port" in extra:
+        # The studio's clip folder, chosen up front so the local run does
+        # not stop at the setup page's clip-folder question.
+        config["studio_clip_root"] = str((folder / "box").resolve())
     path = folder / "worker.json"
     path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     return path
