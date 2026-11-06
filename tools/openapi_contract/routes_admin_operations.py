@@ -66,6 +66,25 @@ def rename_worker(worker_id: str, body: UpdateWorkerRequest) -> Worker:
 
 
 @router.post(
+    "/admin/workers/{worker_id}/make-master",
+    tags=["admin"],
+    summary="Make this worker the master; the current master becomes a worker",
+    response_model=Worker,
+    dependencies=ADMIN_ONLY,
+    responses=error_responses(401, 403, 404, 409),
+)
+def make_master(worker_id: str) -> Worker:
+    """One master at a time: in one step the worker becomes `master` and the
+    current master `worker` (its `archive_clip` leases end). Both PCs learn
+    it from their next heartbeat answer (`HeartbeatResponse.role`), save it
+    and restart; no config edit. Only between master and worker: a studio
+    (other tailnet tag, needs a new enrollment) or a revoked worker → 409
+    `conflict`. Promoting the master again changes nothing. Audited as
+    `master_changed`."""
+    not_implemented()
+
+
+@router.post(
     "/admin/workers/{worker_id}/revoke",
     tags=["admin"],
     summary="Revoke a worker: its bearer token stops working",

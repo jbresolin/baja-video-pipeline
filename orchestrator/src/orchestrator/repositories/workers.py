@@ -239,6 +239,19 @@ def revoke_enrollment_token(
     return cursor.rowcount == 1
 
 
+def set_worker_role(connection: sqlite3.Connection, worker_id: str, role: WorkerRole) -> None:
+    connection.execute("UPDATE workers SET role = ? WHERE id = ?", (str(role), worker_id))
+
+
+def list_active_master_ids(connection: sqlite3.Connection) -> list[str]:
+    """Every non-revoked master (normally one)."""
+    rows = connection.execute(
+        "SELECT id FROM workers WHERE role = ? AND revoked_at IS NULL ORDER BY enrolled_at",
+        (str(WorkerRole.MASTER),),
+    ).fetchall()
+    return [row["id"] for row in rows]
+
+
 def rename_worker(connection: sqlite3.Connection, worker_id: str, name: str) -> None:
     """Set the display name (workers.name); the host name stays as reported."""
     connection.execute("UPDATE workers SET name = ? WHERE id = ?", (name, worker_id))

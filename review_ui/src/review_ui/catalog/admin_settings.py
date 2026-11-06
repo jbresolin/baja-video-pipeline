@@ -18,6 +18,10 @@ TEXT: dict[str, str] = {
     "done.synced": "Sincronizado com o site de resultados.",
     "done.token_revoked": "Token revogado.",
     "done.worker_renamed": "Nome do worker salvo.",
+    "done.master_changed": (
+        "Master trocado. Os PCs envolvidos reiniciam o worker sozinhos no próximo sinal "
+        "(cerca de 15 s) e voltam com o novo papel."
+    ),
     "done.worker_revoked": "Worker revogado. Remova o PC do tailnet no console do Tailscale.",
     "done.settings_updated": "Configurações salvas.",
     # --- Results-site sync box (Provas and Equipes) ---

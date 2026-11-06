@@ -56,6 +56,15 @@ def rename_worker(
     return workers_admin.rename_worker(context, actor, worker_id, body)
 
 
+@router.post("/admin/workers/{worker_id}/make-master", tags=["admin"], response_model=Worker)
+def make_master(
+    worker_id: str,
+    actor: AdminActor = Depends(require_admin),
+    context: OrchestratorContext = Depends(get_context),
+) -> Worker:
+    return workers_admin.promote_to_master(context, actor, worker_id)
+
+
 @router.post("/admin/workers/{worker_id}/revoke", tags=["admin"], response_model=Worker)
 def revoke_worker(
     worker_id: str,

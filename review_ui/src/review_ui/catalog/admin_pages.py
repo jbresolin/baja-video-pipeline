@@ -123,6 +123,10 @@ TEXT: dict[str, str] = {
         "o token dele na hora: ele para de receber tarefas e deixa de contar como cópia "
         "dos vídeos originais."
     ),
+    "workers.master_hint": (
+        "Só existe um master por vez: “Tornar master” passa o papel para outro PC e o master "
+        "atual volta a ser um worker comum. Vale só entre master e worker."
+    ),
     "workers.tailnet_warning": (
         "<strong>Depois de revogar, remova o PC do tailnet à mão:</strong> no console do "
         'Tailscale (<a href="https://login.tailscale.com/admin/machines" rel="noopener" '
@@ -142,6 +146,18 @@ TEXT: dict[str, str] = {
     ),
     "workers.empty": "Nenhum worker cadastrado ainda. Gere um token em “Cadastro de PCs”.",
     "workers.revoked_section": "Revogados ({count})",
+    "workers.make_master": "Tornar master",
+    "workers.make_master.confirm": (
+        "Tornar {name} o master? {current} deixa de ser o master e volta a ser um worker "
+        "comum. Os dois PCs reiniciam o worker sozinhos em alguns segundos."
+    ),
+    "workers.make_master.confirm_no_master": (
+        "Tornar {name} o master? Os PCs reiniciam o worker sozinhos em alguns segundos."
+    ),
+    "workers.studio_not_master": (
+        "O estúdio não vira master: ele usa outra etiqueta na rede (tag:studio). Para isso, "
+        "cadastre o PC de novo com um token de master."
+    ),
     "workers.name_of": "Nome de exibição de {name}",
     "workers.rename": "Salvar nome",
     "workers.name_required": "Informe um nome para o worker.",

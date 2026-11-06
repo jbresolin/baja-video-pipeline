@@ -2,6 +2,7 @@
 {% block title %}{{ t("admin.section.workers") }}{% endblock %}
 {% block admin_content %}
 <p class="hint">{{ t("workers.hint") }}</p>
+<p class="hint">{{ t("workers.master_hint") }}</p>
 <div class="banner warning"><p>{{ t("workers.tailnet_warning") }}</p></div>
 
 {% if active_workers %}
@@ -19,7 +20,10 @@
         </form>
         <span class="small">{% if w.hostname and w.hostname != w.name %}{{ t("workers.hostname", hostname=w.hostname) }} · {% endif %}<code>{{ w.id|short_id }}</code></span>
       </td>
-      <td>{{ role_labels[w.role] }}</td>
+      <td>
+        {{ role_labels[w.role] }}
+        {% if w.role == "studio" %}<div class="small">{{ t("workers.studio_not_master") }}</div>{% endif %}
+      </td>
       <td>
         {% if entry.online %}<span class="badge contact-allowed">{{ t("worker.online") }}</span>
         {% else %}<span class="badge">{{ t("worker.offline") }}</span>{% endif %}
@@ -27,7 +31,14 @@
       <td>{% if w.last_heartbeat %}{{ m.time(w.last_heartbeat, relative=true) }}{% else %}{{ t("no_value") }}{% endif %}</td>
       <td>{{ entry.held_job_count }} ({{ entry.held_bytes|bytes }})</td>
       <td>{{ m.time(w.enrolled_at) }}</td>
-      <td>
+      <td class="row-actions">
+        {# Only a plain worker can be promoted; the confirmation names the master it replaces. #}
+        {% if w.role == "worker" %}
+        <form method="post" action="/review/admin/workers/{{ w.id }}/make-master" class="inline-form"
+              data-confirm="{{ t('workers.make_master.confirm', name=w.name, current=current_master) if current_master else t('workers.make_master.confirm_no_master', name=w.name) }}">
+          <button type="submit">{{ t("workers.make_master") }}</button>
+        </form>
+        {% endif %}
         <form method="post" action="/review/admin/workers/{{ w.id }}/revoke" class="inline-form"
               data-confirm="{{ t('workers.revoke.confirm', name=w.name) }}">
           <button type="submit" class="danger">{{ t("admin.revoke") }}</button>

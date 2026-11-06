@@ -332,7 +332,13 @@ paths:
       summary: 'Every 15 s: disk, measurements, and renew listed leases'
       description: '`worker_id` must be the caller''s own id (else 403). The answer''s
 
-        `deletable_job_ids` lists held raws of discarded jobs.'
+        `deletable_job_ids` lists held raws of discarded jobs. A request with
+
+        `role` gets `role` back: the role the orchestrator has for this worker
+
+        (an admin may switch master and worker); without it the field is left
+
+        out of the answer entirely, for older workers.'
       operationId: heartbeat_workers__worker_id__heartbeat_post
       security:
       - workerBearer: []
@@ -2719,6 +2725,72 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /admin/workers/{worker_id}/make-master:
+    post:
+      tags:
+      - admin
+      summary: Make this worker the master; the current master becomes a worker
+      description: 'One master at a time: in one step the worker becomes `master` and the
+
+        current master `worker` (its `archive_clip` leases end). Both PCs learn
+
+        it from their next heartbeat answer (`HeartbeatResponse.role`), save it
+
+        and restart; no config edit. Only between master and worker: a studio
+
+        (other tailnet tag, needs a new enrollment) or a revoked worker → 409
+
+        `conflict`. Promoting the master again changes nothing. Audited as
+
+        `master_changed`.'
+      operationId: make_master_admin_workers__worker_id__make_master_post
+      security:
+      - sessionBearer: []
+      - adminBearer: []
+      parameters:
+      - name: worker_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Worker Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '401':
+          description: Missing or wrong credentials (unauthenticated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated but not allowed (forbidden)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No such job / worker / team / user / ... (not_found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflicts with the current state (see error.code)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /admin/workers/{worker_id}/revoke:
     post:
       tags:
@@ -4257,6 +4329,10 @@ components:
           type: boolean
           title: Paused
           default: false
+        role:
+          anyOf:
+          - $ref: '#/components/schemas/WorkerRole'
+          - type: 'null'
       additionalProperties: false
       type: object
       required:
@@ -4288,6 +4364,10 @@ components:
             pattern: ^[0-9a-f]{64}$
           type: array
           title: Archived Clip Sha256S
+        role:
+          anyOf:
+          - $ref: '#/components/schemas/WorkerRole'
+          - type: 'null'
       additionalProperties: false
       type: object
       required:

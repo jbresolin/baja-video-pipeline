@@ -8,11 +8,14 @@ beat. The answer tells us:
   * accepting_new_raws: false → do not ask for download_raw (near the cap);
   * deletable_job_ids: raws of discarded jobs we may delete;
   * archived_clip_sha256s: kept clips the master has archived; near the
-    cap we evict those (oldest first), never any other (worker.clip_store).
+    cap we evict those (oldest first), never any other (worker.clip_store);
+  * role: the role the orchestrator has for us (an admin may switch master
+    and worker); handed to `on_role_answer` (worker.role_change).
 """
 
 import logging
 import threading
+from collections.abc import Callable
 
 from shared.models import HeartbeatRequest, HeartbeatResponse, LeaseHeartbeatStatus, WorkerRole
 from shared.protocol import HEARTBEAT_INTERVAL_SECONDS
@@ -43,13 +46,16 @@ class Heartbeater:
         fixed_interval_seconds: float | None = None,
         connection_step_pending: bool = False,
         pause: PauseSwitch | None = None,
+        on_role_answer: Callable[[WorkerRole], None] | None = None,
     ) -> None:
         """`fixed_interval_seconds` overrides the orchestrator's
         heartbeat_interval_s (in-process test runs beat faster).
         `connection_step_pending` (WorkerConfig.connection_step_pending):
         the tailnet join is not done, so a failed beat is explained with
         CONNECTION_STEP_PENDING_MESSAGE rather than the network error.
-        `pause`: the volunteer's switch; each beat reports `paused`."""
+        `pause`: the volunteer's switch; each beat reports `paused`.
+        `on_role_answer`: called with the answer's `role` after every
+        successful beat (worker.role_change decides what to do with it)."""
         self._api = api
         self._role = role
         self._storage = storage
@@ -62,6 +68,7 @@ class Heartbeater:
         self._fixed_interval_seconds = fixed_interval_seconds
         self._connection_step_pending = connection_step_pending
         self._pause = pause
+        self._on_role_answer = on_role_answer
         self.interval_seconds: float = fixed_interval_seconds or HEARTBEAT_INTERVAL_SECONDS
         # How many of our kept clips the master has archived (status page).
         self.clips_archived_by_master = 0
@@ -95,6 +102,8 @@ class Heartbeater:
             measurements=self._measurements.drain(),
             held_clips=[] if is_studio else self._storage.clips.held_clips(),
             paused=self._pause is not None and self._pause.is_paused,
+            # Also asks the orchestrator to answer with our role (role_change).
+            role=self._role,
         )
 
     def beat_once(self) -> HeartbeatResponse | None:
@@ -142,6 +151,8 @@ class Heartbeater:
         self._storage.clips.evict_archived(archived, self._storage.free_bytes_under_cap)
         self.clips_archived_by_master = len(archived)
         self._publish_clips()
+        if answer.role is not None and self._on_role_answer is not None:
+            self._on_role_answer(answer.role)
         return answer
 
     def _publish_clips(self) -> None:

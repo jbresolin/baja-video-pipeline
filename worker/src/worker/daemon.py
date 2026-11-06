@@ -36,6 +36,7 @@ from worker.heartbeat import Heartbeater
 from worker.leases import LeaseTracker
 from worker.media_tools import MediaTools
 from worker.pause import PauseSwitch
+from worker.role_change import adopt_role_from_heartbeat
 from worker.servers import BackgroundServer, build_peer_file_server_app
 from worker.stages import StageRunner
 from worker.status import StatusBoard
@@ -148,6 +149,10 @@ class Daemon:
             fixed_interval_seconds=timings.heartbeat_interval_seconds,
             connection_step_pending=config.connection_step_pending,
             pause=self.pause,
+            # "Tornar master" on Admin → Workers: save the new role, restart.
+            on_role_answer=lambda role: adopt_role_from_heartbeat(
+                config_path, self.role, role, restart=self.shutdown.set
+            ),
         )
         self.stage_freed = threading.Event()
         self.stages: dict[TaskKind, StageRunner] = {

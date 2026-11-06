@@ -95,3 +95,61 @@ def test_the_fleet_page_shows_the_display_name_with_the_host_name_below(ui, fake
 
     assert "<strong>joao-desktop</strong>" in html
     assert "PC: DESKTOP-JOAO" in html
+
+
+# --- "Tornar master" (LIVESTACK-42 item 8) ---
+
+
+def workers_page_row(html: str, name: str) -> str:
+    """The <tr> of the main Workers table whose name field holds `name`."""
+    for row in html.split("<tr>")[1:]:
+        if f'name="name" value="{name}"' in row:
+            return row.split("</tr>", 1)[0]
+    raise AssertionError(f"no row for {name}")
+
+
+def test_only_plain_workers_get_the_button_and_it_asks_first_naming_the_master(admin, harness):
+    harness.enroll(WorkerRole.MASTER, "joao-desktop")
+    maria = harness.enroll(WorkerRole.WORKER, "pc-da-maria")
+    harness.enroll(WorkerRole.STUDIO, "estudio")
+
+    html = admin.get("/review/admin/workers").text
+
+    # The volunteer's row has the button, inside a form that asks first and
+    # says who stops being the master.
+    maria_row = workers_page_row(html, "pc-da-maria")
+    assert f'action="/review/admin/workers/{maria.worker_id}/make-master"' in maria_row
+    assert "Tornar master" in maria_row
+    assert "joao-desktop deixa de ser o master" in maria_row
+    # The master itself and the studio have no such button...
+    assert "make-master" not in workers_page_row(html, "joao-desktop")
+    studio_row = workers_page_row(html, "estudio")
+    assert "make-master" not in studio_row
+    # ...and the studio's row says why it cannot be promoted.
+    assert "O estúdio não vira master" in studio_row
+
+
+def test_pressing_the_button_switches_the_master(admin, harness):
+    master = harness.enroll(WorkerRole.MASTER, "joao-desktop")
+    maria = harness.enroll(WorkerRole.WORKER, "pc-da-maria")
+
+    page = follow(admin, post_form(admin, f"/review/admin/workers/{maria.worker_id}/make-master"))
+
+    # The page says what happens next, and the change is in the audit box.
+    assert "Master trocado." in page.text
+    assert "master trocado" in page.text
+    # The orchestrator now tells each PC its new role on the next heartbeat.
+    assert harness.heartbeat(maria, role="worker")["role"] == "master"
+    assert harness.heartbeat(master, role="master")["role"] == "worker"
+    # The new page offers the button on the old master's row instead.
+    assert "make-master" in workers_page_row(page.text, "joao-desktop")
+
+
+def test_a_refused_promotion_shows_the_reason(admin, harness):
+    # A crafted post for the studio (the page never offers it).
+    studio = harness.enroll(WorkerRole.STUDIO, "estudio")
+
+    page = post_form(admin, f"/review/admin/workers/{studio.worker_id}/make-master")
+
+    assert page.status_code == 409
+    assert "enroll that PC again with a master token" in page.text

@@ -265,6 +265,14 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
   stays a download source for peers. `GET /fleet` lists `paused` per
   worker; the fleet page shows "pausado". The flag lasts until a heartbeat
   says `paused: false` ("Retomar"); the worker keeps it across restarts.
+* **Role.** Send `role` (the role you run as) in every heartbeat; the
+  answer then carries `role`, the role the orchestrator has for you. They
+  differ only after an admin switched master and worker ("Tornar master",
+  §7.1): save the new role and restart (worker/README.md). A heartbeat
+  without `role` gets no `role` key at all, because workers before
+  LIVESTACK-42 refuse unknown fields in the answer. The reverse is not
+  covered: a new worker's `role` is refused (400) by an orchestrator older
+  than this, so upgrade the orchestrator first.
 * Report `measurements` (bytes + seconds) in the next heartbeat; the
   orchestrator keeps the rolling `stats`. `held_job_ids` lists every raw on
   your disk so the orchestrator can reconcile holders after crashes.
@@ -464,6 +472,7 @@ the event log with `details: {before, after}`, readable at `GET
 | `POST /admin/results-sync` | → `ResultsSyncReport` | see "Results API" below; 422 unknown event, 503 API down/limited |
 | `GET /admin/enrollment-tokens`, `POST …/{token_id}/revoke` | → `EnrollmentTokensResponse` / `EnrollmentTokenInfo` | unused/used/expired/revoked; 409 for a used one |
 | `PATCH /admin/workers/{worker_id}` | `UpdateWorkerRequest` → `Worker` | the display name (below); revoked workers too |
+| `POST /admin/workers/{worker_id}/make-master` | → `Worker` | "Tornar master" (below); 409 for a studio or a revoked worker |
 | `POST /admin/workers/{worker_id}/revoke` | → `Worker` | its token answers 401, leases end, holder rows dropped |
 | `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing |
 | `GET /admin/audit?area=&limit=` | → `EventsResponse` | newest first |
@@ -475,6 +484,14 @@ sent as `EnrollRequest.worker_name`), changed later by an admin with
 event line and the fleet show it. `Worker.hostname` is the PC's host name
 as reported at enrollment (`EnrollRequest.hostname`), shown as secondary
 text; nothing changes it.
+
+**One master, switched from the UI** (LIVESTACK-42). `POST
+/admin/workers/{id}/make-master` makes that worker the master and every
+other non-revoked master a `worker`, in one transaction (audit kind
+`master_changed`); the demoted master's `archive_clip` leases end at once.
+Promoting the master again changes nothing. Only master ↔ worker: a studio
+has another tailnet tag and must enroll again (409 `conflict`), and so is a
+revoked worker. The PCs learn it from the heartbeat (§5 "Role").
 
 **Contacts.** Every sender of a private message is recorded (status
 `unknown`, display name from `pushName`). For a video: `blocked` → 200

@@ -131,6 +131,11 @@ class AdminClient(OrchestratorClient):
         path = f"/admin/workers/{_segment(worker_id)}"
         return self._parse(Worker, self._request("PATCH", path, json=body))
 
+    def make_master(self, worker_id: str) -> Worker:
+        """ "Tornar master": this worker becomes the master, the current one a worker."""
+        response = self._request("POST", f"/admin/workers/{_segment(worker_id)}/make-master")
+        return self._parse(Worker, response)
+
     def revoke_worker(self, worker_id: str) -> Worker:
         response = self._request("POST", f"/admin/workers/{_segment(worker_id)}/revoke")
         return self._parse(Worker, response)

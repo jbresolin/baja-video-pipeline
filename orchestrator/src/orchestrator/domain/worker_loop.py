@@ -94,6 +94,8 @@ def process_heartbeat(
         accepting_new_raws=accepts_new_raws(refreshed_row),
         deletable_job_ids=deletable,
         archived_clip_sha256s=archived_clips,
+        # Only to workers that sent their own role (see HeartbeatRequest.role).
+        role=WorkerRole(refreshed_row["role"]) if request.role is not None else None,
     )
 
 

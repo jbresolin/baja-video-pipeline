@@ -55,6 +55,10 @@ class HeartbeatRequest(ApiModel):
     # like an offline worker for second-holder and studio choice, but it
     # still serves its held raws to peers.
     paused: bool = False
+    # The role this worker is running as (LIVESTACK-42). Sending it also
+    # asks for `role` in the answer; workers that do not send it (older
+    # versions) never get that field, which their parser would refuse.
+    role: WorkerRole | None = None
 
 
 class HeartbeatResponse(ApiModel):
@@ -70,6 +74,11 @@ class HeartbeatResponse(ApiModel):
     # SHA-256 of the held_clips the master has archived. Only these may be
     # evicted, and only when near the storage cap, oldest first.
     archived_clip_sha256s: list[Sha256Hex] = Field(default_factory=list)
+    # The role the orchestrator has for this worker, sent only when the
+    # request carried `role` (left out of the JSON otherwise). An admin may
+    # switch master and worker on Admin → Workers ("Tornar master"); a
+    # worker whose running role differs saves this one and restarts.
+    role: WorkerRole | None = None
 
 
 class LeaseRenewRequest(ApiModel):

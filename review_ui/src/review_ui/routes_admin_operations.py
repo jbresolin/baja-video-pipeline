@@ -103,6 +103,14 @@ def revoke_token(request: Request, token_id: str, form: dict = Depends(read_form
 # --- Workers ---
 
 
+def current_master_name(fleet) -> str | None:
+    """The display name of the (non-revoked) master, if there is one."""
+    for entry in active_workers(fleet):
+        if entry.worker.role == WorkerRole.MASTER:
+            return entry.worker.name
+    return None
+
+
 def _workers_page(request: Request, error: str | None = None, status_code: int = 200):
     admin = admin_client_for(request)
     # Reuses the fleet data (GET /fleet): who is online, what they hold.
@@ -111,6 +119,8 @@ def _workers_page(request: Request, error: str | None = None, status_code: int =
         request,
         "workers",
         active_workers=active_workers(fleet),
+        # Named in the "Tornar master" confirmation: who stops being the master.
+        current_master=current_master_name(fleet),
         # Revoked ones go to a folded "Revogados" section at the bottom.
         revoked_workers=[entry for entry in fleet.workers if entry.worker.revoked_at is not None],
         role_labels=WORKER_ROLE_LABELS,
@@ -135,6 +145,17 @@ def rename_worker(request: Request, worker_id: str, form: dict = Depends(read_fo
         lambda: admin_client_for(request).rename_worker(worker_id, name),
         WORKERS_PATH,
         "worker_renamed",
+        lambda error, status: _workers_page(request, error, status),
+    )
+
+
+@router.post("/workers/{worker_id}/make-master")
+def make_master(request: Request, worker_id: str, form: dict = Depends(read_form)) -> Response:
+    """ "Tornar master" (asked to confirm on the page: the current master is demoted)."""
+    return apply_change(
+        lambda: admin_client_for(request).make_master(worker_id),
+        WORKERS_PATH,
+        "master_changed",
         lambda error, status: _workers_page(request, error, status),
     )
 

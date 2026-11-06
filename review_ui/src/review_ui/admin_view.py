@@ -51,6 +51,7 @@ DONE_KEYS = {
     "token_revoked",
     "worker_revoked",
     "worker_renamed",
+    "master_changed",
     "settings_updated",
 }
 
