@@ -56,7 +56,7 @@ def test_incomplete_form_is_not_saved(page):
     client.post("/setup", content="token=abc&folder=relative/path&cap_gb=10")
     assert not config_path.exists()
     assert not submitted.is_set()
-    assert "fill in all three" in status.snapshot()[0]["setup"]
+    assert "Preencha os três campos" in status.snapshot()[0]["setup"]
 
 
 def test_requests_for_another_host_name_are_refused(page):

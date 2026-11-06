@@ -58,3 +58,21 @@ def test_a_build_without_an_enroll_url_leaves_the_key_alone(tmp_path):
     write_installer_config(config_path, ffmpeg_path=FFMPEG, enroll_url=None)
 
     assert load_config(config_path).enroll_url == "https://set.by.hand"
+
+
+def test_an_upgrade_leaves_a_broken_worker_json_alone(tmp_path):
+    # Someone hand-edited worker.json and left a trailing comma. --init-config
+    # runs on every upgrade: it must neither crash (failing the install) nor
+    # rewrite the file the volunteer is fixing. The worker's status page
+    # shows where the problem is (LIVESTACK-41 item 3).
+    config_path = tmp_path / "worker.json"
+    config_path.write_text('{"worker_id": "w-1",}', encoding="utf-8")
+    said = []
+
+    result = write_installer_config(
+        config_path, ffmpeg_path=FFMPEG, enroll_url="https://enroll.example", say=said.append
+    )
+
+    assert result is None
+    assert config_path.read_text(encoding="utf-8") == '{"worker_id": "w-1",}'
+    assert "worker.json not updated" in said[0]

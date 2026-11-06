@@ -26,7 +26,12 @@ def proxy_offer(job_id="job-2") -> MakeProxyTask:
 def test_asks_for_every_kind_when_idle(harness):
     harness.dispatcher.run_once()
     [request] = harness.orchestrator.next_requests
-    assert request.accept_kinds == [TaskKind.DOWNLOAD_RAW, TaskKind.MAKE_PROXY, TaskKind.PROCESS]
+    assert request.accept_kinds == [
+        TaskKind.DOWNLOAD_RAW,
+        TaskKind.MAKE_PROXY,
+        TaskKind.PROCESS,
+        TaskKind.UPLOAD_ORIGINAL,
+    ]
 
 
 def test_claimed_task_goes_to_its_stage_and_busy_kinds_are_left_out(harness):
@@ -43,6 +48,7 @@ def test_claimed_task_goes_to_its_stage_and_busy_kinds_are_left_out(harness):
     assert harness.orchestrator.next_requests[-1].accept_kinds == [
         TaskKind.MAKE_PROXY,
         TaskKind.PROCESS,
+        TaskKind.UPLOAD_ORIGINAL,
     ]
 
 

@@ -1,9 +1,11 @@
 """Request/response bodies for the review UI endpoints (reviewer auth)."""
 
+from datetime import datetime
+
 from pydantic import Field, model_validator
 
-from shared.models.common import ApiModel, CarNumber, PassNumber, Seconds
-from shared.models.enums import JobState, ReviewAction
+from shared.models.common import ApiModel, ByteCount, CarNumber, PassNumber, Seconds
+from shared.models.enums import JobState, OriginalState, ReviewAction
 from shared.models.job import JobSummary, check_cut_order
 
 
@@ -68,3 +70,18 @@ class ReviewQueueFilter(ApiModel):
 
     states: list[JobState] = Field(default_factory=lambda: [JobState.AWAITING_REVIEW])
     limit: int = Field(default=100, ge=1, le=500)
+
+
+class OriginalDownload(ApiModel):
+    """GET/POST /jobs/{job_id}/original: the job page's "Baixar original" (item 15)."""
+
+    state: OriginalState
+    # Relative to the public base URL, e.g.
+    # "/original-downloads/<job_id>/joao-…-2f2510a3.mp4"; only when "ready".
+    download_url: str | None = None
+    # The name the download gets (the raw's readable name, item 12).
+    file_name: str | None = None
+    size_bytes: ByteCount | None = None
+    # When the VPS deletes its copy unless someone asks again (24 h after
+    # the last request, admin Settings); None unless "ready".
+    expires_at: datetime | None = None

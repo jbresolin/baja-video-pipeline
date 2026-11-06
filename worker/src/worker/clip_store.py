@@ -3,14 +3,17 @@
 Processed clips are the archive. So:
 
 * Every worker keeps the clips it rendered after a verified delivery, as
-  clips/<job_id>.<sha256>.mp4. They count against the storage cap and
+  clips/<clip name>.<job_id>.<sha256>.mp4, e.g.
+  enduro-042-p3.<32 hex>.<64 hex>.mp4: readable first (LIVESTACK-41 item
+  12), then the ids the code looks clips up by. Clips kept before that
+  change are clips/<job_id>.<sha256>.mp4 and still found. They count against the storage cap and
   are served to the master on :8710 (GET /clip/{job_id}).
 * A kept clip may be evicted only once the orchestrator says the master
   has archived that exact clip (by sha256), and only when the worker is
   near its cap, oldest first. Held raws keep their own rules (storage.py).
 * The master's archive mirrors the studio box:
-      clips/<prova-slug>/<car>/<passagem>.mp4      version 1
-      clips/<prova-slug>/<car>/<passagem>.v2.mp4   after a reprocess, ...
+      clips/<prova-slug>/<car>/enduro-042-p3.mp4      version 1
+      clips/<prova-slug>/<car>/enduro-042-p3-v2.mp4   after a reprocess, ...
   It is never evicted; after the event it is copied to TrueNAS.
 
 The clip being rendered or delivered right now is clips/<job_id>.mp4 (+
@@ -26,8 +29,10 @@ from shared.models import HeldClip
 
 logger = logging.getLogger(__name__)
 
-# "<32 hex job id>.<64 hex sha256>.mp4"
-KEPT_CLIP_NAME = re.compile(r"^([0-9a-f]{32})\.([0-9a-f]{64})\.mp4$")
+# "[<clip name>.]<32 hex job id>.<64 hex sha256>.mp4"; the clip name is a
+# slug ("enduro-042-p3"), so it has no dots.
+KEPT_CLIP_NAME = re.compile(r"^(?:([a-z0-9-]+)\.)?([0-9a-f]{32})\.([0-9a-f]{64})\.mp4$")
+JOB_ID_AND_SHA256 = re.compile(r"^[0-9a-f]{32}$"), re.compile(r"^[0-9a-f]{64}$")
 # A worker with less room than this under its cap evicts archived clips
 # (the same headroom the orchestrator uses for "near the cap").
 EVICTION_HEADROOM_BYTES = 4_000_000_000
@@ -39,12 +44,17 @@ class ClipStore:
 
     # --- Kept clips ---
 
-    def kept_path(self, job_id: str, sha256: str) -> Path:
-        return self.clips_dir / f"{job_id}.{sha256}.mp4"
+    def kept_path(self, job_id: str, sha256: str, clip_name: str | None = None) -> Path:
+        """`clip_name` is the readable stem, e.g. "enduro-042-p3" (shared.layout)."""
+        prefix = f"{clip_name}." if clip_name and re.fullmatch(r"[a-z0-9-]+", clip_name) else ""
+        return self.clips_dir / f"{prefix}{job_id}.{sha256}.mp4"
 
-    def keep(self, rendered_clip: Path, job_id: str, sha256: str) -> Path:
+    def keep(
+        self, rendered_clip: Path, job_id: str, sha256: str, clip_name: str | None = None
+    ) -> Path:
         """Move a delivered clip to its kept name; the same clip twice is kept once."""
-        destination = self.kept_path(job_id, sha256)
+        existing = self.find(job_id, sha256)
+        destination = existing or self.kept_path(job_id, sha256, clip_name)
         rendered_clip.replace(destination)
         logger.info("keeping the delivered clip", extra={"job_id": job_id})
         return destination
@@ -55,7 +65,7 @@ class ClipStore:
         for path in self.clips_dir.iterdir():
             match = KEPT_CLIP_NAME.match(path.name)
             if match and path.is_file():
-                found.append((path, HeldClip(job_id=match.group(1), sha256=match.group(2))))
+                found.append((path, HeldClip(job_id=match.group(2), sha256=match.group(3))))
         found.sort(key=lambda item: (item[0].stat().st_mtime, item[0].name))
         return found
 
@@ -69,13 +79,15 @@ class ClipStore:
         Both values come from a URL (GET /clip/{job_id}?sha256=), so anything
         that is not a plain id/hash finds nothing instead of becoming a path.
         """
-        if sha256 is not None:
-            if not KEPT_CLIP_NAME.match(f"{job_id}.{sha256}.mp4"):
-                return None
-            path = self.kept_path(job_id, sha256)
-            return path if path.is_file() else None
-        newest = [path for path, clip in self.kept_clips() if clip.job_id == job_id]
-        return newest[-1] if newest else None
+        job_pattern, sha_pattern = JOB_ID_AND_SHA256
+        if not job_pattern.match(job_id) or (sha256 is not None and not sha_pattern.match(sha256)):
+            return None
+        matching = [
+            path
+            for path, clip in self.kept_clips()
+            if clip.job_id == job_id and (sha256 is None or clip.sha256 == sha256)
+        ]
+        return matching[-1] if matching else None
 
     def evict_archived(
         self,

@@ -102,3 +102,59 @@ def test_studio_heartbeat_has_receiver_port_and_no_raws(tmp_path):
     [sent] = harness.orchestrator.heartbeats
     assert sent.receiver_port == 8720 and sent.file_server_port is None
     assert sent.held_job_ids == []
+
+
+def test_a_refused_token_marks_the_identity_rejected_until_a_beat_succeeds(harness):
+    # An admin revoked this worker: the orchestrator answers 401 to its
+    # bearer token. The status page and the tray then offer "Registrar de
+    # novo" (LIVESTACK-41 item 2). We simulate it by making the worker send
+    # a token the fake orchestrator does not know.
+    good_token = harness.env.api.bearer_token
+    harness.env.api.bearer_token = "a-token-the-server-revoked"
+
+    assert harness.heartbeater.beat_once() is None
+    assert harness.status.facts().identity_rejected is True
+
+    # A plain network error is not a revocation, and a later good beat
+    # clears the flag (e.g. the admin's revoke was a mistake and got undone).
+    harness.env.api.bearer_token = good_token
+    harness.heartbeater.beat_once()
+    assert harness.status.facts().identity_rejected is False
+
+
+def test_a_server_error_is_not_mistaken_for_a_revocation(harness):
+    harness.orchestrator.heartbeats_to_fail = 1  # 503
+
+    harness.heartbeater.beat_once()
+
+    assert harness.status.facts().identity_rejected is False
+
+
+def test_the_shared_tailnet_choice_rides_in_every_heartbeat(harness):
+    # "Usar a rede atual" (LIVESTACK-41 item 4) sets shared_tailnet in
+    # worker.json; the daemon passes it to the heartbeat, and the orchestrator
+    # then treats this worker as "rede compartilhada".
+    from worker.heartbeat import Heartbeater
+
+    beater = Heartbeater(
+        api=harness.env.api,
+        role=WorkerRole.WORKER,
+        storage=harness.storage,
+        leases=harness.leases,
+        measurements=harness.env.measurements,
+        status=harness.status,
+        tailnet_address="100.80.0.1",
+        file_server_port=8710,
+        receiver_port=8720,
+        shared_tailnet=True,
+    )
+    beater.beat_once()
+    assert harness.orchestrator.heartbeats[-1].shared_tailnet is True
+
+
+def test_registrar_de_novo_also_forgets_the_shared_tailnet_choice():
+    # The choice belongs to the old join; a new enrollment joins afresh.
+    from worker.config import WorkerConfig, config_without_identity
+
+    config = WorkerConfig(worker_id="w", role=WorkerRole.MASTER, shared_tailnet=True)
+    assert config_without_identity(config).shared_tailnet is False

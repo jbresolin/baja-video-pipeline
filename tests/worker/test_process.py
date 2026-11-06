@@ -137,7 +137,11 @@ def test_studio_url_from_the_offer_is_used_exactly(harness, raw_bytes):
 
     harness.claim_and_run(process_task(job, delivery=direct_delivery(job.job_id)))
 
-    pushed_urls = [url for url in harness.network.requested_urls if "studio.test" in url]
+    studio_urls = [url for url in harness.network.requested_urls if "studio.test" in url]
+    # First the reachability check (item 13: GET /health, 3 s at most)...
+    assert studio_urls[0] == f"{STUDIO_URL}/health"
+    # ...then every chunk goes exactly where the offer said.
+    pushed_urls = studio_urls[1:]
     assert pushed_urls
     assert all(url == f"{STUDIO_URL}/receive/{job.job_id}" for url in pushed_urls)
 

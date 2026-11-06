@@ -19,7 +19,7 @@ import sqlite3
 from datetime import timedelta
 
 from orchestrator.db.database import from_db_time
-from orchestrator.domain.fleet_snapshot import FleetSnapshot
+from orchestrator.domain.fleet_snapshot import FleetSnapshot, on_shared_tailnet
 from orchestrator.domain.task_decision import TaskDecision, refuse
 from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import leases as leases_repo
@@ -34,9 +34,10 @@ ARCHIVE_RETRY_AFTER = timedelta(minutes=10)
 
 
 def peer_clip_url(worker_row: sqlite3.Row, job_id: str, sha256: str) -> str | None:
-    """http://<tailnet address>:8710/clip/<job_id>?sha256=<sha>, or None without an address."""
+    """http://<tailnet address>:8710/clip/<job_id>?sha256=<sha>, or None when the master
+    cannot reach that worker (no address yet, or on a shared tailnet)."""
     address = worker_row["tailnet_address"]
-    if not address:
+    if not address or on_shared_tailnet(worker_row):
         return None
     port = worker_row["file_server_port"] or DEFAULT_WORKER_FILE_SERVER_PORT
     return f"http://{address}:{port}/clip/{job_id}?sha256={sha256}"
@@ -63,6 +64,10 @@ def clip_sources(
     # The renderer first: it is the one most likely to still have the file.
     keepers.sort(key=lambda worker_id: worker_id != version_row["rendered_by"])
     urls = []
+    # A master on a shared tailnet (item 4) reaches only the VPS.
+    master_row = snapshot.workers_by_id.get(master_id)
+    if master_row is not None and on_shared_tailnet(master_row):
+        keepers = []
     for worker_id in keepers:
         if not snapshot.is_online(worker_id):
             continue

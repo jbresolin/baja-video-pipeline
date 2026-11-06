@@ -4,6 +4,7 @@ inbox/<job_id>.<ext>   raws until two holders confirm   (Caddy :8080 /inbox/*)
 proxies/<job_id>.mp4   review proxies                   (Caddy :443 /proxies/*)
 thumbs/<job_id>.jpg    review thumbnails                (Caddy :443 /thumbs/*)
 outbox/<job_id>.mp4    fallback clips until studio ACK  (Caddy :8080 /outbox/*)
+originals/<job_id>.<ext>  raws a reviewer asked for     (Caddy :443 /original-downloads/*)
 db/bvp.sqlite3         the jobs DB
 """
 
@@ -59,13 +60,22 @@ class VpsLayout:
         self.proxies_dir = data_dir / "proxies"
         self.thumbs_dir = data_dir / "thumbs"
         self.outbox_dir = data_dir / "outbox"
+        # "Baixar original" (LIVESTACK-41 item 15): temporary, never a holder.
+        self.originals_dir = data_dir / "originals"
         self.public_base_url = public_base_url.rstrip("/")
         self.tailnet_base_url = tailnet_base_url.rstrip("/")
         # Tests replace this to simulate a full disk.
         self._free_bytes_reader = free_bytes_reader or (lambda path: shutil.disk_usage(path).free)
 
     def create_folders(self) -> None:
-        for folder in (self.inbox_dir, self.proxies_dir, self.thumbs_dir, self.outbox_dir):
+        folders = (
+            self.inbox_dir,
+            self.proxies_dir,
+            self.thumbs_dir,
+            self.outbox_dir,
+            self.originals_dir,
+        )
+        for folder in folders:
             folder.mkdir(parents=True, exist_ok=True)
 
     # --- Paths ---
@@ -81,6 +91,9 @@ class VpsLayout:
 
     def outbox_path(self, job_id: str) -> Path:
         return self.outbox_dir / f"{job_id}.mp4"
+
+    def original_path(self, job_id: str, raw_extension: str) -> Path:
+        return self.originals_dir / f"{job_id}{raw_extension}"
 
     # --- URLs ---
 
@@ -100,9 +113,22 @@ class VpsLayout:
         return f"/proxies/{job_id}.mp4"
 
     @staticmethod
-    def clip_download_public_path(job_id: str) -> str:
-        """The outbox clip for reviewers: Caddy :443 /clip-downloads/* (reviewer auth)."""
+    def clip_download_public_path(job_id: str, file_name: str | None = None) -> str:
+        """The outbox clip for reviewers: Caddy :443 /clip-downloads/* (reviewer auth).
+
+        With `file_name` (item 12): "/clip-downloads/<job_id>/enduro-042-p3.mp4".
+        Caddy serves outbox/<job_id>.mp4 for it and names the download after
+        the last part of the URL, so the saved file says what it is.
+        """
+        if file_name:
+            return f"/clip-downloads/{job_id}/{file_name}"
         return f"/clip-downloads/{job_id}.mp4"
+
+    @staticmethod
+    def original_download_public_path(job_id: str, file_name: str) -> str:
+        """An original on the VPS for reviewers (item 15), named for the download:
+        "/original-downloads/<job_id>/<readable raw name>" → originals/<job_id>.<ext>."""
+        return f"/original-downloads/{job_id}/{file_name}"
 
     @staticmethod
     def thumbnail_public_path(job_id: str) -> str:
@@ -118,6 +144,9 @@ class VpsLayout:
 
     def outbox_bytes(self) -> int:
         return folder_size_bytes(self.outbox_dir)
+
+    def originals_bytes(self) -> int:
+        return folder_size_bytes(self.originals_dir)
 
     def free_bytes(self) -> int:
         return self._free_bytes_reader(self.data_dir)

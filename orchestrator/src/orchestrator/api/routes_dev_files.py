@@ -65,6 +65,30 @@ def clip_download(
     return FileResponse(path, media_type="video/mp4", filename=file_name)
 
 
+@router.api_route("/clip-downloads/{job_id}/{file_name}", methods=READ_METHODS)
+def named_clip_download(
+    job_id: str,
+    file_name: str,
+    reviewer: str = Depends(require_reviewer),
+    context: OrchestratorContext = Depends(get_context),
+) -> FileResponse:
+    # Like Caddy's rewrite of /clip-downloads/<job_id>/<readable name> (item 12).
+    path = dev_files.review_media_path(context, "clip-downloads", f"{job_id}.mp4")
+    return FileResponse(path, media_type="video/mp4", filename=file_name)
+
+
+@router.api_route("/original-downloads/{job_id}/{file_name}", methods=READ_METHODS)
+def original_download(
+    job_id: str,
+    file_name: str,
+    reviewer: str = Depends(require_reviewer),
+    context: OrchestratorContext = Depends(get_context),
+) -> FileResponse:
+    # Like Caddy's /original-downloads/* (item 15): originals/<job_id>.<ext>.
+    path = dev_files.original_path(context, job_id, file_name)
+    return FileResponse(path, media_type="application/octet-stream", filename=file_name)
+
+
 @router.api_route("/thumbs/{file_name}", methods=READ_METHODS)
 def thumbnail_file(
     file_name: str,

@@ -146,7 +146,7 @@ def test_a_pass_video_goes_from_whatsapp_to_the_studio(harness, tmp_path):
     # --- 5. A holder processes it. The slow PC is not a holder: no offer.
     assert ask_next(harness, slow_worker, [TaskKind.PROCESS]) is None
     process_offer = ask_next(harness, fast_worker, [TaskKind.PROCESS])
-    assert process_offer["clip_relative_path"] == "enduro/42/3.mp4"
+    assert process_offer["clip_relative_path"] == "enduro/42/enduro-042-p3.mp4"
     # The studio sent no tailnet address in its heartbeat, so it cannot be
     # pushed to: the orchestrator tells the worker to use the outbox.
     assert process_offer["delivery"] == {"mode": "outbox", "studio_url": None}
@@ -180,7 +180,7 @@ def test_a_pass_video_goes_from_whatsapp_to_the_studio(harness, tmp_path):
 
     # --- 6b. The master archives the clip, fetching it from the outbox.
     archive_offer = ask_next(harness, master, [TaskKind.ARCHIVE_CLIP])
-    assert archive_offer["archive_relative_path"] == "enduro/42/3.mp4"
+    assert archive_offer["archive_relative_path"] == "enduro/42/enduro-042-p3.mp4"
     archive_lease, _ = claim_ok(harness, master, job_id, TaskKind.ARCHIVE_CLIP)
     status, archived_bytes = fetch_like_caddy(harness, master, archive_offer["download_urls"][-1])
     assert status == 200 and archived_bytes == SAMPLE_CLIP
@@ -198,7 +198,7 @@ def test_a_pass_video_goes_from_whatsapp_to_the_studio(harness, tmp_path):
     manifest = harness.client.get("/manifest", headers=studio.headers).json()
     assert len(manifest["clips"]) == 1
     entry = manifest["clips"][0]
-    assert entry["relative_path"] == "enduro/42/3.mp4"
+    assert entry["relative_path"] == "enduro/42/enduro-042-p3.mp4"
     assert entry["team_name"] == "Equipe Mangue Baja"
     assert entry["sha256"] == hashlib.sha256(SAMPLE_CLIP).hexdigest()
 

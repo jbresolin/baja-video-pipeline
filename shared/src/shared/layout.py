@@ -1,38 +1,74 @@
-"""Folder layout of finished clips on the studio box (design §7).
+"""Folder layout and file names of clips and raws (design §7, LIVESTACK-41 item 12).
 
     <clip root>/
-        latest.m3u                 newest clips first, for OBS
-        <prova>/<car>/<passagem>.mp4
+        latest.m3u                       newest clips first, for OBS
+        <prova>/<car>/<prova>-<car 3 digits>-p<passagem>.mp4
+        e.g. enduro/42/enduro-042-p3.mp4, after a reprocess enduro-042-p3-v2.mp4
 
 `prova` is turned into a "slug" (lowercase ASCII, dashes) so the path is
 the same on Windows and Linux whatever accents the reviewer typed:
 "Suspensão" → "suspensao", "Enduro de Resistência" → "enduro-de-resistencia".
+
+A file must say what it is once it is copied out of its folder (decision
+by João, 2026-11-05). So clips are named after prova, car and passagem
+(clip_file_stem), and raws on the workers after the sender and the time
+the bot received them (raw_file_name). Each format lives in exactly one
+function, so changing it is a one-line change. Files already on disk are
+never renamed.
 """
 
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import PurePosixPath
+from zoneinfo import ZoneInfo
 
 LATEST_PLAYLIST_NAME = "latest.m3u"
 DEFAULT_PLAYLIST_LENGTH = 50
+# Raw names use the event's local time (volunteers think in it).
+RAW_NAME_TIME_ZONE = ZoneInfo("America/Sao_Paulo")
+# How many characters of the job id end a raw's name: unique enough among
+# an event's few hundred videos, and short enough to read; the review UI
+# shows the same prefix.
+RAW_NAME_JOB_ID_CHARACTERS = 8
+# A sender with neither a name nor a phone number (never expected).
+UNKNOWN_SENDER_SLUG = "remetente"
+# Long WhatsApp names are cut (Windows paths have a length limit).
+MAX_SENDER_SLUG_CHARACTERS = 40
+
+
+def slugify(text: str) -> str:
+    """Lowercase ASCII words joined by dashes; "" when nothing usable is left.
+
+    NFKD splits "ã" into "a" + a combining tilde; encoding to ASCII with
+    "ignore" then drops the tilde (and emoji) and keeps the "a".
+    """
+    ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", ascii_text.lower()).strip("-")
 
 
 def slugify_prova(prova: str) -> str:
     """Make a folder-safe name out of a prova name."""
-    # NFKD splits "ã" into "a" + a combining tilde; encoding to ASCII with
-    # "ignore" then drops the tilde and keeps the "a".
-    ascii_text = unicodedata.normalize("NFKD", prova).encode("ascii", "ignore").decode()
-    slug = re.sub(r"[^a-z0-9]+", "-", ascii_text.lower()).strip("-")
+    slug = slugify(prova)
     if not slug:
         raise ValueError(f"prova {prova!r} has no letters or digits to build a folder name from")
     return slug
 
 
+def clip_file_stem(prova_slug: str, car_number: int, passagem: int) -> str:
+    """THE clip name format (item 12): "enduro-042-p3".
+
+    The car is zero-padded to 3 digits so files sort by car. To change the
+    format, change this line; everything else builds on it.
+    """
+    return f"{prova_slug}-{car_number:03d}-p{passagem}"
+
+
 def clip_relative_path(prova: str, car_number: int, passagem: int) -> str:
     """The clip's path relative to the clip root, always with forward slashes.
 
-    Example: clip_relative_path("Enduro", 42, 3) == "enduro/42/3.mp4".
+    Example: clip_relative_path("Enduro", 42, 3) == "enduro/42/enduro-042-p3.mp4".
     """
     return clip_relative_path_in_folder(slugify_prova(prova), car_number, passagem)
 
@@ -44,23 +80,59 @@ def clip_relative_path_in_folder(prova_slug: str, car_number: int, passagem: int
     keeps it across renames (orchestrator/domain/provas_catalog.py), so it
     builds paths from that stored slug instead of the current name.
     """
-    return str(PurePosixPath(prova_slug, str(car_number), f"{passagem}.mp4"))
+    stem = clip_file_stem(prova_slug, car_number, passagem)
+    return str(PurePosixPath(prova_slug, str(car_number), f"{stem}.mp4"))
 
 
-def archive_relative_path(clip_path: str, version: int) -> str:
-    """Where the master archives one version of a clip (design §11 as amended).
+def versioned_clip_relative_path(clip_path: str, version: int) -> str:
+    """The name of a later version of a clip, beside the first one.
 
-    Version 1 keeps the box path; later versions (after a reprocess) get a
-    ".v<n>" before the extension, so no version replaces another:
-        archive_relative_path("enduro/42/3.mp4", 1) == "enduro/42/3.mp4"
-        archive_relative_path("enduro/42/3.mp4", 2) == "enduro/42/3.v2.mp4"
+    Version 1 keeps the path; later versions (after a reprocess) get
+    "-v<n>" before the extension, so no version replaces another:
+        versioned_clip_relative_path("enduro/42/enduro-042-p3.mp4", 2)
+            == "enduro/42/enduro-042-p3-v2.mp4"
+    Used by the master's archive (every version) and by the studio when the
+    file on air is locked and a reprocessed clip must go beside it.
     """
     if version < 1:
         raise ValueError("clip versions start at 1")
     if version == 1:
         return clip_path
     path = PurePosixPath(clip_path)
-    return str(path.with_name(f"{path.stem}.v{version}{path.suffix}"))
+    if path.stem.isdigit():
+        # A clip named before item 12 ("enduro/42/3.mp4"): its versions were
+        # archived as "3.v2.mp4", and files on disk are never renamed.
+        return str(path.with_name(f"{path.stem}.v{version}{path.suffix}"))
+    return str(path.with_name(f"{path.stem}-v{version}{path.suffix}"))
+
+
+def archive_relative_path(clip_path: str, version: int) -> str:
+    """Where the master archives one version of a clip (design §11 as amended)."""
+    return versioned_clip_relative_path(clip_path, version)
+
+
+def raw_file_name(
+    sender_name: str | None,
+    sender_phone: str | None,
+    received_at: datetime,
+    job_id: str,
+    extension: str,
+) -> str:
+    """THE raw name format on workers (item 12), e.g.
+    "joao-guilherme-bresolin-20261104-232909-2f2510a3.mp4".
+
+    Sender = the contact's display name, else the phone number; the time
+    is when the bot received the video, in São Paulo time; the start of
+    the job id keeps names unique and traceable to the review UI.
+    `extension` includes the dot (".mp4"). The VPS inbox keeps
+    "<job_id>.<ext>": this name is only for files on workers' disks and
+    for downloads.
+    """
+    sender = slugify(sender_name or "")[:MAX_SENDER_SLUG_CHARACTERS].rstrip("-")
+    sender = sender or re.sub(r"\D", "", sender_phone or "")
+    local_time = received_at.astimezone(RAW_NAME_TIME_ZONE).strftime("%Y%m%d-%H%M%S")
+    short_id = job_id[:RAW_NAME_JOB_ID_CHARACTERS]
+    return f"{sender or UNKNOWN_SENDER_SLUG}-{local_time}-{short_id}{extension.lower()}"
 
 
 def is_safe_relative_path(relative_path: str) -> bool:

@@ -113,18 +113,23 @@ def _already_held_raw(env: TaskEnvironment, task: DownloadRawTask) -> Path | Non
     return None
 
 
-def raw_destination_for(env: TaskEnvironment, sources: list[str], job_id: str) -> Path:
+def raw_destination_for(
+    env: TaskEnvironment, sources: list[str], job_id: str, file_name: str | None = None
+) -> Path:
     """Where the raw goes: beside an earlier partial download if there is one.
 
     Resuming needs the same destination as last time, even when this offer
     lists other sources (first the inbox "….mp4", later only a peer
     "…/raw/<job>" with no extension). Otherwise the first source that
     names an extension decides, else ".bin" (ffmpeg reads the content, not
-    the name).
+    the name). `file_name` is the offer's readable name (item 12), which
+    already carries the extension.
     """
     earlier = env.storage.partial_raw_destination(job_id)
     if earlier is not None:
         return earlier
+    if file_name:
+        return env.storage.raw_path(job_id, raw_extension_from(file_name), file_name)
     for url in sources:
         extension = raw_extension_from(url)
         if extension != RAW_EXTENSION_FALLBACK:
@@ -138,7 +143,7 @@ def _download_from_sources(
     sources = [task.download_url, *task.fallback_download_urls]
     # Every source writes to the same destination, so a partial file from
     # the inbox can be finished from a peer and vice versa.
-    destination = raw_destination_for(env, sources, task.job_id)
+    destination = raw_destination_for(env, sources, task.job_id, task.raw_file_name)
     wrong_hash_sources = 0
     client = env.transfer_client(cancel)
     for url in sources:

@@ -47,7 +47,10 @@ def test_only_0008_runs_and_the_job_survives_without_a_full_school_name(tmp_path
 
     database = Database(path)
     assert database.schema_version == MAIN_SCHEMA_VERSION
-    assert database.apply_migrations() == ["0008_clip_name_choices.sql"]
+    # 0008 runs first; later migrations (LIVESTACK-41's 0009) follow it.
+    applied = database.apply_migrations()
+    assert applied[0] == "0008_clip_name_choices.sql"
+    assert applied == [name for number, name, _ in list_migrations() if number > 7]
 
     with database.transaction() as connection:
         job = connection.execute("SELECT * FROM jobs WHERE id = 'job-1'").fetchone()

@@ -78,12 +78,14 @@ def record_heartbeat(
     file_server_port: int | None,
     receiver_port: int | None,
     paused: bool = False,
+    shared_tailnet: bool = False,
 ) -> None:
     """Store what the heartbeat reported. Addresses left out keep their old value."""
     connection.execute(
         """
         UPDATE workers SET
             free_bytes = ?, storage_cap_bytes = ?, last_heartbeat = ?, paused = ?,
+            shared_tailnet = ?,
             tailnet_address = COALESCE(?, tailnet_address),
             file_server_port = COALESCE(?, file_server_port),
             receiver_port = COALESCE(?, receiver_port)
@@ -94,6 +96,7 @@ def record_heartbeat(
             storage_cap_bytes,
             to_db_time(now),
             int(paused),
+            int(shared_tailnet),
             tailnet_address,
             file_server_port,
             receiver_port,
@@ -118,6 +121,7 @@ def worker_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Worker:
         enrolled_at=from_db_time(row["enrolled_at"]),
         last_heartbeat=from_db_time(row["last_heartbeat"]),
         revoked_at=from_db_time(row["revoked_at"]),
+        shared_tailnet=bool(row["shared_tailnet"]),
     )
 
 

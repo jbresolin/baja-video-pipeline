@@ -30,8 +30,15 @@ uv run python -m worker --config path/to/worker.json [--console]
   downloads keep their partial file, ffmpeg is terminated, uploads stop
   between chunks, rendered clips stay in `clips/` for reuse. No visible
   file is ever half-written.
-* On first run (no `worker_id` in the config) it serves only the setup page
-  until a token is entered, then calls `POST /enroll` and continues.
+* The setup/status page on :8700 starts first, unconditionally, before
+  anything else (LIVESTACK-41 item 1). Then `worker/lifecycle.py` walks
+  through visible phases: a broken `worker.json` is shown and waited out
+  (`worker/config_problems.py`); without a `worker_id` the page asks for
+  the token and `POST /enroll` runs; a studio is asked for its clip
+  folder; the worker waits until its saved tailnet address is on this PC
+  (`worker/tailnet_wait.py`), saying why on the page; then the daemon
+  runs. "Registrar de novo" goes back to the token form without leaving
+  the process.
 
 ### Locally: the whole pipeline on one PC (five terminals)
 
@@ -112,7 +119,8 @@ Written by the installer and the setup page. Unknown keys are refused.
 | `receiver_port` | 8720 | Clip receiver (studio). `0` as above. |
 | `setup_page_port` | 8700 | Setup/status page and localhost JSON API on 127.0.0.1. |
 | `paused` | `false` | Set by "Pausar" / cleared by "Retomar" (tray or status page). While true the worker finishes its current task and takes nothing new. Kept here so it survives a reboot. |
-| `studio_clip_root` | `null` = `<working folder>/box` | Studio only: the folder OBS plays from. |
+| `studio_clip_root` | `null` = not chosen | Studio only: the folder OBS plays from. Asked on the setup page right after enrollment (default `C:\BajaClips`); the worker creates it and grants the local Users group read access at every start (`worker/studio/clip_folder.py`). |
+| `shared_tailnet` | `false` | Set by "Usar a rede atual" in `--first-run` (LIVESTACK-41 item 4): the PC stays on its own tailnet, into which the VPS is shared. Sent in every heartbeat; the orchestrator then never makes it a second holder or a peer source and tells it to deliver through the outbox. Cleared by "Registrar de novo" and by joining the Baja tailnet. |
 
 After enrollment the Tailscale auth key is written to
 `tailscale-authkey.txt` next to the config file. The installer runs
@@ -127,15 +135,20 @@ runs Tailscale itself.
 └── tailscale-authkey.txt        only between enrollment and the installer's tailscale up
 
 <working folder>/                (defaults to the config folder)
-├── raws/<job_id>.<ext>          held raws: served on :8710, never evicted, deleted only when
-│                                the orchestrator lists the job in deletable_job_ids
-├── raws/.<job_id>.<ext>.part    a download in progress (resumed after a crash or restart)
+├── raws/<sender>-<YYYYMMDD-HHMMSS>-<job id first 8>.<ext>
+│                                held raws (readable names, LIVESTACK-41 item 12; older ones
+│                                keep <job_id>.<ext>): served on :8710, never evicted, deleted
+│                                only when the orchestrator lists the job in deletable_job_ids
+├── raws/.raw-names.json         readable raw name → full job id
+├── raws/.<name>.part            a download in progress (resumed after a crash or restart)
 ├── clips/<job_id>.mp4           the clip being rendered/delivered right now
 ├── clips/<job_id>.json          the inputs it was rendered from (cuts, fields): lets a
 │                                restarted worker reuse it instead of rendering again
-├── clips/<job_id>.<sha256>.mp4  every clip this worker delivered, KEPT after delivery
+├── clips/<clip name>.<job_id>.<sha256>.mp4
+│                                every clip this worker delivered, KEPT after delivery
+│                                (clip name e.g. enduro-042-p3; older ones lack it)
 │                                (served on :8710 GET /clip/{job_id}); see "Clips" below
-├── clips/<prova>/<car>/<passagem>[.vN].mp4
+├── clips/<prova>/<car>/<prova>-<car>-p<passagem>[-vN].mp4
 │                                master only: the clip archive (every clip, every version)
 ├── tmp/                         proxy, thumbnail, overlay PNG, render in progress;
 │                                emptied at every start
@@ -146,7 +159,11 @@ runs Tailscale itself.
 <studio clip root>/              (studio only; design §7, docs/api.md §8.1)
 ├── latest.m3u                   newest first, max 50, relative paths
 ├── .playlist-index.json         what latest.m3u is built from (hidden)
-└── <prova>/<car>/<passagem>.mp4
+├── .clip-hashes.json            cached SHA-256 per clip (size + mtime), so a second
+│                                delivery of the same clip is recognised without rereading it
+└── <prova>/<car>/<prova>-<car 3 digits>-p<passagem>[-vN].mp4
+                                 e.g. enduro/42/enduro-042-p3.mp4; -v2 only when the
+                                 previous version was locked (on air) when a new one came
 ```
 
 ### Clips are kept after delivery (where they go)
@@ -158,13 +175,13 @@ the worker does **not** delete its clip: it moves it to
 and serves it on `:8710` so the master can copy it. Where a finished clip
 is, at any moment:
 
-* on the **studio box** (`<prova>/<car>/<passagem>.mp4`), once delivered;
+* on the **studio box** (`<prova>/<car>/enduro-042-p3.mp4`), once delivered;
 * in the **VPS outbox** while the studio is offline, and after its ACK
   until the master archived it (at most 72 h);
 * on **the worker that rendered it**, until the master archived it *and*
   the worker runs short of space;
-* on the **master**, in `clips/<prova>/<car>/<passagem>.mp4` (and
-  `.v2.mp4`, … for reprocessed passes), for good.
+* on the **master**, in `clips/<prova>/<car>/enduro-042-p3.mp4` (and
+  `-v2.mp4`, … for reprocessed passes), for good.
 
 Kept clips count against the storage cap. Near the cap (under 4 GB free)
 the worker deletes kept clips **the orchestrator says the master has
@@ -206,11 +223,26 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   `POST /jobs/{id}/clip-archived`.
 * **process** delivers the clip the way the offer's `delivery` says (the
   orchestrator decides; the worker never looks at `GET /workers`):
-  `outbox` → chunked upload to the outbox; `direct` → push to
+  `outbox` → chunked upload to the outbox; `direct` → check the studio
+  answers `GET /health` within 3 s (else the outbox at once, and the studio
+  is remembered as unreachable for 5 minutes), push to
   `delivery.studio_url`, then wait up to 60 s for the studio's ACK to end
-  the lease, and upload to the outbox if the push failed or no ACK came.
+  the lease. If the push failed, or no ACK came and the job is not already
+  delivered with this clip, upload to the outbox.
+* **upload_original** (LIVESTACK-41 item 15): a reviewer asked for the
+  original; upload the held raw, chunked, to the task's `upload_url`.
+  A worker meeting an orchestrator that does not know this kind (400 on
+  `/next`) stops asking for it.
 * **peer-file-server / studio-receiver** (`servers.py`, `studio/`):
   uvicorn in a background thread.
+* **studio clip placement** (`studio/placement.py`, item 13): a verified
+  clip is moved into the folder without ever failing on Windows locks.
+  Same content already there (any version name) = delivered, nothing
+  renamed; a lock is retried with a short backoff; a clip on air that
+  stays locked is never overwritten, the new version goes beside it as
+  `…-v2.mp4`, which is what latest.m3u then plays and what is ACKed. The
+  older version is deleted once nothing holds it. The `deliver` task skips
+  the download entirely when the folder already holds that clip.
 * **studio-acks** (studio): after a pushed clip is stored, adds it to
   `latest.m3u` and sends `POST /jobs/{id}/delivered`, retrying every 10 s.
   Owed ACKs are written to `pending_acks.json` (temp file + rename) and
@@ -221,6 +253,11 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
 
 ### Status page, pause and the tray icon (LIVESTACK-38 item 9)
 
+* **The page never reloads itself** (item 14). `page_assets/page.js`
+  fetches `GET /api/page` every 5 s and replaces only the live region (no
+  form field ever lives there); the form region changes only when the
+  server wants another form and nobody is using the current one (focus or
+  typed text). An opened "Detalhes" stays open.
 * **Status page** (`status_page.py`, pt-BR): once enrolled,
   `http://localhost:8700` shows one big state line in the tray icon's
   colour, what the worker is doing (video, prova, car), space used vs.
@@ -232,7 +269,9 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
 
   | Method & path | Does | Answer |
   | --- | --- | --- |
-  | `GET /api/status` | — | the status document: `enrolled`, `enrollment_refused`, `connection_step_pending`, `paused`, `last_contact_at`, `unreachable_for_s`, `tasks[]` (`kind`, `job_id`, `prova`, `car_number`, `percent`), `storage` (`used_bytes`, `cap_bytes`, `near_cap`), `held_raws`, `clips_held`, `clips_archived`, `details` (never the bearer token) |
+  | `GET /api/status` | — | the status document: `phase`, `enrolled`, `enrollment_refused`, `connection_step_pending`, `config_problem` (file, line, column, line text, hint), `tailnet_problem` (kind, saved and current address), `identity_rejected`, `can_re_register`, `paused`, `last_contact_at`, `unreachable_for_s`, `tasks[]` (`kind`, `job_id`, `prova`, `car_number`, `percent`), `storage` (`used_bytes`, `cap_bytes`, `near_cap`), `held_raws`, `clips_held`, `clips_archived`, `studio` (clip folder and `latest.m3u` path), `details` (never the bearer token) |
+  | `GET /api/page` | — | the page's live parts as HTML (`live_html`, `form_key`, `form_html`, `title`); `page_assets/page.js` swaps them in place |
+  | `POST /api/re-register` | "Registrar de novo" | the status document |
   | `POST /api/pause` | "Pausar" | the new status document |
   | `POST /api/resume` | "Retomar" | the new status document |
   | `POST /api/stop` | "Desligar": `sc stop BajaWorker` on Windows (exiting would make NSSM restart us), else stops the process | the status document |
@@ -250,9 +289,11 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   Windows service state into colour (green working, blue idle, yellow
   paused/waiting, red problem, grey off), a one-line pt-BR tooltip, the
   menu (Abrir painel, Pausar/Retomar, Desligar/Ligar o worker, Concluir
-  conexão while the join is pending, Sair do ícone) and the notifications,
-  each raised once (connection step pending, disk near the cap,
-  enrollment refused, service stopped unexpectedly; never per job). It has
+  conexão while the join is pending or the tailnet is missing, Registrar
+  de novo behind a Yes/No box, Sair do ícone) and the notifications, each
+  raised once (connection step pending, not on the Baja tailnet, broken
+  worker.json, identity rejected, disk near the cap, enrollment refused,
+  service stopped unexpectedly; never per job). It has
   no GUI imports and is unit-tested on Linux. `service.py` wraps
   `sc query/start/stop BajaWorker` (the installer lets the Users group
   start and stop that one service; on "access denied" it falls back to a

@@ -54,6 +54,47 @@ for (const button of document.querySelectorAll("[data-regenerate-proxy]")) {
   });
 }
 
+// "Baixar original" (LIVESTACK-41 item 15): ready at once while the server
+// still has the raw; otherwise a PC that holds it uploads it first, and we
+// ask again every few seconds until the link is there.
+const ORIGINAL_POLL_MILLISECONDS = 5000;
+const originalStatus = document.getElementById("original-status");
+
+function showOriginal(answer) {
+  originalStatus.replaceChildren();
+  if (answer.state === "ready") {
+    const link = document.createElement("a");
+    link.href = answer.download_url;
+    link.download = answer.file_name;
+    link.textContent = answer.file_name;
+    originalStatus.append(t("script.original.ready"), " ", link);
+    return true;
+  }
+  if (answer.state === "preparing") {
+    originalStatus.textContent = t("script.original.preparing");
+    return false;
+  }
+  originalStatus.textContent = t("script.original.no_holder");
+  return true;
+}
+
+async function followOriginal(url) {
+  const result = await sendJson(url, "GET");
+  if (!result.ok) return showFlash(errorMessage(result), "error");
+  if (!showOriginal(result.data)) setTimeout(() => followOriginal(url), ORIGINAL_POLL_MILLISECONDS);
+}
+
+for (const button of document.querySelectorAll("[data-original]")) {
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    const url = `/review/api/jobs/${encodeURIComponent(jobElement.dataset.jobId)}/original`;
+    const result = await sendJson(url, "POST", {});
+    button.disabled = false;
+    if (!result.ok) return showFlash(errorMessage(result), "error");
+    if (!showOriginal(result.data)) setTimeout(() => followOriginal(url), ORIGINAL_POLL_MILLISECONDS);
+  });
+}
+
 for (const button of document.querySelectorAll("[data-reload]")) {
   button.addEventListener("click", () => window.location.reload());
 }

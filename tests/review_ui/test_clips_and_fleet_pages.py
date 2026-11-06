@@ -201,3 +201,14 @@ def test_fleet_says_pausado_for_a_worker_the_volunteer_paused(ui, fake_orchestra
     html = ui.get("/review/fleet").text
     assert 'class="badge paused"' in html
     assert ">pausado<" in html
+
+
+def test_fleet_says_rede_compartilhada_for_a_worker_on_its_own_tailnet(ui, fake_orchestrator):
+    # Nobody in the sample fleet uses "Usar a rede atual" (LIVESTACK-41 item 4).
+    assert "rede compartilhada" not in ui.get("/review/fleet").text
+    # The master's heartbeat says shared_tailnet: true; the operator must see
+    # that peers cannot fetch from it.
+    fake_orchestrator.fleet.workers[1].worker.shared_tailnet = True
+    html = ui.get("/review/fleet").text
+    assert 'class="badge shared-tailnet"' in html
+    assert ">rede compartilhada<" in html

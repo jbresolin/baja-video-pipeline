@@ -19,7 +19,13 @@ from orchestrator.db.database import from_db_time
 from orchestrator.domain import provas_catalog
 from orchestrator.domain.archive_rules import evaluate_archive_clip
 from orchestrator.domain.clip_names import clip_names_for_job, name_styles
-from orchestrator.domain.fleet_snapshot import FleetSnapshot, accepts_new_raws, peer_raw_url
+from orchestrator.domain.fleet_snapshot import (
+    FleetSnapshot,
+    accepts_new_raws,
+    on_shared_tailnet,
+    peer_raw_url,
+)
+from orchestrator.domain.originals import evaluate_upload_original
 from orchestrator.domain.task_decision import TaskDecision, refuse
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.storage import VpsLayout
@@ -72,6 +78,8 @@ def evaluate_task(
         return refuse(ErrorCode.NOT_CLAIMABLE, f"this worker already failed {kind} on this job")
     if kind == TaskKind.DOWNLOAD_RAW:
         return _evaluate_download(connection, layout, snapshot, job_row, worker_row)
+    if kind == TaskKind.UPLOAD_ORIGINAL:
+        return evaluate_upload_original(connection, layout, snapshot, job_row, worker_row)
 
     # make_proxy and process are for confirmed holders only (reprocess included).
     holders = {h.worker_id: h for h in leases_repo.list_holders(connection, job_row["id"])}
@@ -83,7 +91,7 @@ def evaluate_task(
         return refuse(ErrorCode.ALREADY_CLAIMED, f"worker {blocking} holds the {kind} lease")
     if kind == TaskKind.MAKE_PROXY:
         return _evaluate_make_proxy(layout, job_row)
-    return _evaluate_process(connection, layout, snapshot, job_row)
+    return _evaluate_process(connection, layout, snapshot, job_row, worker_row)
 
 
 def _lease_held_by_someone_else(
@@ -114,8 +122,17 @@ def _evaluate_make_proxy(layout: VpsLayout, job_row: sqlite3.Row) -> TaskDecisio
     )
 
 
-def delivery_plan(snapshot: FleetSnapshot, job_id: str) -> DeliveryPlan:
-    """Direct push when a studio is online (heartbeat within 45 s), else the outbox."""
+def delivery_plan(
+    snapshot: FleetSnapshot, job_id: str, worker_row: sqlite3.Row | None = None
+) -> DeliveryPlan:
+    """Direct push when a studio is online (heartbeat within 45 s), else the outbox.
+
+    A worker on a shared tailnet (LIVESTACK-41 item 4) cannot reach the
+    studio at all, so it is told "outbox" straight away instead of waiting
+    out a push that cannot connect (item 13).
+    """
+    if worker_row is not None and on_shared_tailnet(worker_row):
+        return DeliveryPlan(mode=DeliveryRoute.OUTBOX, studio_url=None)
     studio_url = snapshot.studio_receive_url(job_id)
     if studio_url is None:
         return DeliveryPlan(mode=DeliveryRoute.OUTBOX, studio_url=None)
@@ -127,6 +144,7 @@ def _evaluate_process(
     layout: VpsLayout,
     snapshot: FleetSnapshot,
     job_row: sqlite3.Row,
+    worker_row: sqlite3.Row,
 ) -> TaskDecision:
     state = JobState(job_row["state"])
     if state == JobState.CLAIMED:
@@ -162,7 +180,7 @@ def _evaluate_process(
                 job_row["passagem"],
             ),
             outbox_upload_url=layout.api_url(f"/jobs/{job_id}/clip"),
-            delivery=delivery_plan(snapshot, job_id),
+            delivery=delivery_plan(snapshot, job_id, worker_row),
         )
     )
 
@@ -212,6 +230,10 @@ def _evaluate_download(
         return refuse(ErrorCode.NOT_CLAIMABLE, "worker already holds this raw")
 
     if mine is None and not snapshot.is_master(worker_id):
+        if on_shared_tailnet(worker_row):
+            # Item 4: peers could never fetch from it, so it would be a
+            # holder in name only.
+            return refuse(ErrorCode.NOT_CLAIMABLE, "a worker on a shared tailnet holds no raws")
         # Design §4: the master is always a holder; one more worker joins it.
         # With the master offline, two non-master workers hold the raw.
         master_counts = any(snapshot.is_master(h.worker_id) for h in holders)
@@ -235,6 +257,7 @@ def _evaluate_download(
             size_bytes=job_row["size_bytes"],
             download_url=urls[0],
             fallback_download_urls=urls[1:],
+            raw_file_name=job_row["raw_file_name"],
         )
     )
 
@@ -268,6 +291,7 @@ def _faster_idle_worker_exists(
             and snapshot.is_available_for_work(worker_id)
             and accepts_new_raws(row)
             and worker_id not in holder_ids
+            and not on_shared_tailnet(row)
             and worker_id not in snapshot.downloading_worker_ids
             and not leases_repo.is_task_excluded(
                 connection, job_row["id"], worker_id, TaskKind.DOWNLOAD_RAW
@@ -281,10 +305,16 @@ def _faster_idle_worker_exists(
 def _raw_sources(
     layout: VpsLayout, snapshot: FleetSnapshot, job_row: sqlite3.Row, holders, worker_id: str
 ) -> list[str]:
-    """The VPS inbox first (while it has the raw), then online confirmed peers."""
+    """The VPS inbox first (while it has the raw), then online confirmed peers.
+
+    A worker on a shared tailnet (item 4) reaches only the VPS, so it gets no peer URLs.
+    """
     urls = []
     if job_row["raw_on_vps"]:
         urls.append(layout.inbox_download_url(job_row["id"], job_row["raw_extension"]))
+    asker = snapshot.workers_by_id.get(worker_id)
+    if asker is not None and on_shared_tailnet(asker):
+        return urls
     for holder in holders:
         if holder.status != HolderStatus.CONFIRMED or holder.worker_id == worker_id:
             continue

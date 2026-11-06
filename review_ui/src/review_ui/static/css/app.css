@@ -113,6 +113,7 @@ h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .badge.state-discarded { text-decoration: line-through; }
 .badge.flag { background: var(--warn-bg); color: var(--warn-ink); }
 .badge.paused { background: var(--warn-bg); color: var(--warn-ink); }
+.badge.shared-tailnet { background: var(--info-bg); color: var(--info-ink); }
 
 /* Buttons and fields */
 button {

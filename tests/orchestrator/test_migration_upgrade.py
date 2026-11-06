@@ -2,12 +2,13 @@
 
 The VPS database was created and migrated by main's code: migrations
 0001-0004 (the last two are LIVESTACK-37's admin page and results API).
-LIVESTACK-38 added 0005-0007 (and LIVESTACK-42 0008, whose own upgrade test
-is test_migration_0008.py). These tests build a database exactly as main
-left it before LIVESTACK-38, put typical rows in it, then open it with this
-code, which applies the newer migrations at startup, and check that:
+LIVESTACK-38 added 0005-0007; later branches add more (LIVESTACK-42's 0008
+is tested in test_migration_0008.py, LIVESTACK-41's 0009 in
+test_migration_upgrade_0009.py). These tests build a database exactly as
+main left it then, put typical rows in it, then open it with this code,
+which applies the new migrations at startup, and check that:
 
-* only 0005 to 0008 run, in order, and the version becomes 8;
+* only 0005 and later run, in order, and the version becomes the newest;
 * every existing row survives, and the new columns get the values the
   migrations promise (a job discarded before the upgrade counts as past
   its grace period, because main had already deleted its raws);
@@ -24,12 +25,13 @@ from orchestrator.db.database import Database, list_migrations, open_database
 from orchestrator.testing.harness import build_harness
 
 MAIN_SCHEMA_VERSION = 4
-BRANCH_MIGRATIONS = [
+LIVESTACK_38_MIGRATIONS = [
     "0005_first_real_video.sql",
     "0006_worker_paused.sql",
     "0007_school_short.sql",
-    "0008_clip_name_choices.sql",
 ]
+# Everything after main's schema 4, in order: LIVESTACK-38's three, then later ones.
+BRANCH_MIGRATIONS = [name for number, name, _ in list_migrations() if number > 4]
 WHEN = "2026-11-04T12:00:00.000000Z"
 
 
@@ -70,8 +72,8 @@ def test_main_database_upgrades_with_only_the_new_migrations(tmp_path):
 
     database = open_database(tmp_path)
 
-    # open_database applied 0005-0008 and nothing else.
-    assert database.schema_version == len(list_migrations()) == 8
+    # open_database applied 0005 and later, and nothing else.
+    assert database.schema_version == len(list_migrations())
     with database.transaction() as connection:
         jobs = {
             row["id"]: row
@@ -117,6 +119,7 @@ def test_the_upgrade_applies_exactly_this_branchs_files_in_order(tmp_path):
     database = Database(tmp_path / "db" / "bvp.sqlite3")
     assert database.schema_version == MAIN_SCHEMA_VERSION
     assert database.apply_migrations() == BRANCH_MIGRATIONS
+    assert BRANCH_MIGRATIONS[:3] == LIVESTACK_38_MIGRATIONS
     database.close()
 
 

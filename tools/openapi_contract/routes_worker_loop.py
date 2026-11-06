@@ -283,6 +283,28 @@ def upload_clip(
 
 
 @router.post(
+    "/jobs/{job_id}/original-upload",
+    tags=["worker loop"],
+    summary="Chunked upload of a raw a reviewer asked for (upload_original)",
+    response_model=ChunkAccepted,
+    openapi_extra=_CHUNK_BODY,
+    responses=error_responses(400, 401, 404, 409, 413, 422),
+)
+def upload_original(
+    job_id: str,
+    upload_offset: int = Header(..., alias="Upload-Offset"),
+    upload_length: int = Header(..., alias="Upload-Length"),
+    upload_sha256: str = Header(..., alias="Upload-SHA256"),
+    lease_id: str = Header(..., alias="Lease-Id"),
+) -> ChunkAccepted:
+    """Under an upload_original lease (LIVESTACK-41 item 15). Upload-SHA256
+    must be the job's sha256 (422 otherwise). On the completing chunk the
+    raw is in originals/ and the lease ends; the job does not change and
+    the VPS copy is never a holder."""
+    not_implemented()
+
+
+@router.post(
     "/jobs/{job_id}/clip-archived",
     tags=["delivery"],
     summary="Master: confirm one clip version is in the archive (sha256 checked)",

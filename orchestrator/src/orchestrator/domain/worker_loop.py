@@ -38,7 +38,14 @@ from shared.protocol import (
 
 # Order in which /next looks at the kinds a worker accepts. Proxies first:
 # they unblock the human reviewers, who are the slowest part of the line.
-KIND_PRIORITY = [TaskKind.MAKE_PROXY, TaskKind.PROCESS, TaskKind.DOWNLOAD_RAW, TaskKind.DELIVER]
+# Then an original a reviewer is waiting for (item 15), before renders.
+KIND_PRIORITY = [
+    TaskKind.MAKE_PROXY,
+    TaskKind.UPLOAD_ORIGINAL,
+    TaskKind.PROCESS,
+    TaskKind.DOWNLOAD_RAW,
+    TaskKind.DELIVER,
+]
 # After all of that, the master backfills raws of finished jobs it missed
 # (design §17), and after that it archives clips (archive_rules.py): the
 # lowest priority there is.
@@ -61,6 +68,7 @@ def process_heartbeat(
             file_server_port=request.file_server_port,
             receiver_port=request.receiver_port,
             paused=request.paused,
+            shared_tailnet=request.shared_tailnet,
         )
         for measurement in request.measurements:
             workers_repo.insert_stat_sample(
@@ -153,6 +161,8 @@ def _candidate_rows(connection: sqlite3.Connection, worker_row: sqlite3.Row, kin
         ]
     if kind == TaskKind.PROCESS:
         return jobs_repo.list_jobs_held_by(connection, worker_id, [JobState.READY])
+    if kind == TaskKind.UPLOAD_ORIGINAL:
+        return jobs_repo.list_original_request_rows(connection)
     return jobs_repo.list_outbox_deliver_candidates(connection)
 
 

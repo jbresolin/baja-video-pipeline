@@ -54,7 +54,8 @@ function Assert-Installed {
 
     # Not enrolled yet, so the worker serves the setup form on 8700.
     Wait-Until {
-        try { (Invoke-WebRequest "http://127.0.0.1:8700/" -UseBasicParsing -TimeoutSec 5).Content -match "Baja worker setup" }
+        # The token form's field (the page text is pt-BR and may change; the field name does not).
+        try { (Invoke-WebRequest "http://127.0.0.1:8700/" -UseBasicParsing -TimeoutSec 5).Content -match "name='token'" }
         catch { $false }
     } 90 "setup page on http://127.0.0.1:8700"
 

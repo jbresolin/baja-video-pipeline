@@ -10,7 +10,16 @@ from pathlib import Path
 from starlette.responses import JSONResponse, Response
 
 from shared.hashing import sha256_of_bytes
-from shared.models import ChunkAccepted, Holder, IntakeSource, Job, JobState, ReceivedAs
+from shared.models import (
+    ChunkAccepted,
+    ClipInfo,
+    DeliveryRoute,
+    Holder,
+    IntakeSource,
+    Job,
+    JobState,
+    ReceivedAs,
+)
 from shared.upload_receiver import (
     ChunkedUploadReceiver,
     UploadHashMismatchError,
@@ -36,6 +45,10 @@ class FakeJob:
     team_name: str | None = None
     passagem: int | None = None
     holders: list[Holder] = field(default_factory=list)
+    # What GET /jobs/{id} says about the job's state and its current clip
+    # (a test sets "delivered" + the clip's hash to play a late studio ACK).
+    state: JobState = JobState.READY
+    clip_sha256: str | None = None
 
     @property
     def sha256(self) -> str:
@@ -44,7 +57,7 @@ class FakeJob:
     def as_job(self) -> Job:
         return Job(
             id=self.job_id,
-            state=JobState.READY,
+            state=self.state,
             source=IntakeSource(
                 message_id=f"msg-{self.job_id}",
                 received_as=ReceivedAs.DOCUMENT,
@@ -57,6 +70,15 @@ class FakeJob:
             team_name=self.team_name,
             passagem=self.passagem,
             holders=self.holders,
+            clip=None
+            if self.clip_sha256 is None
+            else ClipInfo(
+                sha256=self.clip_sha256,
+                size_bytes=1,
+                relative_path="enduro/42/enduro-042-p3.mp4",
+                route=DeliveryRoute.DIRECT,
+                rendered_by_worker_id="worker-1",
+            ),
         )
 
 

@@ -8,7 +8,6 @@ itself, the wait for Tailscale) with a small stand-in.
 import pytest
 
 from baja_installer import cli
-from baja_installer.service_start import EXIT_TAILNET_NOT_READY
 from worker.config import load_config
 
 
@@ -50,23 +49,16 @@ def test_without_a_command_it_runs_the_worker_with_the_config(tmp_path, worker_c
     assert worker_calls == [["--config", str(config_path.resolve()), "--console"]]
 
 
-def test_service_mode_waits_for_tailscale_then_runs_the_worker(tmp_path, worker_calls, monkeypatch):
-    monkeypatch.setattr(cli, "wait_for_tailnet_address", lambda path: True)
-
+def test_service_mode_runs_the_worker_at_once(tmp_path, worker_calls):
+    # NSSM starts "BajaWorker.exe --service". It used to wait for the
+    # Tailscale address before even starting the worker, so the status page
+    # never came up while the address was missing (LIVESTACK-41 item 1).
+    # Now the worker starts straight away: its page comes up first and the
+    # tailnet wait is a visible state inside the worker (worker.tailnet_wait).
     assert cli.main(["--service", "--config", str(tmp_path / "worker.json")]) == 0
 
     # "--service" is ours; the worker itself never sees it.
     assert worker_calls == [["--config", str((tmp_path / "worker.json").resolve())]]
-
-
-def test_service_mode_exits_75_when_tailscale_never_comes_up(tmp_path, worker_calls, monkeypatch):
-    monkeypatch.setattr(cli, "wait_for_tailnet_address", lambda path: False)
-
-    exit_code = cli.main(["--service", "--config", str(tmp_path / "worker.json")])
-
-    # The fixed code tells NSSM's log readers why; the worker did not start.
-    assert exit_code == EXIT_TAILNET_NOT_READY == 75
-    assert worker_calls == []
 
 
 def test_two_commands_at_once_are_refused():

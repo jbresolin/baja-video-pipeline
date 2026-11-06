@@ -11,14 +11,15 @@ it skips the render and resumes the upload. A lost lease (the reviewer
 changed the cut, or the lease expired) deletes the clip.
 
 After a verified delivery the clip is *kept* (design §11 as amended:
-processed clips are the archive) as clips/<job_id>.<sha256>.mp4, until
+processed clips are the archive) as clips/<clip name>.<job_id>.<sha256>.mp4
+(e.g. enduro-042-p3.<job>.<sha>.mp4), until
 the master has archived it (worker.clip_store).
 """
 
 import json
 import logging
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from shared.models import MeasurementKind, ProcessTask
 from worker.failures import TaskFailedError, probe_input
@@ -49,7 +50,8 @@ def run_process(
                 # handles itself without raising.)
                 env.storage.delete_clip(task.job_id)
             raise
-    env.storage.clips.keep(clip_path, task.job_id, clip_sha256)
+    clip_name = PurePosixPath(task.clip_relative_path).stem  # "enduro-042-p3" (item 12)
+    env.storage.clips.keep(clip_path, task.job_id, clip_sha256, clip_name)
     env.storage.delete_clip(task.job_id)  # only the sidecar is left by now
 
 

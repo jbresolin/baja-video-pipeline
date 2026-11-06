@@ -283,6 +283,30 @@ def test_the_grace_periods_are_edited_on_the_settings_page(admin, harness):
     assert (stored.discard_grace_hours, stored.outbox_keep_unarchived_hours) == (48, 12)
 
 
+def test_the_originals_keep_time_and_cap_are_edited_on_the_settings_page(admin, harness):
+    # LIVESTACK-41 item 15: "Baixar original" copies stay 24 h after the last
+    # request and the folder stays under 10 GB, both editable here.
+    page = admin.get("/review/admin/settings").text
+    assert 'name="originals_keep_hours"' in page and 'name="originals_cap_gb"' in page
+    follow(
+        admin,
+        post_form(
+            admin,
+            "/review/admin/settings",
+            intake_mode="open",
+            inbox_hold_gb="22",
+            proxy_evict_min_free_gb="10",
+            installer_download_url="",
+            discard_grace_hours="24",
+            outbox_keep_unarchived_hours="72",
+            originals_keep_hours="6",
+            originals_cap_gb="20",
+        ),
+    )
+    stored = harness.context.admin_settings.current
+    assert (stored.originals_keep_hours, stored.originals_cap_gb) == (6, 20)
+
+
 def test_settings_status_shows_secrets_as_configured_but_never_their_values(admin):
     page = admin.get("/review/admin/settings").text
     assert "<code>BVP_ADMIN_TOKEN</code>: configurado" in page

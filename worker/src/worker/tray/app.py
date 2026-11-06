@@ -50,6 +50,16 @@ ICON_RGB = {
 }
 # Tooltips longer than this are cut by Windows.
 MAX_TOOLTIP_CHARS = 127
+RE_REGISTER_QUESTION = (
+    "Registrar este PC de novo?\n\n"
+    "Ele esquece a identidade atual na equipe Baja e volta para a página do "
+    "token (peça um token novo à equipe). Os vídeos guardados e as "
+    "configurações ficam."
+)
+# MessageBoxW flags and answer (winuser.h).
+MB_YESNO = 0x4
+MB_ICONQUESTION = 0x20
+IDYES = 6
 
 
 def draw_icon(colour: Colour) -> Image.Image:
@@ -90,6 +100,16 @@ def run_sc_elevated(arguments: list[str]) -> bool:
     parameters = subprocess.list2cmdline(arguments)
     result = ctypes.windll.shell32.ShellExecuteW(None, "runas", "sc.exe", parameters, None, 0)
     return result > 32
+
+
+def confirm(question: str) -> bool:
+    """A Windows Yes/No box; the tray has no other window to ask in."""
+    import ctypes
+
+    answer = ctypes.windll.user32.MessageBoxW(
+        None, question, "Baja Worker", MB_YESNO | MB_ICONQUESTION
+    )
+    return answer == IDYES
 
 
 def worker_exe() -> Path:
@@ -159,6 +179,12 @@ class TrayApp:
         self.controller.start()
         self.refresh()
 
+    def re_register(self, *_):
+        if confirm(RE_REGISTER_QUESTION):
+            post_action("re-register")
+            self.open_panel()  # the page now asks for the new token
+        self.refresh()
+
     def finish_connection(self, *_):
         # BajaWorker.exe asks for administrator rights itself (cli.py).
         subprocess.Popen([str(worker_exe()), "--first-run", "--config", str(default_config_path())])
@@ -182,6 +208,7 @@ class TrayApp:
             item("Desligar o worker", self.stop_service, visible=shown("stop")),
             item("Ligar o worker", self.start_service, visible=shown("start")),
             item("Concluir conexão", self.finish_connection, visible=shown("finish_connection")),
+            item("Registrar de novo", self.re_register, visible=shown("re_register")),
             pystray.Menu.SEPARATOR,
             item("Sair do ícone", self.exit_icon, visible=shown("exit_icon")),
         )

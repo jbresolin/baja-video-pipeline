@@ -7,7 +7,11 @@ It talks to the volunteer in Portuguese in its console window.
  1. open the setup page (http://localhost:8700) in the volunteer's browser;
  2. wait until the service has enrolled: worker.json holds a worker id and
     tailscale-authkey.txt sits next to it (worker/enrollment.py writes both);
- 3. if this PC is on another tailnet, ask before switching (worker_join.md);
+ 3. if this PC is on another tailnet, ask before switching (worker_join.md).
+    When the server already answers over that tailnet (the VPS is shared
+    into it, as on João's desktop), also offer "Usar a rede atual": stay,
+    with a warning that peers and the studio cannot reach this PC then
+    (LIVESTACK-41 item 4; never offered to the studio);
  4. `tailscale up --auth-key=file:… --hostname=… --unattended`, then delete
     the key file whatever the outcome (the key is single-use either way);
  5. store the Tailscale IPv4 as `tailnet_address` and Caddy's tailnet
@@ -20,13 +24,22 @@ every branch of it on Linux with a fake `tailscale`.
 """
 
 import re
+import urllib.error
+import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from baja_installer.tailscale_cli import TailscaleCli, TailscaleStatus
 from shared.models import WorkerRole
-from worker.config import DEFAULT_ORCHESTRATOR_URL, WorkerConfig, load_config, save_config
+from worker.config import (
+    DEFAULT_ORCHESTRATOR_URL,
+    WorkerConfig,
+    config_without_identity,
+    load_config,
+    save_config,
+)
+from worker.config_problems import read_config
 from worker.enrollment import TAILSCALE_AUTH_KEY_FILE_NAME
 
 EXIT_JOINED = 0
@@ -55,23 +68,58 @@ def config_after_join(config: WorkerConfig, status: TailscaleStatus) -> WorkerCo
     `orchestrator_url` is replaced only while it still has the built-in
     local default; a URL someone typed into worker.json stays.
     """
-    updates: dict[str, object] = {"tailnet_address": status.ipv4}
+    updates: dict[str, object] = {"tailnet_address": status.ipv4, "shared_tailnet": False}
     if config.orchestrator_url == LOCAL_ORCHESTRATOR_URL and config.tailnet_base_url:
         updates["orchestrator_url"] = config.tailnet_base_url
     return config.model_copy(update=updates)
 
 
-def config_without_enrollment(config: WorkerConfig) -> WorkerConfig:
-    """Forget the identity so the setup page asks for a new token."""
+def config_on_current_tailnet(config: WorkerConfig, status: TailscaleStatus) -> WorkerConfig:
+    """ "Usar a rede atual": what João did by hand on his desktop (item 4).
+
+    The VPS is shared into this PC's own tailnet with the same 100.x
+    address, so Caddy's tailnet listener is the orchestrator URL here too;
+    our address is the one we have on this tailnet.
+    """
     return config.model_copy(
         update={
-            "worker_id": None,
-            "bearer_token": None,
-            "role": None,
-            "tailnet_base_url": None,
-            "enrollment_token": None,
+            "orchestrator_url": config.tailnet_base_url or config.orchestrator_url,
+            "tailnet_address": status.ipv4,
+            "shared_tailnet": True,
         }
     )
+
+
+HEALTH_TIMEOUT_SECONDS = 5
+
+
+def server_health_answers(base_url: str) -> bool:
+    """GET <base_url>/health answers 200 from this PC, over whatever network it is on now.
+
+    Caddy's tailnet listener proxies /health to the orchestrator. When the
+    VPS is shared into the volunteer's own tailnet, it answers there too.
+    """
+    try:
+        with urllib.request.urlopen(
+            base_url.rstrip("/") + "/health", timeout=HEALTH_TIMEOUT_SECONDS
+        ) as answer:
+            return answer.status == 200
+    except (OSError, ValueError, urllib.error.URLError):
+        return False
+
+
+JOIN_BAJA = "1"
+USE_CURRENT_TAILNET = "2"
+CANCEL = "3"
+CHOICE_QUESTION = (
+    "Este PC está conectado a outra rede Tailscale, e o servidor da Baja já responde "
+    "por ela. O que fazer?\n"
+    "  1 = Entrar na rede Baja (recomendado). Desconecta este PC da rede atual.\n"
+    "  2 = Usar a rede atual. Este PC continua na rede dele. ATENÇÃO: assim os outros "
+    "PCs da equipe e o estúdio não conseguem acessar este PC; ele não deve ser o "
+    "master durante um evento e não pode ser o estúdio.\n"
+    "  3 = Cancelar."
+)
 
 
 @dataclass
@@ -85,6 +133,10 @@ class FirstRunEnvironment:
     ask_yes_no: Callable[[str], bool]
     say: Callable[[str], None]
     sleep: Callable[[float], None]
+    # Does GET <url>/health answer from this PC right now (without switching)?
+    server_answers: Callable[[str], bool] = lambda url: False
+    # Ask a question with numbered answers; returns the answer typed ("1", "2", …).
+    ask_choice: Callable[[str, list[str]], str] = lambda question, answers: CANCEL
     poll_seconds: float = POLL_SECONDS
 
     @property
@@ -104,14 +156,27 @@ def run_first_run(env: FirstRunEnvironment) -> int:
 def wait_for_enrollment(env: FirstRunEnvironment) -> WorkerConfig:
     """Block until worker.json says "enrolled". Closing the window stops it."""
     told_the_volunteer = False
+    told_about_a_problem = None
     while True:
-        config = load_config(env.config_path)
+        reading = read_config(env.config_path)
+        config = reading.config
+        if reading.problem is not None:
+            # A hand-edited worker.json that does not parse: the page says where.
+            if reading.problem.message != told_about_a_problem:
+                env.say(
+                    f"O arquivo worker.json tem um erro: {reading.problem.message} "
+                    "Veja os detalhes em http://localhost:8700."
+                )
+                told_about_a_problem = reading.problem.message
+            env.sleep(env.poll_seconds)
+            continue
+        assert config is not None
         if config.is_enrolled:
             return config
         if not told_the_volunteer:
             env.say(
                 "Aguardando: cole o token de inscrição na página de configuração "
-                'e clique em "Save and connect". Pode deixar esta janela aberta.'
+                'e clique em "Salvar e conectar". Pode deixar esta janela aberta.'
             )
             told_the_volunteer = True
         env.sleep(env.poll_seconds)
@@ -125,13 +190,19 @@ def join_tailnet(env: FirstRunEnvironment, config: WorkerConfig) -> int:
         return finish(env, config, status)
 
     switching_tailnet = status is not None and status.is_running
-    if switching_tailnet and not env.ask_yes_no(
-        "Este PC está conectado a outra rede Tailscale. Entrar na rede Baja vai "
-        "desconectá-lo dela. Continuar?"
-    ):
-        # The key stays: running this again within the hour can still use it.
-        env.say('Cancelado. Nada foi alterado. Rode "Baja Worker - concluir conexão" depois.')
-        return EXIT_CANCELLED
+    if switching_tailnet:
+        assert status is not None
+        if can_use_current_tailnet(env, config, status):
+            choice = env.ask_choice(CHOICE_QUESTION, [JOIN_BAJA, USE_CURRENT_TAILNET, CANCEL])
+            if choice == USE_CURRENT_TAILNET:
+                return use_current_tailnet(env, config, status)
+            if choice != JOIN_BAJA:
+                return cancelled(env)
+        elif not env.ask_yes_no(
+            "Este PC está conectado a outra rede Tailscale. Entrar na rede Baja vai "
+            "desconectá-lo dela. Continuar?"
+        ):
+            return cancelled(env)
 
     hostname = tailscale_hostname(config)
     env.say(f"Conectando à rede Baja como {hostname}…")
@@ -146,12 +217,51 @@ def join_tailnet(env: FirstRunEnvironment, config: WorkerConfig) -> int:
     return finish(env, config, status)
 
 
+def cancelled(env: FirstRunEnvironment) -> int:
+    # The key stays: running this again within the hour can still use it.
+    env.say('Cancelado. Nada foi alterado. Rode "Baja Worker - concluir conexão" depois.')
+    return EXIT_CANCELLED
+
+
+def can_use_current_tailnet(
+    env: FirstRunEnvironment, config: WorkerConfig, status: TailscaleStatus
+) -> bool:
+    """Offer "Usar a rede atual"? Only to non-studios, when the server answers already."""
+    if config.role == WorkerRole.STUDIO or not status.ipv4 or not config.tailnet_base_url:
+        return False
+    return env.server_answers(config.tailnet_base_url)
+
+
+def use_current_tailnet(
+    env: FirstRunEnvironment, config: WorkerConfig, status: TailscaleStatus
+) -> int:
+    env.key_path.unlink(missing_ok=True)  # not needed: we do not join the Baja tailnet
+    save_config(env.config_path, config_on_current_tailnet(config, status))
+    env.say("Reiniciando o serviço BajaWorker…")
+    env.restart_service()
+    env.say(
+        f"Pronto! Este PC usa a rede Tailscale atual ({status.dns_name or status.ipv4}). "
+        "Lembre: os outros PCs e o estúdio não alcançam este PC. O status aparece em "
+        "http://localhost:8700."
+    )
+    return EXIT_JOINED
+
+
 def check_existing_join(env: FirstRunEnvironment, config: WorkerConfig) -> int:
     """Enrolled, but the key file is gone: joined earlier, or the join failed."""
     status = env.tailscale.status()
     if status is not None and status.on_baja_tailnet and status.ipv4:
         env.say("Este PC já está na rede Baja.")
         return finish(env, config, status)
+    if (
+        config.shared_tailnet
+        and status is not None
+        and status.is_running
+        and can_use_current_tailnet(env, config, status)
+    ):
+        # Chose "Usar a rede atual" before: refresh the address and restart.
+        env.say("Este PC usa a rede Tailscale atual, e o servidor responde por ela.")
+        return use_current_tailnet(env, config, status)
     return report_join_failure(env, config, "a chave de acesso já foi usada")
 
 
@@ -174,7 +284,7 @@ def report_join_failure(env: FirstRunEnvironment, config: WorkerConfig, detail: 
         env.say(f"Detalhe: {detail.strip()}")
     env.say("A chave de acesso só vale uma vez, então é preciso um novo token de inscrição.")
     if env.ask_yes_no("Apagar o registro deste PC para usar um novo token?"):
-        save_config(env.config_path, config_without_enrollment(load_config(env.config_path)))
+        save_config(env.config_path, config_without_identity(load_config(env.config_path)))
         env.restart_service()
         env.say("Registro apagado. Peça um novo token à equipe Baja e rode isto de novo.")
     return EXIT_JOIN_FAILED

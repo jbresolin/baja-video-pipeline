@@ -73,6 +73,19 @@ def ask_yes_no(question: str) -> bool:
     return answer.strip().lower() in ("s", "sim", "y", "yes")
 
 
+def ask_choice(question: str, answers: list[str]) -> str:
+    """Print the question, read one of `answers` (asks again otherwise).
+    No console (EOF) counts as the last answer, which is always "cancel"."""
+    print(question)
+    while True:
+        try:
+            answer = input(f"Digite {', '.join(answers[:-1])} ou {answers[-1]}: ").strip()
+        except EOFError:
+            return answers[-1]
+        if answer in answers:
+            return answer
+
+
 def wait_for_enter() -> None:
     with contextlib.suppress(EOFError):  # no console attached
         input("Pressione Enter para fechar esta janela.")

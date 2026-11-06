@@ -21,6 +21,7 @@ from orchestrator.background.sweepers import clean_outbox_once
 from orchestrator.testing.scenarios import (
     SAMPLE_CLIP,
     ask_next,
+    claim,
     claim_ok,
     hold_raw,
     make_proxy,
@@ -56,9 +57,9 @@ def ready_job(harness, holder, **review):
 
 def render_to_studio(harness, renderer, studio, job_id, clip=SAMPLE_CLIP):
     """`renderer` processes the job and pushes it straight to the studio, which ACKs."""
-    claim_ok(harness, renderer, job_id, TaskKind.PROCESS)
-    job = harness.job(job_id)
-    path = f"{job['prova'].lower()}/{job['car_number']}/{job['passagem']}.mp4"
+    # The studio stores the clip where the process offer said (item 12 names).
+    _, task = claim_ok(harness, renderer, job_id, TaskKind.PROCESS)
+    path = task["clip_relative_path"]
     response = harness.client.post(
         f"/jobs/{job_id}/delivered",
         json={
@@ -142,7 +143,8 @@ def test_reprocess_makes_version_two_and_both_are_archived(harness, fleet):
     )
     task = archive(harness, master, job_id, hashlib.sha256(v1).hexdigest())
     # The master held v1 itself, so the task names no download source.
-    assert task["download_urls"] == [] and task["archive_relative_path"] == "enduro/42/3.mp4"
+    assert task["download_urls"] == []
+    assert task["archive_relative_path"] == "enduro/42/enduro-042-p3.mp4"
 
     # The reviewer changes the cut: reprocess, render again → version 2.
     job = harness.job(job_id)
@@ -159,15 +161,20 @@ def test_reprocess_makes_version_two_and_both_are_archived(harness, fleet):
     )
     task = archive(harness, master, job_id, hashlib.sha256(v2).hexdigest())
     # v2 goes next to v1, never over it.
-    assert (task["version"], task["archive_relative_path"]) == (2, "enduro/42/3.v2.mp4")
+    assert (task["version"], task["archive_relative_path"]) == (
+        2,
+        "enduro/42/enduro-042-p3-v2.mp4",
+    )
 
     job = harness.job(job_id)
     assert [(v["version"], v["archived_at"] is not None) for v in job["clip_versions"]] == [
         (1, True),
         (2, True),
     ]
-    # The box and the manifest only have the current one: version 2.
+    # The box and the manifest only have the current one: version 2. A
+    # reviewer's download of it is called after the version (item 12).
     assert job["clip"]["version"] == 2
+    assert job["clip"]["download_file_name"] == "enduro-042-p3-v2.mp4"
     manifest = harness.client.get("/manifest", auth=harness.reviewer_auth).json()
     assert [entry["version"] for entry in manifest["clips"]] == [2]
 
@@ -198,8 +205,12 @@ def test_outbox_copy_waits_for_both_the_studio_ack_and_the_archive(harness, flee
     master, _, studio = fleet
     job_id = outbox_delivery(harness, fleet)
     outbox_file = harness.context.layout.outbox_path(job_id)
-    # The job page shows the clip as being in the outbox.
-    assert harness.job(job_id)["clip"]["in_outbox"] is True
+    # The job page shows the clip as being in the outbox, with a download
+    # link whose last part is the readable name (item 12): Caddy serves
+    # outbox/<job_id>.mp4 for it and names the saved file after that part.
+    clip = harness.job(job_id)["clip"]
+    assert clip["in_outbox"] is True
+    assert clip["download_url"] == f"/clip-downloads/{job_id}/enduro-042-p1.mp4"
 
     # The master archives first, straight from the outbox: still kept,
     # because the studio has not taken it yet.
@@ -330,3 +341,46 @@ def test_a_revoked_worker_is_no_longer_a_clip_source(harness, fleet):
     assert row["clips_held"] == 0
     harness.heartbeat(master, held_job_ids=[job_id])
     assert ask_next(harness, master, [TaskKind.ARCHIVE_CLIP]) is None
+
+
+# --- LIVESTACK-41 item 13: why the studio got the same clip twice ------------
+# The race seen live: the worker pushed the clip straight to the studio, the
+# studio stored it, but its "delivered" ACK reached the orchestrator later
+# than the worker's 60 s wait. The worker then also uploaded the clip to the
+# outbox, which made the job "uploaded" and offered a "deliver" (an outbox
+# pull) to the studio, whose rename onto the file already on air failed.
+
+
+def test_a_late_direct_ack_after_the_outbox_fallback_ends_the_delivery(harness, fleet):
+    master, volunteer, studio = fleet
+    job_id = outbox_delivery(harness, fleet)  # the worker's fallback upload: "uploaded"
+    task = ask_next(harness, studio, [TaskKind.DELIVER])
+    assert task is not None and task["job_id"] == job_id  # the second delivery, offered
+
+    # The studio's ACK for the direct push it already stored finally arrives.
+    response = harness.client.post(
+        f"/jobs/{job_id}/delivered",
+        json={
+            "sha256": CLIP_SHA256,
+            "size_bytes": len(SAMPLE_CLIP),
+            "relative_path": task["clip_relative_path"],
+        },
+        headers=studio.headers,
+    )
+
+    # The job is finished, and the studio is not offered that clip again.
+    assert response.status_code == 200 and response.json()["state"] == "done"
+    assert ask_next(harness, studio, [TaskKind.DELIVER]) is None
+    # A pull that was already under way still gets a friendly answer: the
+    # repeated ACK of the same clip is accepted, nothing fails.
+    assert claim(harness, studio, job_id, TaskKind.DELIVER).status_code == 409
+    repeated = harness.client.post(
+        f"/jobs/{job_id}/delivered",
+        json={
+            "sha256": CLIP_SHA256,
+            "size_bytes": len(SAMPLE_CLIP),
+            "relative_path": task["clip_relative_path"],
+        },
+        headers=studio.headers,
+    )
+    assert repeated.status_code == 200

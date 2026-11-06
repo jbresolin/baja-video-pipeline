@@ -222,6 +222,8 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
             # A form without the choice (an older page) keeps the stored one.
             clip_team_name_style=form.get("clip_team_name_style") or None,
             clip_school_name_style=form.get("clip_school_name_style") or None,
+            originals_keep_hours=_optional_number(form, "originals_keep_hours"),
+            originals_cap_gb=_optional_number(form, "originals_cap_gb"),
         )
     except ValueError:
         return _settings_page(

@@ -29,6 +29,9 @@ from worker.tasks.environment import MeasurementLog
 
 logger = logging.getLogger(__name__)
 
+# What the orchestrator answers to a bearer token it does not accept.
+UNAUTHENTICATED_STATUS = 401
+
 
 class Heartbeater:
     def __init__(
@@ -47,6 +50,7 @@ class Heartbeater:
         connection_step_pending: bool = False,
         pause: PauseSwitch | None = None,
         on_role_answer: Callable[[WorkerRole], None] | None = None,
+        shared_tailnet: bool = False,
     ) -> None:
         """`fixed_interval_seconds` overrides the orchestrator's
         heartbeat_interval_s (in-process test runs beat faster).
@@ -55,7 +59,8 @@ class Heartbeater:
         CONNECTION_STEP_PENDING_MESSAGE rather than the network error.
         `pause`: the volunteer's switch; each beat reports `paused`.
         `on_role_answer`: called with the answer's `role` after every
-        successful beat (worker.role_change decides what to do with it)."""
+        successful beat (worker.role_change decides what to do with it).
+        `shared_tailnet`: WorkerConfig.shared_tailnet, reported in every beat."""
         self._api = api
         self._role = role
         self._storage = storage
@@ -69,6 +74,7 @@ class Heartbeater:
         self._connection_step_pending = connection_step_pending
         self._pause = pause
         self._on_role_answer = on_role_answer
+        self._shared_tailnet = shared_tailnet
         self.interval_seconds: float = fixed_interval_seconds or HEARTBEAT_INTERVAL_SECONDS
         # How many of our kept clips the master has archived (status page).
         self.clips_archived_by_master = 0
@@ -104,6 +110,7 @@ class Heartbeater:
             paused=self._pause is not None and self._pause.is_paused,
             # Also asks the orchestrator to answer with our role (role_change).
             role=self._role,
+            shared_tailnet=self._shared_tailnet,
         )
 
     def beat_once(self) -> HeartbeatResponse | None:
@@ -122,10 +129,16 @@ class Heartbeater:
                 self._status.set("orchestrator", f"unreachable: {error}")
             self._status.set("last error", str(error))
             self._status.record_unreachable(str(error))
+            if isinstance(error, ApiError) and error.status_code == UNAUTHENTICATED_STATUS:
+                # Our bearer token is refused: an admin revoked this worker
+                # (design §21). Only "Registrar de novo" gets it working again,
+                # so the status page and the tray offer exactly that.
+                self._status.set_identity_rejected(True)
             logger.warning("heartbeat failed: %s", error)
             return None
 
         self._status.record_contact()
+        self._status.set_identity_rejected(False)
         self._status.set_now("last heartbeat")
         self._status.set("orchestrator", "connected")
         self.interval_seconds = (

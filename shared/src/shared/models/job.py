@@ -66,6 +66,11 @@ class IntakeSource(ApiModel):
     received_as: ReceivedAs
     original_filename: str | None = None
     mimetype: str | None = None
+    # The raw's readable name on workers and for downloads (LIVESTACK-41
+    # item 12), e.g. "joao-guilherme-bresolin-20261104-232909-2f2510a3.mp4":
+    # sender, when the bot received it (São Paulo time), start of the job id.
+    # None for jobs from before.
+    raw_file_name: str | None = None
 
 
 class ClipInfo(ApiModel):
@@ -86,6 +91,9 @@ class ClipInfo(ApiModel):
     # base URL, reviewer auth like proxies). None when not in the outbox.
     in_outbox: bool = False
     download_url: str | None = None
+    # The name a download should get, e.g. "enduro-042-p3.mp4" or
+    # "enduro-042-p3-v2.mp4" (shared.layout, LIVESTACK-41 item 12).
+    download_file_name: str | None = None
 
 
 class ClipVersion(ApiModel):

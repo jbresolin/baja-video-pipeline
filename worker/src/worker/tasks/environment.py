@@ -36,6 +36,11 @@ REPORT_RETRY_DELAY_SECONDS = 5.0
 # studio's ACK to end our lease before uploading to the outbox instead.
 PUSH_ACK_WAIT_SECONDS = 60.0
 TRANSFER_RETRY_DELAY_SECONDS = 1.0
+# Item 13: before pushing, check the studio answers at all (its /health, a
+# few seconds at most), and remember a studio that did not for a while, so
+# each clip does not pay the check again.
+STUDIO_PROBE_TIMEOUT_SECONDS = 3.0
+STUDIO_UNREACHABLE_MEMORY_SECONDS = 300.0
 
 
 class MeasurementLog:
@@ -64,6 +69,59 @@ class MeasurementLog:
             self._pending = measurements + self._pending
 
 
+class StudioReachability:
+    """Can we reach the studio's receiver right now? Remembers a "no" for a while.
+
+    LIVESTACK-41 item 13: a worker that cannot reach the studio (e.g. on a
+    shared tailnet, item 4) used to wait out a 60 s push timeout for every
+    clip before using the outbox. Now it asks GET <studio>/health with a
+    3 s timeout first and goes straight to the outbox if that fails; the
+    answer is remembered for 5 minutes per studio address.
+    """
+
+    def __init__(
+        self,
+        timeout_seconds: float = STUDIO_PROBE_TIMEOUT_SECONDS,
+        memory_seconds: float = STUDIO_UNREACHABLE_MEMORY_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.timeout_seconds = timeout_seconds
+        self.memory_seconds = memory_seconds
+        self._clock = clock
+        self._unreachable_until: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _origin(url: str) -> str:
+        parsed = httpx.URL(url)
+        return f"{parsed.scheme}://{parsed.host}:{parsed.port}"
+
+    def reachable(self, receive_url: str, transport: httpx.BaseTransport) -> bool:
+        origin = self._origin(receive_url)
+        with self._lock:
+            until = self._unreachable_until.get(origin)
+        if until is not None and self._clock() < until:
+            return False
+        # Not closed on purpose: closing a Client closes its transport, which
+        # is the worker's shared transfer pool. The pool owns the connections.
+        client = httpx.Client(transport=transport, timeout=self.timeout_seconds)
+        try:
+            answered = client.get(f"{origin}/health").status_code == 200
+        except httpx.HTTPError:
+            answered = False
+        if answered:
+            with self._lock:
+                self._unreachable_until.pop(origin, None)
+        else:
+            self.mark_unreachable(receive_url)
+        return answered
+
+    def mark_unreachable(self, receive_url: str) -> None:
+        until = self._clock() + self.memory_seconds
+        with self._lock:
+            self._unreachable_until[self._origin(receive_url)] = until
+
+
 @dataclass
 class TaskSettings:
     push_ack_wait_seconds: float = PUSH_ACK_WAIT_SECONDS
@@ -89,6 +147,8 @@ class TaskEnvironment:
     studio_library: object | None = None
     # Our role; decides whether some failures are reported (worker.failures).
     role: WorkerRole | None = None
+    # Item 13: is the studio reachable (probed, remembered for 5 minutes)?
+    studio_reachability: StudioReachability = field(default_factory=StudioReachability)
 
     def transfer_client(self, cancel: CancelToken) -> httpx.Client:
         return transfer_client_for(self.transfer_transport, cancel)

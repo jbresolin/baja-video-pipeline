@@ -20,14 +20,26 @@ from pathlib import Path
 from shared.ffmpeg import NVENC_ENCODER, X264_ENCODER, FfmpegNotFoundError, detect_encoder
 from shared.models import EnrollRequest, WorkerCapabilities
 from worker.api_client import ApiError, OrchestratorClient, OrchestratorUnreachableError
-from worker.config import WorkerConfig, load_config, save_config, write_text_atomically
-from worker.status import StatusBoard
+from worker.config import WorkerConfig, save_config, write_text_atomically
+from worker.config_problems import require_usable_config
+from worker.status import Phase, StatusBoard
 
 logger = logging.getLogger(__name__)
 
 TAILSCALE_AUTH_KEY_FILE_NAME = "tailscale-authkey.txt"
 ENROLL_RETRY_SECONDS = 30.0
 COMMAND_TIMEOUT_SECONDS = 20
+
+# What the setup page shows under "setup" while enrolling (pt-BR, for volunteers).
+WAITING_FOR_TOKEN_MESSAGE = "Cole o token de inscrição abaixo e clique em Salvar e conectar."
+ENROLLING_MESSAGE = "Registrando este PC na equipe Baja…"
+TOKEN_REFUSED_MESSAGE = (
+    "O token de inscrição foi recusado ({reason}). Ele está errado, já foi usado "
+    "ou venceu: peça um novo à equipe Baja e cole aqui."
+)
+CANNOT_ENROLL_YET_MESSAGE = (
+    "Ainda não consegui falar com o servidor ({reason}). Tento de novo sozinho a cada 30 segundos."
+)
 
 
 class EnrollmentRefusedError(Exception):
@@ -122,28 +134,31 @@ def wait_until_enrolled(
 
     `api_for(config)` builds an OrchestratorClient for that config;
     `capabilities_for(config)` describes the machine. Both are parameters
-    so tests can pass fakes.
+    so tests can pass fakes. A worker.json that stops parsing meanwhile
+    raises ConfigProblemError (worker.lifecycle shows it).
     """
     while not shutdown.is_set():
-        config = load_config(config_path)  # the setup page may have changed it
+        config = require_usable_config(config_path)  # the setup page may have changed it
         if config.is_enrolled:
             return config
+        status.set_phase(Phase.SETUP)
         if not config.enrollment_token:
-            status.set("setup", "waiting for the enrollment token (open the setup page)")
+            if not status.facts().enrollment_refused:
+                status.set("setup", WAITING_FOR_TOKEN_MESSAGE)
             setup_submitted.wait(1.0)
             setup_submitted.clear()
             continue
-        status.set("setup", "enrolling…")
+        status.set("setup", ENROLLING_MESSAGE)
         status.set_enrollment_refused(False)
         try:
             return enroll(config, config_path, api_for(config), capabilities_for(config))
         except EnrollmentRefusedError as refused:
             logger.error("enrollment refused: %s", refused)
-            status.set("setup", f"the enrollment token was refused ({refused}); enter a new one")
+            status.set("setup", TOKEN_REFUSED_MESSAGE.format(reason=refused))
             status.set_enrollment_refused(True)
             save_config(config_path, config.model_copy(update={"enrollment_token": None}))
         except (OrchestratorUnreachableError, ApiError) as error:
             logger.warning("enrollment failed, will retry: %s", error)
-            status.set("setup", f"cannot enroll yet ({error}); retrying")
+            status.set("setup", CANNOT_ENROLL_YET_MESSAGE.format(reason=error))
             shutdown.wait(retry_seconds)
     return None

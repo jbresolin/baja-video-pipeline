@@ -6,6 +6,7 @@ from shared.models import DeliverTask, FailureScope, TaskKind, WorkerRole
 from tests.worker.conftest import build_harness
 from tests.worker.fake_orchestrator import BASE_URL, BEARER_TOKEN
 from tests.worker.fakes import always_unavailable
+from worker.tasks.deliver import STAGING_SUFFIX
 
 CLIP = b"finished clip " * 2000
 
@@ -53,11 +54,13 @@ def test_outbox_clip_is_stored_listed_and_acked(tmp_path):
 
 
 def test_interrupted_pull_resumes(tmp_path):
-    # Setup: a previous attempt left the first half in the hidden partial file.
+    # Setup: a previous attempt left the first half in the hidden partial
+    # file of the hidden staging copy (".1.mp4.incoming", item 13).
     harness, job, task = studio_with_outbox_clip(tmp_path)
     destination = harness.env.studio_library.root / "suspensao/7/1.mp4"
     destination.parent.mkdir(parents=True)
-    partial_path_for(destination).write_bytes(CLIP[:10_000])
+    staging = destination.with_name(f".{destination.name}{STAGING_SUFFIX}")
+    partial_path_for(staging).write_bytes(CLIP[:10_000])
 
     harness.claim_and_run(task)
 

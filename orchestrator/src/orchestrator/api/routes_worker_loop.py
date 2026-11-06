@@ -194,6 +194,21 @@ async def upload_clip(
     )
 
 
+@router.post("/jobs/{job_id}/original-upload", response_model=ChunkAccepted)
+async def upload_original(
+    job_id: str,
+    request: Request,
+    lease_id: str = Header(..., alias=LEASE_ID_HEADER),
+    worker_row: sqlite3.Row = Depends(require_worker),
+    context: OrchestratorContext = Depends(get_context),
+) -> ChunkAccepted:
+    """A holder uploads the raw a reviewer asked for (LIVESTACK-41 item 15)."""
+    chunk = await request.body()
+    return await run_in_threadpool(
+        uploads.accept_original_chunk, context, worker_row, job_id, lease_id, request.headers, chunk
+    )
+
+
 @router.post("/jobs/{job_id}/clip-archived", response_model=JobStateResponse, tags=["delivery"])
 def clip_archived(
     job_id: str,

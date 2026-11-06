@@ -117,8 +117,11 @@
         <p class="hint">{{ t("job.no_actions") }}</p>
         {% endfor %}
         {% if job.clip and job.clip.download_url %}
-        <a class="action subtle" href="{{ media_url(job.clip.download_url) }}" download title="{{ t('job.download_clip.title') }}">{{ t("job.download_clip") }}</a>
+        <a class="action subtle" href="{{ media_url(job.clip.download_url) }}" download="{{ job.clip.download_file_name or '' }}" title="{{ t('job.download_clip.title') }}">{{ t("job.download_clip") }}</a>
         {% endif %}
+        {# "Baixar original" (LIVESTACK-41 item 15): the raw, when the 480p proxy is not enough. #}
+        <button type="button" class="action subtle" data-original title="{{ t('job.download_original.title') }}">{{ t("job.download_original") }}</button>
+        <span id="original-status" class="hint" aria-live="polite"></span>
         {% if job.proxy_available and job.state != "discarded" %}
         <button type="button" class="action subtle" data-regenerate-proxy title="{{ t('job.rerender_proxy.title') }}">{{ t("job.rerender_proxy") }}</button>
         {% endif %}

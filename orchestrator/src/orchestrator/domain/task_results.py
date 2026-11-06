@@ -165,6 +165,21 @@ def report_failure(
                 reason=request.message[:200],
             )
             return JobStateResponse(job_id=job_id, state=JobState(job_row["state"]))
+        if kind == TaskKind.UPLOAD_ORIGINAL:
+            # A reviewer's download, not the job's pipeline: never fails the
+            # job or shows a failure on it. This holder is not asked again
+            # for this original; another online holder is (item 15).
+            leases_repo.add_task_exclusion(connection, job_id, worker_id, kind, now, request.scope)
+            events_repo.record_event(
+                connection,
+                now,
+                actor=actor,
+                kind="original_upload_failed",
+                job_id=job_id,
+                worker_id=worker_id,
+                reason=request.message[:200],
+            )
+            return JobStateResponse(job_id=job_id, state=JobState(job_row["state"]))
         if kind == TaskKind.DOWNLOAD_RAW:
             drop_unconfirmed_holder(connection, job_id, worker_id)
         leases_repo.add_task_exclusion(connection, job_id, worker_id, kind, now, request.scope)

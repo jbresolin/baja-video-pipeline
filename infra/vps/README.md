@@ -104,7 +104,7 @@ optional seed files below) belong to that user (design §17):
 sudo git clone https://github.com/jbresolin/baja-video-pipeline.git /opt/baja
 cd /opt/baja/infra/vps
 sudo install -d -o 10001 -g 10001 -m 750 /srv/pipeline
-sudo install -d -o 10001 -g 10001 /srv/pipeline/{inbox,proxies,thumbs,outbox,db}
+sudo install -d -o 10001 -g 10001 /srv/pipeline/{inbox,proxies,thumbs,outbox,originals,db}
 sudo mkdir -p /var/lib/baja
 sudo apt-get install -y gettext-base     # envsubst, for up.sh (usually already there)
 ```

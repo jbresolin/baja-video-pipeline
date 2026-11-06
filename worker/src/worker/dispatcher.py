@@ -38,11 +38,22 @@ STAGE_KINDS_BY_ROLE = {
         TaskKind.MAKE_PROXY,
         TaskKind.PROCESS,
         TaskKind.ARCHIVE_CLIP,
+        TaskKind.UPLOAD_ORIGINAL,
     ],
-    WorkerRole.WORKER: [TaskKind.DOWNLOAD_RAW, TaskKind.MAKE_PROXY, TaskKind.PROCESS],
+    WorkerRole.WORKER: [
+        TaskKind.DOWNLOAD_RAW,
+        TaskKind.MAKE_PROXY,
+        TaskKind.PROCESS,
+        TaskKind.UPLOAD_ORIGINAL,
+    ],
     WorkerRole.STUDIO: [TaskKind.DELIVER],
 }
 UNREACHABLE_RETRY_SECONDS = 10.0
+# Kinds newer than some orchestrators: one that does not know a kind answers
+# 400 validation_error to the whole /next request, so such a kind is left
+# out from then on (until the worker restarts) instead of blocking all work.
+# upload_original: LIVESTACK-41 item 15 (installer 0.3.0).
+NEWER_TASK_KINDS = (TaskKind.UPLOAD_ORIGINAL,)
 
 
 class Dispatcher:
@@ -73,13 +84,14 @@ class Dispatcher:
         self._stage_freed = stage_freed
         self._max_wait_seconds = max_wait_seconds
         self._pause = pause
+        self._kinds_the_orchestrator_refused: set[TaskKind] = set()
 
     def kinds_to_ask_for(self) -> list[TaskKind]:
         if self._pause is not None and self._pause.is_paused:
             return []
         kinds = []
         for kind in STAGE_KINDS_BY_ROLE[self._role]:
-            if not self._stages[kind].is_idle:
+            if not self._stages[kind].is_idle or kind in self._kinds_the_orchestrator_refused:
                 continue
             if kind == TaskKind.DOWNLOAD_RAW and not self._may_take_new_raws():
                 continue
@@ -99,7 +111,16 @@ class Dispatcher:
             return EMPTY_QUEUE_RETRY_SECONDS  # all busy; a freed stage wakes us earlier
         try:
             offer = self._api.next_task(kinds)
-        except (OrchestratorUnreachableError, ApiError) as error:
+        except ApiError as error:
+            newer = [kind for kind in kinds if kind in NEWER_TASK_KINDS]
+            if error.code == "validation_error" and newer:
+                # An orchestrator from before these kinds: stop asking for them.
+                logger.warning("the orchestrator does not know %s; not asking for it", newer)
+                self._kinds_the_orchestrator_refused.update(newer)
+                return 0.0
+            logger.warning("asking for work failed: %s", error)
+            return UNREACHABLE_RETRY_SECONDS
+        except OrchestratorUnreachableError as error:
             logger.warning("asking for work failed: %s", error)
             return UNREACHABLE_RETRY_SECONDS
         task = offer.task

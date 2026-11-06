@@ -2,10 +2,14 @@
 
 LIVESTACK-38 item 9; documented in docs/api.md §7.3 and worker/README.md.
 
-    GET  /api/status   → the status document below
-    POST /api/pause    → "Pausar": finish the current task, take nothing new
-    POST /api/resume   → "Retomar"
-    POST /api/stop     → "Desligar o worker": stop the Windows service
+    GET  /api/status       → the status document below
+    GET  /api/page         → the page's live parts as HTML, for refreshing
+                             them in place (worker.setup_page)
+    POST /api/pause        → "Pausar": finish the current task, take nothing new
+    POST /api/resume       → "Retomar"
+    POST /api/stop         → "Desligar o worker": stop the Windows service
+    POST /api/re-register  → "Registrar de novo": forget this PC's identity
+                             and go back to the token form (worker.lifecycle)
 
 Localhost only and no login, like the rest of the page. What keeps another
 web site the volunteer visits from pressing these buttons:
@@ -26,9 +30,12 @@ from pathlib import Path
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from worker.config import WorkerConfig, load_config
+from shared.models import WorkerRole
+from worker.config import WorkerConfig
+from worker.config_problems import ConfigProblem, ConfigReading, read_config
 from worker.pause import PauseSwitch
-from worker.status import StatusBoard
+from worker.status import StatusBoard, TailnetProblem
+from worker.studio.clip_folder import playlist_path
 
 
 def _iso(moment: datetime | None) -> str | None:
@@ -42,23 +49,43 @@ def worker_version() -> str:
         return "unknown"
 
 
-def build_status_document(config: WorkerConfig, status: StatusBoard, pause: PauseSwitch) -> dict:
+def build_status_document(
+    config: WorkerConfig | None,
+    status: StatusBoard,
+    pause: PauseSwitch,
+    *,
+    problem: ConfigProblem | None = None,
+) -> dict:
     """Everything the tray and the status page need, as plain JSON.
 
     Facts only; turning them into a colour and a sentence is
-    worker.tray.state's job (shared by the tray and the page).
+    worker.tray.state's job (shared by the tray and the page). `config` is
+    None when worker.json does not parse; `problem` says what is wrong
+    with it (worker.config_problems).
     """
+    known = config if config is not None else WorkerConfig()
     facts = status.facts()
     values, _ = status.snapshot()
     # Before the first heartbeat the board knows no cap yet; worker.json does.
-    cap_bytes = facts.cap_bytes if facts.cap_bytes is not None else config.storage_cap_bytes
+    cap_bytes = facts.cap_bytes if facts.cap_bytes is not None else known.storage_cap_bytes
     unreachable_seconds = None
     if facts.unreachable_since is not None:
         unreachable_seconds = (status.now() - facts.unreachable_since).total_seconds()
+    can_re_register = config is not None and (
+        config.is_enrolled or (problem is not None and problem.fixable_by_re_registering)
+    )
     return {
-        "enrolled": config.is_enrolled,
+        "phase": str(facts.phase),
+        "enrolled": config is not None and config.is_enrolled and problem is None,
         "enrollment_refused": facts.enrollment_refused,
-        "connection_step_pending": config.connection_step_pending,
+        "connection_step_pending": problem is None and known.connection_step_pending,
+        # worker.json does not parse or lost a field (red; the page explains).
+        "config_problem": problem.as_json() if problem is not None else None,
+        # Waiting for the tailnet address (yellow; worker.tailnet_wait).
+        "tailnet_problem": _tailnet_problem_json(facts.tailnet_problem),
+        # The orchestrator refuses our token: revoked (red; "Registrar de novo").
+        "identity_rejected": facts.identity_rejected,
+        "can_re_register": can_re_register,
         "paused": pause.is_paused,
         "last_contact_at": _iso(facts.last_contact_at),
         # Seconds since the current outage began; null while connected.
@@ -82,16 +109,48 @@ def build_status_document(config: WorkerConfig, status: StatusBoard, pause: Paus
         # Filled in by the clip archive (LIVESTACK-38 item 7); null until then.
         "clips_held": facts.clips_held,
         "clips_archived": facts.clips_archived,
+        "studio": _studio_json(known, values),
         "details": {
-            "worker_id": config.worker_id,
-            "worker_name": config.worker_name,
-            "role": str(config.role) if config.role else None,
-            "orchestrator_url": config.resolved_orchestrator_url(),
-            "tailnet_base_url": config.tailnet_base_url,
+            "worker_id": known.worker_id,
+            "worker_name": known.worker_name,
+            "role": str(known.role) if known.role else None,
+            "orchestrator_url": known.resolved_orchestrator_url(),
+            "tailnet_base_url": known.tailnet_base_url,
+            "tailnet_address": known.tailnet_address,
+            # "Usar a rede atual" (item 4): on the PC's own tailnet.
+            "shared_tailnet": known.shared_tailnet,
             "version": worker_version(),
             "last_error": facts.last_error,
             "notes": values,
         },
+    }
+
+
+def status_document_for(config_path: Path, status: StatusBoard, pause: PauseSwitch) -> dict:
+    reading: ConfigReading = read_config(config_path)
+    return build_status_document(reading.config, status, pause, problem=reading.problem)
+
+
+def _tailnet_problem_json(problem: TailnetProblem | None) -> dict | None:
+    if problem is None:
+        return None
+    return {
+        "kind": str(problem.kind),
+        "saved_address": problem.saved_address,
+        "current_address": problem.current_address,
+    }
+
+
+def _studio_json(config: WorkerConfig, values: dict[str, str]) -> dict | None:
+    """Studio only, once its clip folder is chosen: where OBS reads from."""
+    if config.studio_clip_root is None or config.role != WorkerRole.STUDIO:
+        return None
+    folder_note = values.get("studio folder")
+    return {
+        "clip_root": str(config.studio_clip_root),
+        "playlist_path": str(playlist_path(config.studio_clip_root)),
+        # A pt-BR sentence when creating the folder or the read grant failed.
+        "folder_problem": folder_note if folder_note and folder_note != "ok" else None,
     }
 
 
@@ -110,8 +169,14 @@ def build_api_endpoints(
     stop_service: Callable[[], None],
     port: int,
     host_is_local: Callable[[Request], bool],
+    re_register: Callable[[], bool],
+    page_update: Callable[[], dict],
 ) -> dict[str, Callable]:
-    """The four endpoint functions, keyed by path (setup_page mounts them)."""
+    """The endpoint functions, keyed by path (setup_page mounts them).
+
+    `page_update()` renders the page's live parts (worker.setup_page);
+    `re_register()` is WorkerLifecycle.re_register.
+    """
     allowed_origins = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
 
     def refused() -> JSONResponse:
@@ -120,20 +185,27 @@ def build_api_endpoints(
     async def get_status(request: Request) -> JSONResponse:
         if not host_is_local(request):
             return refused()
-        return JSONResponse(build_status_document(load_config(config_path), status, pause))
+        return JSONResponse(status_document_for(config_path, status, pause))
 
-    def action(do: Callable[[], None]):
+    async def get_page(request: Request) -> JSONResponse:
+        if not host_is_local(request):
+            return refused()
+        return JSONResponse(page_update())
+
+    def action(do: Callable[[], object]):
         async def endpoint(request: Request) -> JSONResponse:
             if not host_is_local(request) or not _post_is_allowed(request, allowed_origins):
                 return refused()
             do()
-            return JSONResponse(build_status_document(load_config(config_path), status, pause))
+            return JSONResponse(status_document_for(config_path, status, pause))
 
         return endpoint
 
     return {
         "/api/status": get_status,
+        "/api/page": get_page,
         "/api/pause": action(pause.pause),
         "/api/resume": action(pause.resume),
         "/api/stop": action(stop_service),
+        "/api/re-register": action(re_register),
     }

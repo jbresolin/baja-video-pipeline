@@ -59,6 +59,12 @@ class HeartbeatRequest(ApiModel):
     # asks for `role` in the answer; workers that do not send it (older
     # versions) never get that field, which their parser would refuse.
     role: WorkerRole | None = None
+    # True when the volunteer chose "Usar a rede atual" at "Concluir conexão"
+    # (LIVESTACK-41 item 4): this PC stays on its own tailnet, into which the
+    # VPS is shared. It reaches the orchestrator, but peers and the studio
+    # cannot reach it, so it is never a second holder or a peer source, and
+    # its clips go through the outbox.
+    shared_tailnet: bool = False
 
 
 class HeartbeatResponse(ApiModel):

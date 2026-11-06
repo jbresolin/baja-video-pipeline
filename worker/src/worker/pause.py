@@ -13,7 +13,8 @@ import logging
 import threading
 from pathlib import Path
 
-from worker.config import load_config, save_config
+from worker.config import save_config
+from worker.config_problems import read_config
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,9 @@ class PauseSwitch:
     def __init__(self, config_path: Path) -> None:
         self._config_path = config_path
         self._lock = threading.Lock()
-        self._paused = load_config(config_path).paused
+        # A broken worker.json (shown on the status page) counts as "not paused".
+        reading = read_config(config_path)
+        self._paused = reading.config.paused if reading.config is not None else False
 
     @property
     def is_paused(self) -> bool:
@@ -38,8 +41,14 @@ class PauseSwitch:
         with self._lock:
             if self._paused == paused:
                 return
-            # Read-modify-write so nothing else in worker.json is lost.
-            config = load_config(self._config_path)
-            save_config(self._config_path, config.model_copy(update={"paused": paused}))
+            # Read-modify-write so nothing else in worker.json is lost. A file
+            # that does not parse is never overwritten (the volunteer is
+            # fixing it): the switch then lasts until the next restart.
+            reading = read_config(self._config_path)
+            if reading.config is not None:
+                updated = reading.config.model_copy(update={"paused": paused})
+                save_config(self._config_path, updated)
+            else:
+                logger.warning("worker.json does not parse; pause kept in memory only")
             self._paused = paused
         logger.info("worker %s by the volunteer", "paused" if paused else "resumed")

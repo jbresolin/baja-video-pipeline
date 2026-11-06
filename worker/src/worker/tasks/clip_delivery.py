@@ -12,6 +12,15 @@ offer as `task.delivery`; the worker never works it out itself.
      reports it `lost`, which here means "finished". If the push fails, or
      the lease is still being renewed 60 s after the push completed,
      upload to the outbox instead.
+
+Fast fallback (LIVESTACK-41 item 13): before pushing, the studio must
+answer GET /health within 3 s, else the clip goes straight to the outbox
+and the studio is remembered as unreachable for 5 minutes
+(TaskEnvironment.studio_reachability). And after a push whose ACK did not
+come within 60 s, the job is looked up first: if the studio's ACK reached
+the orchestrator meanwhile (job delivered or done with this clip), there is
+nothing left to do, and uploading to the outbox would only make the studio
+receive the same clip twice.
 """
 
 import logging
@@ -22,8 +31,9 @@ import httpx
 
 from shared.hashing import sha256_of_file
 from shared.http_transfer import HashMismatchError, UploadFailedError, upload_file_in_chunks
-from shared.models import DeliveryRoute, MeasurementKind, ProcessTask
+from shared.models import DeliveryRoute, JobState, MeasurementKind, ProcessTask
 from shared.protocol import CLIP_RELATIVE_PATH_HEADER
+from worker.api_client import ApiError, OrchestratorUnreachableError
 from worker.failures import TransferGaveUpError
 from worker.leases import REASON_LEASE_LOST, ActiveLease, CancelToken, TaskCancelledError
 from worker.tasks.environment import TaskEnvironment
@@ -41,11 +51,19 @@ def deliver_clip(
     """Deliver the clip; returns its SHA-256 (the worker then keeps it under that name)."""
     clip_sha256 = sha256_of_file(clip_path)
     studio_url = direct_push_url(task)
+    if studio_url is not None and not env.studio_reachability.reachable(
+        studio_url, env.transfer_transport
+    ):
+        logger.warning("the studio does not answer at %s; using the outbox", studio_url)
+        studio_url = None
     if studio_url is not None and _push_to_studio(
         env, task, clip_path, clip_sha256, studio_url, cancel
     ):
         if _studio_ack_ended_lease(env, lease, cancel):
             logger.info("studio acknowledged the clip; delivery finished")
+            return clip_sha256
+        if _orchestrator_already_has_the_ack(env, task, clip_sha256):
+            logger.info("the studio's ACK arrived meanwhile; delivery finished")
             return clip_sha256
         logger.warning(
             "lease still renewed %.0f s after the push; uploading to the outbox as well",
@@ -53,6 +71,19 @@ def deliver_clip(
         )
     _upload_to_outbox(env, lease, task, clip_path, clip_sha256, cancel)
     return clip_sha256
+
+
+def _orchestrator_already_has_the_ack(
+    env: TaskEnvironment, task: ProcessTask, clip_sha256: str
+) -> bool:
+    """True when the job is delivered/done with exactly this clip."""
+    try:
+        job = env.api.get_job(task.job_id)
+    except (OrchestratorUnreachableError, ApiError) as error:
+        logger.warning("cannot check the job before the outbox fallback: %s", error)
+        return False
+    delivered = job.state in (JobState.DELIVERED, JobState.DONE)
+    return delivered and job.clip is not None and job.clip.sha256 == clip_sha256
 
 
 def direct_push_url(task: ProcessTask) -> str | None:
@@ -100,6 +131,8 @@ def _push_to_studio(
         )
     except (UploadFailedError, HashMismatchError, httpx.HTTPError) as error:
         logger.warning("direct push failed (%s); falling back to the outbox", error)
+        if isinstance(error, httpx.TransportError):
+            env.studio_reachability.mark_unreachable(url)
         return False
     env.measurements.record(MeasurementKind.UPLOAD, result.size_bytes, started_at)
     return True

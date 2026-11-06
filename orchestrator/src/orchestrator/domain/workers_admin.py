@@ -180,9 +180,9 @@ def promotion_refusal(row) -> str | None:
 
     Only a worker becomes master: the studio has another Tailscale tag
     (tag:studio) and would have to enroll again with a master token, and a
-    revoked worker no longer works for us. LIVESTACK-41 (item 4) adds
-    workers on a shared tailnet, which peers cannot reach: refuse those
-    here too once that flag exists.
+    revoked worker no longer works for us. Nor does a worker on a shared
+    tailnet ("rede compartilhada", LIVESTACK-41 item 4): the master serves
+    every raw and clip to its peers, and peers cannot reach such a PC.
     """
     if row["revoked_at"] is not None:
         return "this worker was revoked"
@@ -190,6 +190,11 @@ def promotion_refusal(row) -> str | None:
         return (
             "a studio cannot become the master: it has another tailnet tag;"
             " enroll that PC again with a master token"
+        )
+    if row["shared_tailnet"]:
+        return (
+            "a worker on a shared tailnet cannot become the master: the other PCs"
+            " cannot reach it; join it to the Baja tailnet first (Concluir conexão)"
         )
     return None
 

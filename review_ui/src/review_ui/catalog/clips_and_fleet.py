@@ -63,6 +63,11 @@ TEXT: dict[str, str] = {
     "fleet.col.doing": "Fazendo",
     "fleet.paused": "pausado",
     "fleet.paused.title": "não pega tarefas novas; continua servindo os originais que guarda",
+    "fleet.shared_tailnet": "rede compartilhada",
+    "fleet.shared_tailnet.title": (
+        "fica na rede Tailscale do próprio PC: os outros PCs e o estúdio não o alcançam, "
+        "então ele não guarda originais para os outros e entrega os clipes pela caixa de saída"
+    ),
     "fleet.last_contact": "último contato {age}",
     "fleet.master_archive": "{archived} de {total} clipes arquivados",
     "fleet.worker_clips": "{held} clipes guardados · {archived} arquivados",
@@ -96,6 +101,10 @@ TEXT: dict[str, str] = {
     "event.inbox_copy_deleted": "cópia da caixa de entrada apagada",
     "event.clip_archived": "clipe arquivado no mestre",
     "event.archive_failed": "falha ao arquivar o clipe",
+    "event.original_requested": "original pedido para download",
+    "event.original_uploaded": "original enviado ao servidor",
+    "event.original_upload_failed": "falha ao enviar o original",
+    "event.original_evicted": "cópia temporária do original apagada",
     "event.worker_enrolled": "worker cadastrado",
     "event.worker_revoked": "worker revogado",
     "event.worker_renamed": "worker renomeado",

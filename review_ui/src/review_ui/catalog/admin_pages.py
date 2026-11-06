@@ -160,6 +160,10 @@ TEXT: dict[str, str] = {
         "O estúdio não vira master: ele usa outra etiqueta na rede (tag:studio). Para isso, "
         "cadastre o PC de novo com um token de master."
     ),
+    "workers.shared_tailnet_not_master": (
+        "Em rede compartilhada: os outros PCs não alcançam este, então ele não vira "
+        "master. Para isso, use “Concluir conexão” nele e escolha entrar na rede Baja."
+    ),
     "workers.name_of": "Nome de exibição de {name}",
     "workers.rename": "Salvar nome",
     "workers.name_required": "Informe um nome para o worker.",

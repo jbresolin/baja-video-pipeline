@@ -88,7 +88,7 @@ def test_the_clip_path_uses_the_stored_slug_not_the_new_name(harness):
     # The render offer tells the worker where the clip goes on the studio box.
     offer = ask_next(harness, master, [TaskKind.PROCESS])
     # slugify("Resistência") would be "resistencia"; the stored slug wins.
-    assert offer["clip_relative_path"] == "enduro/42/3.mp4"
+    assert offer["clip_relative_path"] == "enduro/42/enduro-042-p3.mp4"
 
 
 def test_ready_needs_a_prova_from_the_list(harness):

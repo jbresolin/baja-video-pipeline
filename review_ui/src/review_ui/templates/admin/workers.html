@@ -23,6 +23,8 @@
       <td>
         {{ role_labels[w.role] }}
         {% if w.role == "studio" %}<div class="small">{{ t("workers.studio_not_master") }}</div>{% endif %}
+        {# "Usar a rede atual" (LIVESTACK-41 item 4): the orchestrator refuses it as master too. #}
+        {% if w.role == "worker" and w.shared_tailnet %}<div class="small">{{ t("workers.shared_tailnet_not_master") }}</div>{% endif %}
       </td>
       <td>
         {% if entry.online %}<span class="badge contact-allowed">{{ t("worker.online") }}</span>
@@ -33,7 +35,7 @@
       <td>{{ m.time(w.enrolled_at) }}</td>
       <td class="row-actions">
         {# Only a plain worker can be promoted; the confirmation names the master it replaces. #}
-        {% if w.role == "worker" %}
+        {% if w.role == "worker" and not w.shared_tailnet %}
         <form method="post" action="/review/admin/workers/{{ w.id }}/make-master" class="inline-form"
               data-confirm="{{ t('workers.make_master.confirm', name=w.name, current=current_master) if current_master else t('workers.make_master.confirm_no_master', name=w.name) }}">
           <button type="submit">{{ t("workers.make_master") }}</button>

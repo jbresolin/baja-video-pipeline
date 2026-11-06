@@ -15,6 +15,7 @@ from shared.models import (
     JobState,
     JobStateResponse,
     ManifestResponse,
+    OriginalDownload,
     OutboxAckRequest,
     RegenerateProxyResponse,
     ReviewQueueResponse,
@@ -113,6 +114,37 @@ def update_review(job_id: str, body: ReviewUpdate) -> Job:
 def regenerate_proxy(job_id: str) -> RegenerateProxyResponse:
     """Does not change the job state. If no holder is online, `queued` is
     still true and `waiting_reason` says so; the task waits."""
+    not_implemented()
+
+
+@router.get(
+    "/jobs/{job_id}/original",
+    tags=["review"],
+    summary='Where "Baixar original" stands (LIVESTACK-41 item 15)',
+    response_model=OriginalDownload,
+    dependencies=_reviewer_only,
+    responses=error_responses(401, 404),
+)
+def get_original(job_id: str) -> OriginalDownload:
+    """No side effects. `ready` comes with `download_url`
+    ("/original-downloads/<job_id>/<readable raw name>", relative to the
+    public base URL, reviewer auth like proxies) and `expires_at`."""
+    not_implemented()
+
+
+@router.post(
+    "/jobs/{job_id}/original",
+    tags=["review"],
+    summary='"Baixar original": make the raw downloadable for a day',
+    response_model=OriginalDownload,
+    dependencies=_reviewer_only,
+    responses=error_responses(401, 404),
+)
+def request_original(job_id: str) -> OriginalDownload:
+    """While the VPS inbox still has the raw the answer is `ready` at once.
+    Otherwise a holder (the master first) is offered `upload_original`:
+    `preparing`, or `no_holder_online` when none is online. Asking again
+    restarts the keep time (Settings `originals_keep_hours`)."""
     not_implemented()
 
 

@@ -25,6 +25,7 @@ from shared.models import (
     LoginRequest,
     LoginResponse,
     ManifestResponse,
+    OriginalDownload,
     Prova,
     ProvasResponse,
     RegenerateProxyResponse,
@@ -143,6 +144,15 @@ class OrchestratorClient:
     def regenerate_proxy(self, job_id: str) -> RegenerateProxyResponse:
         response = self._request("POST", f"/jobs/{_path_segment(job_id)}/regenerate-proxy")
         return self._parse(RegenerateProxyResponse, response)
+
+    def request_original(self, job_id: str) -> OriginalDownload:
+        """ "Baixar original" (LIVESTACK-41 item 15): ask for it (again)."""
+        response = self._request("POST", f"/jobs/{_path_segment(job_id)}/original")
+        return self._parse(OriginalDownload, response)
+
+    def get_original(self, job_id: str) -> OriginalDownload:
+        response = self._request("GET", f"/jobs/{_path_segment(job_id)}/original")
+        return self._parse(OriginalDownload, response)
 
     def get_team(self, car_number: int) -> Team | None:
         """The team for a car number, or None when the teams table does not know it."""

@@ -62,6 +62,10 @@ class Worker(ApiModel):
     last_heartbeat: datetime | None = None
     # Set when an admin revoked the worker: its bearer token stopped working.
     revoked_at: datetime | None = None
+    # "Rede compartilhada": the worker stays on its own tailnet (its last
+    # heartbeat said so, LIVESTACK-41 item 4). Peers and the studio cannot
+    # reach it: never a second holder, a peer source or a direct pusher.
+    shared_tailnet: bool = False
 
 
 class EnrollmentToken(ApiModel):

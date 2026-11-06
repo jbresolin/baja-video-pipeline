@@ -89,6 +89,11 @@ class AdminSettings(ApiModel):
     # every place the UI shows a clip's team and school.
     clip_team_name_style: NameStyle = NameStyle.SHORT
     clip_school_name_style: NameStyle = NameStyle.SHORT
+    # Originals a reviewer downloaded ("Baixar original", LIVESTACK-41 item
+    # 15) stay on the VPS this long after the last request...
+    originals_keep_hours: float = Field(default=24, ge=0, le=720)
+    # ...and the originals/ folder never grows past this (oldest go first).
+    originals_cap_gb: float = Field(default=10, ge=0)
 
 
 class UpdateSettingsRequest(ApiModel):
@@ -104,6 +109,8 @@ class UpdateSettingsRequest(ApiModel):
     outbox_keep_unarchived_hours: float | None = Field(default=None, ge=0, le=720)
     clip_team_name_style: NameStyle | None = None
     clip_school_name_style: NameStyle | None = None
+    originals_keep_hours: float | None = Field(default=None, ge=0, le=720)
+    originals_cap_gb: float | None = Field(default=None, ge=0)
 
 
 class EvolutionStatus(ApiModel):
