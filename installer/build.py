@@ -134,7 +134,7 @@ def build_info_source(version: str, enroll_url: str | None, modules: list[str]) 
 # --- 3. PyInstaller -------------------------------------------------------
 
 # Packages whose non-Python files must ship inside the frozen worker.
-DATA_PACKAGES = ("worker.overlay_theme",)
+DATA_PACKAGES = ("worker.overlay_theme", "worker.page_assets")
 
 
 def pyinstaller_arguments(modules: list[str], dist: Path, work: Path) -> list[str]:
@@ -161,7 +161,8 @@ def pyinstaller_arguments(modules: list[str], dist: Path, work: Path) -> list[st
         "tkinter",
     ]
     # Data files read with importlib.resources (PyInstaller only bundles
-    # .py modules unless told): the clip overlay's font and tokens.css.
+    # .py modules unless told): the clip overlay's font and tokens.css, and
+    # the localhost page's script.
     for package in DATA_PACKAGES:
         arguments += ["--collect-data", package]
     for module in modules:

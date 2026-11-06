@@ -143,6 +143,19 @@ def test_the_overlay_theme_package_really_holds_the_files_to_bundle():
         assert theme.joinpath(name).is_file(), name
 
 
+def test_the_localhost_page_script_is_bundled_as_data(tmp_path):
+    # The status/setup page inlines worker/page_assets/page.js, read with
+    # importlib.resources. Without --collect-data the frozen worker could
+    # not show its page at all (the one thing that must always work).
+    from importlib import resources
+
+    arguments = build.pyinstaller_arguments([], tmp_path / "dist", tmp_path)
+
+    collected = [arguments[i + 1] for i, a in enumerate(arguments) if a == "--collect-data"]
+    assert "worker.page_assets" in collected
+    assert resources.files("worker.page_assets").joinpath("page.js").is_file()
+
+
 def test_the_tray_is_a_windowed_onedir_exe_from_entry_tray(tmp_path):
     # BajaWorkerTray.exe starts at every logon: a console program would
     # flash a black window, so it is built --windowed.
