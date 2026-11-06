@@ -30,11 +30,13 @@ from orchestrator.domain.bot_replies import (
     quoted_message_for,
     send_bot_reply,
 )
+from orchestrator.domain.contacts import phone_from_jid
 from orchestrator.errors import ApiError
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.security import new_id
 from orchestrator.storage import delete_file_and_partials, raw_extension_for
+from shared.layout import raw_file_name as build_raw_file_name
 from shared.models import (
     ErrorCode,
     EvolutionWebhook,
@@ -76,6 +78,8 @@ class PendingMediaDownload:
     confirm_when_stored: bool = True
     # The sender's default prova (admin Contacts page), filled into the job.
     default_prova: str | None = None
+    # The raw's readable name on workers (item 12), fixed when the bot got it.
+    raw_file_name: str | None = None
 
 
 @dataclass
@@ -145,7 +149,7 @@ def handle_webhook(context: OrchestratorContext, payload: Any) -> WebhookOutcome
                 outcome.replies.append(refusal)
             return outcome
         return _accept_incoming_video(
-            context, connection, webhook, incoming, target, decision.default_prova
+            context, connection, webhook, incoming, target, decision.default_prova, contact_row
         )
 
 
@@ -156,6 +160,7 @@ def _accept_incoming_video(
     incoming: IncomingMedia,
     target: VideoMessageRef,
     default_prova: str | None,
+    contact_row: sqlite3.Row,
 ) -> WebhookOutcome:
     now = context.clock.now()
     key = webhook.data.key
@@ -200,16 +205,22 @@ def _accept_incoming_video(
     replies = [BotReply(target, REACTION_WARNING, tuple(warnings))] if warnings else []
 
     jobs_repo.save_intake_message(connection, key.id, DOWNLOADING, now, sender_jid=key.sender_jid)
+    job_id = new_id()
+    extension = raw_extension_for(incoming.media.file_name, incoming.media.mimetype)
     download = PendingMediaDownload(
-        job_id=new_id(),
+        job_id=job_id,
         message_id=key.id,
         incoming=incoming,
         sender_jid=key.sender_jid,
         sender_name=webhook.data.push_name,
-        raw_extension=raw_extension_for(incoming.media.file_name, incoming.media.mimetype),
+        raw_extension=extension,
         target=target,
         confirm_when_stored=not replies,
         default_prova=default_prova,
+        # Sender = the contact's display name (admin-editable), else the phone.
+        raw_file_name=build_raw_file_name(
+            contact_row["display_name"], contact_row["phone"], now, job_id, extension
+        ),
     )
     response = IntakeResponse(job_id=None, message_id=key.id, accepted=True, low_res=low_res)
     return WebhookOutcome(status_code=202, response=response, download=download, replies=replies)
@@ -263,6 +274,7 @@ def run_media_download(context: OrchestratorContext, pending: PendingMediaDownlo
             raw_extension=pending.raw_extension,
             actor=EVOLUTION_ACTOR,
             prova=pending.default_prova,
+            raw_file_name=pending.raw_file_name,
         )
     # Confirm only now that the file is verified and the job exists.
     if pending.confirm_when_stored:
@@ -286,12 +298,19 @@ def create_received_job(
     raw_extension: str,
     actor: str,
     prova: str | None = None,
+    raw_file_name: str | None = None,
 ) -> None:
     """Insert a job in state `received` (its raw is already in the inbox).
 
     `prova` is the sender's default prova, if they have one; the reviewer
-    sees it filled in and can change it.
+    sees it filled in and can change it. `raw_file_name` is the readable
+    name workers store the raw under (item 12); None = built from
+    `sender_name`, the JID's number and `now`.
     """
+    if raw_file_name is None:
+        raw_file_name = build_raw_file_name(
+            sender_name, phone_from_jid(sender_jid or ""), now, job_id, raw_extension
+        )
     jobs_repo.insert_job(
         connection,
         {
@@ -310,6 +329,7 @@ def create_received_job(
             "size_bytes": size_bytes,
             "raw_extension": raw_extension,
             "prova": prova,
+            "raw_file_name": raw_file_name,
         },
     )
     jobs_repo.save_intake_message(connection, message_id, DONE, now, job_id=job_id)

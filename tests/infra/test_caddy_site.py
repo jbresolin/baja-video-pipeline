@@ -79,6 +79,19 @@ def test_clip_downloads_ask_the_orchestrator_before_serving_the_outbox():
     assert "hide .* *.part *.part.json" in downloads
 
 
+def test_a_clip_download_is_named_after_the_readable_part_of_its_address():
+    # LIVESTACK-41 item 12: /clip-downloads/<job_id>/enduro-042-p3.mp4 serves
+    # outbox/<job_id>.mp4, and the browser saves it as enduro-042-p3.mp4.
+    downloads = block(site_text(), "handle_path /clip-downloads/*")
+    # Only "<32 hex>/<plain name>" is rewritten, and only to "<job_id>.mp4".
+    assert "path_regexp bvp_named_clip ^/([0-9a-f]{32})/[A-Za-z0-9._-]+$" in downloads
+    assert "rewrite @bvp_named_clip /{re.bvp_named_clip.1}.mp4" in downloads
+    # The file name comes from the address the browser asked for.
+    assert 'filename=\\"{http.request.orig_uri.path.file}\\"' in downloads
+    # The sign-in check still runs before anything is served.
+    assert downloads.index("forward_auth") < downloads.index("rewrite")
+
+
 def test_the_forward_auth_target_is_in_the_contract_and_reads_the_same_cookie():
     contract = OPENAPI_PATH.read_text(encoding="utf-8")
     assert "  /auth/media:" in contract

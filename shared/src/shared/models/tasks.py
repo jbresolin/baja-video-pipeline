@@ -38,6 +38,10 @@ class DownloadRawTask(ApiModel):
     download_url: str
     # Other holders' file servers, to try in order if download_url fails.
     fallback_download_urls: list[str] = Field(default_factory=list)
+    # The name to store the raw under on the worker's disk (LIVESTACK-41
+    # item 12), e.g. "joao-guilherme-bresolin-20261104-232909-2f2510a3.mp4".
+    # None for older jobs (and from older orchestrators): "<job_id><ext>".
+    raw_file_name: str | None = None
 
 
 class MakeProxyTask(ApiModel):

@@ -8,6 +8,9 @@ dependencies = [
     "httpx>=0.27",
     # HKDF + AES-256-CBC + HMAC for decrypting WhatsApp media (whatsapp_media.py).
     "cryptography>=43",
+    # America/Sao_Paulo for readable raw file names (layout.py), also where
+    # the OS has no time zone database (Windows, slim containers).
+    "tzdata>=2024.1",
 ]
 
 [build-system]

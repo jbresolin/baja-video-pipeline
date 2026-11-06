@@ -3,7 +3,7 @@
     <box root>/
         latest.m3u                  newest first, at most 50, relative paths
         .playlist-index.json        what latest.m3u was built from (hidden)
-        <prova>/<car>/<passagem>.mp4
+        <prova>/<car>/<prova>-<car 3 digits>-p<passagem>.mp4   (shared.layout)
 
 Clips arrive two ways, both writing a hidden ".part" file beside the final
 path and renaming it when verified: the receiver (direct push) and the
@@ -18,6 +18,7 @@ GET /jobs/{id}; when that is unavailable, they are guessed from the path.
 
 import json
 import logging
+import re
 import threading
 from pathlib import Path, PurePosixPath
 
@@ -34,6 +35,8 @@ from worker.config import write_text_atomically
 logger = logging.getLogger(__name__)
 
 PLAYLIST_INDEX_NAME = ".playlist-index.json"
+# shared.layout.clip_file_stem / versioned_clip_relative_path: "…-042-p3[-v2]".
+READABLE_CLIP_STEM = re.compile(r".*-\d+-p(\d+)(?:-v\d+)?")
 
 
 class UnsafeClipPathError(ValueError):
@@ -96,10 +99,17 @@ def playlist_entry_for(relative_path: str, job: Job | None) -> PlaylistEntry:
     parts = PurePosixPath(relative_path).parts
     try:
         prova_slug, car_text, file_name = parts[-3], parts[-2], parts[-1]
-        car_number, passagem = int(car_text), int(PurePosixPath(file_name).stem)
+        car_number, passagem = int(car_text), _passagem_from_file_name(file_name)
     except (IndexError, ValueError):
         return PlaylistEntry(relative_path, relative_path, 0, 1)
     return PlaylistEntry(relative_path, prova_slug.replace("-", " ").title(), car_number, passagem)
+
+
+def _passagem_from_file_name(file_name: str) -> int:
+    """ "enduro-042-p3.mp4" / "enduro-042-p3-v2.mp4" → 3; an older "3.mp4" → 3."""
+    stem = PurePosixPath(file_name).stem
+    match = READABLE_CLIP_STEM.fullmatch(stem)
+    return int(match.group(1)) if match else int(stem)
 
 
 def _entry_to_dict(entry: PlaylistEntry) -> dict:

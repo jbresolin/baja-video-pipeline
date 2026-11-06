@@ -100,8 +100,15 @@ class VpsLayout:
         return f"/proxies/{job_id}.mp4"
 
     @staticmethod
-    def clip_download_public_path(job_id: str) -> str:
-        """The outbox clip for reviewers: Caddy :443 /clip-downloads/* (reviewer auth)."""
+    def clip_download_public_path(job_id: str, file_name: str | None = None) -> str:
+        """The outbox clip for reviewers: Caddy :443 /clip-downloads/* (reviewer auth).
+
+        With `file_name` (item 12): "/clip-downloads/<job_id>/enduro-042-p3.mp4".
+        Caddy serves outbox/<job_id>.mp4 for it and names the download after
+        the last part of the URL, so the saved file says what it is.
+        """
+        if file_name:
+            return f"/clip-downloads/{job_id}/{file_name}"
         return f"/clip-downloads/{job_id}.mp4"
 
     @staticmethod

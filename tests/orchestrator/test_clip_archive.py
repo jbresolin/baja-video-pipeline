@@ -56,9 +56,9 @@ def ready_job(harness, holder, **review):
 
 def render_to_studio(harness, renderer, studio, job_id, clip=SAMPLE_CLIP):
     """`renderer` processes the job and pushes it straight to the studio, which ACKs."""
-    claim_ok(harness, renderer, job_id, TaskKind.PROCESS)
-    job = harness.job(job_id)
-    path = f"{job['prova'].lower()}/{job['car_number']}/{job['passagem']}.mp4"
+    # The studio stores the clip where the process offer said (item 12 names).
+    _, task = claim_ok(harness, renderer, job_id, TaskKind.PROCESS)
+    path = task["clip_relative_path"]
     response = harness.client.post(
         f"/jobs/{job_id}/delivered",
         json={
@@ -142,7 +142,8 @@ def test_reprocess_makes_version_two_and_both_are_archived(harness, fleet):
     )
     task = archive(harness, master, job_id, hashlib.sha256(v1).hexdigest())
     # The master held v1 itself, so the task names no download source.
-    assert task["download_urls"] == [] and task["archive_relative_path"] == "enduro/42/3.mp4"
+    assert task["download_urls"] == []
+    assert task["archive_relative_path"] == "enduro/42/enduro-042-p3.mp4"
 
     # The reviewer changes the cut: reprocess, render again → version 2.
     job = harness.job(job_id)
@@ -159,15 +160,20 @@ def test_reprocess_makes_version_two_and_both_are_archived(harness, fleet):
     )
     task = archive(harness, master, job_id, hashlib.sha256(v2).hexdigest())
     # v2 goes next to v1, never over it.
-    assert (task["version"], task["archive_relative_path"]) == (2, "enduro/42/3.v2.mp4")
+    assert (task["version"], task["archive_relative_path"]) == (
+        2,
+        "enduro/42/enduro-042-p3-v2.mp4",
+    )
 
     job = harness.job(job_id)
     assert [(v["version"], v["archived_at"] is not None) for v in job["clip_versions"]] == [
         (1, True),
         (2, True),
     ]
-    # The box and the manifest only have the current one: version 2.
+    # The box and the manifest only have the current one: version 2. A
+    # reviewer's download of it is called after the version (item 12).
     assert job["clip"]["version"] == 2
+    assert job["clip"]["download_file_name"] == "enduro-042-p3-v2.mp4"
     manifest = harness.client.get("/manifest", auth=harness.reviewer_auth).json()
     assert [entry["version"] for entry in manifest["clips"]] == [2]
 
@@ -198,8 +204,12 @@ def test_outbox_copy_waits_for_both_the_studio_ack_and_the_archive(harness, flee
     master, _, studio = fleet
     job_id = outbox_delivery(harness, fleet)
     outbox_file = harness.context.layout.outbox_path(job_id)
-    # The job page shows the clip as being in the outbox.
-    assert harness.job(job_id)["clip"]["in_outbox"] is True
+    # The job page shows the clip as being in the outbox, with a download
+    # link whose last part is the readable name (item 12): Caddy serves
+    # outbox/<job_id>.mp4 for it and names the saved file after that part.
+    clip = harness.job(job_id)["clip"]
+    assert clip["in_outbox"] is True
+    assert clip["download_url"] == f"/clip-downloads/{job_id}/enduro-042-p1.mp4"
 
     # The master archives first, straight from the outbox: still kept,
     # because the studio has not taken it yet.

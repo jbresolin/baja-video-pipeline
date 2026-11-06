@@ -3316,6 +3316,11 @@ components:
           - type: string
           - type: 'null'
           title: Download Url
+        download_file_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Download File Name
       additionalProperties: false
       type: object
       required:
@@ -3655,6 +3660,11 @@ components:
             type: string
           type: array
           title: Fallback Download Urls
+        raw_file_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw File Name
       additionalProperties: false
       type: object
       required:
@@ -4561,6 +4571,11 @@ components:
           - type: string
           - type: 'null'
           title: Mimetype
+        raw_file_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw File Name
       additionalProperties: false
       type: object
       required:

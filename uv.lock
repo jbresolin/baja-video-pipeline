@@ -758,6 +758,7 @@ dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
     { name = "pydantic" },
+    { name = "tzdata" },
 ]
 
 [package.metadata]
@@ -765,6 +766,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=43" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic", specifier = ">=2.7" },
+    { name = "tzdata", specifier = ">=2024.1" },
 ]
 
 [[package]]

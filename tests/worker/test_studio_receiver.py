@@ -88,24 +88,26 @@ def test_pushed_clip_lands_at_its_path_and_is_acked(studio, tmp_path):
     )
     clip = b"clip bytes " * 500
 
-    push(client, tmp_path, clip, "enduro/42/3.mp4", job_id=job.job_id)
+    push(client, tmp_path, clip, "enduro/42/enduro-042-p3.mp4", job_id=job.job_id)
 
-    # The clip is at <box root>/enduro/42/3.mp4 and no partial files remain
-    # (they are hidden dot-files while the upload runs).
-    assert (library.root / "enduro/42/3.mp4").read_bytes() == clip
-    assert [p.name for p in (library.root / "enduro/42").iterdir()] == ["3.mp4"]
+    # The clip is at <box root>/enduro/42/enduro-042-p3.mp4 (item 12 name)
+    # and no partial files remain (hidden dot-files while the upload runs).
+    assert (library.root / "enduro/42/enduro-042-p3.mp4").read_bytes() == clip
+    assert [p.name for p in (library.root / "enduro/42").iterdir()] == ["enduro-042-p3.mp4"]
     # The ACK runs in the background in real life; here we run it now.
     acknowledger.handle_all_pending()
     [(acked_job, delivered)] = orchestrator.delivered
     assert acked_job == job.job_id
     assert delivered.sha256 == sha256_of_bytes(clip)
     assert delivered.size_bytes == len(clip)
-    assert delivered.relative_path == "enduro/42/3.mp4"
+    assert delivered.relative_path == "enduro/42/enduro-042-p3.mp4"
     # The playlist title comes from the job (prova name, team).
     playlist = (library.root / LATEST_PLAYLIST_NAME).read_text()
-    assert (
-        playlist == "#EXTM3U\n#EXTINF:-1,Enduro - carro 42 Equipe - passagem 3\nenduro/42/3.mp4\n"
-    )
+    assert playlist.splitlines() == [
+        "#EXTM3U",
+        "#EXTINF:-1,Enduro - carro 42 Equipe - passagem 3",
+        "enduro/42/enduro-042-p3.mp4",
+    ]
 
 
 def test_ack_is_retried_until_the_orchestrator_accepts_it(studio, tmp_path):
@@ -187,3 +189,14 @@ def test_push_helper_raises_on_refusal(studio, tmp_path):
     with pytest.raises(UploadFailedError) as raised:
         push(client, tmp_path, b"clip", "../x.mp4")
     assert raised.value.status_code == 400
+
+
+def test_playlist_titles_are_guessed_from_new_and_old_names_when_the_job_is_unknown():
+    # Without GET /jobs/{id} (orchestrator unreachable) the title comes from
+    # the path: prova folder, car folder, passagem from the file name.
+    from worker.studio.library import playlist_entry_for
+
+    new = playlist_entry_for("enduro/7/enduro-007-p12-v2.mp4", None)
+    old = playlist_entry_for("enduro/7/12.mp4", None)
+    assert (new.prova, new.car_number, new.passagem) == ("Enduro", 7, 12)
+    assert (old.prova, old.car_number, old.passagem) == ("Enduro", 7, 12)

@@ -14,7 +14,7 @@ from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import from_db_time, to_db_time
 from orchestrator.domain.clip_archive import outbox_copy_still_needed, record_clip_version
 from orchestrator.domain.clip_names import clip_names_for_job, name_styles
-from orchestrator.domain.job_view import require_job_row
+from orchestrator.domain.job_view import clip_download_file_name, require_job_row
 from orchestrator.domain.leases import require_active_lease, sweep_expired_leases
 from orchestrator.domain.transitions import end_lease, move_job, revoke_job_leases
 from orchestrator.errors import ApiError, forbidden, from_illegal_transition, hash_mismatch
@@ -236,6 +236,7 @@ def _manifest_from_rows(context, connection, rows, since, wanted_slug) -> Manife
         if wanted_slug is not None and slugify_prova(row["prova"]) != wanted_slug:
             continue
         names = clip_names_for_job(styles, row)
+        version = _current_version_number(connection, row)
         entries.append(
             ManifestEntry(
                 job_id=row["id"],
@@ -247,10 +248,14 @@ def _manifest_from_rows(context, connection, rows, since, wanted_slug) -> Manife
                 sha256=row["clip_sha256"],
                 size_bytes=row["clip_size_bytes"],
                 delivered_at=delivered_at,
-                version=_current_version_number(connection, row),
+                version=version,
                 in_outbox=in_outbox,
                 download_url=(
-                    VpsLayout.clip_download_public_path(row["id"]) if in_outbox else None
+                    VpsLayout.clip_download_public_path(
+                        row["id"], clip_download_file_name(row["clip_relative_path"], version)
+                    )
+                    if in_outbox
+                    else None
                 ),
                 clip_team_name=names.team,
                 clip_school_name=names.school,

@@ -254,6 +254,7 @@ def _evaluate_download(
             size_bytes=job_row["size_bytes"],
             download_url=urls[0],
             fallback_download_urls=urls[1:],
+            raw_file_name=job_row["raw_file_name"],
         )
     )
 

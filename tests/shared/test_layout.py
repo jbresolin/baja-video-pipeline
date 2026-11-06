@@ -1,13 +1,19 @@
 """Tests for shared.layout: where clips go on the studio box, and latest.m3u."""
 
+from datetime import UTC, datetime
+
 import pytest
 
 from shared.layout import (
     PlaylistEntry,
+    archive_relative_path,
+    clip_file_stem,
     clip_relative_path,
     is_safe_relative_path,
+    raw_file_name,
     render_latest_playlist,
     slugify_prova,
+    versioned_clip_relative_path,
 )
 
 
@@ -35,10 +41,11 @@ def test_slugify_refuses_names_without_letters_or_digits():
 
 
 def test_clip_relative_path_follows_prova_car_passagem():
-    # Design §7: <prova>/<car>/<passagem>.mp4, always with forward slashes
-    # (also on Windows, where the studio PC runs).
-    assert clip_relative_path("Enduro", 42, 3) == "enduro/42/3.mp4"
-    assert clip_relative_path("Suspensão", 7, 1) == "suspensao/7/1.mp4"
+    # Design §7: <prova>/<car>/ folders, always with forward slashes (also on
+    # Windows, where the studio PC runs). The file itself says what it is
+    # (LIVESTACK-41 item 12): prova, car with 3 digits, passagem.
+    assert clip_relative_path("Enduro", 42, 3) == "enduro/42/enduro-042-p3.mp4"
+    assert clip_relative_path("Suspensão", 7, 1) == "suspensao/7/suspensao-007-p1.mp4"
 
 
 @pytest.mark.parametrize(
@@ -93,3 +100,71 @@ def test_latest_playlist_is_capped():
     # The three kept are the first three given (the newest).
     assert "enduro/2/1.mp4" in text
     assert "enduro/3/1.mp4" not in text
+
+
+# --- LIVESTACK-41 item 12: file names people can read -----------------------
+
+JOB_ID = "2f2510a3c0de4b1e9f00112233445566"
+# 23:29:09 in São Paulo (UTC-3) on 2026-11-04 = 02:29:09 UTC the next day.
+RECEIVED_AT = datetime(2026, 11, 5, 2, 29, 9, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("prova_slug", "car", "passagem", "expected"),
+    [
+        ("enduro", 42, 3, "enduro-042-p3"),
+        # Car 1 and car 123: always 3 digits, so files sort by car.
+        ("aceleracao-e-velocidade", 1, 1, "aceleracao-e-velocidade-001-p1"),
+        ("suspensao", 123, 2, "suspensao-123-p2"),
+        # Passagem 10 and more is written as is.
+        ("enduro", 7, 12, "enduro-007-p12"),
+    ],
+)
+def test_clip_file_stem(prova_slug, car, passagem, expected):
+    assert clip_file_stem(prova_slug, car, passagem) == expected
+
+
+def test_later_versions_get_a_dash_v_suffix_beside_the_first():
+    first = "enduro/42/enduro-042-p3.mp4"
+    assert versioned_clip_relative_path(first, 1) == first
+    assert versioned_clip_relative_path(first, 2) == "enduro/42/enduro-042-p3-v2.mp4"
+    assert archive_relative_path(first, 3) == "enduro/42/enduro-042-p3-v3.mp4"
+
+
+def test_clips_named_before_the_change_keep_their_old_version_names():
+    # Files on disk are never renamed: an old "3.mp4" archived its second
+    # version as "3.v2.mp4", and the job page must keep saying so.
+    assert archive_relative_path("enduro/42/3.mp4", 2) == "enduro/42/3.v2.mp4"
+
+
+@pytest.mark.parametrize(
+    ("display_name", "phone", "expected_start"),
+    [
+        ("João Guilherme Bresolin", "5511987654321", "joao-guilherme-bresolin-"),
+        # Emoji and punctuation disappear; accents become plain letters.
+        ("Zé 🏁 da Equipe!!", "5511987654321", "ze-da-equipe-"),
+        # No display name (or nothing usable left of it): the phone number.
+        (None, "5511987654321", "5511987654321-"),
+        ("🏁🏁", "+55 (11) 98765-4321", "5511987654321-"),
+        # Neither (never expected): still a valid name.
+        (None, None, "remetente-"),
+    ],
+)
+def test_raw_file_name_says_who_sent_it(display_name, phone, expected_start):
+    name = raw_file_name(display_name, phone, RECEIVED_AT, JOB_ID, ".MP4")
+    assert name.startswith(expected_start)
+    # Then the time the bot received it, in São Paulo time, the short job
+    # id (traceable to the review UI) and the extension in lowercase.
+    assert name.endswith("-20261104-232909-2f2510a3.mp4")
+
+
+def test_a_very_long_name_is_cut_for_windows_paths():
+    name = raw_file_name("Maria " * 30, None, RECEIVED_AT, JOB_ID, ".mov")
+    sender = name.removesuffix("-20261104-232909-2f2510a3.mov")
+    assert len(sender) <= 40 and not sender.endswith("-")
+
+
+def test_the_new_clip_names_pass_the_studio_safety_check():
+    assert is_safe_relative_path(
+        versioned_clip_relative_path(clip_relative_path("Enduro", 1, 10), 3)
+    )

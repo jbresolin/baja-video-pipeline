@@ -117,7 +117,7 @@
         <p class="hint">{{ t("job.no_actions") }}</p>
         {% endfor %}
         {% if job.clip and job.clip.download_url %}
-        <a class="action subtle" href="{{ media_url(job.clip.download_url) }}" download title="{{ t('job.download_clip.title') }}">{{ t("job.download_clip") }}</a>
+        <a class="action subtle" href="{{ media_url(job.clip.download_url) }}" download="{{ job.clip.download_file_name or '' }}" title="{{ t('job.download_clip.title') }}">{{ t("job.download_clip") }}</a>
         {% endif %}
         {% if job.proxy_available and job.state != "discarded" %}
         <button type="button" class="action subtle" data-regenerate-proxy title="{{ t('job.rerender_proxy.title') }}">{{ t("job.rerender_proxy") }}</button>

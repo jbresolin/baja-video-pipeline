@@ -134,7 +134,7 @@ def test_a_whatsapp_video_reaches_the_studio_through_the_real_services(system):
     wait_until(lambda: job_of(system, job_id)["state"] == "done", what="job done")
     job = job_of(system, job_id)
     assert job["clip"]["route"] == "direct"
-    assert job["clip"]["relative_path"] == "enduro/42/3.mp4"
+    assert job["clip"]["relative_path"] == "enduro/42/enduro-042-p3.mp4"
     assert job["clip"]["rendered_by_worker_id"] in {master_id, volunteer_id}
     # Nothing went through the outbox.
     assert not any(path.startswith("/outbox/") for path in system.caddy.served_paths)
@@ -142,17 +142,17 @@ def test_a_whatsapp_video_reaches_the_studio_through_the_real_services(system):
     # --- 5. On the studio box: the clip at <prova>/<car>/<passagem>.mp4 and
     # a latest.m3u that lists it, as OBS expects (design §7).
     box = studio.library.root
-    clip_file = box / "enduro" / "42" / "3.mp4"
+    clip_file = box / "enduro" / "42" / "enduro-042-p3.mp4"
     assert clip_file.is_file()
     playlist = (box / "latest.m3u").read_text(encoding="utf-8")
     assert playlist.startswith("#EXTM3U")
-    assert "enduro/42/3.mp4" in playlist
+    assert "enduro/42/enduro-042-p3.mp4" in playlist
     assert "Equipe Mangue Baja" in playlist
 
     # --- 6. The manifest lists the delivered clip with its hash.
     manifest = system.harness.client.get("/manifest", auth=system.harness.reviewer_auth).json()
     assert [entry["job_id"] for entry in manifest["clips"]] == [job_id]
-    assert manifest["clips"][0]["relative_path"] == "enduro/42/3.mp4"
+    assert manifest["clips"][0]["relative_path"] == "enduro/42/enduro-042-p3.mp4"
     assert manifest["clips"][0]["sha256"] == job["clip"]["sha256"]
 
     # --- 7. The event log tells the whole story, in order.

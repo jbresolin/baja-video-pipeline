@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from pathlib import PurePosixPath
 
 from orchestrator.db.database import from_db_time
 from orchestrator.errors import not_found
@@ -9,7 +10,7 @@ from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.storage import VpsLayout
-from shared.layout import archive_relative_path
+from shared.layout import archive_relative_path, versioned_clip_relative_path
 from shared.models import (
     ClipInfo,
     ClipVersion,
@@ -51,6 +52,11 @@ def clip_versions_of(connection: sqlite3.Connection, job_id: str) -> list[ClipVe
     ]
 
 
+def clip_download_file_name(relative_path: str, version: int) -> str:
+    """ "enduro-042-p3.mp4" for version 1, "enduro-042-p3-v2.mp4" after a reprocess."""
+    return PurePosixPath(versioned_clip_relative_path(relative_path, version)).name
+
+
 def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLayout) -> Job:
     """`layout` says whether the VPS outbox still has the clip (ClipInfo.in_outbox)."""
     versions = clip_versions_of(connection, row["id"])
@@ -58,6 +64,9 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
     if row["clip_sha256"] is not None:
         current = next((v for v in versions if v.sha256 == row["clip_sha256"]), None)
         in_outbox = layout.outbox_path(row["id"]).exists()
+        download_name = clip_download_file_name(
+            row["clip_relative_path"], current.version if current else 1
+        )
         clip = ClipInfo(
             sha256=row["clip_sha256"],
             size_bytes=row["clip_size_bytes"],
@@ -67,7 +76,10 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
             delivered_at=from_db_time(row["clip_delivered_at"]),
             version=current.version if current else 1,
             in_outbox=in_outbox,
-            download_url=VpsLayout.clip_download_public_path(row["id"]) if in_outbox else None,
+            download_url=(
+                VpsLayout.clip_download_public_path(row["id"], download_name) if in_outbox else None
+            ),
+            download_file_name=download_name,
         )
     failure = None
     if row["failure_message"] is not None:
@@ -92,6 +104,7 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
             received_as=ReceivedAs(row["received_as"]),
             original_filename=row["original_filename"],
             mimetype=row["mimetype"],
+            raw_file_name=row["raw_file_name"],
         ),
         low_res=bool(row["low_res"]),
         sha256=row["sha256"],

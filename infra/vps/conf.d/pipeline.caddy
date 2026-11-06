@@ -76,12 +76,21 @@ ${PIPELINE_DOMAIN} {
 	# not the bvp_pipeline_files snippet, because handle_path serves it from
 	# outbox/ under another name. The tailnet listener's /outbox/* (workers,
 	# studio, /auth/file) is a different route and stays as it is.
+	#
+	# Readable names (LIVESTACK-41 item 12): the review UI links to
+	# /clip-downloads/<job_id>/enduro-042-p3.mp4. That is rewritten to the
+	# outbox file <job_id>.mp4, and the download is named after the last part
+	# of the address the browser asked for ({http.request.orig_uri.path.file}),
+	# so the saved file says prova, car and passagem. The old
+	# /clip-downloads/<job_id>.mp4 still works (named after the job id).
 	handle_path /clip-downloads/* {
 		header Cache-Control "private, no-store"
-		header Content-Disposition "attachment"
+		header Content-Disposition "attachment; filename=\"{http.request.orig_uri.path.file}\""
 		forward_auth bvp-orchestrator:8000 {
 			uri /auth/media
 		}
+		@bvp_named_clip path_regexp bvp_named_clip ^/([0-9a-f]{32})/[A-Za-z0-9._-]+$
+		rewrite @bvp_named_clip /{re.bvp_named_clip.1}.mp4
 		root * ${CADDY_PIPELINE_DIR}/outbox
 		file_server {
 			hide .* *.part *.part.json
