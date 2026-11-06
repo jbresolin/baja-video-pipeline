@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from review_ui.clips_and_fleet_view import (
+    active_workers,
     build_worker_rows,
     filter_clips_by_prova,
     jobs_by_state_in_order,
@@ -82,7 +83,7 @@ def _fleet_context(request: Request) -> dict:
     orchestrator = orchestrator_for(request)
     # The fleet itself must load; its error becomes the error page.
     fleet = orchestrator.fleet()
-    worker_ids = [entry.worker.id for entry in fleet.workers]
+    worker_ids = [entry.worker.id for entry in active_workers(fleet)]
     events_by_worker = recent_events_by_worker(orchestrator, worker_ids)
     return {
         "fleet": fleet,

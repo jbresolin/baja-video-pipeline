@@ -158,6 +158,16 @@ class ContactStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
+class NameStyle(StrEnum):
+    """Which name of a team or school the clips show (admin Settings, LIVESTACK-42)."""
+
+    # The full name: "BAJA UFMG", "Universidade Federal de Minas Gerais - UFMG".
+    FULL = "full"
+    # The short one: the team's short name ("Baja UFMG") or the school's
+    # sigla ("UFMG"). When there is none, the full name is used instead.
+    SHORT = "short"
+
+
 class IntakeMode(StrEnum):
     """Who may send videos (admin Settings page)."""
 

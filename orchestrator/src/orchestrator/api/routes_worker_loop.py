@@ -44,7 +44,13 @@ from shared.protocol import FRAME_RATE_HEADER, LEASE_ID_HEADER
 router = APIRouter(tags=["worker loop"])
 
 
-@router.post("/workers/{worker_id}/heartbeat", response_model=HeartbeatResponse)
+# exclude_none: `role` is left out unless the worker asked for it, because
+# older workers refuse unknown fields in the answer.
+@router.post(
+    "/workers/{worker_id}/heartbeat",
+    response_model=HeartbeatResponse,
+    response_model_exclude_none=True,
+)
 def heartbeat(
     body: HeartbeatRequest,
     worker_row: sqlite3.Row = Depends(require_worker_matching_path),

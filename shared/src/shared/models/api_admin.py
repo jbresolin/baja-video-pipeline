@@ -60,7 +60,10 @@ class EnrollRequest(ApiModel):
     """POST /enroll, sent once by the worker's first-run setup page."""
 
     enrollment_token: str
+    # The display name (Worker.name): what the volunteer typed on the token
+    # form, prefilled with the host name. An admin may change it later.
     worker_name: str = Field(min_length=1, max_length=100)
+    # The PC's host name (Worker.hostname), shown as secondary text.
     hostname: str | None = None
     capabilities: WorkerCapabilities
     storage_cap_bytes: ByteCount
@@ -157,6 +160,10 @@ class ManifestEntry(ApiModel):
     # page offers it for download (reviewer auth, Caddy /outbox-download/).
     in_outbox: bool = False
     download_url: str | None = None
+    # The team and school as the clip shows them (Settings' name choices,
+    # LIVESTACK-42); team_name above stays the full name.
+    clip_team_name: str | None = None
+    clip_school_name: str | None = None
 
 
 class ManifestResponse(ApiModel):

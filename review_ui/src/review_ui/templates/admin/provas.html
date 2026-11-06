@@ -8,44 +8,7 @@
 {% if provas %}
 <table class="admin-table">
   <thead><tr><th>{{ t("provas.col.order") }}</th><th>{{ t("provas.col.name") }}</th><th>{{ t("provas.col.source") }}</th><th>{{ t("provas.col.folder") }}</th><th>{{ t("provas.col.status") }}</th></tr></thead>
-  <tbody>
-  {% for p in provas %}
-    <tr {% if not p.active %}class="muted"{% endif %}>
-      <td class="order-cell">
-        {# Synced provas keep the site's order; only manual ones are moved here. #}
-        {% if p.source == "manual" %}
-        <form method="post" action="/review/admin/provas/{{ p.id }}/move" class="inline-form">
-          <input type="hidden" name="direction" value="up">
-          <button type="submit" aria-label="{{ t('provas.move_up', name=p.name) }}">↑</button>
-        </form>
-        <form method="post" action="/review/admin/provas/{{ p.id }}/move" class="inline-form">
-          <input type="hidden" name="direction" value="down">
-          <button type="submit" {% if loop.last %}disabled{% endif %} aria-label="{{ t('provas.move_down', name=p.name) }}">↓</button>
-        </form>
-        {% else %}{{ loop.index }}{% endif %}
-      </td>
-      <td>
-        {% if p.source == "manual" %}
-        <form method="post" action="/review/admin/provas/{{ p.id }}" class="inline-fields">
-          <input name="name" value="{{ p.name }}" required maxlength="64" aria-label="{{ t('provas.name_of', name=p.name) }}">
-          <button type="submit">{{ t("provas.rename") }}</button>
-        </form>
-        {% else %}
-        <strong>{{ p.name }}</strong>
-        {% endif %}
-      </td>
-      <td>{% if p.source == "manual" %}{{ t("source.manual") }}{% else %}{{ t("source.site") }} <code>{{ p.external_id }}</code>{% endif %}</td>
-      <td><code>{{ p.slug }}/</code></td>
-      <td>
-        <form method="post" action="/review/admin/provas/{{ p.id }}" class="inline-form">
-          <input type="hidden" name="active" value="{{ '0' if p.active else '1' }}">
-          <span>{{ t("provas.active") if p.active else t("provas.inactive") }}</span>
-          <button type="submit">{{ t("provas.deactivate") if p.active else t("provas.reactivate") }}</button>
-        </form>
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
+  {% include "admin/_provas_rows.html" %}
 </table>
 {% else %}
 <p class="empty">{{ t("provas.empty") }}</p>

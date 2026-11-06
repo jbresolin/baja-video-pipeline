@@ -65,6 +65,8 @@ TEXT: dict[str, str] = {
     "contacts.col.last_message": "Última mensagem",
     "contacts.whatsapp_name": "WhatsApp: {name}",
     "contacts.allow": "Permitir",
+    "contacts.inline.allowed": "Contato permitido.",
+    "contacts.inline.blocked": "Contato bloqueado.",
     "contacts.block": "Bloquear",
     "contacts.name_of": "Nome de {phone}",
     "contacts.default_prova_of": "Prova padrão de {phone}",
@@ -110,6 +112,8 @@ TEXT: dict[str, str] = {
     "enrollment.col.used_by": "Usado por",
     "enrollment.revoke.confirm": "Revogar o token de {name}?",
     "enrollment.empty": "Nenhum token ainda.",
+    "enrollment.empty_unused": "Nenhum token por usar. Os já usados estão abaixo.",
+    "enrollment.other_section": "Usados, expirados e revogados ({count})",
     "enrollment.name_required": "Informe o nome do voluntário.",
     "token_status.unused": "Não usado",
     "token_status.used": "Usado",
@@ -120,6 +124,10 @@ TEXT: dict[str, str] = {
         "Os PCs cadastrados (a mesma informação da página Frota). Revogar um worker invalida "
         "o token dele na hora: ele para de receber tarefas e deixa de contar como cópia "
         "dos vídeos originais."
+    ),
+    "workers.master_hint": (
+        "Só existe um master por vez: “Tornar master” passa o papel para outro PC e o master "
+        "atual volta a ser um worker comum. Vale só entre master e worker."
     ),
     "workers.tailnet_warning": (
         "<strong>Depois de revogar, remova o PC do tailnet à mão:</strong> no console do "
@@ -139,4 +147,21 @@ TEXT: dict[str, str] = {
         "Revogar {name}? O PC para de trabalhar na hora e precisa de um token novo para voltar."
     ),
     "workers.empty": "Nenhum worker cadastrado ainda. Gere um token em “Cadastro de PCs”.",
+    "workers.revoked_section": "Revogados ({count})",
+    "workers.make_master": "Tornar master",
+    "workers.make_master.confirm": (
+        "Tornar {name} o master? {current} deixa de ser o master e volta a ser um worker "
+        "comum. Os dois PCs reiniciam o worker sozinhos em alguns segundos."
+    ),
+    "workers.make_master.confirm_no_master": (
+        "Tornar {name} o master? Os PCs reiniciam o worker sozinhos em alguns segundos."
+    ),
+    "workers.studio_not_master": (
+        "O estúdio não vira master: ele usa outra etiqueta na rede (tag:studio). Para isso, "
+        "cadastre o PC de novo com um token de master."
+    ),
+    "workers.name_of": "Nome de exibição de {name}",
+    "workers.rename": "Salvar nome",
+    "workers.name_required": "Informe um nome para o worker.",
+    "workers.hostname": "PC: {hostname}",
 }

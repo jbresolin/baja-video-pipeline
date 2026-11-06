@@ -77,11 +77,13 @@ class ProcessTask(ApiModel):
     cut_out_s: Seconds
     prova: str
     car_number: CarNumber
-    # The name the overlay shows for the team (the orchestrator picks the
-    # short name when it knows one); None when the car is unknown.
+    # The name the overlay shows for the team: its full or short name, as
+    # the admin chose on the Settings page (default short; LIVESTACK-42),
+    # the other one when that is missing. None when the car is unknown.
     team_name: str | None
-    # The school's short name for the overlay's role pill, e.g. "UFMG": the
-    # teams table's school_short (results API, or an admin's correction).
+    # The school for the overlay's role pill. Despite the name, it is the
+    # school's sigla ("UFMG", the default) or its full name, as chosen on
+    # the Settings page; kept under this name so workers need no change.
     # None when unknown; the overlay then leaves it out.
     school_short: str | None = None
     passagem: PassNumber

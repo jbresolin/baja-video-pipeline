@@ -29,7 +29,7 @@ router = APIRouter(prefix="/review/api")
 SUCCESS_MESSAGES = {action: text(f"action_done.{action.value}") for action in ReviewAction}
 
 
-async def _read_json_body(request: Request) -> dict:
+async def read_json_body(request: Request) -> dict:
     content_type = request.headers.get("content-type", "")
     if content_type.split(";")[0].strip().lower() != "application/json":
         raise UiRequestError(415, "validation_error", text("error.send_as_json"))
@@ -44,7 +44,7 @@ async def _read_json_body(request: Request) -> dict:
 
 @router.patch("/jobs/{job_id}/review")
 async def update_review(request: Request, job_id: str) -> JSONResponse:
-    body = await _read_json_body(request)
+    body = await read_json_body(request)
     try:
         update = ReviewUpdate.model_validate(body)
     except ValidationError as error:
@@ -64,7 +64,7 @@ async def update_review(request: Request, job_id: str) -> JSONResponse:
 
 @router.post("/jobs/{job_id}/regenerate-proxy")
 async def regenerate_proxy(request: Request, job_id: str) -> JSONResponse:
-    await _read_json_body(request)
+    await read_json_body(request)
     orchestrator = orchestrator_for(request)
     answer = await run_in_threadpool(orchestrator.regenerate_proxy, job_id)
     body = answer.model_dump(mode="json")

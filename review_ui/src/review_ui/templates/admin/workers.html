@@ -2,32 +2,47 @@
 {% block title %}{{ t("admin.section.workers") }}{% endblock %}
 {% block admin_content %}
 <p class="hint">{{ t("workers.hint") }}</p>
-<div class="banner warning">{{ t("workers.tailnet_warning") }}</div>
+<p class="hint">{{ t("workers.master_hint") }}</p>
+<div class="banner warning"><p>{{ t("workers.tailnet_warning") }}</p></div>
 
-{% if fleet.workers %}
+{% if active_workers %}
 <table class="admin-table">
   <thead><tr><th>{{ t("workers.col.name") }}</th><th>{{ t("workers.col.role") }}</th><th>{{ t("workers.col.status") }}</th><th>{{ t("workers.col.last_contact") }}</th><th>{{ t("workers.col.held_raws") }}</th><th>{{ t("workers.col.enrolled") }}</th><th></th></tr></thead>
   <tbody>
-  {% for entry in fleet.workers %}
+  {% for entry in active_workers %}
     {% set w = entry.worker %}
-    <tr {% if w.revoked_at %}class="muted"{% endif %}>
-      <td><strong>{{ w.name }}</strong> <span class="small"><code>{{ w.id|short_id }}</code></span></td>
-      <td>{{ role_labels[w.role] }}</td>
+    <tr>
       <td>
-        {% if w.revoked_at %}<span class="badge token-revoked">{{ t("workers.revoked_at", time=m.time(w.revoked_at)) }}</span>
-        {% elif entry.online %}<span class="badge contact-allowed">{{ t("worker.online") }}</span>
+        {# The display name every page shows; the PC's host name stays below it. #}
+        <form method="post" action="/review/admin/workers/{{ w.id }}/rename" class="inline-fields">
+          <input name="name" value="{{ w.name }}" required maxlength="100" aria-label="{{ t('workers.name_of', name=w.name) }}">
+          <button type="submit">{{ t("workers.rename") }}</button>
+        </form>
+        <span class="small">{% if w.hostname and w.hostname != w.name %}{{ t("workers.hostname", hostname=w.hostname) }} · {% endif %}<code>{{ w.id|short_id }}</code></span>
+      </td>
+      <td>
+        {{ role_labels[w.role] }}
+        {% if w.role == "studio" %}<div class="small">{{ t("workers.studio_not_master") }}</div>{% endif %}
+      </td>
+      <td>
+        {% if entry.online %}<span class="badge contact-allowed">{{ t("worker.online") }}</span>
         {% else %}<span class="badge">{{ t("worker.offline") }}</span>{% endif %}
       </td>
       <td>{% if w.last_heartbeat %}{{ m.time(w.last_heartbeat, relative=true) }}{% else %}{{ t("no_value") }}{% endif %}</td>
       <td>{{ entry.held_job_count }} ({{ entry.held_bytes|bytes }})</td>
       <td>{{ m.time(w.enrolled_at) }}</td>
-      <td>
-        {% if not w.revoked_at %}
+      <td class="row-actions">
+        {# Only a plain worker can be promoted; the confirmation names the master it replaces. #}
+        {% if w.role == "worker" %}
+        <form method="post" action="/review/admin/workers/{{ w.id }}/make-master" class="inline-form"
+              data-confirm="{{ t('workers.make_master.confirm', name=w.name, current=current_master) if current_master else t('workers.make_master.confirm_no_master', name=w.name) }}">
+          <button type="submit">{{ t("workers.make_master") }}</button>
+        </form>
+        {% endif %}
         <form method="post" action="/review/admin/workers/{{ w.id }}/revoke" class="inline-form"
               data-confirm="{{ t('workers.revoke.confirm', name=w.name) }}">
           <button type="submit" class="danger">{{ t("admin.revoke") }}</button>
         </form>
-        {% endif %}
       </td>
     </tr>
   {% endfor %}
@@ -35,5 +50,26 @@
 </table>
 {% else %}
 <p class="empty">{{ t("workers.empty") }}</p>
+{% endif %}
+
+{# Revoked workers no longer work for us: out of the way, folded at the bottom. #}
+{% if revoked_workers %}
+<details class="folded-section" id="revoked-workers">
+  <summary>{{ t("workers.revoked_section", count=revoked_workers|length) }}</summary>
+  <table class="admin-table">
+    <thead><tr><th>{{ t("workers.col.name") }}</th><th>{{ t("workers.col.role") }}</th><th>{{ t("workers.col.status") }}</th><th>{{ t("workers.col.enrolled") }}</th></tr></thead>
+    <tbody>
+    {% for entry in revoked_workers %}
+      {% set w = entry.worker %}
+      <tr class="muted">
+        <td><strong>{{ w.name }}</strong> <span class="small">{% if w.hostname and w.hostname != w.name %}{{ t("workers.hostname", hostname=w.hostname) }} · {% endif %}<code>{{ w.id|short_id }}</code></span></td>
+        <td>{{ role_labels[w.role] }}</td>
+        <td><span class="badge token-revoked">{{ t("workers.revoked_at", time=m.time(w.revoked_at)) }}</span></td>
+        <td>{{ m.time(w.enrolled_at) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</details>
 {% endif %}
 {% endblock %}

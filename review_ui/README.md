@@ -112,6 +112,7 @@ base Caddy as `bvp-review-ui:8001` on `baja-edge`.
 | `orchestrator_client.py` | Every orchestrator call, with the reviewer's Authorization |
 | `routes_queue.py`, `routes_job.py`, `routes_clips_fleet.py` | HTML pages and their refresh fragments |
 | `routes_api.py` | JSON endpoints for the page scripts (review actions, proxy request, team lookup) |
+| `routes_admin_inline.py` | JSON endpoints behind the admin toggles that change a row in place (provas active/order, contacts allow/block): they answer with the re-rendered rows (`templates/admin/_provas_rows.html`, `_contact_row.html`) and `static/js/admin.js` swaps them in, so the page neither reloads nor scrolls |
 | `errors.py` | Error page for browsers, JSON errors for scripts, 401 sign-in challenge |
 | `job_view.py`, `queue_view.py`, `clips_and_fleet_view.py` | Plain functions that turn API data into what the pages show |
 | `event_log_view.py` | Orchestrator events (`Event`) in words: actor names, state changes, reasons; used by the job and fleet pages |

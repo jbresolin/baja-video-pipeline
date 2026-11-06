@@ -134,8 +134,16 @@ def delivered_job(job_id: str = "job-done-1") -> Job:
 
 def make_teams() -> dict[int, Team]:
     return {
-        42: Team(car_number=42, team_name="Equipe Cerrado", school="UnB"),
-        7: Team(car_number=7, team_name="Equipe Ipê", school=None),
+        # clip_*: what the real orchestrator adds under the default name
+        # choices (short, falling back to the full name when there is none).
+        42: Team(
+            car_number=42,
+            team_name="Equipe Cerrado",
+            school="UnB",
+            clip_team_name="Equipe Cerrado",
+            clip_school_name="UnB",
+        ),
+        7: Team(car_number=7, team_name="Equipe Ipê", school=None, clip_team_name="Equipe Ipê"),
     }
 
 

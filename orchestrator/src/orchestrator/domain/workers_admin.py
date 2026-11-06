@@ -1,4 +1,4 @@
-"""Admin Enrollment and Workers pages: list and revoke tokens, revoke workers.
+"""Admin Enrollment and Workers pages: list and revoke tokens; rename, promote, revoke workers.
 
 Revoking a worker makes its bearer token stop working at once (401 on
 every call), ends its leases so their tasks go to other workers, and
@@ -24,6 +24,8 @@ from shared.models import (
     EnrollmentTokensResponse,
     EnrollmentTokenStatus,
     ErrorCode,
+    TaskKind,
+    UpdateWorkerRequest,
     Worker,
     WorkerRole,
 )
@@ -138,3 +140,117 @@ def revoke_worker(context: OrchestratorContext, actor: AdminActor, worker_id: st
         return workers_repo.worker_from_row(
             connection, workers_repo.get_worker_row(connection, worker_id)
         )
+
+
+def rename_worker(
+    context: OrchestratorContext, actor: AdminActor, worker_id: str, request: UpdateWorkerRequest
+) -> Worker:
+    """Set the worker's display name (LIVESTACK-42 item 7).
+
+    Host names may mean nothing ("DESKTOP-8F3K2LQ"), so the admin gives the
+    PC a name people recognise. Pages and event lines show it; the host
+    name stays on the worker as secondary text. Works on revoked workers
+    too, so old event lines can still be labelled.
+    """
+    name = request.name.strip()
+    now = context.clock.now()
+    with context.database.transaction() as connection:
+        row = workers_repo.get_worker_row(connection, worker_id)
+        if row is None:
+            raise not_found("worker")
+        if row["name"] != name:
+            workers_repo.rename_worker(connection, worker_id, name)
+            record_admin_change(
+                connection,
+                now,
+                actor,
+                "worker_renamed",
+                f"{row['role']} '{row['name']}' renamed to '{name}'",
+                before={"worker_id": worker_id, "name": row["name"]},
+                after={"worker_id": worker_id, "name": name},
+                worker_id=worker_id,
+            )
+        return workers_repo.worker_from_row(
+            connection, workers_repo.get_worker_row(connection, worker_id)
+        )
+
+
+def promotion_refusal(row) -> str | None:
+    """Why this worker cannot be made the master, or None when it can.
+
+    Only a worker becomes master: the studio has another Tailscale tag
+    (tag:studio) and would have to enroll again with a master token, and a
+    revoked worker no longer works for us. LIVESTACK-41 (item 4) adds
+    workers on a shared tailnet, which peers cannot reach: refuse those
+    here too once that flag exists.
+    """
+    if row["revoked_at"] is not None:
+        return "this worker was revoked"
+    if row["role"] == WorkerRole.STUDIO:
+        return (
+            "a studio cannot become the master: it has another tailnet tag;"
+            " enroll that PC again with a master token"
+        )
+    return None
+
+
+def promote_to_master(context: OrchestratorContext, actor: AdminActor, worker_id: str) -> Worker:
+    """ "Tornar master" (LIVESTACK-42 item 8): one master at a time.
+
+    The chosen worker becomes the master and the current master (if any)
+    becomes a plain worker, in one transaction. Both PCs learn it from
+    their next heartbeat answer (`role`), save it and restart. The old
+    master's archive_clip leases end now, so the new master can take that
+    work over at once. Promoting the master again is a no-op.
+    """
+    now = context.clock.now()
+    with context.database.transaction() as connection:
+        row = workers_repo.get_worker_row(connection, worker_id)
+        if row is None:
+            raise not_found("worker")
+        refusal = promotion_refusal(row)
+        if refusal is not None:
+            raise ApiError(409, ErrorCode.CONFLICT, refusal)
+        if row["role"] != WorkerRole.MASTER:
+            old_masters = [
+                workers_repo.get_worker_row(connection, old_id)
+                for old_id in workers_repo.list_active_master_ids(connection)
+            ]
+            for old_master in old_masters:
+                workers_repo.set_worker_role(connection, old_master["id"], WorkerRole.WORKER)
+                _end_master_only_leases(connection, old_master["id"], actor, now)
+            workers_repo.set_worker_role(connection, worker_id, WorkerRole.MASTER)
+            reason = f"'{row['name']}' is now the master"
+            for old_master in old_masters:
+                reason += f"; '{old_master['name']}' is a worker again"
+            record_admin_change(
+                connection,
+                now,
+                actor,
+                "master_changed",
+                reason,
+                before={"masters": [_id_and_name(old) for old in old_masters]},
+                after={"masters": [_id_and_name(row)]},
+                worker_id=worker_id,
+            )
+        return workers_repo.worker_from_row(
+            connection, workers_repo.get_worker_row(connection, worker_id)
+        )
+
+
+def _id_and_name(row) -> dict:
+    return {"worker_id": row["id"], "name": row["name"]}
+
+
+def _end_master_only_leases(connection, worker_id: str, actor: AdminActor, now: datetime) -> None:
+    """End the archive_clip leases of a demoted master (only a master archives)."""
+    for lease in leases_repo.list_leases_for_worker(connection, worker_id):
+        if lease.task_kind == TaskKind.ARCHIVE_CLIP:
+            end_lease(
+                connection,
+                lease,
+                now,
+                actor=actor.event_actor,
+                reason="no longer the master",
+                kind="lease_revoked",
+            )

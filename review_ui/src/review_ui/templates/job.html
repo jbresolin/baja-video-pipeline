@@ -12,8 +12,8 @@
   </p>
 </div>
 
-<div id="stale-banner" class="banner warning" hidden>
-  {{ t("job.stale") }}
+<div id="stale-banner" class="banner warning with-action" hidden>
+  <p>{{ t("job.stale") }}</p>
   <button type="button" data-reload>{{ t("job.reload") }}</button>
 </div>
 
@@ -101,7 +101,11 @@
                  value="{{ job.passagem if job.passagem is not none else '' }}">
         </div>
       </div>
-      <p class="team" id="team-name" aria-live="polite">{% if job.team_name %}{{ t("job.team", name=job.team_name) }}{% endif %}</p>
+      {# The team and school as the clip names them (Settings: full or short names). #}
+      <p class="team" id="team-name" aria-live="polite">
+        {%- if team %}{{ t("job.team_with_school", name=team.clip_team_name or team.team_name, school=team.clip_school_name) if team.clip_school_name else t("job.team", name=team.clip_team_name or team.team_name) }}
+        {%- elif job.team_name %}{{ t("job.team", name=job.team_name) }}{% endif -%}
+      </p>
 
       <label class="check"><input type="checkbox" name="show_pass" {% if job.show_pass %}checked{% endif %}>
         {{ t("job.show_pass") }}</label>

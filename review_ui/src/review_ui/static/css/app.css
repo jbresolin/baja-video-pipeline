@@ -92,7 +92,14 @@ h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .flash.success, .note.success { background: var(--ok-bg); color: var(--ok-ink); }
 .flash.warning, .banner.warning, .note.warning { background: var(--warn-bg); color: var(--warn-ink); }
 .flash.error, .note.error { background: var(--error-bg); color: var(--error-ink); }
-.banner { display: flex; align-items: center; gap: 1rem; }
+.banner { display: block; }
+/* A banner's text always sits in its own block (<p>), never loose inside the
+   banner: a flex banner turns every loose inline piece (text, link, <code>,
+   <em>) into a column of its own (LIVESTACK-42 item 10). Only a banner with
+   a button beside its text is a flex row. */
+.banner > p { margin: 0; }
+.banner > p + p { margin-top: 0.4rem; }
+.banner.with-action { display: flex; align-items: center; gap: 1rem; }
 
 /* Badges */
 .badge {
@@ -259,8 +266,8 @@ table.data tr.worker-events td { padding-top: 0; }
 }
 
 /* --- Sign-in and admin pages (admin page, LIVESTACK-37) --- */
-.banner.ok { background: var(--ok-bg); color: var(--ok-ink); display: block; }
-.banner.error { background: var(--error-bg); color: var(--error-ink); display: block; }
+.banner.ok { background: var(--ok-bg); color: var(--ok-ink); }
+.banner.error { background: var(--error-bg); color: var(--error-ink); }
 .error-text { color: var(--error-ink); }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
@@ -269,10 +276,17 @@ button.link-button { border: 0; background: none; padding: 0; color: var(--accen
 textarea { font: inherit; font-family: var(--mono); font-size: 0.85rem; width: 100%; padding: 0.4rem 0.55rem;
   border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
 .inline-form { display: inline-flex; gap: 0.4rem; align-items: center; margin: 0; }
+.row-actions { white-space: nowrap; }
+/* "Prova desativada." beside the button, after an in-place change (admin.js). */
+.inline-note { margin-left: 0.5rem; font-size: 0.85rem; color: var(--ok-ink); }
+.inline-note.error-text { color: var(--error-ink); }
 .inline-fields { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: flex-end; margin: 0; }
 .inline-fields label { margin: 0; }
 .inline-fields input, .inline-fields select { width: auto; min-width: 9rem; }
 .stacked { max-width: 34rem; }
+/* History folded at the bottom of an admin page (revoked workers, used tokens). */
+.folded-section { margin-top: 1.25rem; }
+.folded-section > summary { cursor: pointer; color: var(--muted); font-weight: 600; margin-bottom: 0.5rem; }
 .stacked button { margin-top: 1rem; }
 .login { max-width: 22rem; margin: 3rem auto; }
 .subnav { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.75rem; }

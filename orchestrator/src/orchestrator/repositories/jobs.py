@@ -20,6 +20,7 @@ UPDATABLE_JOB_COLUMNS = frozenset(
         "media_info_json", "discarded_from", "discard_grace_ends_at",
         "proxy_available", "thumbnail_available", "proxy_requested",
         "prova", "car_number", "team_name", "overlay_team_name", "overlay_school_short",
+        "school_name",
         "passagem", "show_pass",
         "cut_in_s", "cut_out_s", "reviewed_by", "reviewed_at",
         "clip_sha256", "clip_size_bytes", "clip_relative_path", "clip_route",

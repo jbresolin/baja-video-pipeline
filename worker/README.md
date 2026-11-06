@@ -99,9 +99,9 @@ Written by the installer and the setup page. Unknown keys are refused.
 | `orchestrator_url` | `http://127.0.0.1:8000` | Caddy's tailnet listener, e.g. `http://100.101.102.103:8080`. Every call except `/enroll`. One of the two origins that get the bearer token. While it is still the default on an enrolled worker, the service uses `tailnet_base_url` instead (traffic only flows once the PC has joined the tailnet with `--first-run`), and the status page says "Conexão não concluída: abra 'Baja Worker - concluir conexão' no menu Iniciar." instead of the network error. |
 | `enroll_url` | `null` = `orchestrator_url` | Public 443 site that routes `POST /enroll` (reachable before Tailscale is up). |
 | `enrollment_token` | `null` | One-time token. Removed after a successful enrollment. |
-| `worker_id`, `bearer_token`, `role` | `null` | Saved by enrollment. All three set = enrolled. Keep the file private: the token is the worker's identity. |
+| `worker_id`, `bearer_token`, `role` | `null` | Saved by enrollment. All three set = enrolled. Keep the file private: the token is the worker's identity. `role` is rewritten by the worker itself when an admin switches master and worker (`role_change.py`). |
 | `tailnet_base_url` | `null` | Saved by enrollment from the `/enroll` answer: Caddy's tailnet listener that serves `/inbox/*` and `/outbox/*`. The second (and last) origin that gets the bearer token. `null` in configs enrolled before it existed: then only `orchestrator_url` gets the token. |
-| `worker_name` | host name | Shown in the fleet view. |
+| `worker_name` | host name | The display name, sent at enrollment: the token form asks for it, prefilled with the host name (`display_name.py`). Afterwards an admin changes it on Admin → Workers; editing it here after enrollment changes nothing. |
 | `working_folder` | the config file's folder | Where `raws/`, `clips/`, `tmp/`, `logs/` live. |
 | `storage_cap_bytes` | 100 GiB | Upper limit for everything in the working folder. Volunteers stop taking new raws near it; held raws are never evicted. The master ignores it for raws (only real disk space stops it). |
 | `ffmpeg_path` | `ffmpeg` | The bundled BtbN build on Windows. |
@@ -182,8 +182,14 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
 
 * **heartbeat** (`heartbeat.py`): every 15 s sends free bytes, cap,
   tailnet address, ports, the leases in use (which renews them), held job
-  ids and new measurements. Acts on `lost` leases, `accepting_new_raws` and
-  `deletable_job_ids`.
+  ids, new measurements and the role it runs as. Acts on `lost` leases,
+  `accepting_new_raws`, `deletable_job_ids` and `role`.
+* **role switch** (`role_change.py`, LIVESTACK-42): when an admin presses
+  "Tornar master" on Admin → Workers, the next heartbeat answer's `role`
+  differs from the running one. The worker writes it into `worker.json`
+  (nothing else changes) and stops cleanly; the Windows service is started
+  again by NSSM 10 s later, now in the new role. Run by hand, start it
+  again yourself. Only master ↔ worker; a studio never switches.
 * **dispatcher** (`dispatcher.py`): asks `/next` only for kinds whose stage
   is idle, checks a raw fits before claiming, claims, and hands the task
   to its stage. `already_claimed`/`not_claimable` → ask again.

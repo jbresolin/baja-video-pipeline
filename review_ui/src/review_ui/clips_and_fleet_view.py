@@ -52,10 +52,21 @@ class WorkerRow:
 _ROLE_ORDER = {WorkerRole.MASTER: 0, WorkerRole.WORKER: 1, WorkerRole.STUDIO: 2}
 
 
+def active_workers(fleet: FleetResponse) -> list[FleetWorker]:
+    """The fleet without revoked workers (LIVESTACK-42 item 9).
+
+    A revoked worker no longer works for us, so the Frota page leaves it out;
+    Admin → Workers lists it under "Revogados". Its name is still known
+    (fleet.workers keeps it) so old events can say who did what.
+    """
+    return [entry for entry in fleet.workers if entry.worker.revoked_at is None]
+
+
 def build_worker_rows(
     fleet: FleetResponse, events_by_worker: Mapping[str, list[Event] | None] | None = None
 ) -> list[WorkerRow]:
     """Master first, then the other workers, then the studio; online before offline.
+    Revoked workers are left out (active_workers).
 
     events_by_worker maps a worker id to its recent events (any order), or
     to None when loading them failed. A worker missing from it counts as
@@ -65,7 +76,7 @@ def build_worker_rows(
     # Event actors are "worker:<id>"; the fleet itself knows every name.
     worker_names = {entry.worker.id: entry.worker.name for entry in fleet.workers}
     rows = []
-    for entry in fleet.workers:
+    for entry in active_workers(fleet):
         worker = entry.worker
         cap = worker.storage_cap_bytes
         used = max(0, cap - worker.free_bytes)
@@ -99,4 +110,4 @@ def jobs_by_state_in_order(fleet: FleetResponse) -> list[tuple[str, int]]:
 
 
 def online_count(fleet: FleetResponse) -> int:
-    return sum(1 for entry in fleet.workers if entry.online)
+    return sum(1 for entry in active_workers(fleet) if entry.online)

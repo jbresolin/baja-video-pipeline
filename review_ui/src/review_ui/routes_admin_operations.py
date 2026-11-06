@@ -5,6 +5,8 @@ from fastapi.responses import HTMLResponse, Response
 
 from review_ui.admin_view import (
     INTAKE_MODE_LABELS,
+    SCHOOL_NAME_STYLE_LABELS,
+    TEAM_NAME_STYLE_LABELS,
     TOKEN_STATUS_LABELS,
     WORKER_ROLE_LABELS,
     admin_context,
@@ -14,12 +16,14 @@ from review_ui.admin_view import (
     orchestrator_error_text,
 )
 from review_ui.catalog import text
+from review_ui.clips_and_fleet_view import active_workers
 from review_ui.forms import read_form
 from review_ui.orchestrator_client import OrchestratorError
 from review_ui.request_context import admin_client_for, render_page
 from shared.models import (
     AdminArea,
     CreateEnrollmentTokenRequest,
+    EnrollmentTokenStatus,
     UpdateSettingsRequest,
     WorkerRole,
 )
@@ -41,10 +45,13 @@ def _enrollment_page(
     request: Request, error: str | None = None, status_code: int = 200, created=None
 ):
     admin = admin_client_for(request)
+    tokens = admin.enrollment_tokens().tokens
     context = admin_context(
         request,
         "enrollment",
-        tokens=admin.enrollment_tokens().tokens,
+        # Still to hand out on top; used, expired and revoked ones folded below.
+        unused_tokens=[token for token in tokens if token.status == EnrollmentTokenStatus.UNUSED],
+        other_tokens=[token for token in tokens if token.status != EnrollmentTokenStatus.UNUSED],
         # Shown once, right after it was issued; never stored by this UI.
         created=created,
         roles=[(role.value, WORKER_ROLE_LABELS[role.value]) for role in WorkerRole],
@@ -98,13 +105,26 @@ def revoke_token(request: Request, token_id: str, form: dict = Depends(read_form
 # --- Workers ---
 
 
+def current_master_name(fleet) -> str | None:
+    """The display name of the (non-revoked) master, if there is one."""
+    for entry in active_workers(fleet):
+        if entry.worker.role == WorkerRole.MASTER:
+            return entry.worker.name
+    return None
+
+
 def _workers_page(request: Request, error: str | None = None, status_code: int = 200):
     admin = admin_client_for(request)
     # Reuses the fleet data (GET /fleet): who is online, what they hold.
+    fleet = admin.fleet()
     context = admin_context(
         request,
         "workers",
-        fleet=admin.fleet(),
+        active_workers=active_workers(fleet),
+        # Named in the "Tornar master" confirmation: who stops being the master.
+        current_master=current_master_name(fleet),
+        # Revoked ones go to a folded "Revogados" section at the bottom.
+        revoked_workers=[entry for entry in fleet.workers if entry.worker.revoked_at is not None],
         role_labels=WORKER_ROLE_LABELS,
         audit=audit_lines(admin.audit(AdminArea.WORKERS)),
     )
@@ -115,6 +135,31 @@ def _workers_page(request: Request, error: str | None = None, status_code: int =
 @router.get("/workers", response_class=HTMLResponse)
 def workers_page(request: Request) -> HTMLResponse:
     return _workers_page(request)
+
+
+@router.post("/workers/{worker_id}/rename")
+def rename_worker(request: Request, worker_id: str, form: dict = Depends(read_form)) -> Response:
+    """The name field of a worker row: the display name every page shows."""
+    name = form_text(form, "name")
+    if name is None:
+        return _workers_page(request, text("workers.name_required"), 400)
+    return apply_change(
+        lambda: admin_client_for(request).rename_worker(worker_id, name),
+        WORKERS_PATH,
+        "worker_renamed",
+        lambda error, status: _workers_page(request, error, status),
+    )
+
+
+@router.post("/workers/{worker_id}/make-master")
+def make_master(request: Request, worker_id: str, form: dict = Depends(read_form)) -> Response:
+    """ "Tornar master" (asked to confirm on the page: the current master is demoted)."""
+    return apply_change(
+        lambda: admin_client_for(request).make_master(worker_id),
+        WORKERS_PATH,
+        "master_changed",
+        lambda error, status: _workers_page(request, error, status),
+    )
 
 
 @router.post("/workers/{worker_id}/revoke")
@@ -139,6 +184,8 @@ def _settings_page(request: Request, error: str | None = None, status_code: int 
         values=page.settings,
         status=page.status,
         intake_modes=INTAKE_MODE_LABELS,
+        team_name_styles=TEAM_NAME_STYLE_LABELS,
+        school_name_styles=SCHOOL_NAME_STYLE_LABELS,
         audit=audit_lines(admin.audit(AdminArea.SETTINGS)),
     )
     context["error"] = error
@@ -172,6 +219,9 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
             results_api_base_url=form_text(form, "results_api_base_url"),
             discard_grace_hours=_optional_number(form, "discard_grace_hours"),
             outbox_keep_unarchived_hours=_optional_number(form, "outbox_keep_unarchived_hours"),
+            # A form without the choice (an older page) keeps the stored one.
+            clip_team_name_style=form.get("clip_team_name_style") or None,
+            clip_school_name_style=form.get("clip_school_name_style") or None,
         )
     except ValueError:
         return _settings_page(

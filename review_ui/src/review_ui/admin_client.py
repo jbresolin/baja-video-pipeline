@@ -32,6 +32,7 @@ from shared.models import (
     UpdateProvaRequest,
     UpdateSettingsRequest,
     UpdateUserRequest,
+    UpdateWorkerRequest,
     User,
     UsersResponse,
     Worker,
@@ -124,6 +125,16 @@ class AdminClient(OrchestratorClient):
 
     def revoke_enrollment_token(self, token_id: str) -> None:
         self._request("POST", f"/admin/enrollment-tokens/{_segment(token_id)}/revoke")
+
+    def rename_worker(self, worker_id: str, name: str) -> Worker:
+        body = _body(UpdateWorkerRequest(name=name))
+        path = f"/admin/workers/{_segment(worker_id)}"
+        return self._parse(Worker, self._request("PATCH", path, json=body))
+
+    def make_master(self, worker_id: str) -> Worker:
+        """ "Tornar master": this worker becomes the master, the current one a worker."""
+        response = self._request("POST", f"/admin/workers/{_segment(worker_id)}/make-master")
+        return self._parse(Worker, response)
 
     def revoke_worker(self, worker_id: str) -> Worker:
         response = self._request("POST", f"/admin/workers/{_segment(worker_id)}/revoke")

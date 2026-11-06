@@ -66,6 +66,7 @@ TEXT: dict[str, str] = {
     "job.car_number": "Número do carro",
     "job.passagem": "Passagem",
     "job.team": "Equipe: <strong>{name}</strong>",
+    "job.team_with_school": "Equipe: <strong>{name}</strong> ({school})",
     "job.show_pass": "Mostrar o número da passagem na tarja do clipe",
     "job.no_actions": "Nenhuma ação de revisão neste estado.",
     "job.download_clip": "Baixar clipe",

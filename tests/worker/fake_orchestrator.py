@@ -197,8 +197,11 @@ class FakeOrchestrator:
             archived_clip_sha256s=sorted(
                 {c.sha256 for c in body.held_clips} & self.archived_clip_sha256s
             ),
+            # Like the real one: our role, only to a worker that sent its own.
+            # A test sets `self.role` to play "an admin made it the master".
+            role=self.role if body.role is not None else None,
         )
-        return JSONResponse(answer.model_dump(mode="json"))
+        return JSONResponse(answer.model_dump(mode="json", exclude_none=True))
 
     async def _next(self, request: Request) -> Response:
         body = NextTaskRequest.model_validate(await request.json())

@@ -56,7 +56,8 @@
         <td>{{ m.time(clip.delivered_at) }}</td>
         <td>{{ clip.prova }}</td>
         <td class="num">{{ clip.car_number }}</td>
-        <td>{{ clip.team_name or t("no_value") }}</td>
+        {# As the clip names them (Settings: full or short names). #}
+        <td>{{ clip.clip_team_name or clip.team_name or t("no_value") }}{% if clip.clip_school_name %} <span class="small">({{ clip.clip_school_name }})</span>{% endif %}</td>
         <td class="num">{{ clip.passagem }}</td>
         <td>
           <span class="path">

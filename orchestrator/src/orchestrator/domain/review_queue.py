@@ -1,6 +1,7 @@
 """Review-side reads and requests that do not edit the review: queue, job, team, proxy."""
 
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain.clip_names import clip_names, name_styles
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
 from orchestrator.domain.job_view import job_from_row, load_job, require_job_row
 from orchestrator.errors import not_found
@@ -37,9 +38,18 @@ def find_team(context: OrchestratorContext, car_number: int) -> Team:
     """GET /teams/{car}: the teams table (synced from the results API, plus corrections)."""
     with context.database.transaction() as connection:
         team = teams_repo.get_team(connection, car_number)
+        styles = name_styles(connection)
     if team is None:
         raise not_found("team for that car number")
-    return team
+    # How a clip of this car would name the team and school (LIVESTACK-42).
+    names = clip_names(
+        styles,
+        team_full=team.team_name,
+        team_short=team.short_name,
+        school_full=team.school,
+        school_short=team.school_short,
+    )
+    return team.model_copy(update={"clip_team_name": names.team, "clip_school_name": names.school})
 
 
 def regenerate_proxy(

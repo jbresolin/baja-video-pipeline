@@ -44,7 +44,10 @@ _CHUNK_BODY = octet_stream_body(
 )
 def heartbeat(worker_id: str, body: HeartbeatRequest) -> HeartbeatResponse:
     """`worker_id` must be the caller's own id (else 403). The answer's
-    `deletable_job_ids` lists held raws of discarded jobs."""
+    `deletable_job_ids` lists held raws of discarded jobs. A request with
+    `role` gets `role` back: the role the orchestrator has for this worker
+    (an admin may switch master and worker); without it the field is left
+    out of the answer entirely, for older workers."""
     not_implemented()
 
 

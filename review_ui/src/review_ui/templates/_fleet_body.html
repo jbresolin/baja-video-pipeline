@@ -57,6 +57,8 @@
         <tr class="{{ 'offline' if not entry.online else '' }}">
           <td>
             <strong>{{ worker.name }}</strong> <span class="badge role role-{{ worker.role }}">{{ t("worker_role." ~ worker.role) }}</span>
+            {# The PC's host name, when the display name is another one (Admin → Workers). #}
+            {% if worker.hostname and worker.hostname != worker.name %}<div class="small">{{ t("workers.hostname", hostname=worker.hostname) }}</div>{% endif %}
             {# Encoder and GPU names are the machine's own data. #}
             <div class="small"><code>{{ worker.capabilities.video_encoder }}</code>{% if worker.capabilities.gpu_name %} · <code>{{ worker.capabilities.gpu_name }}</code>{% endif %}</div>
           </td>

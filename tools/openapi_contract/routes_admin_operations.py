@@ -13,6 +13,7 @@ from shared.models import (
     ResultsSyncReport,
     SettingsResponse,
     UpdateSettingsRequest,
+    UpdateWorkerRequest,
     Worker,
 )
 from tools.openapi_contract.auth import error_responses, not_implemented
@@ -45,6 +46,41 @@ def revoke_enrollment_token(token_id: str) -> EnrollmentTokenInfo:
     """A revoked token gets 401 `enrollment_token_invalid` at /enroll. A used
     token → 409 `conflict` (revoke the worker instead). Revoking twice is
     harmless."""
+    not_implemented()
+
+
+@router.patch(
+    "/admin/workers/{worker_id}",
+    tags=["admin"],
+    summary="Set a worker's display name (shown everywhere instead of the host name)",
+    response_model=Worker,
+    dependencies=ADMIN_ONLY,
+    responses=error_responses(400, 401, 403, 404),
+)
+def rename_worker(worker_id: str, body: UpdateWorkerRequest) -> Worker:
+    """`Worker.name` is the display name: every page, event line and the
+    fleet show it, with `Worker.hostname` (as reported at enrollment) as
+    secondary text. Revoked workers can be renamed too. Recorded in the
+    audit as `worker_renamed`."""
+    not_implemented()
+
+
+@router.post(
+    "/admin/workers/{worker_id}/make-master",
+    tags=["admin"],
+    summary="Make this worker the master; the current master becomes a worker",
+    response_model=Worker,
+    dependencies=ADMIN_ONLY,
+    responses=error_responses(401, 403, 404, 409),
+)
+def make_master(worker_id: str) -> Worker:
+    """One master at a time: in one step the worker becomes `master` and the
+    current master `worker` (its `archive_clip` leases end). Both PCs learn
+    it from their next heartbeat answer (`HeartbeatResponse.role`), save it
+    and restart; no config edit. Only between master and worker: a studio
+    (other tailnet tag, needs a new enrollment) or a revoked worker → 409
+    `conflict`. Promoting the master again changes nothing. Audited as
+    `master_changed`."""
     not_implemented()
 
 

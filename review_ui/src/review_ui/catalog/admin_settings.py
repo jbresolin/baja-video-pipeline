@@ -13,10 +13,17 @@ TEXT: dict[str, str] = {
     "done.prova_created": "Prova adicionada.",
     "done.prova_updated": "Prova atualizada.",
     "done.provas_reordered": "Ordem das provas salva.",
+    "provas.inline.activated": "Prova reativada.",
+    "provas.inline.deactivated": "Prova desativada.",
     "done.team_saved": "Equipe salva.",
     "done.team_deleted": "Equipe removida (ou correção desfeita).",
     "done.synced": "Sincronizado com o site de resultados.",
     "done.token_revoked": "Token revogado.",
+    "done.worker_renamed": "Nome do worker salvo.",
+    "done.master_changed": (
+        "Master trocado. Os PCs envolvidos reiniciam o worker sozinhos no próximo sinal "
+        "(cerca de 15 s) e voltam com o novo papel."
+    ),
     "done.worker_revoked": "Worker revogado. Remova o PC do tailnet no console do Tailscale.",
     "done.settings_updated": "Configurações salvas.",
     # --- Results-site sync box (Provas and Equipes) ---
@@ -111,6 +118,17 @@ TEXT: dict[str, str] = {
     "settings.intake_mode.hint": (
         "Em “só permitidos”, quem não está permitido em Contatos recebe uma vez por dia: "
         "“Este número não está autorizado a enviar vídeos. Fale com a organização.”"
+    ),
+    "settings.clip_team_name": "Nome da equipe nos vídeos",
+    "settings.clip_school_name": "Nome da escola nos vídeos",
+    "team_name_style.full": "completo",
+    "team_name_style.short": "curto",
+    "school_name_style.full": "completo",
+    "school_name_style.short": "sigla",
+    "settings.clip_names.hint": (
+        "Vale para a legenda dos clipes renderizados daqui em diante e para o que esta "
+        "interface mostra de cada clipe. Quando falta o nome curto ou a sigla, usa o completo "
+        "(e vice-versa)."
     ),
     "settings.inbox_hold": "Caixa de entrada quase cheia a partir de (GB)",
     "settings.inbox_hold.hint": (

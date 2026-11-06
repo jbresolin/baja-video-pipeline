@@ -56,6 +56,11 @@ class Team(ApiModel):
     short_name: str | None = None
     # The school's short name ("UFMG"), shown in the overlay's role pill.
     school_short: str | None = None
+    # GET /teams/{car} only (LIVESTACK-42): the team and school as a clip
+    # shows them, under the Settings' name choices (full or short, each
+    # falling back to the other). None for a school the table does not know.
+    clip_team_name: str | None = None
+    clip_school_name: str | None = None
 
 
 class ReviewQueueFilter(ApiModel):

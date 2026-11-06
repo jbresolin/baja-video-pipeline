@@ -74,6 +74,9 @@ REQUIRED_ENDPOINTS = {
     ("get", "/admin/enrollment-tokens"),
     ("post", "/admin/enrollment-tokens/{token_id}/revoke"),
     ("post", "/admin/workers/{worker_id}/revoke"),
+    # LIVESTACK-42: display name.
+    ("patch", "/admin/workers/{worker_id}"),
+    ("post", "/admin/workers/{worker_id}/make-master"),
     ("get", "/admin/settings"),
     ("patch", "/admin/settings"),
     ("get", "/admin/audit"),

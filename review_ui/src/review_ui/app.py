@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from review_ui import (
     __version__,
     routes_admin_catalog,
+    routes_admin_inline,
     routes_admin_operations,
     routes_admin_people,
     routes_api,
@@ -67,6 +68,7 @@ def create_app(
     app.include_router(routes_admin_people.router)
     app.include_router(routes_admin_catalog.router)
     app.include_router(routes_admin_operations.router)
+    app.include_router(routes_admin_inline.router)
     register_error_handlers(app)
 
     @app.get("/healthz", include_in_schema=False)

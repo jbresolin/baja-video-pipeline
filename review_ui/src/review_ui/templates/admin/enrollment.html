@@ -30,11 +30,11 @@
 </form>
 
 <h2>{{ t("enrollment.tokens") }}</h2>
-{% if tokens %}
+{% macro token_table(rows) %}
 <table class="admin-table">
   <thead><tr><th>{{ t("enrollment.col.volunteer") }}</th><th>{{ t("enrollment.col.role") }}</th><th>{{ t("enrollment.col.status") }}</th><th>{{ t("enrollment.col.created") }}</th><th>{{ t("enrollment.col.expires") }}</th><th>{{ t("enrollment.col.used_by") }}</th><th></th></tr></thead>
   <tbody>
-  {% for token in tokens %}
+  {% for token in rows %}
     <tr {% if token.status != "unused" %}class="muted"{% endif %}>
       <td>{{ token.volunteer_name }} <span class="small"><code>{{ token.token_id[:8] }}</code></span></td>
       <td>{{ role_labels[token.role] }}</td>
@@ -54,7 +54,18 @@
   {% endfor %}
   </tbody>
 </table>
+{% endmacro %}
+{# Unused tokens are the ones still to hand out: on top. Used, expired and
+   revoked ones are history, folded below (LIVESTACK-42 item 9). #}
+{% if unused_tokens %}
+{{ token_table(unused_tokens) }}
 {% else %}
-<p class="empty">{{ t("enrollment.empty") }}</p>
+<p class="empty">{{ t("enrollment.empty_unused") if other_tokens else t("enrollment.empty") }}</p>
+{% endif %}
+{% if other_tokens %}
+<details class="folded-section" id="other-tokens">
+  <summary>{{ t("enrollment.other_section", count=other_tokens|length) }}</summary>
+  {{ token_table(other_tokens) }}
+</details>
 {% endif %}
 {% endblock %}
