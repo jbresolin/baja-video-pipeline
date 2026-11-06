@@ -160,6 +160,10 @@ class ManifestEntry(ApiModel):
     # page offers it for download (reviewer auth, Caddy /outbox-download/).
     in_outbox: bool = False
     download_url: str | None = None
+    # The team and school as the clip shows them (Settings' name choices,
+    # LIVESTACK-42); team_name above stays the full name.
+    clip_team_name: str | None = None
+    clip_school_name: str | None = None
 
 
 class ManifestResponse(ApiModel):

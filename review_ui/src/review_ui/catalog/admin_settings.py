@@ -117,6 +117,17 @@ TEXT: dict[str, str] = {
         "Em “só permitidos”, quem não está permitido em Contatos recebe uma vez por dia: "
         "“Este número não está autorizado a enviar vídeos. Fale com a organização.”"
     ),
+    "settings.clip_team_name": "Nome da equipe nos vídeos",
+    "settings.clip_school_name": "Nome da escola nos vídeos",
+    "team_name_style.full": "completo",
+    "team_name_style.short": "curto",
+    "school_name_style.full": "completo",
+    "school_name_style.short": "sigla",
+    "settings.clip_names.hint": (
+        "Vale para a legenda dos clipes renderizados daqui em diante e para o que esta "
+        "interface mostra de cada clipe. Quando falta o nome curto ou a sigla, usa o completo "
+        "(e vice-versa)."
+    ),
     "settings.inbox_hold": "Caixa de entrada quase cheia a partir de (GB)",
     "settings.inbox_hold.hint": (
         "Acima disso o bot pede para esperar. O limite máximo ({cap} GB, tamanho do disco da "

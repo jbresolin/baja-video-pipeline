@@ -16,6 +16,8 @@ def test_known_car_returns_the_team(ui, fake_orchestrator):
         "school": "UnB",
         "short_name": None,
         "school_short": None,
+        "clip_team_name": "Equipe Cerrado",
+        "clip_school_name": "UnB",
     }
     # It really asked the orchestrator, for that car.
     assert len(fake_orchestrator.requests_to("GET", "/teams/42")) == 1

@@ -474,7 +474,7 @@ the event log with `details: {before, after}`, readable at `GET
 | `PATCH /admin/workers/{worker_id}` | `UpdateWorkerRequest` → `Worker` | the display name (below); revoked workers too |
 | `POST /admin/workers/{worker_id}/make-master` | → `Worker` | "Tornar master" (below); 409 for a studio or a revoked worker |
 | `POST /admin/workers/{worker_id}/revoke` | → `Worker` | its token answers 401, leases end, holder rows dropped |
-| `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing |
+| `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing; the clip name choices have no `.env` value (default short) |
 | `GET /admin/audit?area=&limit=` | → `EventsResponse` | newest first |
 
 **Worker names** (LIVESTACK-42). `Worker.name` is the **display name**:
@@ -507,11 +507,22 @@ after a failure). Provas are keyed by the API's prova id, teams by car
 number. A sync adds and renames (a renamed prova relabels its jobs and keeps
 its slug), and marks rows the API no longer lists inactive; it never
 deletes. A manual prova with the same clip folder as a new synced one is
-adopted. `ProcessTask.team_name` (the overlay text) is the team's
-`short_name` when it has one; `Job.team_name` keeps the full name.
-`ProcessTask.school_short` (the overlay's role pill, "UFMG") is the API's
-`school_short`, or an admin's correction on the Teams page; both are
-copied onto the job when the car number is set.
+adopted. `Job.team_name` keeps the team's full name. The team's short
+name, the school's full name and its sigla (the API's `school_short`, or an
+admin's correction on the Teams page) are copied onto the job when the car
+number is set.
+
+**Names on the clips** (LIVESTACK-42). Two independent Settings,
+`clip_team_name_style` and `clip_school_name_style` (`full` | `short`,
+default `short`, i.e. the team's short name and the school's sigla), decide
+which names a clip shows; a missing name falls back to the other one.
+`orchestrator/domain/clip_names.py` applies them, when the task is offered,
+to `ProcessTask.team_name` (the overlay's name pill) and
+`ProcessTask.school_short` (the role pill: the sigla **or the full school
+name**, despite the field's name), and to `ManifestEntry.clip_team_name` /
+`clip_school_name` and `Team.clip_team_name` / `clip_school_name` (`GET
+/teams/{car}`), which the review UI shows. `latest.m3u` keeps the full team
+name.
 
 **Evolution webhook.** The route is exactly **`POST
 /intake/evolution-webhook`** with the header **`X-Webhook-Secret:

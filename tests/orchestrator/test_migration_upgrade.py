@@ -2,11 +2,12 @@
 
 The VPS database was created and migrated by main's code: migrations
 0001-0004 (the last two are LIVESTACK-37's admin page and results API).
-This branch adds 0005-0007. These tests build a database exactly as main
-leaves it, put typical rows in it, then open it with this code, which
-applies the new migrations at startup, and check that:
+LIVESTACK-38 added 0005-0007 (and LIVESTACK-42 0008, whose own upgrade test
+is test_migration_0008.py). These tests build a database exactly as main
+left it before LIVESTACK-38, put typical rows in it, then open it with this
+code, which applies the newer migrations at startup, and check that:
 
-* only 0005, 0006 and 0007 run, in order, and the version becomes 7;
+* only 0005 to 0008 run, in order, and the version becomes 8;
 * every existing row survives, and the new columns get the values the
   migrations promise (a job discarded before the upgrade counts as past
   its grace period, because main had already deleted its raws);
@@ -23,7 +24,12 @@ from orchestrator.db.database import Database, list_migrations, open_database
 from orchestrator.testing.harness import build_harness
 
 MAIN_SCHEMA_VERSION = 4
-BRANCH_MIGRATIONS = ["0005_first_real_video.sql", "0006_worker_paused.sql", "0007_school_short.sql"]
+BRANCH_MIGRATIONS = [
+    "0005_first_real_video.sql",
+    "0006_worker_paused.sql",
+    "0007_school_short.sql",
+    "0008_clip_name_choices.sql",
+]
 WHEN = "2026-11-04T12:00:00.000000Z"
 
 
@@ -64,8 +70,8 @@ def test_main_database_upgrades_with_only_the_new_migrations(tmp_path):
 
     database = open_database(tmp_path)
 
-    # open_database applied 0005-0007 and nothing else.
-    assert database.schema_version == len(list_migrations()) == 7
+    # open_database applied 0005-0008 and nothing else.
+    assert database.schema_version == len(list_migrations()) == 8
     with database.transaction() as connection:
         jobs = {
             row["id"]: row

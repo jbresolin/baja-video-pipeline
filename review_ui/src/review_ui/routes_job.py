@@ -19,7 +19,7 @@ from review_ui.orchestrator_client import (
 )
 from review_ui.request_context import orchestrator_for, render_page
 from review_ui.settings import JOB_PANEL_POLL_SECONDS
-from shared.models import Job
+from shared.models import Job, Team
 
 router = APIRouter()
 
@@ -90,9 +90,24 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
         media=media_panel(job),
         actions=[(action.value, ACTION_LABELS[action]) for action in available_actions(job.state)],
         prova_choices=prova_choices(orchestrator, job),
+        team=team_or_none(orchestrator, job),
         poll_seconds=JOB_PANEL_POLL_SECONDS,
     )
     return render_page(request, "job.html", context)
+
+
+def team_or_none(orchestrator: OrchestratorClient, job: Job) -> Team | None:
+    """The job's team with the names its clip shows (LIVESTACK-42), or None.
+
+    None for a job without a car number, a car the teams table does not
+    know, or a failed lookup: the page then shows the job's own team name.
+    """
+    if job.car_number is None:
+        return None
+    try:
+        return orchestrator.get_team(job.car_number)
+    except (OrchestratorError, OrchestratorUnavailableError):
+        return None
 
 
 @router.get("/review/jobs/{job_id}/panel", response_class=HTMLResponse)

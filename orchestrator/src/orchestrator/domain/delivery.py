@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import from_db_time, to_db_time
 from orchestrator.domain.clip_archive import outbox_copy_still_needed, record_clip_version
+from orchestrator.domain.clip_names import clip_names_for_job, name_styles
 from orchestrator.domain.job_view import require_job_row
 from orchestrator.domain.leases import require_active_lease, sweep_expired_leases
 from orchestrator.domain.transitions import end_lease, move_job, revoke_job_leases
@@ -221,6 +222,7 @@ def _current_version_number(connection: sqlite3.Connection, row: sqlite3.Row) ->
 
 
 def _manifest_from_rows(context, connection, rows, since, wanted_slug) -> ManifestResponse:
+    styles = name_styles(connection)
     entries = []
     seen_paths = set()
     for row in rows:  # newest delivery first, so the first one per path wins
@@ -233,6 +235,7 @@ def _manifest_from_rows(context, connection, rows, since, wanted_slug) -> Manife
             continue
         if wanted_slug is not None and slugify_prova(row["prova"]) != wanted_slug:
             continue
+        names = clip_names_for_job(styles, row)
         entries.append(
             ManifestEntry(
                 job_id=row["id"],
@@ -249,6 +252,8 @@ def _manifest_from_rows(context, connection, rows, since, wanted_slug) -> Manife
                 download_url=(
                     VpsLayout.clip_download_public_path(row["id"]) if in_outbox else None
                 ),
+                clip_team_name=names.team,
+                clip_school_name=names.school,
             )
         )
     return ManifestResponse(clips=entries, generated_at=context.clock.now())

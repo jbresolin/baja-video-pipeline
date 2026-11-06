@@ -18,6 +18,7 @@ from datetime import timedelta
 from orchestrator.db.database import from_db_time
 from orchestrator.domain import provas_catalog
 from orchestrator.domain.archive_rules import evaluate_archive_clip
+from orchestrator.domain.clip_names import clip_names_for_job, name_styles
 from orchestrator.domain.fleet_snapshot import FleetSnapshot, accepts_new_raws, peer_raw_url
 from orchestrator.domain.task_decision import TaskDecision, refuse
 from orchestrator.repositories import leases as leases_repo
@@ -136,6 +137,8 @@ def _evaluate_process(
     elif state != JobState.READY:
         return refuse(ErrorCode.NOT_CLAIMABLE, f"job is '{state}', not ready")
     job_id = job_row["id"]
+    # The overlay text, by the Settings' name choices (full or short).
+    names = clip_names_for_job(name_styles(connection), job_row)
     return TaskDecision(
         ProcessTask(
             job_id=job_id,
@@ -146,9 +149,11 @@ def _evaluate_process(
             cut_out_s=job_row["cut_out_s"],
             prova=job_row["prova"],
             car_number=job_row["car_number"],
-            # The overlay text: the team's short name when the results API has one.
-            team_name=job_row["overlay_team_name"] or job_row["team_name"],
-            school_short=job_row["overlay_school_short"],
+            # The overlay's name pill and the school in its role pill. Despite
+            # the field's name, school_short is the full school name when the
+            # admin chose "completo" (kept so workers need no change).
+            team_name=names.team,
+            school_short=names.school,
             passagem=job_row["passagem"],
             show_pass=bool(job_row["show_pass"]),
             clip_relative_path=clip_relative_path_in_folder(

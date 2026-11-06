@@ -119,9 +119,11 @@ export function setupReviewForm({ form, jobElement }) {
     if (numberOrNull(form.elements.car_number.value, (t) => parseInt(t, 10)) !== carNumber) return;
     teamText.replaceChildren();
     if (result.ok) {
-      const school = result.data.school ? ` (${result.data.school})` : "";
+      // The names a clip shows, by the Settings page's choices (full or short).
+      const schoolText = result.data.clip_school_name ?? result.data.school;
+      const school = schoolText ? ` (${schoolText})` : "";
       const name = document.createElement("strong");
-      name.textContent = result.data.team_name;
+      name.textContent = result.data.clip_team_name ?? result.data.team_name;
       teamText.append(t("script.team"), name, school);
     } else if (result.status === 404) {
       teamText.textContent = t("script.team_not_found", { car: carNumber });

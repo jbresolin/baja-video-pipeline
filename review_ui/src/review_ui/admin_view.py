@@ -18,7 +18,7 @@ from review_ui.catalog import text
 from review_ui.errors import error_markup
 from review_ui.event_log_view import kind_text
 from review_ui.orchestrator_client import OrchestratorError
-from shared.models import Event, UserRole, WorkerRole
+from shared.models import Event, NameStyle, UserRole, WorkerRole
 
 # The admin sub-navigation: (path under /review/admin/, label).
 SECTION_PATHS = ["users", "contacts", "provas", "teams", "enrollment", "workers", "settings"]
@@ -35,6 +35,9 @@ CONTACT_STATUS_LABELS = _labels("contact_status", ["allowed", "blocked", "unknow
 TOKEN_STATUS_LABELS = _labels("token_status", ["unused", "used", "expired", "revoked"])
 WORKER_ROLE_LABELS = _labels("worker_role", [role.value for role in WorkerRole])
 INTAKE_MODE_LABELS = _labels("intake_mode", ["open", "allowlist"])
+# The Settings page's name choices for clips (LIVESTACK-42): completo / curto / sigla.
+TEAM_NAME_STYLE_LABELS = _labels("team_name_style", [style.value for style in NameStyle])
+SCHOOL_NAME_STYLE_LABELS = _labels("school_name_style", [style.value for style in NameStyle])
 
 # ?feito=<key> → what the page says after a successful change (catalog "done.<key>").
 DONE_KEYS = {

@@ -170,6 +170,10 @@ def test_team_lookup_endpoint(harness):
         "school": None,
         "short_name": "X",
         "school_short": None,
+        # How a clip names them under the default choices (short name; no
+        # school known at all). test_clip_names.py covers the choices.
+        "clip_team_name": "X",
+        "clip_school_name": None,
     }
     missing = harness.client.get("/teams/41", auth=harness.reviewer_auth)
     assert missing.status_code == 404

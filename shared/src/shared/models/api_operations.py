@@ -7,7 +7,13 @@ from pydantic import Field
 from shared.models.api_admin import ServerDisk
 from shared.models.api_catalog import ResultsSyncReport
 from shared.models.common import ApiModel
-from shared.models.enums import EnrollmentTokenStatus, IntakeMode, SecretState, WorkerRole
+from shared.models.enums import (
+    EnrollmentTokenStatus,
+    IntakeMode,
+    NameStyle,
+    SecretState,
+    WorkerRole,
+)
 
 # --- Enrollment tokens ---
 
@@ -77,6 +83,12 @@ class AdminSettings(ApiModel):
     # An outbox clip the studio already received is kept at most this long
     # waiting for the master to archive it (master offline), LIVESTACK-38.
     outbox_keep_unarchived_hours: float = Field(default=72, ge=0, le=720)
+    # Which names the clips show (LIVESTACK-42): the team's full or short
+    # name, and the school's full name or sigla. Each falls back to the
+    # other when the chosen one is missing. They drive the overlay text and
+    # every place the UI shows a clip's team and school.
+    clip_team_name_style: NameStyle = NameStyle.SHORT
+    clip_school_name_style: NameStyle = NameStyle.SHORT
 
 
 class UpdateSettingsRequest(ApiModel):
@@ -90,6 +102,8 @@ class UpdateSettingsRequest(ApiModel):
     results_api_base_url: str | None = Field(default=None, max_length=200)
     discard_grace_hours: float | None = Field(default=None, ge=0, le=720)
     outbox_keep_unarchived_hours: float | None = Field(default=None, ge=0, le=720)
+    clip_team_name_style: NameStyle | None = None
+    clip_school_name_style: NameStyle | None = None
 
 
 class EvolutionStatus(ApiModel):

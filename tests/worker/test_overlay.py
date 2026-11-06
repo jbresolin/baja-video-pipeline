@@ -17,12 +17,15 @@ To refresh the golden image after a deliberate change of the look:
 then look at the new PNG and commit it.
 """
 
+import pytest
 from PIL import Image
 
 from tests.worker.overlay_golden import (
+    GOLDEN_CASES,
     GOLDEN_PATH,
     GOLDEN_TEXT,
     count_differing_pixels,
+    golden_case_id,
     render_golden,
 )
 from worker import overlay_tokens as theme
@@ -201,3 +204,31 @@ def test_the_overlay_matches_the_golden_image(tmp_path):
     # between machines, but a moved pill, a wrong colour or a changed word
     # changes thousands of pixels.
     assert count_differing_pixels(rendered, golden) <= 200
+
+
+# --- The four name choices of the Settings page (LIVESTACK-42 item 6) ---
+
+
+@pytest.mark.parametrize("choice", sorted(GOLDEN_CASES), ids=golden_case_id)
+def test_each_name_choice_matches_its_golden_image(tmp_path, choice):
+    # Car 2 with the team's full or short name and the school's full name or
+    # sigla, as the orchestrator sends them for each Settings choice
+    # (tests/orchestrator/test_clip_names.py). Each picture was checked by
+    # eye: a long school name stays on one line in the role pill.
+    text, golden_path = GOLDEN_CASES[choice]
+
+    rendered = render_golden(tmp_path / "overlay.png", text)
+
+    golden = Image.open(golden_path)
+    assert rendered.size == golden.size
+    assert count_differing_pixels(rendered, golden) <= 200
+
+
+def test_the_four_name_choices_really_look_different():
+    # If two choices drew the same picture, a mix-up between them would go
+    # unnoticed. Every pair of golden images differs in many pixels.
+    images = {choice: Image.open(path) for choice, (_, path) in GOLDEN_CASES.items()}
+    choices = sorted(images)
+    for index, first in enumerate(choices):
+        for second in choices[index + 1 :]:
+            assert count_differing_pixels(images[first], images[second]) > 1000, (first, second)

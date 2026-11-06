@@ -5,6 +5,8 @@ from fastapi.responses import HTMLResponse, Response
 
 from review_ui.admin_view import (
     INTAKE_MODE_LABELS,
+    SCHOOL_NAME_STYLE_LABELS,
+    TEAM_NAME_STYLE_LABELS,
     TOKEN_STATUS_LABELS,
     WORKER_ROLE_LABELS,
     admin_context,
@@ -182,6 +184,8 @@ def _settings_page(request: Request, error: str | None = None, status_code: int 
         values=page.settings,
         status=page.status,
         intake_modes=INTAKE_MODE_LABELS,
+        team_name_styles=TEAM_NAME_STYLE_LABELS,
+        school_name_styles=SCHOOL_NAME_STYLE_LABELS,
         audit=audit_lines(admin.audit(AdminArea.SETTINGS)),
     )
     context["error"] = error
@@ -215,6 +219,9 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
             results_api_base_url=form_text(form, "results_api_base_url"),
             discard_grace_hours=_optional_number(form, "discard_grace_hours"),
             outbox_keep_unarchived_hours=_optional_number(form, "outbox_keep_unarchived_hours"),
+            # A form without the choice (an older page) keeps the stored one.
+            clip_team_name_style=form.get("clip_team_name_style") or None,
+            clip_school_name_style=form.get("clip_school_name_style") or None,
         )
     except ValueError:
         return _settings_page(

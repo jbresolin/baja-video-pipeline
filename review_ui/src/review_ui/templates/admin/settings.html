@@ -16,6 +16,20 @@
     {% endfor %}
     <p class="hint">{{ t("settings.intake_mode.hint") }}</p>
   </fieldset>
+  {# Which names the clips show (the overlay, the clips page, the job page). #}
+  <fieldset class="choices">
+    <legend>{{ t("settings.clip_team_name") }}</legend>
+    {% for value, label in team_name_styles.items() %}
+    <label><input type="radio" name="clip_team_name_style" value="{{ value }}" {% if values.clip_team_name_style == value %}checked{% endif %}> {{ label }}</label>
+    {% endfor %}
+  </fieldset>
+  <fieldset class="choices">
+    <legend>{{ t("settings.clip_school_name") }}</legend>
+    {% for value, label in school_name_styles.items() %}
+    <label><input type="radio" name="clip_school_name_style" value="{{ value }}" {% if values.clip_school_name_style == value %}checked{% endif %}> {{ label }}</label>
+    {% endfor %}
+    <p class="hint">{{ t("settings.clip_names.hint") }}</p>
+  </fieldset>
   {# Input values keep the decimal point (HTML number fields need it); shown numbers use a comma. #}
   <label for="inbox_hold_gb">{{ t("settings.inbox_hold") }}</label>
   <input id="inbox_hold_gb" name="inbox_hold_gb" type="number" step="0.1" min="0.1" max="{{ status.inbox_cap_gb }}"

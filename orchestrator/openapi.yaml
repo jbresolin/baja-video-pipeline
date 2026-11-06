@@ -3101,6 +3101,12 @@ components:
           minimum: 0.0
           title: Outbox Keep Unarchived Hours
           default: 72
+        clip_team_name_style:
+          $ref: '#/components/schemas/NameStyle'
+          default: short
+        clip_school_name_style:
+          $ref: '#/components/schemas/NameStyle'
+          default: short
       additionalProperties: false
       type: object
       required:
@@ -5078,6 +5084,16 @@ components:
           - type: string
           - type: 'null'
           title: Download Url
+        clip_team_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Clip Team Name
+        clip_school_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Clip School Name
       additionalProperties: false
       type: object
       required:
@@ -5136,6 +5152,13 @@ components:
       - upload
       title: MeasurementKind
       description: What a worker timed, to feed the rolling stats (design §5).
+    NameStyle:
+      type: string
+      enum:
+      - full
+      - short
+      title: NameStyle
+      description: Which name of a team or school the clips show (admin Settings, LIVESTACK-42).
     NextTaskRequest:
       properties:
         accept_kinds:
@@ -5767,6 +5790,16 @@ components:
           - type: string
           - type: 'null'
           title: School Short
+        clip_team_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Clip Team Name
+        clip_school_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Clip School Name
       additionalProperties: false
       type: object
       required:
@@ -5949,6 +5982,14 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Outbox Keep Unarchived Hours
+        clip_team_name_style:
+          anyOf:
+          - $ref: '#/components/schemas/NameStyle'
+          - type: 'null'
+        clip_school_name_style:
+          anyOf:
+          - $ref: '#/components/schemas/NameStyle'
+          - type: 'null'
       additionalProperties: false
       type: object
       title: UpdateSettingsRequest

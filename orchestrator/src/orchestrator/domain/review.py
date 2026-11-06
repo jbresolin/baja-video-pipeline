@@ -52,17 +52,25 @@ CLEARED_FAILURE_COLUMNS = {
 
 
 def _team_names(connection: sqlite3.Connection, car_number: int) -> dict[str, str | None]:
-    """team_name (full, for the review UI and latest.m3u), overlay_team_name
-    (the short name when the results API has one: the clip overlay shows it)
-    and overlay_school_short (the overlay's role pill, LIVESTACK-38).
-    An unknown car leaves all three empty (design §18)."""
+    """team_name (full, for latest.m3u), overlay_team_name (the short name
+    when the results API has one, else the full one), overlay_school_short
+    (the sigla, LIVESTACK-38) and school_name (the full school name,
+    LIVESTACK-42). Which of them a clip shows is chosen on the Settings
+    page (domain/clip_names.py). An unknown car leaves all four empty
+    (design §18)."""
     team = teams_repo.get_team(connection, car_number)
     if team is None:
-        return {"team_name": None, "overlay_team_name": None, "overlay_school_short": None}
+        return {
+            "team_name": None,
+            "overlay_team_name": None,
+            "overlay_school_short": None,
+            "school_name": None,
+        }
     return {
         "team_name": team.team_name,
         "overlay_team_name": team.short_name or team.team_name,
         "overlay_school_short": team.school_short,
+        "school_name": team.school,
     }
 
 
