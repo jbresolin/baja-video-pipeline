@@ -24,7 +24,8 @@ from tools.openapi_contract import (
 # 2.4.0: render inputs per clip version (PUT /jobs/{id}/render-inputs,
 # Job.clip_inputs, ManifestEntry.clip_inputs, JobSummary.clip_outdated,
 # GET /review/queue?outdated=true); a reprocess is delivered under its -vN
-# name (edits after delivery, LIVESTACK-43).
+# name (edits after delivery, LIVESTACK-43). Answer schemas no longer say
+# additionalProperties: false: clients ignore fields they do not know.
 CONTRACT_VERSION = "2.4.0"
 
 DESCRIPTION = """\

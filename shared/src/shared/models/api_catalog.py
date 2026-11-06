@@ -4,13 +4,15 @@ from datetime import datetime
 
 from pydantic import Field
 
-from shared.models.common import ApiModel, CarNumber
+from shared.models.common import CarNumber, ReadByClients, ReceivedByServer
 from shared.models.enums import CatalogSource
 
 # --- Provas ---
 
 
-class Prova(ApiModel):
+class Prova(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     id: int = Field(ge=1)
     # What reviewers see and Job.prova holds, e.g. "Suspensão".
     name: str
@@ -28,18 +30,25 @@ class Prova(ApiModel):
     external_id: str | None = None
 
 
-class ProvasResponse(ApiModel):
+class ProvasResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     # Synced provas first (in the API's order), then manual ones (in the
     # admin's order); inactive ones included.
     provas: list[Prova]
 
 
-class CreateProvaRequest(ApiModel):
+class CreateProvaRequest(ReceivedByServer):
+    """Received by the orchestrator: unknown fields are refused."""
+
     name: str = Field(min_length=1, max_length=64)
 
 
-class UpdateProvaRequest(ApiModel):
-    """PATCH /admin/provas/{prova_id}. Fields left out keep their value."""
+class UpdateProvaRequest(ReceivedByServer):
+    """PATCH /admin/provas/{prova_id}. Fields left out keep their value.
+
+    Received by the orchestrator: unknown fields are refused.
+    """
 
     # A rename relabels every job that had the old name; the slug stays.
     # Synced provas take their name from the API: renaming one is a 409.
@@ -47,7 +56,9 @@ class UpdateProvaRequest(ApiModel):
     active: bool | None = None
 
 
-class ReorderProvasRequest(ApiModel):
+class ReorderProvasRequest(ReceivedByServer):
+    """Received by the orchestrator: unknown fields are refused."""
+
     # Every prova id, in the new order.
     prova_ids: list[int] = Field(min_length=1)
 
@@ -55,8 +66,11 @@ class ReorderProvasRequest(ApiModel):
 # --- Teams ---
 
 
-class TeamRow(ApiModel):
-    """A row of the admin Teams page: what lookups answer, and where it came from."""
+class TeamRow(ReadByClients):
+    """A row of the admin Teams page: what lookups answer, and where it came from.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     car_number: CarNumber
     # What GET /teams/{car} answers: the admin's correction if any, else the API's.
@@ -76,16 +90,20 @@ class TeamRow(ApiModel):
     synced_school_short: str | None = None
 
 
-class TeamsResponse(ApiModel):
+class TeamsResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     # Sorted by car number.
     teams: list[TeamRow]
 
 
-class SaveTeamRequest(ApiModel):
+class SaveTeamRequest(ReceivedByServer):
     """PUT /admin/teams/{car_number}: add a car, edit a manual one, or correct a synced one.
 
     For a synced team the values are stored as a correction (override) that
     later syncs keep.
+
+    Received by the orchestrator: unknown fields are refused.
     """
 
     team_name: str = Field(min_length=1, max_length=100)
@@ -98,8 +116,11 @@ class SaveTeamRequest(ApiModel):
 # --- Results API sync ---
 
 
-class ResultsSyncReport(ApiModel):
-    """What the last sync with the Baja results API did (or why it failed)."""
+class ResultsSyncReport(ReadByClients):
+    """What the last sync with the Baja results API did (or why it failed).
+
+    Read by clients: unknown fields are ignored.
+    """
 
     event_id: str
     at: datetime

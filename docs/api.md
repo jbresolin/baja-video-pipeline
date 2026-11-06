@@ -14,7 +14,7 @@ types**; this page explains the behaviour around them. Design background:
 | --- | --- |
 | Transport | HTTP/1.1. Workers and the studio reach the orchestrator through Caddy's **tailnet listener** `http://<vps tailscale ip>:8080`. Reviewers, Evolution and `/enroll` use the public 443 site. Locally everything also works on plain `http://127.0.0.1:8000`. |
 | Bodies | JSON (`application/json`, UTF-8) unless stated. Chunked uploads use `application/octet-stream`. |
-| Unknown fields | Rejected with 400 `validation_error` (all our models use `extra="forbid"`). The Evolution webhook is the one exception. |
+| Unknown fields | In a request: rejected with 400 `validation_error` (request models derive from `ReceivedByServer`, `extra="forbid"`). In an answer: ignored by every client (answer models derive from `ReadByClients`, `extra="ignore"`), so adding a field to an answer breaks no client from contract 2.4.0 on (design §14). The Evolution webhook is the one exception. |
 | Ids | Opaque strings (the orchestrator uses UUID4 hex). Never parse them. |
 | Times | ISO 8601 with timezone, always UTC, e.g. `2026-10-25T14:03:07Z`. |
 | Sizes | Integers, bytes. |

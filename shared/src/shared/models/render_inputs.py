@@ -24,7 +24,14 @@ from enum import StrEnum
 
 from pydantic import Field
 
-from shared.models.common import ApiModel, CarNumber, PassNumber, Seconds, Sha256Hex
+from shared.models.common import (
+    CarNumber,
+    PassNumber,
+    ReadByClients,
+    ReceivedByServer,
+    Seconds,
+    Sha256Hex,
+)
 from shared.models.enums import NameStyle
 
 
@@ -46,11 +53,13 @@ class RenderInputField(StrEnum):
     RAW = "raw"
 
 
-class RenderInputs(ApiModel):
+class RenderInputs(ReadByClients):
     """The inputs of one rendering. Every field may be None: unknown or not set.
 
     The same shape describes "what a clip was rendered from" and
     "what a render would use now" (ClipInputsComparison).
+
+    Read by clients: unknown fields are ignored.
     """
 
     raw_sha256: Sha256Hex | None = None
@@ -76,13 +85,15 @@ class RenderInputs(ApiModel):
     reported_by_worker: bool = False
 
 
-class RenderInputsReport(ApiModel):
+class RenderInputsReport(ReceivedByServer):
     """PUT /jobs/{id}/render-inputs body: what the worker rendered a clip from.
 
     Sent under the process lease, after rendering and before the upload or
     the push, so the orchestrator has it when the clip becomes a version.
     The values are the ProcessTask's as the worker used them; the name
     choices are not here because the task carries only the chosen names.
+
+    Received by the orchestrator: unknown fields are refused.
     """
 
     # The rendered file's SHA-256: which clip version these inputs belong to.
@@ -100,12 +111,14 @@ class RenderInputsReport(ApiModel):
     overlay_theme_version: Sha256Hex
 
 
-class ClipInputsComparison(ApiModel):
+class ClipInputsComparison(ReadByClients):
     """The newest clip version's inputs next to what a render would use now.
 
     `changed` lists every input that differs; empty means the clip matches
     the review. A clip whose inputs were never recorded (rendered before
     LIVESTACK-43) has no comparison at all (None on the Job).
+
+    Read by clients: unknown fields are ignored.
     """
 
     # Which clip version was compared: the newest one (the one the studio

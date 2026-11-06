@@ -4,7 +4,14 @@ from datetime import datetime
 
 from pydantic import Field
 
-from shared.models.common import ApiModel, ByteCount, CarNumber, PassNumber, Sha256Hex
+from shared.models.common import (
+    ByteCount,
+    CarNumber,
+    PassNumber,
+    ReadByClients,
+    ReceivedByServer,
+    Sha256Hex,
+)
 from shared.models.enums import WorkerRole
 from shared.models.job import Lease
 from shared.models.render_inputs import ClipInputsComparison
@@ -13,7 +20,7 @@ from shared.models.worker import Worker, WorkerCapabilities
 # --- Intake ---
 
 
-class IntakeResponse(ApiModel):
+class IntakeResponse(ReadByClients):
     """Answer to the Evolution webhook and to the dev test upload.
 
     The webhook answers fast and downloads in the background (design §15):
@@ -21,6 +28,8 @@ class IntakeResponse(ApiModel):
     is downloaded, decrypted and verified. Ignored and duplicate messages
     get 200, so Evolution does not retry them. The test upload is
     synchronous and returns the new job_id straight away.
+
+    Read by clients: unknown fields are ignored.
     """
 
     # The new job (test upload) or the existing one (duplicate); else None.
@@ -39,13 +48,17 @@ class IntakeResponse(ApiModel):
 # --- Enrollment ---
 
 
-class CreateEnrollmentTokenRequest(ApiModel):
+class CreateEnrollmentTokenRequest(ReceivedByServer):
+    """Received by the orchestrator: unknown fields are refused."""
+
     volunteer_name: str = Field(min_length=1, max_length=100)
     role: WorkerRole = WorkerRole.WORKER
     valid_for_hours: int = Field(default=72, ge=1, le=24 * 30)
 
 
-class EnrollmentTokenCreated(ApiModel):
+class EnrollmentTokenCreated(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     # Shown exactly once. The orchestrator keeps only its hash.
     token: str
     # Public id for the token list and revocation (EnrollmentTokenInfo.token_id).
@@ -57,8 +70,11 @@ class EnrollmentTokenCreated(ApiModel):
     installer_download_url: str | None = None
 
 
-class EnrollRequest(ApiModel):
-    """POST /enroll, sent once by the worker's first-run setup page."""
+class EnrollRequest(ReceivedByServer):
+    """POST /enroll, sent once by the worker's first-run setup page.
+
+    Received by the orchestrator: unknown fields are refused.
+    """
 
     enrollment_token: str
     # The display name (Worker.name): what the volunteer typed on the token
@@ -70,7 +86,9 @@ class EnrollRequest(ApiModel):
     storage_cap_bytes: ByteCount
 
 
-class EnrollResponse(ApiModel):
+class EnrollResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     worker_id: str
     role: WorkerRole
     # Send as "Authorization: Bearer <token>" on every later call. Store it safely.
@@ -90,8 +108,11 @@ class EnrollResponse(ApiModel):
 # --- Fleet ---
 
 
-class ServerDisk(ApiModel):
-    """Disk use on the VPS (design §10)."""
+class ServerDisk(ReadByClients):
+    """Disk use on the VPS (design §10).
+
+    Read by clients: unknown fields are ignored.
+    """
 
     inbox_bytes: ByteCount
     # Soft limit (BVP_INBOX_HOLD_GB): above it the bot asks senders to hold.
@@ -103,7 +124,9 @@ class ServerDisk(ApiModel):
     free_bytes: ByteCount
 
 
-class FleetWorker(ApiModel):
+class FleetWorker(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     worker: Worker
     online: bool
     leases: list[Lease]
@@ -121,14 +144,19 @@ class FleetWorker(ApiModel):
     clips_archived: int = Field(default=0, ge=0)
 
 
-class ClipArchiveProgress(ApiModel):
-    """How much of every clip ever rendered (all versions) the master has."""
+class ClipArchiveProgress(ReadByClients):
+    """How much of every clip ever rendered (all versions) the master has.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     archived: int = Field(ge=0)
     total: int = Field(ge=0)
 
 
-class FleetResponse(ApiModel):
+class FleetResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     workers: list[FleetWorker]
     server_disk: ServerDisk
     # Count of jobs per state, e.g. {"awaiting_review": 4, "ready": 2}.
@@ -142,7 +170,9 @@ class FleetResponse(ApiModel):
 # --- Manifest (read by the studio and the later playout UI, LIVESTACK-8) ---
 
 
-class ManifestEntry(ApiModel):
+class ManifestEntry(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     job_id: str
     prova: str
     car_number: CarNumber
@@ -170,7 +200,9 @@ class ManifestEntry(ApiModel):
     clip_inputs: ClipInputsComparison | None = None
 
 
-class ManifestResponse(ApiModel):
+class ManifestResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     # Newest delivery first.
     clips: list[ManifestEntry]
     generated_at: datetime

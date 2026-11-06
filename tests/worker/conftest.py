@@ -25,6 +25,7 @@ import httpx
 import pytest
 
 from shared.models import DeliveryPlan, DeliveryRoute, WorkerRole
+from shared.testing.newer_server import NewerServerTransport
 from tests.worker.fake_orchestrator import (
     BASE_URL,
     BEARER_TOKEN,
@@ -95,6 +96,8 @@ class WorkerHarness:
     stages: dict[str, StageRunner]
     dispatcher: Dispatcher
     tmp_path: Path
+    # What the worker's requests go through: `network`, or a NewerServerTransport.
+    answers: httpx.BaseTransport
 
     def claim_and_run(self, task) -> None:
         """Offer `task`, let the dispatcher claim it, run it to the end."""
@@ -126,11 +129,17 @@ def build_harness(
     role: WorkerRole = WorkerRole.WORKER,
     cap_bytes: int = 10 * GB,
     disk_free_bytes: int = 500 * GB,
+    newer_server: bool = False,
 ) -> WorkerHarness:
+    """`newer_server`: every JSON answer the worker reads carries fields it
+    does not know (shared.testing.newer_server), as from a later orchestrator."""
     orchestrator = FakeOrchestrator(tmp_path / "vps", role=role)
     network = RoutingTransport()
     network.add_app(BASE_URL, orchestrator.app)
     network.add_app(TAILNET_URL, orchestrator.app)
+    # What the worker's own requests go through (the peers and the studio
+    # stay reachable on `network` either way).
+    answers = NewerServerTransport(network) if newer_server else network
     media = FakeMediaTools()
     storage = Storage(
         tmp_path / "worker",
@@ -138,7 +147,7 @@ def build_harness(
         ignores_cap_for_raws=role == WorkerRole.MASTER,
         disk_free=lambda _: disk_free_bytes,
     )
-    api = make_api_client(network)
+    api = make_api_client(answers)
     leases = LeaseTracker()
     measurements = MeasurementLog()
     shutdown = Event()
@@ -149,7 +158,7 @@ def build_harness(
         storage=storage,
         media=media,
         measurements=measurements,
-        transfer_transport=network,
+        transfer_transport=answers,
         settings=FAST_SETTINGS,
         studio_library=library,
         role=role,
@@ -182,7 +191,7 @@ def build_harness(
     )
     return WorkerHarness(
         orchestrator, network, media, storage, env, leases, shutdown, status,
-        heartbeater, stages, dispatcher, tmp_path,
+        heartbeater, stages, dispatcher, tmp_path, answers,
     )  # fmt: skip
 
 

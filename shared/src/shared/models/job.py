@@ -6,10 +6,10 @@ from typing import Any
 from pydantic import Field, model_validator
 
 from shared.models.common import (
-    ApiModel,
     ByteCount,
     CarNumber,
     PassNumber,
+    ReadByClients,
     Seconds,
     Sha256Hex,
     utc_now,
@@ -30,11 +30,13 @@ def check_cut_order(cut_in_s: float | None, cut_out_s: float | None) -> None:
         raise ValueError(f"cut_out_s ({cut_out_s}) must be greater than cut_in_s ({cut_in_s})")
 
 
-class Lease(ApiModel):
+class Lease(ReadByClients):
     """Permission for one worker to do one task on one job until expires_at.
 
     Heartbeats (or /lease/renew) push expires_at forward. When it passes, the
     orchestrator drops the lease and the task can be handed to someone else.
+
+    Read by clients: unknown fields are ignored.
     """
 
     lease_id: str
@@ -45,8 +47,11 @@ class Lease(ApiModel):
     expires_at: datetime
 
 
-class Holder(ApiModel):
-    """A worker that has (or is fetching) a verified copy of the job's raw."""
+class Holder(ReadByClients):
+    """A worker that has (or is fetching) a verified copy of the job's raw.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     worker_id: str
     status: HolderStatus
@@ -54,8 +59,11 @@ class Holder(ApiModel):
     confirmed_at: datetime | None = None
 
 
-class IntakeSource(ApiModel):
-    """Where the raw came from. Kept for support and duplicate detection."""
+class IntakeSource(ReadByClients):
+    """Where the raw came from. Kept for support and duplicate detection.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     # WhatsApp message id (Evolution data.key.id). Used to ignore retries of
     # the same webhook. Test uploads get a generated id.
@@ -74,8 +82,11 @@ class IntakeSource(ApiModel):
     raw_file_name: str | None = None
 
 
-class ClipInfo(ApiModel):
-    """The finished, rendered clip (the current version)."""
+class ClipInfo(ReadByClients):
+    """The finished, rendered clip (the current version).
+
+    Read by clients: unknown fields are ignored.
+    """
 
     sha256: Sha256Hex
     size_bytes: ByteCount
@@ -97,8 +108,11 @@ class ClipInfo(ApiModel):
     download_file_name: str | None = None
 
 
-class ClipVersion(ApiModel):
-    """One rendering of a job's clip. Reprocessing adds a version; none is replaced."""
+class ClipVersion(ReadByClients):
+    """One rendering of a job's clip. Reprocessing adds a version; none is replaced.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     version: int = Field(ge=1)
     sha256: Sha256Hex
@@ -116,7 +130,7 @@ class ClipVersion(ApiModel):
     render_inputs: RenderInputs | None = None
 
 
-class ProbeReport(ApiModel):
+class ProbeReport(ReadByClients):
     """PUT /jobs/{id}/media-info body, stored as Job.media_info.
 
     The raw's full ffprobe answer (`-show_format -show_streams`, see
@@ -125,6 +139,9 @@ class ProbeReport(ApiModel):
     strip_location_tags removes every GPS/location tag and the worker
     (and again the orchestrator) only keeps `location_present`. The inner
     dicts are ffprobe's own and are kept as they are (any keys).
+
+    Read by clients: unknown fields are ignored. The orchestrator also receives
+    it (PUT /jobs/{id}/media-info); clients reading Job.media_info win.
     """
 
     # ffprobe's "format" object: container, duration, size, bit_rate, tags.
@@ -135,8 +152,11 @@ class ProbeReport(ApiModel):
     location_present: bool = False
 
 
-class JobFailure(ApiModel):
-    """The last unrecoverable error a worker reported (POST /jobs/{id}/failed)."""
+class JobFailure(ReadByClients):
+    """The last unrecoverable error a worker reported (POST /jobs/{id}/failed).
+
+    Read by clients: unknown fields are ignored.
+    """
 
     worker_id: str
     task_kind: TaskKind
@@ -146,8 +166,11 @@ class JobFailure(ApiModel):
     failed_at: datetime
 
 
-class Job(ApiModel):
-    """Full job record, as returned by GET /jobs/{id}."""
+class Job(ReadByClients):
+    """Full job record, as returned by GET /jobs/{id}.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     id: str
     state: JobState
@@ -234,8 +257,11 @@ class Job(ApiModel):
         return self
 
 
-class JobSummary(ApiModel):
-    """The slice of a Job shown in lists (review queue, fleet view)."""
+class JobSummary(ReadByClients):
+    """The slice of a Job shown in lists (review queue, fleet view).
+
+    Read by clients: unknown fields are ignored.
+    """
 
     id: str
     state: JobState

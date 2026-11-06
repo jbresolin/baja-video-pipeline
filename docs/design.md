@@ -222,6 +222,12 @@ tests. Therefore:
   say what the test sets up, what it does, and why the assertion proves
   the behaviour.
 * No cleverness that saves lines at the cost of readability.
+* **A client never breaks because the server added a field:** in
+  `shared/models`, what the orchestrator receives (requests, uploads,
+  heartbeats, worker reports) derives from `ReceivedByServer`
+  (`extra="forbid"`), everything a worker, the studio or the review UI
+  reads from it derives from `ReadByClients` (`extra="ignore"`), and each
+  model's docstring says which.
 * **Test credentials are obvious placeholders in one place.** Every username,
   password, token or key a test needs comes from
   `shared/testing/credentials.py`, named and valued so nobody (and no secret
@@ -681,9 +687,11 @@ and reprocessable"). Contract 2.4.0.
   the name choices (workers only see chosen names) and stands in when a
   worker reports nothing. No `ProcessTask` field was added; but `Job`
   gained `clip_inputs` (and `ClipVersion.render_inputs`), and workers
-  refuse unknown fields when they read `GET /jobs/{id}` (studio playlist
-  titles, outbox deliver, the direct-push fallback check). So, as for
-  2.3.0, **upgrade the workers together with the orchestrator**.
+  before this one refuse unknown fields when they read `GET /jobs/{id}`
+  (studio playlist titles, outbox deliver, the direct-push fallback
+  check). So, as for 2.3.0, **upgrade the workers together with the
+  orchestrator** this time. From this version on, clients ignore fields
+  they do not know (§14), so later additions need no lockstep upgrade.
 * **Mismatch is computed by the orchestrator** (it knows the Settings),
   newest version against the review now: `Job.clip_inputs`,
   `ManifestEntry.clip_inputs`, `JobSummary.clip_outdated`,

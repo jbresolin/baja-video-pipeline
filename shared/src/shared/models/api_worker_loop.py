@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import Field
 
-from shared.models.common import ApiModel, ByteCount, Seconds, Sha256Hex
+from shared.models.common import ByteCount, ReadByClients, ReceivedByServer, Seconds, Sha256Hex
 from shared.models.enums import (
     FailureScope,
     JobState,
@@ -15,23 +15,32 @@ from shared.models.enums import (
 from shared.models.job import Lease
 
 
-class Measurement(ApiModel):
-    """One timed transfer or render, e.g. "downloaded 500 MB in 42 s"."""
+class Measurement(ReceivedByServer):
+    """One timed transfer or render, e.g. "downloaded 500 MB in 42 s".
+
+    Received by the orchestrator: unknown fields are refused.
+    """
 
     kind: MeasurementKind
     byte_count: ByteCount
     seconds: float = Field(gt=0)
 
 
-class HeldClip(ApiModel):
-    """A finished clip a worker keeps in its clips/ folder (served on :8710)."""
+class HeldClip(ReceivedByServer):
+    """A finished clip a worker keeps in its clips/ folder (served on :8710).
+
+    Received by the orchestrator: unknown fields are refused.
+    """
 
     job_id: str
     sha256: Sha256Hex
 
 
-class HeartbeatRequest(ApiModel):
-    """POST /workers/{id}/heartbeat, every 15 s."""
+class HeartbeatRequest(ReceivedByServer):
+    """POST /workers/{id}/heartbeat, every 15 s.
+
+    Received by the orchestrator: unknown fields are refused.
+    """
 
     free_bytes: ByteCount
     storage_cap_bytes: ByteCount
@@ -67,7 +76,9 @@ class HeartbeatRequest(ApiModel):
     shared_tailnet: bool = False
 
 
-class HeartbeatResponse(ApiModel):
+class HeartbeatResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     # For every lease id the worker sent: renewed, or lost (stop that task).
     lease_status: dict[str, LeaseHeartbeatStatus] = Field(default_factory=dict)
     heartbeat_interval_s: int
@@ -87,16 +98,23 @@ class HeartbeatResponse(ApiModel):
     role: WorkerRole | None = None
 
 
-class LeaseRenewRequest(ApiModel):
+class LeaseRenewRequest(ReceivedByServer):
+    """Received by the orchestrator: unknown fields are refused."""
+
     lease_id: str
 
 
-class LeaseRenewResponse(ApiModel):
+class LeaseRenewResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     lease: Lease
 
 
-class HolderConfirmRequest(ApiModel):
-    """POST /jobs/{id}/holder-confirm: "I have the raw and the hash matched"."""
+class HolderConfirmRequest(ReceivedByServer):
+    """POST /jobs/{id}/holder-confirm: "I have the raw and the hash matched".
+
+    Received by the orchestrator: unknown fields are refused.
+    """
 
     lease_id: str
     sha256: Sha256Hex
@@ -106,21 +124,29 @@ class HolderConfirmRequest(ApiModel):
     has_audio: bool | None = None
 
 
-class ClipArchivedRequest(ApiModel):
-    """POST /jobs/{id}/clip-archived: the master stored that exact clip, hash checked."""
+class ClipArchivedRequest(ReceivedByServer):
+    """POST /jobs/{id}/clip-archived: the master stored that exact clip, hash checked.
+
+    Received by the orchestrator: unknown fields are refused.
+    """
 
     lease_id: str
     sha256: Sha256Hex
 
 
-class HolderConfirmResponse(ApiModel):
+class HolderConfirmResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     confirmed_holder_count: int
     # True when this confirmation was the second one and the VPS dropped its copy.
     raw_deleted_from_vps: bool
 
 
-class ChunkAccepted(ApiModel):
-    """Answer to every accepted chunk of a chunked upload (see docs/api.md)."""
+class ChunkAccepted(ReadByClients):
+    """Answer to every accepted chunk of a chunked upload (see docs/api.md).
+
+    Read by clients: unknown fields are ignored.
+    """
 
     # How many bytes of the file the receiver has now, i.e. the next offset.
     received_bytes: ByteCount
@@ -128,13 +154,15 @@ class ChunkAccepted(ApiModel):
     complete: bool
 
 
-class FailedRequest(ApiModel):
+class FailedRequest(ReceivedByServer):
     """POST /jobs/{id}/failed: "I cannot finish this task".
 
     `scope` says whose fault it is (design §17). With "job" the job fails
     at once and a reviewer decides retry or discard. With "worker" the
     task is re-offered to other workers; the job fails only when a second,
     different worker also reports "worker" for the same task.
+
+    Received by the orchestrator: unknown fields are refused.
     """
 
     lease_id: str
@@ -148,31 +176,43 @@ class FailedRequest(ApiModel):
     scope: FailureScope = FailureScope.WORKER
 
 
-class DeliveredRequest(ApiModel):
-    """POST /jobs/{id}/delivered: studio ACK after a direct push from a worker."""
+class DeliveredRequest(ReceivedByServer):
+    """POST /jobs/{id}/delivered: studio ACK after a direct push from a worker.
+
+    Received by the orchestrator: unknown fields are refused.
+    """
 
     sha256: Sha256Hex
     size_bytes: ByteCount
     relative_path: str
 
 
-class OutboxAckRequest(ApiModel):
-    """POST /outbox/{id}/ack: studio ACK after pulling a clip from the outbox."""
+class OutboxAckRequest(ReceivedByServer):
+    """POST /outbox/{id}/ack: studio ACK after pulling a clip from the outbox.
+
+    Received by the orchestrator: unknown fields are refused.
+    """
 
     lease_id: str
     sha256: Sha256Hex
     relative_path: str
 
 
-class JobStateResponse(ApiModel):
-    """Small answer for endpoints whose only interesting result is the new state."""
+class JobStateResponse(ReadByClients):
+    """Small answer for endpoints whose only interesting result is the new state.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     job_id: str
     state: JobState
 
 
-class Peer(ApiModel):
-    """One entry of GET /workers: how to reach another worker over the tailnet."""
+class Peer(ReadByClients):
+    """One entry of GET /workers: how to reach another worker over the tailnet.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     worker_id: str
     name: str
@@ -185,5 +225,7 @@ class Peer(ApiModel):
     last_heartbeat: datetime | None
 
 
-class PeersResponse(ApiModel):
+class PeersResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     workers: list[Peer]

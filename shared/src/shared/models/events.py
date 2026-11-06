@@ -10,12 +10,15 @@ from typing import Any
 
 from pydantic import Field
 
-from shared.models.common import ApiModel
+from shared.models.common import ReadByClients
 from shared.models.enums import JobState
 
 
-class Event(ApiModel):
-    """One line of the log: who did what, to which job or worker, when and why."""
+class Event(ReadByClients):
+    """One line of the log: who did what, to which job or worker, when and why.
+
+    Read by clients: unknown fields are ignored.
+    """
 
     # Increases with every event; a stable order and a cursor for clients.
     id: int = Field(ge=1)
@@ -42,6 +45,8 @@ class Event(ApiModel):
     details: dict[str, Any] | None = None
 
 
-class EventsResponse(ApiModel):
+class EventsResponse(ReadByClients):
+    """Read by clients: unknown fields are ignored."""
+
     # Oldest first.
     events: list[Event]
