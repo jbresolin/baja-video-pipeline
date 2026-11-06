@@ -129,6 +129,30 @@ def test_only_plain_workers_get_the_button_and_it_asks_first_naming_the_master(a
     assert "O estúdio não vira master" in studio_row
 
 
+def test_a_worker_on_a_shared_tailnet_gets_no_button_and_the_row_says_why(admin, harness):
+    # LIVESTACK-41 item 4: "rede compartilhada" workers are never offered
+    # "Tornar master" (the orchestrator refuses it too).
+    harness.enroll(WorkerRole.MASTER, "joao-desktop")
+    maria = harness.enroll(WorkerRole.WORKER, "pc-da-maria")
+    harness.heartbeat(maria, shared_tailnet=True)
+
+    row = workers_page_row(admin.get("/review/admin/workers").text, "pc-da-maria")
+
+    assert "make-master" not in row
+    assert "Em rede compartilhada" in row
+
+
+def test_a_crafted_promotion_of_a_shared_tailnet_worker_is_refused(admin, harness):
+    harness.enroll(WorkerRole.MASTER, "joao-desktop")
+    maria = harness.enroll(WorkerRole.WORKER, "pc-da-maria")
+    harness.heartbeat(maria, shared_tailnet=True)
+
+    page = post_form(admin, f"/review/admin/workers/{maria.worker_id}/make-master")
+
+    assert page.status_code == 409
+    assert "shared tailnet" in page.text
+
+
 def test_pressing_the_button_switches_the_master(admin, harness):
     master = harness.enroll(WorkerRole.MASTER, "joao-desktop")
     maria = harness.enroll(WorkerRole.WORKER, "pc-da-maria")

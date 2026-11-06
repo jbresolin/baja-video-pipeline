@@ -119,6 +119,26 @@ def test_a_studio_cannot_be_promoted(harness, fleet):
     assert roles(harness)["joao-desktop"] == "master"
 
 
+def test_a_worker_on_a_shared_tailnet_cannot_be_promoted(harness, fleet):
+    # "Usar a rede atual" (LIVESTACK-41 item 4): the PC stays on its own
+    # tailnet, so the other PCs cannot reach it. The master serves every raw
+    # and clip to them, so such a PC must not become the master.
+    _, maria, _, _ = fleet
+    harness.heartbeat(maria, shared_tailnet=True)
+
+    response = make_master(harness, maria.worker_id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "conflict"
+    assert "shared tailnet" in response.json()["error"]["message"]
+    assert roles(harness)["joao-desktop"] == "master"
+    assert roles(harness)["pc-da-maria"] == "worker"
+
+    # Back on the Baja tailnet (its heartbeats say so), it can be promoted.
+    harness.heartbeat(maria, shared_tailnet=False)
+    assert make_master(harness, maria.worker_id).status_code == 200
+
+
 def test_a_revoked_worker_cannot_be_promoted_and_unknown_ids_are_404(harness, fleet):
     _, maria, _, _ = fleet
     harness.client.post(f"/admin/workers/{maria.worker_id}/revoke", auth=harness.admin_auth)
