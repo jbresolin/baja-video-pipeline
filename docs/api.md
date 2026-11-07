@@ -276,12 +276,30 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
 * Report `measurements` (bytes + seconds) in the next heartbeat; the
   orchestrator keeps the rolling `stats`. `held_job_ids` lists every raw on
   your disk so the orchestrator can reconcile holders after crashes.
+* **Render features** (contract 2.6.0, LIVESTACK-50). Declare what your
+  version can render: `capabilities.render_features` at `/enroll`, and
+  `render_features` in every heartbeat (it replaces the stored list; left
+  out = none). Today `framing` (turning the picture and fitting one that
+  is not 16:9 into 1920×1080) and `no_audio` ("Sem áudio"); names are
+  plain strings, unknown ones are kept and never required. Every
+  `process` task lists `required_render_features`, and `/next` and
+  `/claim` hand a render only to a worker that declared all of them (409
+  `not_claimable` otherwise, naming what is missing). A job needs
+  `framing` when `ProcessTask.rotation` is not 0 or its picture
+  (`Job.display_width/height`, after the file's rotation note) is not
+  16:9, and `no_audio` when `no_audio` is set on a raw with sound. When
+  holders are online but none can render the job, `waiting_reason` is
+  "waiting for a holder of the raw that can render these options (a
+  worker updated to 0.4.0 or later)". An orchestrator older than 2.6.0
+  answers 400 `validation_error` (naming `render_features`) to the field:
+  send the beat again **without the key** (not `null`) and leave it out
+  for 5 minutes. Deploy the orchestrator first.
 
 | Task kind | Who gets it | What to do | How it ends |
 | --- | --- | --- | --- |
 | `download_raw` | master (always, see backfill below), one more worker; never studio | GET `download_url` with your bearer (Caddy inbox), or the `fallback_download_urls` (peers, port 8710, no token), with `shared.http_transfer.download_file`; ffprobe it | `POST /jobs/{id}/holder-confirm` |
 | `make_proxy` | a confirmed holder | Probe (`shared.media_probe`), render thumbnail and proxy with `tone_map_hdr=info.is_hdr`; `PUT …/media-info` (when the task has `media_info_upload_url`), `PUT …/thumbnail`, then chunked `POST …/proxy` | completing chunk of `…/proxy` |
-| `process` | a confirmed holder | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`). Report what it was rendered from (`PUT …/render-inputs`, below). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
+| `process` | a confirmed holder that declared the task's `required_render_features` | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`; `rotation`, `framing`, `crop_position` and `no_audio` through `shared.framing.plan_frame`, below). Report what it was rendered from (`PUT …/render-inputs`, below). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
 | `deliver` | studio only | GET `download_url` (Caddy outbox) with your bearer, verify SHA-256, store at `clip_relative_path`, rewrite `latest.m3u` | `POST /outbox/{id}/ack` |
 | `upload_original` | a confirmed holder that is online, the master first (LIVESTACK-41 item 15) | A reviewer asked for the original: chunked upload of the held raw to `upload_url` (`POST /jobs/{id}/original-upload`, `Lease-Id`, `Upload-SHA256` = the job's sha256). Offered right after proxies. A failure report never fails the job; that holder is just not asked again for it | completing chunk of `…/original-upload` |
 | `archive_clip` | master only, lowest priority (after backfill) | Keep one clip version in the archive at `archive_relative_path`: move your own kept copy, else GET the first working `download_urls` entry (peers' `:8710/clip/{job_id}?sha256=…` without token, the Caddy outbox with it), verify SHA-256 | `POST /jobs/{id}/clip-archived` |
@@ -356,13 +374,21 @@ prova, car, passagem, show-pass flag, the Settings' name choices
    else the snapshot (`reported_by_worker: false`, no theme version).
    Versions from before 2.4.0 have `render_inputs: null`.
 
+Render options (contract 2.6.0): the inputs also hold `rotation`,
+`framing`, `crop_position` and `no_audio`. The report carries the task's
+options as used; the orchestrator records framing and band **as they
+show** (`shared.framing.effective_framing`: none for a picture that is
+16:9 after the turn, the band only for `crop`). Inputs recorded before
+2.6.0 have `rotation`/`no_audio` null, compared as 0/false.
+
 `Job.clip_inputs` (`ClipInputsComparison`) puts the **newest** version's
 inputs (`clip`) next to what a render would use now (`now`: the review as
 saved, the Settings' name choices as they are) and lists in `changed`
 every input that differs: `cut` (in and out together, 0.5 ms tolerance),
 `prova`, `car_number`, `passagem`, `show_pass`, `team_name`,
 `school_name` (the texts, so a name choice that draws the same text is no
-difference), `raw`. The theme version is recorded, not compared (only
+difference), `raw`, `rotation`, `framing` (framing and the crop band's
+place, half a percent tolerance) and `audio`. The theme version is recorded, not compared (only
 workers know theirs). `clip_inputs` is null without a clip version, for a
 version without recorded inputs and for a discarded job;
 `JobSummary.clip_outdated` is true when `changed` is not empty;
@@ -540,7 +566,7 @@ the event log with `details: {before, after}`, readable at `GET
 | `PATCH /admin/workers/{worker_id}` | `UpdateWorkerRequest` → `Worker` | the display name (below); revoked workers too |
 | `POST /admin/workers/{worker_id}/make-master` | → `Worker` | "Tornar master" (below); 409 for a studio or a revoked worker |
 | `POST /admin/workers/{worker_id}/revoke` | → `Worker` | its token answers 401, leases end, holder rows dropped |
-| `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing; the clip name choices and the welcome message have no `.env` value |
+| `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing; the clip name choices, the welcome message and the vertical-video reply have no `.env` value |
 | `GET /admin/audit?area=&limit=` | → `EventsResponse` | newest first |
 
 **Worker names** (LIVESTACK-42). `Worker.name` is the **display name**:
@@ -643,6 +669,7 @@ video they are about, because volunteers send several files in a row:
 | inbox above the soft cap | ⚠️ | `INBOX_NEARLY_FULL_PLEASE_HOLD` |
 | inbox above the hard cap (413) | ❌ | `INBOX_FULL_RESEND_LATER` |
 | download or a hash check failed | ❌ | `DOWNLOAD_FAILED_PLEASE_RESEND` |
+| the job's first probe report shows a vertical picture (LIVESTACK-50) | none (the ✅ stays) | `AdminSettings.vertical_video_message`, once per video; empty = not sent |
 
 A ⚠️ video gets no ✅ later (the warning stays visible); a later ❌
 replaces it if the download then fails (WhatsApp keeps one reaction per
@@ -690,6 +717,23 @@ not a `ProbeReport` → 400; no live make_proxy lease → 409 `lease_lost`. A
 refusal never fails the proxy task; a task without the URL (older
 orchestrator) skips the upload. The review UI summarises it under the
 player with `shared.media_details.summarize_probe_report`.
+
+**Picture and render options** (contract 2.6.0, LIVESTACK-50). The
+media-info report also gives `Job.display_width/height`: the first video
+stream's size after its rotation note (`side_data_list[].rotation`,
+counterclockwise in ffprobe, else the `rotate` tag), e.g. 1080×1920 for a
+phone filmed upright that stores 1920×1080 frames. `Job.vertical` /
+`JobSummary.vertical` say whether it is taller than wide after the
+reviewer's `rotation`. The review fields gain `rotation` (0, 90, 180, 270,
+clockwise), `framing` (`blurred` default, `black_bars`, `crop`),
+`crop_position` (0…1, default 0.5) and `no_audio` (default false), saved
+by `PATCH …/review` like the others (left out = keep) and copied into the
+process task. Every clip is 1920×1080: a picture that is 16:9 after the
+turn renders exactly as before; any other is fitted and filled as
+`framing` says (design §29). The job's first report of a vertical video
+also makes the bot quote it once (`AdminSettings.vertical_video_message`,
+"Bot answers" above), sent after the worker's PUT is answered; event
+`vertical_reply_sent` or `vertical_reply_failed`.
 
 **Recording time** (contract 2.5.0, LIVESTACK-45). `Job.recorded_at` /
 `JobSummary.recorded_at` is when the video was filmed, and

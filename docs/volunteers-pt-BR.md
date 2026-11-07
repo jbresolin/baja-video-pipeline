@@ -104,6 +104,13 @@ alguns minutos antes de mandar os próximos.
 
 > Recebemos este vídeo! Nossa fila está quase cheia: por favor, espere alguns minutos antes de enviar os próximos.
 
+**✅ e "📱 Vídeo na vertical".** O vídeo foi gravado com o celular em pé.
+Ele foi recebido e vai ao ar (com as laterais preenchidas), mas fica
+melhor na horizontal: nos próximos, deite o celular. Não precisa mandar
+este de novo. (Esta resposta pode chegar alguns minutos depois do ✅.)
+
+> 📱 Vídeo na vertical. Da próxima vez, grave na horizontal, por favor.
+
 **❌ Fila cheia: este vídeo NÃO foi recebido.** Espere alguns minutos e
 mande este mesmo vídeo de novo.
 

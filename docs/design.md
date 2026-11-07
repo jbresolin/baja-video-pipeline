@@ -854,3 +854,103 @@ deployed before both merged.
   boas-vindas", which asks to confirm. `ContactsResponse.welcome_message_set`
   tells the page whether a message exists, so the Contacts page never asks
   Evolution for the Settings status block.
+
+## 29. Render options: vertical videos and no audio (LIVESTACK-50, 2026-11-07)
+
+A video filmed upright rendered as a 608×1080 strip with the 1920-wide
+overlay cut off, and some clips had to go out without their sound (wind,
+shouting, music). Brief "11 — Render options: vertical videos and no
+audio". Contract 2.6.0, installer 0.4.0.
+
+* **Orientation from the probe already sent.** The first holder's
+  media-info report (§22) has the first video stream's size and its
+  rotation note (display matrix side data, else the old `rotate` tag).
+  The orchestrator stores the size *after* the note
+  (`Job.display_width/height`, migration 0013) and `Job.vertical` (after
+  the reviewer's "Girar" too); `JobSummary.vertical` marks the queue row.
+  Jobs probed before are read once at the next start
+  (`first_start.backfill_display_size`), with no bot reply. No worker
+  change was needed for this part.
+* **Every clip is 1920×1080.** `shared/framing.py` decides from the
+  picture after both turns (the file's note, which ffmpeg obeys inside the
+  filter graph, then "Girar"). **16:9** = what `scale=-2:1080` makes exactly
+  1920 wide (1920×1080, 1280×720, 3840×2160; not 1920×1088 or 854×480):
+  rendered exactly as before, byte-identical command, so horizontal clips
+  and the golden tests do not change. **Anything else** (upright phone,
+  4:3, ultra-wide) is fitted whole at full height or full width and the
+  rest of the frame is filled per "Enquadramento":
+  * `blurred` ("desfocado", default): the same video covering a 480×270
+    canvas, boxblur 12:2, a 45 % black box over it (`drawbox`, any bit
+    depth), scaled up to 1920×1080, the fitted video centred on it;
+  * `black_bars` ("barras pretas"): `pad` with black;
+  * `crop` ("cortar"): a 16:9 band of the video fills the frame: a
+    full-width band for a picture taller than 16:9, a full-height one for
+    a wider picture; `crop_position` 0…1 places it (0 top/left, 0.5
+    middle, the default, 1 bottom/right). The job page draws the band over
+    the player.
+  The overlay is drawn on top as always, always 1920 wide; HDR is still
+  tone-mapped last, on the 1080p picture (the blurred composite keeps 10
+  bits until then, `overlay=…:format=auto`). Sizes and offsets are worked
+  out in Python and written into the graph as integers, rounded half up
+  like ffmpeg and JavaScript.
+* **"Girar"** (0/90/180/270 clockwise, `transpose`/flips) runs before
+  everything else, for files whose note is wrong. A sideways phone that
+  says "upright" and is turned 90° is 16:9 again: only the turn is added
+  to the old graph. The job page's player turns with it (CSS), and the
+  orientation line and the framing choices follow the field before
+  saving; the browser's own player controls are hidden while turned (they
+  would turn too), the keyboard and the cut bar still work.
+* **"Sem áudio"**: the render takes the path a raw without sound already
+  took (`-an`, no loudnorm): the clip has no audio track. The job page
+  mutes the proxy while it is ticked.
+* **The bot asks for horizontal.** The job's *first* probe report showing
+  a vertical picture makes the bot quote that video once with
+  `AdminSettings.vertical_video_message` (default "📱 Vídeo na vertical. Da
+  próxima vez, grave na horizontal, por favor."; empty = off; trimmed,
+  `\n` line ends, 500 characters). A re-rendered proxy or a restart finds
+  the report already stored and stays silent; a refused send is the event
+  `vertical_reply_failed` and is not retried. The ✅ reaction stays: the
+  video is fine and is used. Sent after the worker's PUT is answered.
+* **Render inputs.** `rotation`, `framing`, `crop_position` and
+  `no_audio` are render inputs (§25; `RenderInputField` `rotation`,
+  `framing`, `audio`). Framing and the band are recorded *as they show*:
+  none on a 16:9 picture (so "barras pretas" on a landscape clip never
+  marks it out of date), the band only for "cortar", compared within half
+  a percent. Inputs recorded before this read as no turn and sound kept.
+  A vertical clip rendered before 0.4.0 (the narrow strip) therefore shows
+  as out of date with "enquadramento: nenhum (16:9) → desfocado": true,
+  and a reprocess fixes it.
+* **Render features: which workers may render.** A 0.3.0 worker ignores
+  task fields it does not know and would render the strip, with sound. So:
+  a worker version declares the render features it can do
+  (`WorkerCapabilities.render_features` at enrollment, stored in
+  `capabilities_json`; `HeartbeatRequest.render_features` in every beat
+  replaces it; left out = none); each process task lists
+  `required_render_features`; the orchestrator offers (and lets claim) a
+  render only to a holder that declared them all
+  (`orchestrator/domain/render_features.py`). Today: `framing` (a turn, or
+  a picture that is not 16:9) and `no_audio` ("Sem áudio" on a raw with
+  sound). A job that needs nothing new goes to any worker, as before.
+  While holders are online but none can render it, the job's waiting
+  reason says so ("Esperando um PC … Baja Worker 0.4.0 ou mais novo").
+  Feature names travel as plain strings, so a newer worker may declare
+  one an older orchestrator ignores. **To add one** (LIVESTACK-47, pass
+  results in the overlay): add it to `RenderFeature` and to the worker's
+  `worker/render_features.py`, say in `required_render_features()` when a
+  job needs it, bump the installer. Frota shows what each worker declares.
+* **Deployment order: the VPS first, then the workers.** The orchestrator
+  receives with `extra="forbid"` (§14), so an orchestrator older than
+  2.6.0 answers 400 to a heartbeat carrying `render_features`. A 0.4.0
+  worker that gets that 400 (naming the field) sends the beat again
+  without the key and leaves it out for 5 minutes, then tries again;
+  nothing is lost (its leases are renewed by the resent beat). Its
+  render-inputs report with the new fields is also refused by an old
+  orchestrator; the worker logs it and delivers anyway (§25), and the
+  version keeps the claim snapshot. The review UI is deployed with the
+  orchestrator (it sends the new review fields).
+* **Not built:** stabilisation, zoom/pan inside a horizontal video, per-prova
+  defaults for these options. A picture's pixel aspect (SAR) is not
+  considered: sizes are in stored pixels, as `scale=-2:1080` did. The
+  quote of the vertical reply carries the phone JID as `remoteJid` (the
+  job never stored an `@lid` sender's original one); WhatsApp matches
+  quotes by message id.
