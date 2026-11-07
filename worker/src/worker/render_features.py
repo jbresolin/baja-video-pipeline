@@ -9,6 +9,12 @@ orchestrator/domain/render_features.py.
 
 from shared.models import RenderFeature
 
-# Installer 0.4.0: "Girar" and fitting any picture into 1920×1080
-# (shared.framing), and "Sem áudio".
-DECLARED_RENDER_FEATURES = [RenderFeature.FRAMING.value, RenderFeature.NO_AUDIO.value]
+DECLARED_RENDER_FEATURES = [
+    # Installer 0.4.0, LIVESTACK-50: "Girar" and fitting any picture into
+    # 1920×1080 (shared.framing), and "Sem áudio".
+    RenderFeature.FRAMING.value,
+    RenderFeature.NO_AUDIO.value,
+    # Installer 0.5.0, LIVESTACK-47: the passagem's official result as a
+    # third pill under the lower third (worker.overlay_result).
+    RenderFeature.PASS_RESULT.value,
+]
