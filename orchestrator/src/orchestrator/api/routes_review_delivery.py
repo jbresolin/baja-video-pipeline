@@ -21,6 +21,7 @@ from orchestrator.domain import (
     originals,
     review,
     review_queue,
+    sender_messages,
 )
 from shared.models import (
     CarVideosResponse,
@@ -35,6 +36,7 @@ from shared.models import (
     RegenerateProxyResponse,
     ReviewQueueResponse,
     ReviewUpdate,
+    SenderMessagesResponse,
     Team,
 )
 
@@ -79,6 +81,20 @@ def list_car_videos(
 )
 def get_job(job_id: str, context: OrchestratorContext = Depends(get_context)) -> Job:
     return review_queue.get_job(context, job_id)
+
+
+@router.get(
+    "/jobs/{job_id}/sender-messages",
+    tags=["review"],
+    response_model=SenderMessagesResponse,
+    dependencies=[Depends(require_reviewer)],
+)
+def get_sender_messages(
+    job_id: str, context: OrchestratorContext = Depends(get_context)
+) -> SenderMessagesResponse:
+    """The job page's "Mensagens de <remetente>" (LIVESTACK-49). Reviewers
+    only: workers read GET /jobs/{id} and never need people's messages."""
+    return sender_messages.sender_messages_for_job(context, job_id)
 
 
 @router.patch("/jobs/{job_id}/review", tags=["review"], response_model=Job)

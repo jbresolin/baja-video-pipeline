@@ -8,13 +8,16 @@
   <h1>{{ t("job.title", id=job.id|short_id) }} {{ m.state_badge(job.state) }}
     {% if job.low_res %}<span class="badge flag">{{ t("badge.low_res") }}</span>{% endif %}
     {% if job.vertical %}<span class="badge flag" title="{{ t('badge.vertical.title') }}">{{ t("badge.vertical") }}</span>{% endif %}</h1>
-  <p class="hint">
-    {{ t("job.hint", intake=intake, received=m.time(job.created_at), size=job.size_bytes|bytes, duration=job.duration_s|duration, version=job.version) }}
-  </p>
-  {# When it was filmed, and how sure that is (LIVESTACK-45). #}
-  {% if job.recorded_at %}
-  <p class="hint" id="recorded-at">{{ t("recorded.job." ~ (job.recorded_at_source or "received"), time=m.time(job.recorded_at)) }}</p>
-  {% endif %}
+  {# Side by side: when it was filmed and how sure that is (LIVESTACK-45),
+     when the bot received it, and who sent it (LIVESTACK-49). #}
+  <div class="job-origin hint">
+    {% if job.recorded_at %}
+    <p id="recorded-at">{{ t("recorded.job." ~ (job.recorded_at_source or "received"), time=m.time(job.recorded_at)) }}</p>
+    {% endif %}
+    <p id="received-at">{{ t("job.received_at", time=m.time(job.source.received_at or job.created_at)) }}</p>
+    <p id="sent-by">{{ t("job.sent_by", intake=intake) }}</p>
+  </div>
+  <p class="hint">{{ t("job.hint", size=job.size_bytes|bytes, duration=job.duration_s|duration, version=job.version) }}</p>
 </div>
 
 <div id="stale-banner" class="banner warning with-action" hidden>
@@ -70,6 +73,9 @@
 
   <section class="form-pane" aria-label="{{ t('job.form') }}">
     {% include "_job_status.html" %}
+
+    {# "Mensagens de <remetente>" (LIVESTACK-49): what the filmmaker wrote around this video. #}
+    {% include "_sender_messages.html" %}
 
     <form id="review-form" class="review-form" autocomplete="off">
       <div class="cuts">

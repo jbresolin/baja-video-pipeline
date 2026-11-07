@@ -89,6 +89,10 @@ class IntakeSource(ReadByClients):
     # for messages without a timestamp.
     sent_at: datetime | None = None
     received_at: datetime | None = None
+    # The text the filmmaker typed with the video (WhatsApp caption), e.g.
+    # "carro 42, segunda passagem" (LIVESTACK-49). None without one, and
+    # for jobs from before.
+    caption: str | None = None
 
 
 class ClipInfo(ReadByClients):
@@ -307,6 +311,12 @@ class JobSummary(ReadByClients):
     # from an orchestrator older than LIVESTACK-45.
     recorded_at: datetime | None = None
     recorded_at_source: RecordedAtSource | None = None
+    # When the bot got it (IntakeSource.received_at, LIVESTACK-49).
+    received_at: datetime | None = None
+    # How many messages the job page's "Mensagens de <remetente>" section
+    # lists (caption, replies, after and before this video; LIVESTACK-49).
+    # Filled in by GET /review/queue and GET /review/car-videos only; 0 elsewhere.
+    sender_message_count: int = Field(default=0, ge=0)
     size_bytes: ByteCount
     duration_s: Seconds | None
     proxy_available: bool
@@ -337,6 +347,7 @@ class JobSummary(ReadByClients):
             sender_name=job.source.sender_name,
             recorded_at=job.recorded_at,
             recorded_at_source=job.recorded_at_source,
+            received_at=job.source.received_at,
             size_bytes=job.size_bytes,
             duration_s=job.duration_s,
             proxy_available=job.proxy_available,

@@ -77,6 +77,8 @@ from shared.models.api_review import (
     ReviewQueueFilter,
     ReviewQueueResponse,
     ReviewUpdate,
+    SenderMessage,
+    SenderMessagesResponse,
     Team,
 )
 from shared.models.api_worker_loop import (
@@ -118,6 +120,8 @@ from shared.models.enums import (
     RenderFeature,
     ReviewAction,
     SecretState,
+    SenderMessageKind,
+    SenderMessageRole,
     TaskKind,
     UserRole,
     WorkerRole,
@@ -259,6 +263,10 @@ __all__ = [
     "ResultsSyncReport",
     "SaveTeamRequest",
     "SecretState",
+    "SenderMessage",
+    "SenderMessageKind",
+    "SenderMessageRole",
+    "SenderMessagesResponse",
     "ServerDisk",
     "SettingsResponse",
     "SettingsStatus",

@@ -6,6 +6,7 @@ docs/api.md describes:
     GET   /review/queue?state=…&limit=…
     GET   /review/car-videos?prova=…&car_number=…
     GET   /jobs/{job_id}
+    GET   /jobs/{job_id}/sender-messages   (LIVESTACK-49)
     PATCH /jobs/{job_id}/review          (expected_version, actions, 409/422)
     POST  /jobs/{job_id}/regenerate-proxy
     GET   /jobs/{job_id}/original, POST /jobs/{job_id}/original
@@ -47,6 +48,7 @@ from shared.models import (
     Prova,
     ReviewAction,
     ReviewUpdate,
+    SenderMessage,
     Team,
 )
 from shared.state_machine import DISCARDABLE_STATES, REPROCESSABLE_STATES, RETRYABLE_STATES
@@ -107,6 +109,9 @@ class FakeOrchestrator:
     # The event log, oldest first (ids count up).
     events: list[Event] = field(default_factory=make_events)
     provas: list[Prova] = field(default_factory=make_provas)
+    # Job id → its "Mensagens de <remetente>" items, already in display
+    # order (the orchestrator decides roles and order; the fake just keeps them).
+    sender_messages: dict[str, list[SenderMessage]] = field(default_factory=dict)
     requests: list[RecordedRequest] = field(default_factory=list)
     # Switches that make an endpoint fail, to test the UI's error handling.
     fleet_fails: bool = False
@@ -114,9 +119,16 @@ class FakeOrchestrator:
     teams_upstream_down: bool = False
     # Makes both event endpoints answer 500.
     events_fail: bool = False
+    sender_messages_fail: bool = False
 
     def add_job(self, job: Job) -> None:
         self.jobs[job.id] = job
+
+    def summary(self, job: Job) -> dict:
+        """JobSummary as the lists send it, with the message count (LIVESTACK-49)."""
+        summary = JobSummary.from_job(job)
+        count = len(self.sender_messages.get(job.id, []))
+        return summary.model_copy(update={"sender_message_count": count}).model_dump(mode="json")
 
     def http_client(self) -> httpx.Client:
         """An httpx.Client whose requests are answered by this fake, in memory."""
@@ -251,8 +263,7 @@ def build_app(fake: FakeOrchestrator) -> FastAPI:
             matching = [job for job in matching if JobSummary.from_job(job).clip_outdated]
         # Filming order, like the orchestrator (LIVESTACK-45).
         oldest_first = sorted(matching, key=filming_order)[:limit]
-        items = [JobSummary.from_job(job).model_dump(mode="json") for job in oldest_first]
-        return {"items": items}
+        return {"items": [fake.summary(job) for job in oldest_first]}
 
     @app.get("/review/car-videos")
     def car_videos(prova: str, car_number: int):
@@ -269,10 +280,7 @@ def build_app(fake: FakeOrchestrator) -> FastAPI:
             and job.car_number == car_number
             and job.state != JobState.DISCARDED
         ]
-        items = [
-            JobSummary.from_job(job).model_dump(mode="json")
-            for job in sorted(matching, key=filming_order)
-        ]
+        items = [fake.summary(job) for job in sorted(matching, key=filming_order)]
         return {"prova_slug": slug, "car_number": car_number, "items": items}
 
     @app.get("/jobs/{job_id}")
@@ -280,6 +288,19 @@ def build_app(fake: FakeOrchestrator) -> FastAPI:
         if job_id not in fake.jobs:
             return _error(404, "not_found", f"no job {job_id}")
         return fake.jobs[job_id].model_dump(mode="json")
+
+    @app.get("/jobs/{job_id}/sender-messages")
+    def sender_messages(job_id: str):
+        if fake.sender_messages_fail:
+            return _error(500, "internal_error", "messages are down for this test")
+        if job_id not in fake.jobs:
+            return _error(404, "not_found", f"no job {job_id}")
+        items = fake.sender_messages.get(job_id, [])
+        return {
+            "job_id": job_id,
+            "sender_name": fake.jobs[job_id].source.sender_name,
+            "items": [item.model_dump(mode="json") for item in items],
+        }
 
     @app.patch("/jobs/{job_id}/review")
     async def update_review(job_id: str, request: Request):

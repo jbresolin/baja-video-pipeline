@@ -112,6 +112,35 @@ class RecordedAtSource(StrEnum):
     RECEIVED = "received"
 
 
+class SenderMessageKind(StrEnum):
+    """What a filmmaker's message was (LIVESTACK-49). Only text and captions
+    are kept; for the rest the job page just says "(áudio)", "(imagem)"."""
+
+    TEXT = "text"
+    IMAGE = "image"
+    AUDIO = "audio"
+    VIDEO = "video"
+    DOCUMENT = "document"
+    STICKER = "sticker"
+    LOCATION = "location"
+    CONTACT = "contact"
+    # Anything else WhatsApp can carry (a poll, a button answer, ...).
+    OTHER = "other"
+
+
+class SenderMessageRole(StrEnum):
+    """Why a message is listed in a video's "Mensagens de <remetente>" section."""
+
+    # The video's own caption (it came with the video).
+    CAPTION = "caption"
+    # A message that quotes this video, whenever it was sent.
+    REPLY = "reply"
+    # Received after this video and before the sender's next one.
+    AFTER = "after"
+    # Received after the sender's previous video and before this one.
+    BEFORE = "before"
+
+
 class ReviewAction(StrEnum):
     """What a PATCH /jobs/{id}/review should do besides storing the fields."""
 

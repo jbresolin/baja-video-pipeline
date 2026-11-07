@@ -954,3 +954,80 @@ audio". Contract 2.6.0, installer 0.4.0.
   quote of the vertical reply carries the phone JID as `remoteJid` (the
   job never stored an `@lid` sender's original one); WhatsApp matches
   quotes by message id.
+
+## 30. Reviewer context: received time and the sender's messages (LIVESTACK-49, 2026-11-07)
+
+Filmmakers write what the reviewer needs next to the video ("carro 42,
+segunda passagem", a reply "errei, é a 3"), and the bot ignored every
+text; the job page showed when a video was filmed but not when it
+arrived, which is how people refer to a file (brief "10 — Reviewer
+context: received time and the sender's messages"). Part of contract
+2.6.0, with LIVESTACK-50 (§29); neither was deployed before both merged.
+
+* **Received time.** The job page header shows, side by side, "Gravado …"
+  (with its source, as in §27), "Recebido …" (`IntakeSource.received_at`,
+  the webhook's arrival) and "Enviado por …". The queue row and the "Outros
+  vídeos" panel say "recebido 14:05" in the recording time's short format
+  (`JobSummary.received_at`). In the queue it replaces the relative "há 5
+  min" arrival time.
+* **What is kept.** Every private message that is not a video, from a
+  contact whose videos would be accepted (`contacts.messages_are_kept`: not
+  blocked, and allowed when in allowlist mode), except the bot's own:
+  text, captions of images and documents, and only the kind for the rest
+  (audio, image without caption, sticker, location, contact card,
+  "other"). Nothing is downloaded and nothing is answered. Reactions, poll
+  votes and WhatsApp bookkeeping (`messageContextInfo`, sender keys) are
+  not kept. Table `sender_messages` (migration 0014): WhatsApp id, sender
+  JID (the phone JID, also for `@lid` senders, like jobs), received and sent
+  time, kind, text (at most 4000 characters), the quoted id. A video's
+  caption was **not** kept before (the brief assumed it was); it is now
+  `jobs.caption` / `IntakeSource.caption`, kept with the job and not swept.
+* **Evolution 2.3.7 shapes**, read from its source
+  (`whatsapp.baileys.service.ts`), not yet captured on the VPS:
+  `prepareMessage` rewrites an `extendedTextMessage` into `conversation`
+  and moves its `contextInfo` up to `data.contextInfo`, so a reply's quoted
+  id is `data.contextInfo.stanzaId`. Edits and deletions never arrive as
+  `messages.upsert`: any message with a `protocolMessage` is sent as event
+  `messages.edited` whose `data` is the protocolMessage (`key.id` = the
+  changed message; type 14 / `MESSAGE_EDIT` with `editedMessage`, or 0 /
+  `REVOKE`), and a deletion also as `messages.delete` (the key plus
+  `status: DELETED`, only when Evolution finds the message in its own
+  store). Both are read; the type as a number or a name. The webhook
+  therefore subscribes to `MESSAGES_EDITED` and `MESSAGES_DELETE` too
+  (`infra/vps/stack_ctl.py`); `up.sh` resets a webhook set without them.
+* **Edits and deletions** are matched by message id only (the edited event
+  says nothing about who sent it, and WhatsApp lets people change only
+  their own messages). An edit replaces the text and sets `edited`; a
+  deletion drops the text (not only hides it) and sets `deleted`; a later
+  edit does not bring it back. Edits of a video's caption are not applied.
+* **Which video a message belongs to** (`domain/sender_messages.py`), per
+  sender, by the webhook's arrival time: replies quoting this video,
+  whenever sent; "after" = after this video and before the sender's next;
+  "before" = after the previous video and before this one (for the first
+  video, everything earlier still kept). A reply quoting another of the
+  sender's videos is listed only there. Every job counts as a boundary
+  whatever its state (a discarded video was still sent). A message at the
+  same instant as a video counts as after it. So a message between two
+  videos is listed under both, as "after" of one and "before" of the other.
+* **Contract.** A separate endpoint, `GET /jobs/{id}/sender-messages`
+  (reviewer session only; workers can read the job but never people's
+  messages), answers the items with their role in display order: caption,
+  replies, after, before. `JobSummary.sender_message_count` (queue and
+  car-videos only) counts every item the section lists, "before" included,
+  and so does the section title; "Antes deste vídeo (n)" has its own count.
+  `IntakeResponse.message_stored` says a message was kept or changed
+  (`ignored` stays true: no job came of it).
+* **Job page.** "Mensagens de Maria (3)" is a `<details>`, closed unless one
+  of them is a reply to this video; replies are marked "resposta a este
+  vídeo", the caption "legenda do vídeo", media "(áudio)", "(imagem)", edits
+  "editada", deletions "apagada" (still listed, without text); "Antes deste
+  vídeo" is folded inside. The queue row gets "💬 3". If the messages call
+  fails, the page says so and works.
+* **Retention.** `AdminSettings.sender_messages_keep_days` (Configurações,
+  default 14, 1–365 whole days); the background loop deletes older messages
+  hourly (`sweepers.delete_old_sender_messages_once`). Group chats stay
+  ignored (§19).
+* **Deployment.** Orchestrator and review UI only, no worker change (they
+  ignore the new answer fields, §14). Run `up.sh` after deploying, so the
+  Evolution webhook gets the two new events; until then texts and replies
+  are kept but edits and deletions are not seen.

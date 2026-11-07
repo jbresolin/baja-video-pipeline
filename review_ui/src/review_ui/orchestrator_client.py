@@ -32,6 +32,7 @@ from shared.models import (
     RegenerateProxyResponse,
     ReviewQueueResponse,
     ReviewUpdate,
+    SenderMessagesResponse,
     Team,
 )
 
@@ -145,6 +146,11 @@ class OrchestratorClient:
     def get_job(self, job_id: str) -> Job:
         response = self._request("GET", f"/jobs/{_path_segment(job_id)}")
         return self._parse(Job, response)
+
+    def sender_messages(self, job_id: str) -> SenderMessagesResponse:
+        """The sender's messages around this video (LIVESTACK-49), in display order."""
+        response = self._request("GET", f"/jobs/{_path_segment(job_id)}/sender-messages")
+        return self._parse(SenderMessagesResponse, response)
 
     def update_review(self, job_id: str, update: ReviewUpdate) -> Job:
         # Fields left as None mean "keep the current value", so they are not sent.

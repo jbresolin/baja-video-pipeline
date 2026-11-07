@@ -120,6 +120,9 @@ class AdminSettings(ReadByClients):
     vertical_video_message: str = Field(
         default=DEFAULT_VERTICAL_VIDEO_MESSAGE, max_length=MAX_VERTICAL_VIDEO_MESSAGE_LENGTH
     )
+    # Filmmakers' messages other than videos (texts, captions, "(áudio)"),
+    # shown on the job page (LIVESTACK-49), are deleted after this many days.
+    sender_messages_keep_days: int = Field(default=14, ge=1, le=365)
 
 
 class UpdateSettingsRequest(ReceivedByServer):
@@ -148,6 +151,7 @@ class UpdateSettingsRequest(ReceivedByServer):
     vertical_video_message: str | None = Field(
         default=None, max_length=2 * MAX_VERTICAL_VIDEO_MESSAGE_LENGTH
     )
+    sender_messages_keep_days: int | None = Field(default=None, ge=1, le=365)
 
 
 class EvolutionStatus(ReadByClients):

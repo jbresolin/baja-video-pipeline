@@ -36,8 +36,13 @@ def document_message_payload(
     sender_name: str = "Voluntário Teste",
     message_id: str | None = None,
     instance: str = "baja-bot",
+    caption: str | None = None,
 ) -> dict[str, Any]:
-    """A WhatsApp *document* message (the good case: original quality)."""
+    """A WhatsApp *document* message (the good case: original quality).
+
+    With a `caption`, the document carries it, as Evolution 2.3.7 sends it
+    (prepareMessage flattens WhatsApp's documentWithCaptionMessage).
+    """
     media = {
         "url": url,
         "directPath": direct_path,
@@ -46,6 +51,8 @@ def document_message_payload(
         "fileName": file_name,
         **encrypted.as_webhook_fields(),
     }
+    if caption is not None:
+        media["caption"] = caption
     return _upsert_event(
         message={"documentMessage": media},
         message_type="documentMessage",
@@ -86,16 +93,129 @@ def video_message_payload(
     )
 
 
-def text_message_payload(text: str = "oi", sender_phone: str = "5511999999999") -> dict[str, Any]:
-    """A plain text message: the intake must acknowledge and ignore it."""
-    return _upsert_event(
-        message={"conversation": text},
+def text_message_payload(
+    text: str = "oi",
+    sender_phone: str = "5511999999999",
+    *,
+    message_id: str | None = None,
+    sender_name: str = "Voluntário Teste",
+    quoted_message_id: str | None = None,
+) -> dict[str, Any]:
+    """A text message: no job; kept for the job page (LIVESTACK-49).
+
+    With `quoted_message_id` it is a reply ("swipe to reply" on that
+    message). Evolution 2.3.7 sends a reply the way prepareMessage leaves
+    it: WhatsApp's extendedTextMessage rewritten into `conversation`, and
+    its contextInfo (with the quoted id in `stanzaId`) moved up to
+    `data.contextInfo`.
+    """
+    payload = _upsert_event(
+        message={"conversation": text, "messageContextInfo": {"messageSecret": "c2VjcmV0"}},
         message_type="conversation",
         sender_phone=sender_phone,
-        sender_name="Voluntário Teste",
-        message_id=None,
+        sender_name=sender_name,
+        message_id=message_id,
         instance="baja-bot",
     )
+    if quoted_message_id is not None:
+        payload["data"]["contextInfo"] = {
+            "stanzaId": quoted_message_id,
+            "participant": f"{sender_phone}@s.whatsapp.net",
+            "quotedMessage": {"documentMessage": {"mimetype": "video/mp4"}},
+        }
+    return payload
+
+
+def media_note_payload(
+    kind_key: str,
+    sender_phone: str = "5511999999999",
+    *,
+    caption: str | None = None,
+    message_id: str | None = None,
+) -> dict[str, Any]:
+    """A message that is not a video and not text: "audioMessage" (a voice
+    note), "imageMessage", "stickerMessage", "locationMessage"... Only the
+    fields the intake could read are filled; it never downloads these."""
+    content: dict[str, Any] = {"url": EXAMPLE_URL, "mimetype": "application/octet-stream"}
+    if kind_key == "audioMessage":
+        content = {
+            "url": EXAMPLE_URL,
+            "mimetype": "audio/ogg; codecs=opus",
+            "seconds": 7,
+            "ptt": True,
+        }
+    if kind_key == "locationMessage":
+        content = {"degreesLatitude": -23.5, "degreesLongitude": -46.6}
+    if caption is not None:
+        content["caption"] = caption
+    return _upsert_event(
+        message={kind_key: content},
+        message_type=kind_key,
+        sender_phone=sender_phone,
+        sender_name="Voluntário Teste",
+        message_id=message_id,
+        instance="baja-bot",
+    )
+
+
+def edited_event_payload(
+    edited_message_id: str,
+    new_text: str | None,
+    *,
+    sender_phone: str = "5511999999999",
+    type_as_name: bool = False,
+) -> dict[str, Any]:
+    """Evolution 2.3.7's "messages.edited" event: `data` is WhatsApp's protocolMessage.
+
+    `new_text` None means a deletion for everyone (type REVOKE, 0); else an
+    edit (type MESSAGE_EDIT, 14) with the new text. Baileys may write the
+    type as its number or, through protobuf's toJSON, as its name:
+    `type_as_name` picks the second. The key is the changed message's,
+    seen from its sender's side (fromMe true). No pushName, no sender key.
+    """
+    protocol: dict[str, Any] = {
+        "key": {
+            "remoteJid": f"{sender_phone}@s.whatsapp.net",
+            "fromMe": True,
+            "id": edited_message_id,
+        },
+        "timestampMs": str(int(time.time() * 1000)),
+    }
+    if new_text is None:
+        protocol["type"] = "REVOKE" if type_as_name else 0
+    else:
+        protocol["type"] = "MESSAGE_EDIT" if type_as_name else 14
+        protocol["editedMessage"] = {"conversation": new_text}
+    return _event("messages.edited", protocol)
+
+
+def delete_event_payload(
+    deleted_message_id: str, sender_phone: str = "5511999999999"
+) -> dict[str, Any]:
+    """Evolution 2.3.7's "messages.delete" event: the deleted message's key,
+    flat, plus "status": "DELETED" (sent only when Evolution has the
+    message in its own store)."""
+    return _event(
+        "messages.delete",
+        {
+            "remoteJid": f"{sender_phone}@s.whatsapp.net",
+            "fromMe": False,
+            "id": deleted_message_id,
+            "status": "DELETED",
+        },
+    )
+
+
+def _event(event: str, data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "event": event,
+        "instance": "baja-bot",
+        "data": data,
+        "destination": "http://orchestrator:8000/intake/evolution-webhook",
+        "date_time": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+        "sender": "5511900000000@s.whatsapp.net",
+        "server_url": "http://evolution:8080",
+    }
 
 
 def _upsert_event(

@@ -21,6 +21,7 @@ from shared.models import (
     RegenerateProxyResponse,
     ReviewQueueResponse,
     ReviewUpdate,
+    SenderMessagesResponse,
     Team,
 )
 from tools.openapi_contract.auth import (
@@ -103,6 +104,28 @@ def car_videos(
     responses=error_responses(401, 404),
 )
 def get_job(job_id: str) -> Job:
+    not_implemented()
+
+
+@router.get(
+    "/jobs/{job_id}/sender-messages",
+    tags=["review"],
+    summary="The sender's messages around this video (job page)",
+    response_model=SenderMessagesResponse,
+    dependencies=_reviewer_only,
+    responses=error_responses(401, 404),
+)
+def get_sender_messages(job_id: str) -> SenderMessagesResponse:
+    """For the job page's "Mensagens de <remetente>" (LIVESTACK-49), in
+    display order: the video's caption; the sender's messages that quote
+    this video (role `reply`, whenever they were sent); those received
+    after it and before the sender's next video (`after`); those received
+    after the sender's previous video and before this one (`before`). A
+    message quoting another of the sender's videos is listed only there.
+    Oldest first within each role. Texts and captions only; other messages
+    by kind (`audio`, `image`, ...). Edited messages carry the new text and
+    `edited: true`; deleted ones `deleted: true` and no text. Messages are
+    kept for the Settings' `sender_messages_keep_days` (14)."""
     not_implemented()
 
 

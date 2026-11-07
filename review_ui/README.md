@@ -23,7 +23,7 @@ public. So the page scripts call the UI's own JSON endpoints under
 
 | Path | What |
 | --- | --- |
-| `/review/` | Queue: awaiting review + failed by default, in filming order (`recorded_at`, LIVESTACK-45; each row says when it was filmed, marked "envio"/"chegada" when that is only the send or arrival time); filters by state, prova, low-res, "Clipes desatualizados" (`?outdated=1`: clips that no longer match their review, badge "desatualizado"); auto-refresh every 5 s; `↑↓`/`j k` + `Enter` |
+| `/review/` | Queue: awaiting review + failed by default, in filming order (`recorded_at`, LIVESTACK-45; each row says when it was filmed, marked "envio"/"chegada" when that is only the send or arrival time, and "recebido 14:05"; a "💬 n" badge when the sender wrote about the video, LIVESTACK-49); filters by state, prova, low-res, "Clipes desatualizados" (`?outdated=1`: clips that no longer match their review, badge "desatualizado"); auto-refresh every 5 s; `↑↓`/`j k` + `Enter` |
 | `/review/jobs/{id}` | Proxy player, cut in/out marks, fields, actions, status strip, event log from `GET /jobs/{id}/events` (refreshes every 5 s; if the log cannot be read the page still works and says so) |
 | `/review/clips` | Delivery manifest, newest first, prova filter, copyable studio path; a clip that no longer matches its review is marked "desatualizado" with the differences on expand |
 | `/review/fleet` | Workers (role, online, heartbeat age, held raws, storage vs cap, stats, leases, last 5 events from `GET /events?worker_id=…&limit=5`), VPS disk, jobs per state; refreshes every 10 s |
@@ -49,6 +49,17 @@ order broken) show under the field and above the buttons; "Pronto" and
 `static/js/passagem_help.js` refreshes the panel in place through
 `GET /review/api/jobs/{id}/passagem-help` (debounced, no reload); the
 rules are in `passagem_help_view.py`.
+
+**Sender's messages** (LIVESTACK-49). The header shows "Gravado …",
+"Recebido …" and "Enviado por …" side by side. Under the status strip,
+"Mensagens de <remetente> (n)" (`GET /jobs/{id}/sender-messages`, shaped
+by `sender_messages_view.py`, template `_sender_messages.html`) lists the
+video's caption, replies to it ("resposta a este vídeo"), what the sender
+wrote after it until their next video, and, folded, "Antes deste vídeo".
+Media show as "(áudio)", "(imagem)"; edits say "editada", deletions
+"apagada". Closed by default, open when one of them replies to this video;
+plain `<details>`, no script. If the call fails the page says so and works.
+The orchestrator decides which messages belong where; the UI only shows them.
 
 **Edits after delivery** (LIVESTACK-43). Once a clip exists (claimed,
 uploaded, delivered, done), the primary button is **"Salvar e
@@ -167,6 +178,7 @@ base Caddy as `bvp-review-ui:8001` on `baja-edge`.
 | `errors.py` | Error page for browsers, JSON errors for scripts, 401 sign-in challenge |
 | `job_view.py`, `queue_view.py`, `clips_and_fleet_view.py` | Plain functions that turn API data into what the pages show |
 | `passagem_help_view.py` | The job page's passagem panel: the car's videos in filming order, the suggestion and the warnings (LIVESTACK-45) |
+| `sender_messages_view.py` | The job page's "Mensagens de <remetente>": title, open/folded lines (LIVESTACK-49) |
 | `clip_inputs_view.py` | A clip that no longer matches its review, in sentences (job page banner, clips page detail) |
 | `render_options_view.py` | The job page's "Imagem e som" box: orientation sentence, whether "Enquadramento" applies, the choices (LIVESTACK-50) |
 | `event_log_view.py` | Orchestrator events (`Event`) in words: actor names, state changes, reasons; used by the job and fleet pages |

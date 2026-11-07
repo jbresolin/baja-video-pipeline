@@ -3,7 +3,10 @@
 Every private message first records its sender on the admin Contacts page
 (domain/contacts.py), which also decides whether that sender's videos are
 accepted (blocked senders and, in allowlist mode, senders not allowed are
-not). The webhook answers within milliseconds (Evolution retries slow or failed
+not). A message that is not a video, from a sender whose videos would be
+accepted, is kept for the job page (domain/sender_messages.py, LIVESTACK-49);
+so are its edits and deletions (events messages.edited / messages.delete).
+The webhook answers within milliseconds (Evolution retries slow or failed
 deliveries). The actual work happens in run_media_download(), started in
 the background, and the job only exists once the media is downloaded,
 decrypted and every hash checked. Bot replies are sent outside any DB
@@ -20,7 +23,7 @@ from pydantic import ValidationError
 
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import to_db_time
-from orchestrator.domain import bot_messages, contacts
+from orchestrator.domain import bot_messages, contacts, intake_notes
 from orchestrator.domain.bot_replies import (
     REACTION_FAILED,
     REACTION_STORED,
@@ -32,6 +35,7 @@ from orchestrator.domain.bot_replies import (
 )
 from orchestrator.domain.contacts import phone_from_jid
 from orchestrator.domain.recording_time import recorded_at_columns, sent_at_from_timestamp
+from orchestrator.domain.whatsapp_notes import clean_text
 from orchestrator.errors import ApiError
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
@@ -85,6 +89,8 @@ class PendingMediaDownload:
     # arrived: the fallbacks for the recording time (LIVESTACK-45).
     sent_at: datetime | None = None
     received_at: datetime | None = None
+    # What the filmmaker typed with the video (LIVESTACK-49), kept with the job.
+    caption: str | None = None
 
 
 @dataclass
@@ -104,6 +110,10 @@ def ignored(reason: str, message_id: str | None = None) -> WebhookOutcome:
 
 def handle_webhook(context: OrchestratorContext, payload: Any) -> WebhookOutcome:
     """Decide what to do with one webhook body. Does not download anything."""
+    if isinstance(payload, dict) and payload.get("event") in intake_notes.CHANGE_EVENTS:
+        # A sender edited or deleted a message (LIVESTACK-49).
+        response = intake_notes.handle_change_event(context, payload)
+        return WebhookOutcome(status_code=200, response=response)
     # Other events (connection.update, ...) are acknowledged without
     # validation: a 400 would make Evolution retry them for 20 minutes.
     if not isinstance(payload, dict) or payload.get("event") != UPSERT_EVENT:
@@ -134,7 +144,11 @@ def handle_webhook(context: OrchestratorContext, payload: Any) -> WebhookOutcome
             connection, key.sender_jid, webhook.data.push_name, now
         )
         if incoming is None:
-            return ignored("not a video document or video message", key.id)
+            # A text, a photo, an audio...: kept for the job page, never answered.
+            response = intake_notes.keep_incoming_note(
+                context, connection, webhook, payload, contact_row, now
+            )
+            return WebhookOutcome(status_code=200, response=response)
         decision = contacts.intake_decision(
             connection, contact_row, context.admin_settings.current.intake_mode, now
         )
@@ -228,6 +242,7 @@ def _accept_incoming_video(
         ),
         sent_at=sent_at_from_timestamp(webhook.data.message_timestamp),
         received_at=now,
+        caption=clean_text(incoming.media.caption),
     )
     response = IntakeResponse(job_id=None, message_id=key.id, accepted=True, low_res=low_res)
     return WebhookOutcome(status_code=202, response=response, download=download, replies=replies)
@@ -284,6 +299,7 @@ def run_media_download(context: OrchestratorContext, pending: PendingMediaDownlo
             raw_file_name=pending.raw_file_name,
             sent_at=pending.sent_at,
             received_at=pending.received_at,
+            caption=pending.caption,
         )
     # Confirm only now that the file is verified and the job exists.
     if pending.confirm_when_stored:
@@ -310,6 +326,7 @@ def create_received_job(
     raw_file_name: str | None = None,
     sent_at: datetime | None = None,
     received_at: datetime | None = None,
+    caption: str | None = None,
 ) -> None:
     """Insert a job in state `received` (its raw is already in the inbox).
 
@@ -350,6 +367,7 @@ def create_received_job(
             "raw_file_name": raw_file_name,
             "sent_at": to_db_time(sent_at),
             "received_at": to_db_time(received_at),
+            "caption": caption,
             **recorded_at_columns(received_at=received_at, sent_at=sent_at),
         },
     )

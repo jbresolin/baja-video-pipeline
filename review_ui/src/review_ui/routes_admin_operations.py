@@ -219,6 +219,16 @@ def _optional_number(form: dict, name: str) -> float | None:
     return _number(form, name) if form.get(name, "").strip() else None
 
 
+def _optional_whole_number(form: dict, name: str) -> int | None:
+    """A whole number typed in the form ("14"); blank or left out keeps the stored value."""
+    value = _optional_number(form, name)
+    if value is None:
+        return None
+    if not value.is_integer():
+        raise ValueError(f"{name} must be a whole number")
+    return int(value)
+
+
 @router.post("/settings")
 def save_settings(request: Request, form: dict = Depends(read_form)) -> Response:
     try:
@@ -241,6 +251,7 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
             welcome_message=form.get("welcome_message"),
             # The bot's reply to a vertical video (LIVESTACK-50); same rules.
             vertical_video_message=form.get("vertical_video_message"),
+            sender_messages_keep_days=_optional_whole_number(form, "sender_messages_keep_days"),
         )
     except ValueError:
         return _settings_page(

@@ -16,7 +16,8 @@
       <span class="thumb-empty">{{ t("queue.no_thumbnail") }}</span>
       {% endif %}
     </span>
-    <span class="passagem-time">{{ m.recorded(row.video, help.reference_time) }}</span>
+    <span class="passagem-time">{{ m.recorded(row.video, help.reference_time) }}
+      <span class="secondary">{{ m.received(row.video, help.reference_time) }}</span></span>
     <span class="passagem-number">
       {%- if row.video.passagem is not none %}{{ t("passagens.passagem", passagem=row.video.passagem) }}{% else %}<span class="muted">{{ t("passagens.no_passagem") }}</span>{% endif -%}
     </span>

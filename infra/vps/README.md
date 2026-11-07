@@ -385,7 +385,7 @@ From the v2.3.7 source [R8] and docs [R13][R20]:
   version, and there is no `PUT` route. `url` is required even when
   disabled, so `down.sh` sends ours with `"enabled": false`.
 * What `up.sh` sets:
-  `{"webhook":{"enabled":true,"url":"http://bvp-orchestrator:8000/intake/evolution-webhook","headers":{"X-Webhook-Secret":"<BVP_WEBHOOK_SECRET>"},"byEvents":false,"base64":false,"events":["MESSAGES_UPSERT","CONNECTION_UPDATE"]}}`.
+  `{"webhook":{"enabled":true,"url":"http://bvp-orchestrator:8000/intake/evolution-webhook","headers":{"X-Webhook-Secret":"<BVP_WEBHOOK_SECRET>"},"byEvents":false,"base64":false,"events":["MESSAGES_UPSERT","MESSAGES_EDITED","MESSAGES_DELETE","CONNECTION_UPDATE"]}}`.
   The body goes to curl through a temporary file, so the secret is never on
   a command line.
 * Evolution posts to `bvp-orchestrator:8000` **over `baja-edge`**. The

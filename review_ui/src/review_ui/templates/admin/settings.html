@@ -73,6 +73,11 @@
   <input id="originals_cap_gb" name="originals_cap_gb" type="number" step="1" min="0"
          value="{{ '%g'|format(values.originals_cap_gb) }}" required>
   <p class="hint">{{ t("settings.originals.hint") }}</p>
+  {# The filmmakers' messages on the job page (LIVESTACK-49). #}
+  <label for="sender_messages_keep_days">{{ t("settings.sender_messages_keep") }}</label>
+  <input id="sender_messages_keep_days" name="sender_messages_keep_days" type="number" step="1" min="1" max="365"
+         value="{{ values.sender_messages_keep_days }}" required>
+  <p class="hint">{{ t("settings.sender_messages_keep.hint") }}</p>
   <label for="installer_download_url">{{ t("settings.installer_url") }}</label>
   <input id="installer_download_url" name="installer_download_url" type="url" maxlength="500"
          value="{{ values.installer_download_url }}" placeholder="https://github.com/…/releases/…">

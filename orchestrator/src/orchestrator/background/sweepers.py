@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain import sender_messages
 from orchestrator.domain.delivery import delete_outbox_copy_if_unneeded, finish_delivery
 from orchestrator.domain.discard import discard_grace_is_over
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
@@ -120,6 +121,16 @@ def evict_proxies_once(context: OrchestratorContext) -> list[str]:
             )
             evicted.append(row["id"])
     return evicted
+
+
+def delete_old_sender_messages_once(context: OrchestratorContext) -> int:
+    """Delete filmmakers' messages older than the Settings' keep time (LIVESTACK-49).
+
+    Returns how many were deleted. Video captions live on their jobs and stay.
+    """
+    keep_days = context.admin_settings.current.sender_messages_keep_days
+    with context.database.transaction() as connection:
+        return sender_messages.delete_expired(connection, context.clock.now(), keep_days)
 
 
 @dataclass

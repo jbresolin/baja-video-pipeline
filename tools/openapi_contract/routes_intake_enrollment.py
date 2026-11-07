@@ -39,7 +39,7 @@ def health() -> dict[str, str]:
 @router.post(
     "/intake/evolution-webhook",
     tags=["intake"],
-    summary="Evolution instance webhook (messages.upsert) → background download → job",
+    summary="Evolution instance webhook: videos → background download → job; other messages kept",
     response_model=IntakeResponse,
     status_code=202,
     dependencies=[Depends(webhook_secret)],
@@ -52,11 +52,18 @@ def evolution_webhook(payload: EvolutionWebhook) -> IntakeResponse:
     """Exact route Caddy forwards: `POST /intake/evolution-webhook`, with the
     `X-Webhook-Secret` header (wrong or missing → 401).
 
-    * Only `event == "messages.upsert"` with `data.key.fromMe == false` is
+    * Only `event == "messages.upsert"` with `data.key.fromMe == false`,
+      and the sender's `messages.edited` / `messages.delete`, are
       considered; anything else gets 200 with `ignored: true`.
     * A `documentMessage` (also inside `documentWithCaptionMessage`) with a
-      `video/*` mimetype → normal job. A `videoMessage` → `low_res: true`
-      (the bot asks for a resend as document). Other messages → 200 ignored.
+      `video/*` mimetype → normal job, its caption kept with it. A
+      `videoMessage` → `low_res: true` (the bot asks for a resend as
+      document).
+    * Any other private message (text, image, audio, ...) from a sender
+      whose videos would be accepted is kept for the job page and never
+      answered: 200 `ignored: true, message_stored: true` (LIVESTACK-49).
+      `messages.edited` (edit or deletion) and `messages.delete` change a
+      kept message: 200, `message_stored: true` when one was changed.
     * Answer fast: 202 `accepted: true`, then download the encrypted file
       from the WhatsApp CDN and decrypt it while streaming
       (`shared.whatsapp_media.download_incoming_media`) into the inbox. The

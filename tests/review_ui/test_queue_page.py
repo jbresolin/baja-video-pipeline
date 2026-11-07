@@ -43,8 +43,11 @@ def test_queue_row_shows_thumbnail_sender_and_failure_message(ui):
     # A failed job shows the worker's error right in the list, marked as
     # English (it is the worker's own words, not the UI's).
     assert '<span lang="en">ffmpeg exited: moov atom not found</span>' in html
-    # The received time is a <time> element the page script keeps current.
-    assert '<time datetime="2026-10-25T14:00:00Z"' in html
+    # When the bot received it, in the same short format as the recording
+    # time (LIVESTACK-49): 14:00 UTC is 11:00 in São Paulo, with the date
+    # because it is not today.
+    assert '<time class="received" datetime="2026-10-25T14:00:00Z"' in html
+    assert "recebido 25/10/2026 11:00" in html
 
 
 def test_low_res_jobs_get_a_badge(ui, fake_orchestrator):

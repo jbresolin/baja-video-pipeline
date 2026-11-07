@@ -18,7 +18,7 @@
           {% if item.prova %}{{ t("queue.row_title", prova=item.prova, car=m.or_unknown(item.car_number), passagem=m.or_unknown(item.passagem)) }}{% else %}{{ t("queue.not_reviewed") }}{% endif %}
         </span>
         <span class="row-meta">
-          {{ t("recorded.label") }} {{ m.recorded(item, now) }} · {{ m.time(item.created_at, relative=true) }} · {{ item.sender_name or t("queue.unknown_sender") }} · {{ item.size_bytes|bytes }} · <code>{{ item.id|short_id }}</code>
+          {{ t("recorded.label") }} {{ m.recorded(item, now) }} · {{ m.received(item, now) }} · {{ item.sender_name or t("queue.unknown_sender") }} · {{ item.size_bytes|bytes }} · <code>{{ item.id|short_id }}</code>
         </span>
         {% if item.failure_message %}
         <span class="row-note error">{{ m.english(item.failure_message) }}</span>
@@ -28,6 +28,7 @@
       </span>
       <span class="row-badges">
         {{ m.state_badge(item.state) }}
+        {{ m.message_count(item) }}
         {% if item.low_res %}<span class="badge flag" title="{{ t('badge.low_res.title') }}">{{ t("badge.low_res") }}</span>{% endif %}
         {% if item.vertical %}<span class="badge" title="{{ t('badge.vertical.title') }}">{{ t("badge.vertical") }}</span>{% endif %}
         {% if not item.proxy_available %}<span class="badge muted">{{ t("badge.no_proxy") }}</span>{% endif %}

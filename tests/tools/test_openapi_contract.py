@@ -46,6 +46,7 @@ REQUIRED_ENDPOINTS = {
     ("get", "/review/queue"),
     ("get", "/review/car-videos"),
     ("get", "/jobs/{job_id}"),
+    ("get", "/jobs/{job_id}/sender-messages"),
     ("patch", "/jobs/{job_id}/review"),
     ("post", "/jobs/{job_id}/regenerate-proxy"),
     ("get", "/teams/{car_number}"),
@@ -189,6 +190,9 @@ def test_review_routes_take_a_session_and_ready_can_fail_with_unknown_prova():
     assert paths["/review/queue"]["get"]["security"] == [{"sessionBearer": []}]
     # The passagem panel's list (LIVESTACK-45): reviewers only.
     assert paths["/review/car-videos"]["get"]["security"] == [{"sessionBearer": []}]
+    # The sender's messages (LIVESTACK-49): people's own words, so reviewers
+    # only; workers, which may read the job, never get them.
+    assert paths["/jobs/{job_id}/sender-messages"]["get"]["security"] == [{"sessionBearer": []}]
     assert paths["/jobs/{job_id}/review"]["patch"]["security"] == [{"sessionBearer": []}]
     assert (
         "unknown_prova" in load_committed_contract()["components"]["schemas"]["ErrorCode"]["enum"]

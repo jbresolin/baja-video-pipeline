@@ -1,0 +1,42 @@
+{# "Mensagens de <remetente>" (LIVESTACK-49), on the job page.
+   `messages` is a sender_messages_view.SenderMessagesSection, none when the
+   sender wrote nothing around this video; `messages_failed` is true when
+   the orchestrator could not be asked (the page still works). Closed by
+   default, open when someone replied to this very video. Message texts are
+   the filmmakers' own words; autoescape keeps them plain text. #}
+{% macro message_line(line, reference) -%}
+<li class="sender-message{% if line.message.role == 'reply' %} is-reply{% endif %}{% if line.message.deleted %} is-deleted{% endif %}">
+  <time class="message-time" datetime="{{ line.message.received_at|iso }}" title="{{ line.message.received_at|clock }}">{{ recorded_time(line.message.received_at, reference) }}</time>
+  {% if line.role_label %}<span class="badge message-role">{{ line.role_label }}</span>{% endif %}
+  <span class="message-body">
+    {%- if line.kind_label %}<span class="muted">{{ line.kind_label }}</span>{% endif %}
+    {%- if line.message.deleted %} <span class="muted">{{ t("messages.deleted") }}</span>
+    {%- elif line.message.text %} {{ line.message.text }}{% endif -%}
+  </span>
+  {% if line.message.edited and not line.message.deleted %}<span class="muted message-edited">{{ t("messages.edited") }}</span>{% endif %}
+</li>
+{%- endmacro %}
+{% if messages %}
+<details class="sender-messages" id="sender-messages"{% if messages.open %} open{% endif %}>
+  <summary>{{ messages.title }}</summary>
+  <p class="hint">{{ t("messages.hint", sender=messages.sender) }}</p>
+  {% if messages.lines %}
+  <ol class="message-list">
+    {% for line in messages.lines %}{{ message_line(line, messages.reference_time) }}{% endfor %}
+  </ol>
+  {% else %}
+  <p class="hint">{{ t("messages.none_after") }}</p>
+  {% endif %}
+  {% if messages.before %}
+  <details class="messages-before">
+    <summary>{{ t("messages.before", count=messages.before|length) }}</summary>
+    <p class="hint">{{ t("messages.before.hint", sender=messages.sender) }}</p>
+    <ol class="message-list">
+      {% for line in messages.before %}{{ message_line(line, messages.reference_time) }}{% endfor %}
+    </ol>
+  </details>
+  {% endif %}
+</details>
+{% elif messages_failed %}
+<p class="hint" id="sender-messages">{{ t("messages.unavailable") }}</p>
+{% endif %}

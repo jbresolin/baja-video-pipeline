@@ -20,6 +20,7 @@ from review_ui.orchestrator_client import (
 from review_ui.passagem_help_view import PassagemHelp, passagem_help
 from review_ui.render_options_view import render_options_box
 from review_ui.request_context import orchestrator_for, render_page
+from review_ui.sender_messages_view import SenderMessagesSection, sender_messages_section
 from review_ui.settings import JOB_PANEL_POLL_SECONDS
 from shared.models import Job, Team
 
@@ -101,7 +102,24 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
         help=passagem_help_or_none(orchestrator, job),
         poll_seconds=JOB_PANEL_POLL_SECONDS,
     )
+    # "Mensagens de <remetente>" (LIVESTACK-49).
+    context["messages"], context["messages_failed"] = sender_messages_or_none(orchestrator, job)
     return render_page(request, "job.html", context)
+
+
+def sender_messages_or_none(
+    orchestrator: OrchestratorClient, job: Job
+) -> tuple[SenderMessagesSection | None, bool]:
+    """(the section or None, whether asking failed).
+
+    Context for the reviewer, not essential: if the call fails, the page
+    still renders and says the messages could not be loaded.
+    """
+    try:
+        response = orchestrator.sender_messages(job.id)
+    except (OrchestratorError, OrchestratorUnavailableError):
+        return None, True
+    return sender_messages_section(response, job), False
 
 
 def team_or_none(orchestrator: OrchestratorClient, job: Job) -> Team | None:
