@@ -568,8 +568,9 @@ created with the contact's default prova filled in.
 **Welcome message** (LIVESTACK-44). `AdminSettings.welcome_message` (pt-BR
 default shipped, edited on Settings; empty turns it off) is sent with
 Evolution `sendText` to a contact's number, with `{nome}` (display name)
-and `{prova}` (default prova) filled in; with no value the placeholder and
-the space before it disappear, any other `{…}` stays as typed
+and `{prova}` (default prova) filled in; with no value the placeholder,
+the space and a comma right before it disappear ("Olá, {nome}!" →
+"Olá!"), any other `{…}` stays as typed
 (`shared/welcome_message.py`). `POST /admin/contacts` with `send_welcome:
 true` sends it after storing the contact and answers `ContactCreated`, a
 `Contact` plus `welcome: {sent, error}` (null when not asked); the contact

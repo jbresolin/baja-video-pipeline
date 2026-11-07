@@ -10,7 +10,8 @@ Anything else in braces stays exactly as typed ("{Nome}", "{", "{}"), so a
 stray brace never breaks a send; the preview on the Settings page shows it.
 
 When a placeholder has nothing to put in, the one space right before it
-goes too, so "Olá {nome}!" reads "Olá!" rather than "Olá !".
+goes too, and so does a comma right before that, so "Olá {nome}!" and
+"Olá, {nome}!" both read "Olá!" rather than "Olá !" or "Olá,!".
 
 The orchestrator fills the text it sends; the review UI fills the same
 text with example values for the preview. static/js/welcome.js mirrors
@@ -43,20 +44,21 @@ DEFAULT_WELCOME_MESSAGE = (
 # The longest welcome message the Settings page accepts.
 MAX_WELCOME_MESSAGE_LENGTH = 2000
 
-# A known placeholder, with the single space before it (if any) captured
-# separately so it can be dropped together with an empty value.
-_PLACEHOLDER = re.compile(r"( ?)\{(" + "|".join(PLACEHOLDERS) + r")\}")
+# A known placeholder, with the comma (if any) and then the single space (if
+# any) right before it captured separately, so they can be dropped together
+# with an empty value: ", {nome}", ",{nome}", " {nome}" or "{nome}".
+_PLACEHOLDER = re.compile(r"(,?)( ?)\{(" + "|".join(PLACEHOLDERS) + r")\}")
 
 
 def fill_welcome_message(template: str, values: dict[str, str | None]) -> str:
     """The message with {nome} and {prova} replaced by `values` (missing/None = nothing)."""
 
     def replace(match: re.Match) -> str:
-        space_before, name = match.groups()
+        comma_before, space_before, name = match.groups()
         value = (values.get(name) or "").strip()
         if not value:
             return ""
-        return space_before + value
+        return comma_before + space_before + value
 
     return _PLACEHOLDER.sub(replace, template)
 

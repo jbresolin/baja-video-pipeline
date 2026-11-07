@@ -819,9 +819,9 @@ deployed before both merged.
   first start like every new key). Stored with `\n` line ends and the ends
   trimmed; at most 2000 characters. Empty = feature off.
 * **Placeholders.** `{nome}` = the contact's display name, `{prova}` = their
-  default prova; nothing when missing, and then the one space before the
-  placeholder goes too ("Olá {nome}!" → "Olá!"). Anything else in braces
-  stays as typed. The same rule in Python (sending, server-side preview)
+  default prova; nothing when missing, and then the one space and a comma
+  right before the placeholder go too ("Olá {nome}!" and "Olá, {nome}!" →
+  "Olá!"). Anything else in braces stays as typed. The same rule in Python (sending, server-side preview)
   and `review_ui/static/js/welcome.js` (live preview), tested on the same
   cases. The preview uses the example values "Maria Conceição" / "Enduro".
 * **Sending.** `CreateContactRequest.send_welcome` (default false, so

@@ -4,15 +4,16 @@
 // runs both on the same cases.
 //
 //   {nome}, {prova}  replaced by the value; with no value, the placeholder
-//                    and the one space before it go
+//                    goes together with the one space and the comma right
+//                    before it ("Olá, {nome}!" → "Olá!")
 //   anything else    in braces stays as typed ("{Nome}", "{", "{}")
 
-const PLACEHOLDER = / ?\{(nome|prova)\}/g;
+const PLACEHOLDER = /(,?)( ?)\{(nome|prova)\}/g;
 
 export function fillWelcomeMessage(template, values) {
-  return template.replace(PLACEHOLDER, (match, name) => {
+  return template.replace(PLACEHOLDER, (match, commaBefore, spaceBefore, name) => {
     const value = (values[name] ?? "").trim();
     if (!value) return "";
-    return (match.startsWith(" ") ? " " : "") + value;
+    return commaBefore + spaceBefore + value;
   });
 }

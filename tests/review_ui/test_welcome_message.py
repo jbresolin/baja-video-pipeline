@@ -36,6 +36,12 @@ FILL_CASES = [
     ("Olá {nome}!", {}, "Olá!"),
     # A name of only spaces counts as no name.
     ("Olá {nome}!", {"nome": "   "}, "Olá!"),
+    # A comma right before an empty placeholder goes too ("Olá!", not "Olá,!"),
+    # with or without a space between them.
+    ("Olá, {nome}!", {"nome": None}, "Olá!"),
+    ("Olá,{nome}!", {}, "Olá!"),
+    # With a name, the comma and the space stay.
+    ("Olá, {nome}!", {"nome": "Conceição"}, "Olá, Conceição!"),
     # No default prova, mid-sentence: only the one space before it goes.
     ("Sua prova {prova} começa cedo.", {"prova": None}, "Sua prova começa cedo."),
     # Placeholder at the start of a line: nothing before it to remove.
