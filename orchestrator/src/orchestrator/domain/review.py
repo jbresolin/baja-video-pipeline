@@ -37,6 +37,8 @@ EDITABLE_FIELDS = (
     "prova", "car_number", "passagem", "show_pass", "cut_in_s", "cut_out_s",
     # Render options (LIVESTACK-50).
     "rotation", "framing", "crop_position", "no_audio",
+    # "Mostrar resultado da passagem" (LIVESTACK-47); stays NULL until set.
+    "show_pass_result",
 )  # fmt: skip
 CLEARED_CLIP_COLUMNS = {
     "clip_sha256": None,
@@ -102,6 +104,8 @@ def _merged_fields(job_row: sqlite3.Row, update: ReviewUpdate) -> dict[str, Any]
     merged["show_pass"] = int(bool(merged["show_pass"]))
     merged["no_audio"] = int(bool(merged["no_audio"]))
     merged["framing"] = str(merged["framing"])
+    if merged["show_pass_result"] is not None:
+        merged["show_pass_result"] = int(bool(merged["show_pass_result"]))
     return merged
 
 

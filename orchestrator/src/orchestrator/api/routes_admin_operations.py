@@ -4,15 +4,25 @@ from fastapi import APIRouter, Depends, Query
 
 from orchestrator.api.auth import get_context, require_admin
 from orchestrator.context import OrchestratorContext
-from orchestrator.domain import event_log, results_sync, settings_page, workers_admin
+from orchestrator.domain import (
+    event_log,
+    pass_results_admin,
+    results_sync,
+    settings_page,
+    workers_admin,
+)
 from orchestrator.domain.audit import AdminActor
 from shared.models import (
     AdminArea,
     EnrollmentTokenInfo,
     EnrollmentTokensResponse,
     EventsResponse,
+    PassResultsSettings,
+    PassResultTestRequest,
+    PassResultTestResponse,
     ResultsSyncReport,
     SettingsResponse,
+    UpdatePassResultsConfigRequest,
     UpdateSettingsRequest,
     UpdateWorkerRequest,
     Worker,
@@ -99,6 +109,37 @@ def sync_from_results_api(
     context: OrchestratorContext = Depends(get_context),
 ) -> ResultsSyncReport:
     return results_sync.sync_or_raise(context, actor)
+
+
+@router.get(
+    "/admin/pass-results",
+    tags=["admin"],
+    response_model=PassResultsSettings,
+    dependencies=[Depends(require_admin)],
+)
+def get_pass_results(context: OrchestratorContext = Depends(get_context)) -> PassResultsSettings:
+    return pass_results_admin.pass_results_settings(context)
+
+
+@router.put("/admin/pass-results/config", tags=["admin"], response_model=PassResultsSettings)
+def update_pass_results_config(
+    body: UpdatePassResultsConfigRequest,
+    actor: AdminActor = Depends(require_admin),
+    context: OrchestratorContext = Depends(get_context),
+) -> PassResultsSettings:
+    return pass_results_admin.update_config(context, actor, body)
+
+
+@router.post(
+    "/admin/pass-results/test",
+    tags=["admin"],
+    response_model=PassResultTestResponse,
+    dependencies=[Depends(require_admin)],
+)
+def test_pass_result(
+    body: PassResultTestRequest, context: OrchestratorContext = Depends(get_context)
+) -> PassResultTestResponse:
+    return pass_results_admin.test_pass_result(context, body)
 
 
 @router.get(

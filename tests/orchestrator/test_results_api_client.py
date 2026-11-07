@@ -12,6 +12,7 @@ import pytest
 
 from orchestrator.clients.results_api import ResultsApiClient, ResultsApiError, clean_name
 from orchestrator.testing.fake_results_api import FAKE_RESULTS_API_URL, FakeResultsApi
+from tests.orchestrator.pass_results_data import man_table
 
 
 @pytest.fixture
@@ -90,3 +91,35 @@ def test_unknown_fields_and_bad_entries_are_ignored(client, fake):
     fake.teams_of().append({"number": 9, "name": "Nove", "brand_new_field": 1})
     teams = client.event_teams(FAKE_RESULTS_API_URL, "26BR")
     assert [t.car_number for t in teams] == [1, 2, 9]
+
+
+# --- Results tables (resultado.php, LIVESTACK-47) ---
+
+
+def test_a_results_table_is_asked_with_display_and_its_max_age_is_read(client, fake):
+    # The fake serves the real Manobrabilidade answer, cached 5 s as while
+    # an event runs.
+    fake.tables["26BR_MAN"] = man_table()
+
+    answer = client.results_table(FAKE_RESULTS_API_URL, "26BR", "26BR_MAN")
+
+    # Exactly the documented parameters (the API refuses anything else),
+    # the display HTML is there (the penalties are only in it), and the
+    # Cache-Control max-age says how long the answer stays fresh.
+    assert fake.requests == [("/resultados/resultado.php", "evt=26BR&id=26BR_MAN&display=1")]
+    assert answer.body["rows"][0]["cells"][3]["display"].startswith("59<br />")
+    assert answer.max_age_s == 5
+
+
+def test_an_unknown_resultado_says_so_rather_than_blaming_the_event(client):
+    with pytest.raises(ResultsApiError) as caught:
+        client.results_table(FAKE_RESULTS_API_URL, "26BR", "26BR_XYZ")
+    assert caught.value.code == "not_found"
+    assert "resultado 26BR_XYZ" in str(caught.value)
+
+
+def test_a_malformed_resultado_id_is_refused_before_any_request(client, fake):
+    with pytest.raises(ResultsApiError) as caught:
+        client.results_table(FAKE_RESULTS_API_URL, "26BR", "MAN")
+    assert caught.value.code == "invalid_parameter"
+    assert fake.requests == []

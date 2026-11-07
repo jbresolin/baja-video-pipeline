@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import PurePosixPath
 
 from orchestrator.db.database import from_db_time
+from orchestrator.domain.pass_results import pass_result_for_job
 from orchestrator.domain.render_inputs import compare_newest_clip
 from orchestrator.errors import not_found
 from orchestrator.repositories import clips as clips_repo
@@ -169,12 +170,15 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
         framing=Framing(row["framing"]),
         crop_position=row["crop_position"],
         no_audio=bool(row["no_audio"]),
+        show_pass_result=_optional_bool(row["show_pass_result"]),
         reviewed_by=row["reviewed_by"],
         reviewed_at=from_db_time(row["reviewed_at"]),
         clip=clip,
         clip_versions=versions,
         # Does the newest clip still match the review? (LIVESTACK-43)
         clip_inputs=compare_newest_clip(connection, row) if versions else None,
+        # The official result of the passagem, from the latest fetch (LIVESTACK-47).
+        pass_result=pass_result_for_job(connection, row),
         failure=failure,
         failed_from=JobState(row["failed_from"]) if row["failed_from"] else None,
         discarded_from=JobState(row["discarded_from"]) if row["discarded_from"] else None,
