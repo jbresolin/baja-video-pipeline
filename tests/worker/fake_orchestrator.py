@@ -78,6 +78,9 @@ class FakeOrchestrator:
         # Task kinds this "orchestrator" is too old to know: a /next naming
         # one is refused with 400 validation_error, like a real older one.
         self.unknown_task_kinds: set[str] = set()
+        # False plays an orchestrator older than contract 2.6.0: a heartbeat
+        # with render_features is refused with 400, as its strict model does.
+        self.knows_render_features = True
         self.delivered_calls_to_fail = 0
         # (status, code) to refuse every /delivered with, e.g. (409, "illegal_transition").
         self.delivered_refusal: tuple[int, str] | None = None
@@ -199,7 +202,11 @@ class FakeOrchestrator:
         if self.heartbeats_to_fail > 0:
             self.heartbeats_to_fail -= 1
             return error(503, "upstream_error")
-        body = HeartbeatRequest.model_validate(await request.json())
+        raw_body = await request.json()
+        if not self.knows_render_features and "render_features" in raw_body:
+            problem = {"loc": ["body", "render_features"], "msg": "Extra inputs are not permitted"}
+            return error(400, "validation_error", "request is not valid", errors=[problem])
+        body = HeartbeatRequest.model_validate(raw_body)
         self.heartbeats.append(body)
         statuses = {
             lease_id: LeaseHeartbeatStatus.RENEWED

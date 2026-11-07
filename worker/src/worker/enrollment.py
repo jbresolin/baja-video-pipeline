@@ -22,6 +22,7 @@ from shared.models import EnrollRequest, WorkerCapabilities
 from worker.api_client import ApiError, OrchestratorClient, OrchestratorUnreachableError
 from worker.config import WorkerConfig, save_config, write_text_atomically
 from worker.config_problems import require_usable_config
+from worker.render_features import DECLARED_RENDER_FEATURES
 from worker.status import Phase, StatusBoard
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ def detect_capabilities(ffmpeg_path: str) -> WorkerCapabilities:
         os=platform.platform(),
         cpu_count=os.cpu_count(),
         gpu_name=gpu_output.splitlines()[0] if gpu_output else None,
+        render_features=DECLARED_RENDER_FEATURES,
     )
 
 

@@ -72,14 +72,6 @@ class OverlayText:
         return parts
 
 
-def final_frame_width(source_width: int | None, source_height: int | None) -> int:
-    """Width of the final render: scale=-2:1080 keeps the aspect, even width."""
-    if not source_width or not source_height:
-        return 1920
-    width = round(source_width * FINAL_FRAME_HEIGHT / source_height)
-    return width - (width % 2)
-
-
 @dataclass(frozen=True)
 class PillLayout:
     """One pill laid out: its size and what to draw inside (x measured from its left edge)."""

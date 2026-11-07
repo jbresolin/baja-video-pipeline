@@ -178,6 +178,7 @@ def build_harness(
         studio_library=library,
         role=role,
     )
+    steady_clock = FakeSteadyClock()
     heartbeater = Heartbeater(
         api=api,
         role=role,
@@ -188,9 +189,9 @@ def build_harness(
         tailnet_address="worker.test",
         file_server_port=8710,
         receiver_port=8720,
+        monotonic=steady_clock,
     )
     stage_freed = Event()
-    steady_clock = FakeSteadyClock()
     stages = {
         kind: StageRunner(kind, TASK_HANDLERS[kind], env, leases, shutdown, stage_freed, status)
         for kind in STAGE_KINDS_BY_ROLE[role]

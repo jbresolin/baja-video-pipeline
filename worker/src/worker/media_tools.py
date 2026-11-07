@@ -17,6 +17,7 @@ from collections import deque
 from pathlib import Path
 
 from shared.ffmpeg import build_final_render_command, build_proxy_command, build_thumbnail_command
+from shared.framing import FramePlan
 from shared.media_probe import MediaInfo, build_probe_command, parse_probe_output
 from worker.leases import CancelToken
 
@@ -101,7 +102,11 @@ class MediaTools:
         overlay_png: Path | None,
         info: MediaInfo,
         cancel: CancelToken,
+        frame_plan: FramePlan | None = None,
+        keep_audio: bool = True,
     ) -> None:
+        """`frame_plan`: turn and fit the picture (LIVESTACK-50); None = as before.
+        `keep_audio=False` ("Sem áudio") renders without sound."""
         args = build_final_render_command(
             raw,
             clip,
@@ -109,9 +114,10 @@ class MediaTools:
             cut_out_s,
             self.video_encoder,
             overlay_image=overlay_png,
-            has_audio=info.has_audio,
+            has_audio=info.has_audio and keep_audio,
             ffmpeg_binary=self.ffmpeg_path,
             tone_map_hdr=info.is_hdr,
+            frame_plan=frame_plan,
         )
         self.run_ffmpeg(args, cancel, what="final render")
 
