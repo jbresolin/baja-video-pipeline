@@ -1,0 +1,1433 @@
+{
+ "event_id": "26BR",
+ "resultado_id": "26BR_MAN",
+ "name": "Manobrabilidade",
+ "provas": [
+  "MAN"
+ ],
+ "spoilers_active": false,
+ "ranking": {
+  "by": "Pontos",
+  "order": "desc"
+ },
+ "columns": [
+  {
+   "header": "Pos",
+   "kind": "position",
+   "ranking": false
+  },
+  {
+   "header": "#",
+   "kind": "team_number",
+   "ranking": false
+  },
+  {
+   "header": "Equipe",
+   "kind": "team",
+   "ranking": false
+  },
+  {
+   "header": "Tempo",
+   "kind": "list",
+   "ranking": false
+  },
+  {
+   "header": "Tempo Corrigido",
+   "kind": "list",
+   "ranking": false
+  },
+  {
+   "header": "Pontos",
+   "kind": "formula",
+   "ranking": true
+  }
+ ],
+ "rows": [
+  {
+   "position": 1,
+   "team": {
+    "number": 26,
+    "name": "Saci Baja UNIFEI",
+    "school": "Universidade Federal de Itajubá - UNIFEI - Campus Itajubá",
+    "state": "MG",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 1,
+     "display": 1
+    },
+    {
+     "raw": 26,
+     "display": 26
+    },
+    {
+     "raw": "Saci Baja UNIFEI",
+     "display": "Saci Baja UNIFEI"
+    },
+    {
+     "raw": [
+      59,
+      "66 (4 )"
+     ],
+     "display": "59<br /> 66 (4<img class='cone'>)"
+    },
+    {
+     "raw": [
+      59,
+      86
+     ],
+     "display": "<b>59</b><br /> 86"
+    },
+    {
+     "raw": 50,
+     "display": 50
+    }
+   ]
+  },
+  {
+   "position": 2,
+   "team": {
+    "number": 23,
+    "name": "EESC USP TRACTIAN Baja",
+    "school": "Escola de Engenharia de São Carlos - Universidade de São Paulo - EESC-USP",
+    "state": "SP",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 2,
+     "display": 2
+    },
+    {
+     "raw": 23,
+     "display": 23
+    },
+    {
+     "raw": "EESC USP TRACTIAN Baja",
+     "display": "EESC USP TRACTIAN Baja"
+    },
+    {
+     "raw": [
+      "67 (1 )",
+      65
+     ],
+     "display": "67 (1<img class='cone'>)<br /> 65"
+    },
+    {
+     "raw": [
+      72,
+      65
+     ],
+     "display": "72<br /> <b>65</b>"
+    },
+    {
+     "raw": 44.92,
+     "display": 44.92
+    }
+   ]
+  },
+  {
+   "position": 3,
+   "team": {
+    "number": 6,
+    "name": "Imperador",
+    "school": "Universidade Tecnológica Federal do Paraná - UTFPR - Campus Curitiba",
+    "state": "PR",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 3,
+     "display": 3
+    },
+    {
+     "raw": 6,
+     "display": 6
+    },
+    {
+     "raw": "Imperador",
+     "display": "Imperador"
+    },
+    {
+     "raw": [
+      "59 (4 )",
+      "58 (2 )"
+     ],
+     "display": "59 (4<img class='cone'>)<br /> 58 (2<img class='cone'>)"
+    },
+    {
+     "raw": [
+      79,
+      68
+     ],
+     "display": "79<br /> <b>68</b>"
+    },
+    {
+     "raw": 42.37,
+     "display": 42.37
+    }
+   ]
+  },
+  {
+   "position": 4,
+   "team": {
+    "number": 7,
+    "name": "Sinuelo",
+    "school": "Faculdade Horizontina - FAHOR",
+    "state": "RS",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 4,
+     "display": 4
+    },
+    {
+     "raw": 7,
+     "display": 7
+    },
+    {
+     "raw": "Sinuelo",
+     "display": "Sinuelo"
+    },
+    {
+     "raw": [
+      "70 (3 )",
+      "61 (2 )"
+     ],
+     "display": "70 (3<img class='cone'>)<br /> 61 (2<img class='cone'>)"
+    },
+    {
+     "raw": [
+      85,
+      71
+     ],
+     "display": "85<br /> <b>71</b>"
+    },
+    {
+     "raw": 39.83,
+     "display": 39.83
+    }
+   ]
+  },
+  {
+   "position": 5,
+   "team": {
+    "number": 1,
+    "name": "BAJA UFMG",
+    "school": "Universidade Federal de Minas Gerais - UFMG",
+    "state": "MG",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 5,
+     "display": 5
+    },
+    {
+     "raw": 1,
+     "display": 1
+    },
+    {
+     "raw": "BAJA UFMG",
+     "display": "BAJA UFMG"
+    },
+    {
+     "raw": [
+      "58 (4 )",
+      "57 (3 )"
+     ],
+     "display": "58 (4<img class='cone'>)<br /> 57 (3<img class='cone'>)"
+    },
+    {
+     "raw": [
+      78,
+      72
+     ],
+     "display": "78<br /> <b>72</b>"
+    },
+    {
+     "raw": 38.98,
+     "display": 38.98
+    }
+   ]
+  },
+  {
+   "position": 5,
+   "team": {
+    "number": 2,
+    "name": "Equipe FEI Baja",
+    "school": "Fundação Educacional Inaciana - FEI",
+    "state": "SP",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 5,
+     "display": 5
+    },
+    {
+     "raw": 2,
+     "display": 2
+    },
+    {
+     "raw": "Equipe FEI Baja",
+     "display": "Equipe FEI Baja"
+    },
+    {
+     "raw": [
+      "58 (8 /2 )",
+      "57 (3 )"
+     ],
+     "display": "58 (8<img class='cone'>/2<img class='gate'>)<br /> 57 (3<img class='cone'>)"
+    },
+    {
+     "raw": [
+      118,
+      72
+     ],
+     "display": "118<br /> <b>72</b>"
+    },
+    {
+     "raw": 38.98,
+     "display": 38.98
+    }
+   ]
+  },
+  {
+   "position": 5,
+   "team": {
+    "number": 14,
+    "name": "Tuffão Baja SAE",
+    "school": "Universidade Federal Fluminense - UFF - Campus Niterói",
+    "state": "RJ",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 5,
+     "display": 5
+    },
+    {
+     "raw": 14,
+     "display": 14
+    },
+    {
+     "raw": "Tuffão Baja SAE",
+     "display": "Tuffão Baja SAE"
+    },
+    {
+     "raw": [
+      "71 (3 )",
+      "62 (2 )"
+     ],
+     "display": "71 (3<img class='cone'>)<br /> 62 (2<img class='cone'>)"
+    },
+    {
+     "raw": [
+      86,
+      72
+     ],
+     "display": "86<br /> <b>72</b>"
+    },
+    {
+     "raw": 38.98,
+     "display": 38.98
+    }
+   ]
+  },
+  {
+   "position": 8,
+   "team": {
+    "number": 13,
+    "name": "CEFAST BAJA SAE",
+    "school": "Centro Federal de Educação Tecnológica de Minas Gerais - CEFET/MG",
+    "state": "MG",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 8,
+     "display": 8
+    },
+    {
+     "raw": 13,
+     "display": 13
+    },
+    {
+     "raw": "CEFAST BAJA SAE",
+     "display": "CEFAST BAJA SAE"
+    },
+    {
+     "raw": [
+      "63 (2 )",
+      "61 (3 )"
+     ],
+     "display": "63 (2<img class='cone'>)<br /> 61 (3<img class='cone'>)"
+    },
+    {
+     "raw": [
+      73,
+      76
+     ],
+     "display": "<b>73</b><br /> 76"
+    },
+    {
+     "raw": 38.14,
+     "display": 38.14
+    }
+   ]
+  },
+  {
+   "position": 9,
+   "team": {
+    "number": 5,
+    "name": "Poli Baja",
+    "school": "Escola Politécnica da Universidade de São Paulo - Poli USP",
+    "state": "SP",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 9,
+     "display": 9
+    },
+    {
+     "raw": 5,
+     "display": 5
+    },
+    {
+     "raw": "Poli Baja",
+     "display": "Poli Baja"
+    },
+    {
+     "raw": [
+      "61 (3 )",
+      "-"
+     ],
+     "display": "61 (3<img class='cone'>)<br /> -"
+    },
+    {
+     "raw": [
+      76,
+      "-"
+     ],
+     "display": "<b>76</b><br /> -"
+    },
+    {
+     "raw": 35.59,
+     "display": 35.59
+    }
+   ]
+  },
+  {
+   "position": 10,
+   "team": {
+    "number": 32,
+    "name": "Vitória Baja",
+    "school": "Universidade Federal do Espírito Santo - UFES",
+    "state": "ES",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 10,
+     "display": 10
+    },
+    {
+     "raw": 32,
+     "display": 32
+    },
+    {
+     "raw": "Vitória Baja",
+     "display": "Vitória Baja"
+    },
+    {
+     "raw": [
+      "72 (1 )",
+      "70 (2 )"
+     ],
+     "display": "72 (1<img class='cone'>)<br /> 70 (2<img class='cone'>)"
+    },
+    {
+     "raw": [
+      77,
+      80
+     ],
+     "display": "<b>77</b><br /> 80"
+    },
+    {
+     "raw": 34.75,
+     "display": 34.75
+    }
+   ]
+  },
+  {
+   "position": 11,
+   "team": {
+    "number": 9,
+    "name": "Caraubaja",
+    "school": "Universidade Federal Rural do Semi-Árido - Ufersa - Campus Caraúbas",
+    "state": "RN",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 11,
+     "display": 11
+    },
+    {
+     "raw": 9,
+     "display": 9
+    },
+    {
+     "raw": "Caraubaja",
+     "display": "Caraubaja"
+    },
+    {
+     "raw": [
+      "54 (6 )",
+      "54 (5 )"
+     ],
+     "display": "54 (6<img class='cone'>)<br /> 54 (5<img class='cone'>)"
+    },
+    {
+     "raw": [
+      84,
+      79
+     ],
+     "display": "84<br /> <b>79</b>"
+    },
+    {
+     "raw": 33.05,
+     "display": 33.05
+    }
+   ]
+  },
+  {
+   "position": 12,
+   "team": {
+    "number": 8,
+    "name": "Cactus Baja",
+    "school": "Universidade Federal Rural do Semi-Árido - Ufersa - Campus Mossoró",
+    "state": "RN",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 12,
+     "display": 12
+    },
+    {
+     "raw": 8,
+     "display": 8
+    },
+    {
+     "raw": "Cactus Baja",
+     "display": "Cactus Baja"
+    },
+    {
+     "raw": [
+      "53 (8 )",
+      "55 (6 )"
+     ],
+     "display": "53 (8<img class='cone'>)<br /> 55 (6<img class='cone'>)"
+    },
+    {
+     "raw": [
+      93,
+      85
+     ],
+     "display": "93<br /> <b>85</b>"
+    },
+    {
+     "raw": 27.97,
+     "display": 27.97
+    }
+   ]
+  },
+  {
+   "position": 13,
+   "team": {
+    "number": 30,
+    "name": "Mangue Baja",
+    "school": "Universidade Federal de Pernambuco - UFPE",
+    "state": "PE",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 13,
+     "display": 13
+    },
+    {
+     "raw": 30,
+     "display": 30
+    },
+    {
+     "raw": "Mangue Baja",
+     "display": "Mangue Baja"
+    },
+    {
+     "raw": [
+      "66 (2 /1 )",
+      "-"
+     ],
+     "display": "66 (2<img class='cone'>/1<img class='gate'>)<br /> -"
+    },
+    {
+     "raw": [
+      86,
+      "-"
+     ],
+     "display": "<b>86</b><br /> -"
+    },
+    {
+     "raw": 27.12,
+     "display": 27.12
+    }
+   ]
+  },
+  {
+   "position": 14,
+   "team": {
+    "number": 12,
+    "name": "Car-Kará Baja SAE",
+    "school": "Universidade Federal do Rio Grande do Norte - UFRN",
+    "state": "RN",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 14,
+     "display": 14
+    },
+    {
+     "raw": 12,
+     "display": 12
+    },
+    {
+     "raw": "Car-Kará Baja SAE",
+     "display": "Car-Kará Baja SAE"
+    },
+    {
+     "raw": [
+      "60 (4 /1 )",
+      "-"
+     ],
+     "display": "60 (4<img class='cone'>/1<img class='gate'>)<br /> -"
+    },
+    {
+     "raw": [
+      90,
+      "-"
+     ],
+     "display": "<b>90</b><br /> -"
+    },
+    {
+     "raw": 23.73,
+     "display": 23.73
+    }
+   ]
+  },
+  {
+   "position": 15,
+   "team": {
+    "number": 29,
+    "name": "Buffalo Baja - UFLA",
+    "school": "Universidade Federal de Lavras - UFLA",
+    "state": "MG",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 15,
+     "display": 15
+    },
+    {
+     "raw": 29,
+     "display": 29
+    },
+    {
+     "raw": "Buffalo Baja - UFLA",
+     "display": "Buffalo Baja - UFLA"
+    },
+    {
+     "raw": [
+      "66 (3 /1 )",
+      "-"
+     ],
+     "display": "66 (3<img class='cone'>/1<img class='gate'>)<br /> -"
+    },
+    {
+     "raw": [
+      91,
+      "-"
+     ],
+     "display": "<b>91</b><br /> -"
+    },
+    {
+     "raw": 22.88,
+     "display": 22.88
+    }
+   ]
+  },
+  {
+   "position": 16,
+   "team": {
+    "number": 53,
+    "name": "ZABUMBAJA TRDAYCA",
+    "school": "Universidade Federal Rural de Pernambuco - UFRPE",
+    "state": "PE",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 16,
+     "display": 16
+    },
+    {
+     "raw": 53,
+     "display": 53
+    },
+    {
+     "raw": "ZABUMBAJA TRDAYCA",
+     "display": "ZABUMBAJA TRDAYCA"
+    },
+    {
+     "raw": [
+      "74 (3 /1 )",
+      "62 (2 /2 )"
+     ],
+     "display": "74 (3<img class='cone'>/1<img class='gate'>)<br /> 62 (2<img class='cone'>/2<img class='gate'>)"
+    },
+    {
+     "raw": [
+      99,
+      92
+     ],
+     "display": "99<br /> <b>92</b>"
+    },
+    {
+     "raw": 22.03,
+     "display": 22.03
+    }
+   ]
+  },
+  {
+   "position": 17,
+   "team": {
+    "number": 38,
+    "name": "Tchê Baja",
+    "school": "Universidade Federal do Rio Grande do Sul - UFRGS",
+    "state": "RS",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 17,
+     "display": 17
+    },
+    {
+     "raw": 38,
+     "display": 38
+    },
+    {
+     "raw": "Tchê Baja",
+     "display": "Tchê Baja"
+    },
+    {
+     "raw": [
+      "62 (6 /2 )",
+      "63 (4 /1 )"
+     ],
+     "display": "62 (6<img class='cone'>/2<img class='gate'>)<br /> 63 (4<img class='cone'>/1<img class='gate'>)"
+    },
+    {
+     "raw": [
+      112,
+      93
+     ],
+     "display": "112<br /> <b>93</b>"
+    },
+    {
+     "raw": 21.19,
+     "display": 21.19
+    }
+   ]
+  },
+  {
+   "position": 18,
+   "team": {
+    "number": 4,
+    "name": "Pato Baja",
+    "school": "Universidade Tecnológica Federal do Paraná - UTFPR - Campus Pato Branco",
+    "state": "PR",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 18,
+     "display": 18
+    },
+    {
+     "raw": 4,
+     "display": 4
+    },
+    {
+     "raw": "Pato Baja",
+     "display": "Pato Baja"
+    },
+    {
+     "raw": [
+      "60 (3 /2 )",
+      "70 (1 /2 )"
+     ],
+     "display": "60 (3<img class='cone'>/2<img class='gate'>)<br /> 70 (1<img class='cone'>/2<img class='gate'>)"
+    },
+    {
+     "raw": [
+      95,
+      95
+     ],
+     "display": "<b>95</b><br /> <b>95</b>"
+    },
+    {
+     "raw": 19.49,
+     "display": 19.49
+    }
+   ]
+  },
+  {
+   "position": 19,
+   "team": {
+    "number": 24,
+    "name": "SAGUI Baja",
+    "school": "Universidade Federal do Paraná - UFPR",
+    "state": "PR",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 19,
+     "display": 19
+    },
+    {
+     "raw": 24,
+     "display": 24
+    },
+    {
+     "raw": "SAGUI Baja",
+     "display": "SAGUI Baja"
+    },
+    {
+     "raw": [
+      "65 (5 /1 )",
+      "66 (6 )"
+     ],
+     "display": "65 (5<img class='cone'>/1<img class='gate'>)<br /> 66 (6<img class='cone'>)"
+    },
+    {
+     "raw": [
+      100,
+      96
+     ],
+     "display": "100<br /> <b>96</b>"
+    },
+    {
+     "raw": 18.64,
+     "display": 18.64
+    }
+   ]
+  },
+  {
+   "position": 19,
+   "team": {
+    "number": 31,
+    "name": "Equipe UNICAMP Baja SAE",
+    "school": "Universidade Estadual de Campinas - Unicamp",
+    "state": "SP",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 19,
+     "display": 19
+    },
+    {
+     "raw": 31,
+     "display": 31
+    },
+    {
+     "raw": "Equipe UNICAMP Baja SAE",
+     "display": "Equipe UNICAMP Baja SAE"
+    },
+    {
+     "raw": [
+      "85 (5 /1 )",
+      "71 (3 /1 )"
+     ],
+     "display": "85 (5<img class='cone'>/1<img class='gate'>)<br /> 71 (3<img class='cone'>/1<img class='gate'>)"
+    },
+    {
+     "raw": [
+      120,
+      96
+     ],
+     "display": "120<br /> <b>96</b>"
+    },
+    {
+     "raw": 18.64,
+     "display": 18.64
+    }
+   ]
+  },
+  {
+   "position": 21,
+   "team": {
+    "number": 21,
+    "name": "Baja Mud Racing",
+    "school": "Facens",
+    "state": "SP",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 21,
+     "display": 21
+    },
+    {
+     "raw": 21,
+     "display": 21
+    },
+    {
+     "raw": "Baja Mud Racing",
+     "display": "Baja Mud Racing"
+    },
+    {
+     "raw": [
+      "68 (7 /1 )",
+      "68 (6 )"
+     ],
+     "display": "68 (7<img class='cone'>/1<img class='gate'>)<br /> 68 (6<img class='cone'>)"
+    },
+    {
+     "raw": [
+      113,
+      98
+     ],
+     "display": "113<br /> <b>98</b>"
+    },
+    {
+     "raw": 16.95,
+     "display": 16.95
+    }
+   ]
+  },
+  {
+   "position": 22,
+   "team": {
+    "number": 17,
+    "name": "Rampage Baja UFJF",
+    "school": "Universidade Federal de Juiz de Fora - UFJF",
+    "state": "MG",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 22,
+     "display": 22
+    },
+    {
+     "raw": 17,
+     "display": 17
+    },
+    {
+     "raw": "Rampage Baja UFJF",
+     "display": "Rampage Baja UFJF"
+    },
+    {
+     "raw": [
+      "76 (3 /1 )",
+      "-"
+     ],
+     "display": "76 (3<img class='cone'>/1<img class='gate'>)<br /> -"
+    },
+    {
+     "raw": [
+      101,
+      "-"
+     ],
+     "display": "<b>101</b><br /> -"
+    },
+    {
+     "raw": 14.41,
+     "display": 14.41
+    }
+   ]
+  },
+  {
+   "position": 23,
+   "team": {
+    "number": 35,
+    "name": "Carpoeira Baja",
+    "school": "Universidade Federal da Bahia - UFBA",
+    "state": "BA",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 23,
+     "display": 23
+    },
+    {
+     "raw": 35,
+     "display": 35
+    },
+    {
+     "raw": "Carpoeira Baja",
+     "display": "Carpoeira Baja"
+    },
+    {
+     "raw": [
+      "74 (4 /1 )",
+      "80 (12 /1 )"
+     ],
+     "display": "74 (4<img class='cone'>/1<img class='gate'>)<br /> 80 (12<img class='cone'>/1<img class='gate'>)"
+    },
+    {
+     "raw": [
+      104,
+      150
+     ],
+     "display": "<b>104</b><br /> 150"
+    },
+    {
+     "raw": 11.86,
+     "display": 11.86
+    }
+   ]
+  },
+  {
+   "position": 24,
+   "team": {
+    "number": 3,
+    "name": "Komiketo Baja",
+    "school": "Universidade Federal de São João del-Rei - UFSJ",
+    "state": "MG",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 24,
+     "display": 24
+    },
+    {
+     "raw": 3,
+     "display": 3
+    },
+    {
+     "raw": "Komiketo Baja",
+     "display": "Komiketo Baja"
+    },
+    {
+     "raw": [
+      "83 (6 /1 )",
+      "69 (6 /1 )"
+     ],
+     "display": "83 (6<img class='cone'>/1<img class='gate'>)<br /> 69 (6<img class='cone'>/1<img class='gate'>)"
+    },
+    {
+     "raw": [
+      123,
+      109
+     ],
+     "display": "123<br /> <b>109</b>"
+    },
+    {
+     "raw": 7.63,
+     "display": 7.63
+    }
+   ]
+  },
+  {
+   "position": 25,
+   "team": {
+    "number": 34,
+    "name": "ITA Baja",
+    "school": "Instituto Tecnológico de Aeronáutica - ITA",
+    "state": "SP",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 25,
+     "display": 25
+    },
+    {
+     "raw": 34,
+     "display": 34
+    },
+    {
+     "raw": "ITA Baja",
+     "display": "ITA Baja"
+    },
+    {
+     "raw": [
+      "83 (7 /1 )",
+      "67 (9 )"
+     ],
+     "display": "83 (7<img class='cone'>/1<img class='gate'>)<br /> 67 (9<img class='cone'>)"
+    },
+    {
+     "raw": [
+      128,
+      112
+     ],
+     "display": "128<br /> <b>112</b>"
+    },
+    {
+     "raw": 5.08,
+     "display": 5.08
+    }
+   ]
+  },
+  {
+   "position": 26,
+   "team": {
+    "number": 15,
+    "name": "Baja UFSCar",
+    "school": "Universidade Federal de São Carlos - UFSCar",
+    "state": "SP",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 26,
+     "display": 26
+    },
+    {
+     "raw": 15,
+     "display": 15
+    },
+    {
+     "raw": "Baja UFSCar",
+     "display": "Baja UFSCar"
+    },
+    {
+     "raw": [
+      "75 (6 /1 )",
+      "83 (6 /2 )"
+     ],
+     "display": "75 (6<img class='cone'>/1<img class='gate'>)<br /> 83 (6<img class='cone'>/2<img class='gate'>)"
+    },
+    {
+     "raw": [
+      115,
+      133
+     ],
+     "display": "<b>115</b><br /> 133"
+    },
+    {
+     "raw": 2.54,
+     "display": 2.54
+    }
+   ]
+  },
+  {
+   "position": 27,
+   "team": {
+    "number": 19,
+    "name": "Kaizen Piratas do Cerrado",
+    "school": "Universidade de Brasília - UnB",
+    "state": "DF",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 27,
+     "display": 27
+    },
+    {
+     "raw": 19,
+     "display": 19
+    },
+    {
+     "raw": "Kaizen Piratas do Cerrado",
+     "display": "Kaizen Piratas do Cerrado"
+    },
+    {
+     "raw": [
+      "74 (5 /2 )",
+      "-"
+     ],
+     "display": "74 (5<img class='cone'>/2<img class='gate'>)<br /> -"
+    },
+    {
+     "raw": [
+      119,
+      "-"
+     ],
+     "display": "<b>119</b><br /> -"
+    },
+    {
+     "raw": 0,
+     "display": 0
+    }
+   ]
+  },
+  {
+   "position": 27,
+   "team": {
+    "number": 33,
+    "name": "PAC Baja",
+    "school": "Universidade Estadual Paulista - Unesp - Campus Bauru",
+    "state": "SP",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 27,
+     "display": 27
+    },
+    {
+     "raw": 33,
+     "display": 33
+    },
+    {
+     "raw": "PAC Baja",
+     "display": "PAC Baja"
+    },
+    {
+     "raw": [
+      "63 (7 /3 )",
+      "-"
+     ],
+     "display": "63 (7<img class='cone'>/3<img class='gate'>)<br /> -"
+    },
+    {
+     "raw": [
+      128,
+      "-"
+     ],
+     "display": "<b>128</b><br /> -"
+    },
+    {
+     "raw": 0,
+     "display": 0
+    }
+   ]
+  },
+  {
+   "position": 27,
+   "team": {
+    "number": 43,
+    "name": "Velociraptor Baja",
+    "school": "Universidade do Estado de Santa Catarina - Udesc",
+    "state": "SC",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 27,
+     "display": 27
+    },
+    {
+     "raw": 43,
+     "display": 43
+    },
+    {
+     "raw": "Velociraptor Baja",
+     "display": "Velociraptor Baja"
+    },
+    {
+     "raw": [
+      "91 (14 /2 )",
+      "64 (8 /2 )"
+     ],
+     "display": "91 (14<img class='cone'>/2<img class='gate'>)<br /> 64 (8<img class='cone'>/2<img class='gate'>)"
+    },
+    {
+     "raw": [
+      181,
+      124
+     ],
+     "display": "181<br /> <b>124</b>"
+    },
+    {
+     "raw": 0,
+     "display": 0
+    }
+   ]
+  },
+  {
+   "position": 27,
+   "team": {
+    "number": 44,
+    "name": "TEC Ilha",
+    "school": "Universidade Estadual Paulista - Unesp - Campus de Ilha Solteira",
+    "state": "SP",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 27,
+     "display": 27
+    },
+    {
+     "raw": 44,
+     "display": 44
+    },
+    {
+     "raw": "TEC Ilha",
+     "display": "TEC Ilha"
+    },
+    {
+     "raw": [
+      "88 (7 /2 )",
+      "-"
+     ],
+     "display": "88 (7<img class='cone'>/2<img class='gate'>)<br /> -"
+    },
+    {
+     "raw": [
+      143,
+      "-"
+     ],
+     "display": "<b>143</b><br /> -"
+    },
+    {
+     "raw": 0,
+     "display": 0
+    }
+   ]
+  },
+  {
+   "position": 27,
+   "team": {
+    "number": 47,
+    "name": "Londribaja",
+    "school": "Universidade Tecnológica Federal do Paraná - UTFPR - Campus Londrina",
+    "state": "PR",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 27,
+     "display": 27
+    },
+    {
+     "raw": 47,
+     "display": 47
+    },
+    {
+     "raw": "Londribaja",
+     "display": "Londribaja"
+    },
+    {
+     "raw": [
+      "109 (17 /1 )",
+      "104 (10 /2 )"
+     ],
+     "display": "109 (17<img class='cone'>/1<img class='gate'>)<br /> 104 (10<img class='cone'>/2<img class='gate'>)"
+    },
+    {
+     "raw": [
+      204,
+      174
+     ],
+     "display": "204<br /> <b>174</b>"
+    },
+    {
+     "raw": 0,
+     "display": 0
+    }
+   ]
+  },
+  {
+   "position": 27,
+   "team": {
+    "number": 58,
+    "name": "Maua Racing Baja",
+    "school": "Instituto Mauá de Tecnologia - IMT",
+    "state": "SP",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 27,
+     "display": 27
+    },
+    {
+     "raw": 58,
+     "display": 58
+    },
+    {
+     "raw": "Maua Racing Baja",
+     "display": "Maua Racing Baja"
+    },
+    {
+     "raw": [
+      "73 (9 )",
+      "-"
+     ],
+     "display": "73 (9<img class='cone'>)<br /> -"
+    },
+    {
+     "raw": [
+      118,
+      "-"
+     ],
+     "display": "<b>118</b><br /> -"
+    },
+    {
+     "raw": 0,
+     "display": 0
+    }
+   ]
+  },
+  {
+   "position": 27,
+   "team": {
+    "number": 61,
+    "name": "Equipe UFVBaja Pererecas",
+    "school": "Universidade Federal de Viçosa - UFV",
+    "state": "MG",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 27,
+     "display": 27
+    },
+    {
+     "raw": 61,
+     "display": 61
+    },
+    {
+     "raw": "Equipe UFVBaja Pererecas",
+     "display": "Equipe UFVBaja Pererecas"
+    },
+    {
+     "raw": [
+      "85 (8 )",
+      "64 (11 /2 )"
+     ],
+     "display": "85 (8<img class='cone'>)<br /> 64 (11<img class='cone'>/2<img class='gate'>)"
+    },
+    {
+     "raw": [
+      125,
+      139
+     ],
+     "display": "<b>125</b><br /> 139"
+    },
+    {
+     "raw": 0,
+     "display": 0
+    }
+   ]
+  }
+ ]
+}
