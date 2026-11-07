@@ -20,6 +20,8 @@ for at all: the running tasks finish, no new one starts.
 
 import logging
 import threading
+import time
+from collections.abc import Callable
 
 from shared.models import DownloadRawTask, TaskKind, WorkerRole
 from shared.protocol import EMPTY_QUEUE_RETRY_SECONDS
@@ -54,6 +56,10 @@ UNREACHABLE_RETRY_SECONDS = 10.0
 # out from then on (until the worker restarts) instead of blocking all work.
 # upload_original: LIVESTACK-41 item 15 (installer 0.3.0).
 NEWER_TASK_KINDS = (TaskKind.UPLOAD_ORIGINAL,)
+# ...but only for a while: the VPS is often updated after the workers, and a
+# worker that stopped asking for good would never pick the kind up again
+# until someone restarted it ("Baixar original" stuck on "Preparando").
+ASK_AGAIN_FOR_REFUSED_KIND_SECONDS = 300.0
 
 
 class Dispatcher:
@@ -70,10 +76,12 @@ class Dispatcher:
         stage_freed: threading.Event,
         max_wait_seconds: float | None = None,
         pause: PauseSwitch | None = None,
+        seconds_since_start: Callable[[], float] = time.monotonic,
     ) -> None:
         """`max_wait_seconds` caps every pause between rounds (the
         orchestrator's retry_after_s, the 10 s after a network error); in-
-        process test runs use it. None = wait as long as asked."""
+        process test runs use it. None = wait as long as asked.
+        `seconds_since_start` is a steady clock; tests pass a fake one."""
         self._api = api
         self._role = role
         self._stages = stages
@@ -84,19 +92,29 @@ class Dispatcher:
         self._stage_freed = stage_freed
         self._max_wait_seconds = max_wait_seconds
         self._pause = pause
-        self._kinds_the_orchestrator_refused: set[TaskKind] = set()
+        self._seconds_since_start = seconds_since_start
+        # Kind → when the orchestrator last refused it (steady-clock seconds).
+        self._kinds_the_orchestrator_refused: dict[TaskKind, float] = {}
 
     def kinds_to_ask_for(self) -> list[TaskKind]:
         if self._pause is not None and self._pause.is_paused:
             return []
         kinds = []
         for kind in STAGE_KINDS_BY_ROLE[self._role]:
-            if not self._stages[kind].is_idle or kind in self._kinds_the_orchestrator_refused:
+            if not self._stages[kind].is_idle or self._refused_recently(kind):
                 continue
             if kind == TaskKind.DOWNLOAD_RAW and not self._may_take_new_raws():
                 continue
             kinds.append(kind)
         return kinds
+
+    def _refused_recently(self, kind: TaskKind) -> bool:
+        """Did the orchestrator refuse this kind less than five minutes ago?"""
+        refused_at = self._kinds_the_orchestrator_refused.get(kind)
+        if refused_at is None:
+            return False
+        seconds_since_refusal = self._seconds_since_start() - refused_at
+        return seconds_since_refusal < ASK_AGAIN_FOR_REFUSED_KIND_SECONDS
 
     def _may_take_new_raws(self) -> bool:
         if self._role == WorkerRole.MASTER:
@@ -114,9 +132,16 @@ class Dispatcher:
         except ApiError as error:
             newer = [kind for kind in kinds if kind in NEWER_TASK_KINDS]
             if error.code == "validation_error" and newer:
-                # An orchestrator from before these kinds: stop asking for them.
-                logger.warning("the orchestrator does not know %s; not asking for it", newer)
-                self._kinds_the_orchestrator_refused.update(newer)
+                # An orchestrator from before these kinds: stop asking for them
+                # for a while, then try again (it may have been updated).
+                logger.warning(
+                    "the orchestrator does not know %s; not asking for it for %d s",
+                    newer,
+                    ASK_AGAIN_FOR_REFUSED_KIND_SECONDS,
+                )
+                refused_at = self._seconds_since_start()
+                for kind in newer:
+                    self._kinds_the_orchestrator_refused[kind] = refused_at
                 return 0.0
             logger.warning("asking for work failed: %s", error)
             return UNREACHABLE_RETRY_SECONDS

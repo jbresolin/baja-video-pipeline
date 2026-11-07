@@ -6,7 +6,9 @@ TEXT: dict[str, str] = {
     "clips.hint.one": "{count} clipe entregue, mais novo primeiro · manifesto de {time}",
     "clips.hint.other": "{count} clipes entregues, mais novos primeiro · manifesto de {time}",
     "clips.relative_paths": "· caminhos relativos à pasta de clipes do estúdio",
-    "clips.outbox_heading": "Na caixa de saída do servidor (estúdio offline)",
+    # Not "estúdio offline": a worker on a shared tailnet always goes through
+    # the outbox, with the studio online (LIVESTACK-41 item 4).
+    "clips.outbox_heading": "Na caixa de saída do servidor, esperando o estúdio buscar",
     "clips.delivered_heading": "Entregues ao estúdio",
     "clips.col.delivered": "Entregue",
     "clips.col.prova": "Prova",
@@ -25,7 +27,9 @@ TEXT: dict[str, str] = {
     "clips.empty": "Nenhum clipe entregue ainda.",
     "clips.empty_for_prova": "Nenhum clipe entregue para {prova} ainda.",
     # --- Where a clip is (delivery_view.py; status strip and clips page) ---
-    "delivery.in_outbox_studio_offline": "Clipe na caixa de saída do servidor (estúdio offline).",
+    "delivery.in_outbox_studio_offline": (
+        "Clipe na caixa de saída do servidor, esperando o estúdio buscar."
+    ),
     "delivery.outbox_copy_until_archived": (
         "Uma cópia continua na caixa de saída do servidor até o mestre arquivar o clipe."
     ),

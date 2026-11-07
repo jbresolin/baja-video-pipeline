@@ -113,6 +113,21 @@ def _check_cuts(job_row: sqlite3.Row, merged: dict[str, Any]) -> None:
         )
 
 
+def _default_missing_cuts_to_whole_video(job_row: sqlite3.Row, merged: dict[str, Any]) -> None:
+    """No cut-in means "from the start", no cut-out means "to the end".
+
+    Not every video needs trimming. The defaults are written into the job
+    (not left empty), so the job page, the render inputs and the "clip no
+    longer matches" check all see the same cut the worker renders. With no
+    duration known (no holder has probed the raw yet) a missing cut-out
+    stays missing and "ready" still asks for it.
+    """
+    if merged["cut_in_s"] is None:
+        merged["cut_in_s"] = 0.0
+    if merged["cut_out_s"] is None and job_row["duration_s"] is not None:
+        merged["cut_out_s"] = job_row["duration_s"]
+
+
 def _check_ready_to_render(connection: sqlite3.Connection, merged: dict[str, Any]) -> None:
     """Before a job becomes ready: every field set, and a prova from the provas table."""
     missing = [name for name in REQUIRED_REVIEW_FIELDS if merged[name] is None]
@@ -149,6 +164,8 @@ def update_review(
         _check_action_allowed(state, update.action)
         merged = _merged_fields(job_row, update)
         _check_cuts(job_row, merged)
+        if update.action in (ReviewAction.READY, ReviewAction.REPROCESS):
+            _default_missing_cuts_to_whole_video(job_row, merged)
 
         changes: dict[str, Any] = {
             **merged,

@@ -8,9 +8,17 @@ log (sample_events.py) mentions the master in 7 events and the volunteer in 5.
 """
 
 from review_ui.settings import ReviewUiSettings
-from shared.models import ClipArchiveProgress
+from shared.models import ClipArchiveProgress, FleetWorker, WorkerRole
 from tests.review_ui.conftest import build_ui
-from tests.review_ui.sample_data import MASTER_ID, SIGNED_IN_COOKIES, VOLUNTEER_ID
+from tests.review_ui.sample_data import (
+    GB,
+    MASTER_ID,
+    SIGNED_IN_COOKIES,
+    STUDIO_ID,
+    T0,
+    VOLUNTEER_ID,
+    _worker,
+)
 
 
 def events_row(html: str, worker_id: str) -> str:
@@ -212,3 +220,59 @@ def test_fleet_says_rede_compartilhada_for_a_worker_on_its_own_tailnet(ui, fake_
     html = ui.get("/review/fleet").text
     assert 'class="badge shared-tailnet"' in html
     assert ">rede compartilhada<" in html
+
+
+def online_studio_entry() -> FleetWorker:
+    """The streaming PC as the orchestrator reports it: online, holding no raws.
+
+    The orchestrator always says accepting_new_raws: false for the studio,
+    because the studio never downloads raws (design §13).
+    """
+    return FleetWorker(
+        worker=_worker(
+            STUDIO_ID,
+            "BAJALIVE",
+            WorkerRole.STUDIO,
+            free_bytes=107 * GB,
+            storage_cap_bytes=107 * GB,
+        ),
+        online=True,
+        leases=[],
+        held_job_count=0,
+        held_bytes=0,
+        accepting_new_raws=False,
+    )
+
+
+def test_the_studio_is_never_called_near_its_storage_limit(ui, fake_orchestrator):
+    # Arrange: the fleet is the sample one (the master, plus a volunteer that
+    # really is near its cap) with the studio added, empty and online.
+    fake_orchestrator.fleet.workers.append(online_studio_entry())
+
+    # Act: open the Frota page.
+    html = ui.get("/review/fleet").text
+
+    # Assert: the warning appears once, for the volunteer, and not in the studio's row.
+    studio_row_start = html.index("BAJALIVE")
+    studio_row = html[studio_row_start : html.index("</tr>", studio_row_start)]
+    assert "perto do limite" not in studio_row, "the studio takes no raws, so it has no limit"
+    assert html.count("perto do limite, sem originais novos") == 1, (
+        "the volunteer near its cap must still be flagged"
+    )
+
+
+def test_revoked_workers_are_not_counted_in_workers_online(ui, fake_orchestrator):
+    # Arrange: revoke the volunteer (it was replaced by a new enrollment of
+    # the same PC, as happens when a worker is set up again).
+    volunteer = next(
+        entry for entry in fake_orchestrator.fleet.workers if entry.worker.id == VOLUNTEER_ID
+    )
+    volunteer.worker.revoked_at = T0
+
+    # Act: open the Frota page.
+    html = ui.get("/review/fleet").text
+
+    # Assert: only the master is left, online, so the card reads "1 / 1".
+    assert '1 <span class="of">/ 1</span>' in html, (
+        "a revoked worker is not listed, so it must not count towards the total either"
+    )

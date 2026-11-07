@@ -8,6 +8,7 @@ import pytest
 
 from orchestrator.testing.scenarios import (
     claim_ok,
+    ensure_prova,
     hold_raw,
     make_proxy,
     receive_job,
@@ -54,12 +55,68 @@ def test_a_stale_version_is_a_conflict(harness, job_in_review):
     assert response.json()["error"]["details"]["current_version"] == stale + 1
 
 
-def test_ready_needs_every_field_and_says_which_are_missing(harness, job_in_review):
+def test_ready_needs_prova_car_and_passagem_and_says_which_are_missing(harness, job_in_review):
+    # Arrange: a job in review; the reviewer filled prova and car but not passagem.
     _, job_id = job_in_review
+
+    # Act: ask for "ready".
     response = patch_review(harness, job_id, action="ready", prova="Enduro", car_number=42)
-    assert response.status_code == 422
+
+    # Assert: refused, naming only passagem. The cuts are not required (see the next test).
+    assert response.status_code == 422, "a job without passagem cannot be rendered"
     assert response.json()["error"]["code"] == "missing_review_fields"
-    assert response.json()["error"]["details"]["missing"] == ["passagem", "cut_in_s", "cut_out_s"]
+    assert response.json()["error"]["details"]["missing"] == ["passagem"], (
+        "only passagem is missing; empty cuts mean the whole video"
+    )
+
+
+def test_ready_without_cuts_renders_the_whole_video(harness, job_in_review):
+    # Arrange: a job in review whose raw the holder probed as 12 s long.
+    ensure_prova(harness, "Enduro")
+    _, job_id = job_in_review
+
+    # Act: mark it ready with prova, car and passagem only, no cut points.
+    response = patch_review(
+        harness, job_id, action="ready", prova="Enduro", car_number=42, passagem=1
+    )
+
+    # Assert: accepted, and the job now says "from 0 s to 12 s", which is
+    # what the worker will render and what the job page will show.
+    assert response.status_code == 200, "a video that needs no trimming can go straight to ready"
+    job = response.json()
+    assert job["state"] == "ready"
+    assert job["cut_in_s"] == 0, "no cut-in means from the start"
+    assert job["cut_out_s"] == 12, "no cut-out means to the end (the probed duration)"
+
+
+def test_ready_keeps_a_cut_the_reviewer_did_set(harness, job_in_review):
+    # Arrange: a 12 s video where the reviewer only marked where the car appears.
+    ensure_prova(harness, "Enduro")
+    _, job_id = job_in_review
+
+    # Act: ready with a cut-in of 3 s and no cut-out.
+    response = patch_review(
+        harness, job_id, action="ready", prova="Enduro", car_number=42, passagem=1, cut_in_s=3
+    )
+
+    # Assert: the 3 s is kept and only the end is filled in.
+    job = response.json()
+    assert job["cut_in_s"] == 3, "the reviewer's own cut-in must not be overwritten"
+    assert job["cut_out_s"] == 12, "the missing cut-out becomes the end of the video"
+
+
+def test_save_leaves_empty_cuts_empty(harness, job_in_review):
+    # Arrange: a job in review.
+    _, job_id = job_in_review
+
+    # Act: save a prova without touching the cuts.
+    response = patch_review(harness, job_id, action="save", prova="Enduro")
+
+    # Assert: the cuts stay empty; only "ready" and "reprocess" fill them in.
+    job = response.json()
+    assert job["cut_in_s"] is None and job["cut_out_s"] is None, (
+        "saving a half-done review must not invent cut points"
+    )
 
 
 def test_a_cut_past_the_end_of_the_video_is_refused(harness, job_in_review):

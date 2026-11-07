@@ -707,3 +707,24 @@ and reprocessable"). Contract 2.4.0.
   over; `latest.m3u` moves to it. With no holder online the reprocess is
   accepted and the job says it waits for one, at once.
 
+
+## 26. First test of 0.3.0 (2026-11-06)
+
+Fixed on main after João's first end-to-end test of installer 0.3.0.
+
+* **Cuts are optional.** Many videos need no trimming. On `ready` and
+  `reprocess` an empty cut-in is stored as 0 and an empty cut-out as the
+  probed duration, so the job, the render inputs and the mismatch check
+  all show the cut that is rendered. `save` leaves them empty. The job
+  page's empty cut fields say "início do vídeo" / "fim do vídeo".
+* **Refused task kinds are asked for again after 5 minutes.** A worker
+  that met an orchestrator older than one of its task kinds stopped asking
+  for that kind until it was restarted. With the usual order (workers
+  first, then the VPS), "Baixar original" then stayed on "Preparando"
+  for good.
+* **Outbox wording.** A clip in the outbox is "esperando o estúdio
+  buscar", not "estúdio offline": a worker on a shared tailnet always
+  delivers through the outbox while the studio is online.
+* **Frota.** The studio is never "perto do limite" (it takes no raws, so
+  the orchestrator always reports `accepting_new_raws: false` for it), and
+  the online count leaves out revoked workers, as the list already does.

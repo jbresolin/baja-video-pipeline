@@ -684,9 +684,13 @@ actions (§4), the conflict means another reviewer changed the job.
 | `retry` | `failed` | → `failed_from` (`claimed` → `ready`); clears `failure`; needs all fields only when the target is `ready` (may be corrected in the same call) |
 
 Other combinations → 409 `illegal_transition`. "All fields" = `prova`,
-`car_number`, `passagem`, `cut_in_s`, `cut_out_s` set after the update,
-else 422 `missing_review_fields`. `team_name` is resolved from
-`car_number`. Cuts must satisfy `0 ≤ in < out ≤ duration`.
+`car_number`, `passagem` set after the update, else 422
+`missing_review_fields`. Cuts are optional: on `ready` and `reprocess` a
+missing `cut_in_s` is stored as 0 and a missing `cut_out_s` as the probed
+`duration_s` (the whole video); only when no duration is known yet is a
+missing `cut_out_s` still reported in `missing`. `save` never fills them.
+`team_name` is resolved from `car_number`. Cuts must satisfy
+`0 ≤ in < out ≤ duration`.
 
 **Metrics.** `GET /metrics` (`adminBearer`, contract 1.1.0) answers in the
 Prometheus text format for an external scraper on the tailnet

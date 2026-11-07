@@ -49,7 +49,7 @@ def uploaded_job(job_id="job-outbox-1", **clip_changes):
 def test_a_clip_in_the_outbox_says_so_and_is_not_archived_yet():
     texts = [note.text for note in delivery_notes(uploaded_job())]
     assert texts == [
-        "Clipe na caixa de saída do servidor (estúdio offline).",
+        "Clipe na caixa de saída do servidor, esperando o estúdio buscar.",
         "Ainda não arquivado no mestre (o worker que renderizou guarda uma cópia).",
     ]
 
@@ -81,7 +81,7 @@ def test_the_job_page_offers_the_outbox_clip_for_download(ui, fake_orchestrator)
     fake_orchestrator.add_job(uploaded_job())
     html = ui.get("/review/jobs/job-outbox-1").text
     assert 'href="/clip-downloads/job-outbox-1.mp4" download' in html
-    assert "Clipe na caixa de saída do servidor (estúdio offline)." in html
+    assert "Clipe na caixa de saída do servidor, esperando o estúdio buscar." in html
 
 
 def test_no_download_when_the_outbox_no_longer_has_the_clip(ui):
@@ -93,5 +93,5 @@ def test_no_download_when_the_outbox_no_longer_has_the_clip(ui):
 def test_the_clips_page_lists_outbox_clips_with_a_download_button(ui, fake_orchestrator):
     fake_orchestrator.add_job(uploaded_job())
     html = ui.get("/review/clips").text
-    assert "Na caixa de saída do servidor (estúdio offline)" in html
+    assert "Na caixa de saída do servidor, esperando o estúdio buscar" in html
     assert 'href="/clip-downloads/job-outbox-1.mp4" download>Baixar</a>' in html

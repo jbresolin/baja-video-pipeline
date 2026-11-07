@@ -94,6 +94,8 @@ def _fleet_context(request: Request) -> dict:
         "fleet": fleet,
         "worker_rows": build_worker_rows(fleet, events_by_worker),
         "online_count": online_count(fleet),
+        # Revoked workers are not listed, so they are not counted either.
+        "worker_count": len(active_workers(fleet)),
         "job_counts": jobs_by_state_in_order(fleet),
     }
 

@@ -39,6 +39,18 @@ def test_existing_fields_and_cuts_are_filled_in(ui):
     assert 'name="car_number"' in html and 'value="42"' in html
 
 
+def test_empty_cut_fields_say_the_whole_video_is_used(ui):
+    # Arrange: "job-awaiting-1" has no cut points yet (nobody marked any).
+
+    # Act: open its job page.
+    html = ui.get("/review/jobs/job-awaiting-1").text
+
+    # Assert: the empty fields hint that "Pronto" without cuts keeps the
+    # whole video, so the reviewer knows marking cuts is optional.
+    assert 'placeholder="início do vídeo"' in html, "an empty cut-in means from the start"
+    assert 'placeholder="fim do vídeo"' in html, "an empty cut-out means to the end"
+
+
 def test_only_actions_allowed_in_the_state_are_offered(ui):
     # Awaiting review: save, ready, discard (docs/api.md §7.1).
     awaiting = ui.get("/review/jobs/job-awaiting-1").text

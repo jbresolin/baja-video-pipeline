@@ -3,7 +3,7 @@
 <section class="cards">
   <div class="card">
     <h2>{{ t("fleet.workers_online") }}</h2>
-    <p class="big">{{ online_count }} <span class="of">/ {{ fleet.workers|length }}</span></p>
+    <p class="big">{{ online_count }} <span class="of">/ {{ worker_count }}</span></p>
   </div>
   <div class="card">
     <h2>{{ t("fleet.inbox") }}</h2>
@@ -79,9 +79,12 @@
             <div class="small" data-worker-clips>{{ t("fleet.worker_clips", held=entry.clips_held, archived=entry.clips_archived) }}</div>
             {% endif %}</td>
           <td>
-            <div class="meter {{ 'warn' if not entry.accepting_new_raws else '' }}"><span class="meter-fill" style="width: {{ row.used_percent }}%"></span></div>
+            {# The studio never takes raws, so the orchestrator always says
+               accepting_new_raws: false for it; that is not "near its cap". #}
+            {% set near_cap = not entry.accepting_new_raws and worker.role != "studio" %}
+            <div class="meter {{ 'warn' if near_cap else '' }}"><span class="meter-fill" style="width: {{ row.used_percent }}%"></span></div>
             <div class="small">{{ t("fleet.storage", used=row.used_bytes|bytes, cap=worker.storage_cap_bytes|bytes, free=worker.free_bytes|bytes) }}
-              {% if not entry.accepting_new_raws %}· <strong>{{ t("fleet.near_cap") }}</strong>{% endif %}</div>
+              {% if near_cap %}· <strong>{{ t("fleet.near_cap") }}</strong>{% endif %}</div>
           </td>
           <td class="num">{{ worker.stats.download_mbps|rate("Mbps") }}</td>
           <td class="num">{{ worker.stats.process_s_per_gb|rate("s/GB") }}</td>

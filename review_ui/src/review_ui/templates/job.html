@@ -67,12 +67,14 @@
         <div class="cut" data-mark-box="in">
           <label for="cut_in_s">{{ t("job.cut_in") }} <span class="unit">{{ t("job.seconds_unit") }}</span></label>
           <input id="cut_in_s" name="cut_in_s" type="number" step="0.001" min="0" inputmode="decimal"
+                 placeholder="{{ t('job.cut_in.placeholder') }}"
                  value="{{ '%.3f'|format(job.cut_in_s) if job.cut_in_s is not none else '' }}">
           <button type="button" data-set-mark="in" title="{{ t('job.set_in.title') }}">{{ t("job.set_mark") }} <kbd>i</kbd></button>
         </div>
         <div class="cut" data-mark-box="out">
           <label for="cut_out_s">{{ t("job.cut_out") }} <span class="unit">{{ t("job.seconds_unit") }}</span></label>
           <input id="cut_out_s" name="cut_out_s" type="number" step="0.001" min="0" inputmode="decimal"
+                 placeholder="{{ t('job.cut_out.placeholder') }}"
                  value="{{ '%.3f'|format(job.cut_out_s) if job.cut_out_s is not none else '' }}">
           <button type="button" data-set-mark="out" title="{{ t('job.set_out.title') }}">{{ t("job.set_mark") }} <kbd>o</kbd></button>
         </div>

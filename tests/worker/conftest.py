@@ -82,6 +82,19 @@ def make_api_client(network: httpx.BaseTransport) -> OrchestratorClient:
     )
 
 
+class FakeSteadyClock:
+    """A clock that only moves when a test says so (seconds since the worker started)."""
+
+    def __init__(self) -> None:
+        self.seconds = 1000.0
+
+    def __call__(self) -> float:
+        return self.seconds
+
+    def advance(self, seconds: float) -> None:
+        self.seconds += seconds
+
+
 @dataclass
 class WorkerHarness:
     orchestrator: FakeOrchestrator
@@ -98,6 +111,8 @@ class WorkerHarness:
     tmp_path: Path
     # What the worker's requests go through: `network`, or a NewerServerTransport.
     answers: httpx.BaseTransport
+    # The dispatcher's steady clock; a test moves it on with steady_clock.advance(seconds).
+    steady_clock: FakeSteadyClock
 
     def claim_and_run(self, task) -> None:
         """Offer `task`, let the dispatcher claim it, run it to the end."""
@@ -175,6 +190,7 @@ def build_harness(
         receiver_port=8720,
     )
     stage_freed = Event()
+    steady_clock = FakeSteadyClock()
     stages = {
         kind: StageRunner(kind, TASK_HANDLERS[kind], env, leases, shutdown, stage_freed, status)
         for kind in STAGE_KINDS_BY_ROLE[role]
@@ -188,10 +204,11 @@ def build_harness(
         storage=storage,
         shutdown=shutdown,
         stage_freed=stage_freed,
+        seconds_since_start=steady_clock,
     )
     return WorkerHarness(
         orchestrator, network, media, storage, env, leases, shutdown, status,
-        heartbeater, stages, dispatcher, tmp_path, answers,
+        heartbeater, stages, dispatcher, tmp_path, answers, steady_clock,
     )  # fmt: skip
 
 

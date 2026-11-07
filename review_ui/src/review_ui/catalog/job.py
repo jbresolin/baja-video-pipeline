@@ -59,6 +59,9 @@ TEXT: dict[str, str] = {
     "job.form": "Revisão",
     "job.cut_in": "Início do corte",
     "job.cut_out": "Fim do corte",
+    # Shown in an empty cut field: "ready" without cuts renders the whole video.
+    "job.cut_in.placeholder": "início do vídeo",
+    "job.cut_out.placeholder": "fim do vídeo",
     "job.seconds_unit": "s",
     "job.set_mark": "Marcar",
     "job.set_in.title": "Marcar na posição atual (i)",
