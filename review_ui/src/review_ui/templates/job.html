@@ -53,13 +53,21 @@
       <button type="button" data-regenerate-proxy>{{ t("job.request_proxy") }}</button>
     </div>
     {% endif %}
-    <div class="transport">
+    {# The page's own controls, outside the stage, so "Girar" never turns them
+       (LIVESTACK-51 item 4); the cut bar is the scrubber. #}
+    <div class="transport" role="group" aria-label="{{ t('player.controls') }}">
+      {% if job.proxy_available %}
+      <button type="button" class="player-button" data-player="frame-back" title="{{ t('player.frame_back') }}" aria-label="{{ t('player.frame_back') }}">⏮</button>
+      <button type="button" class="player-button" data-player="play" id="play-button">▶</button>
+      <button type="button" class="player-button" data-player="frame-forward" title="{{ t('player.frame_forward') }}" aria-label="{{ t('player.frame_forward') }}">⏭</button>
+      {% endif %}
       <span class="timecode" id="current-time">{{ 0|timecode }}</span>
       <div class="cut-bar" id="cut-bar" title="{{ t('job.cut_bar.title') }}">
         <span class="cut-range" id="cut-range"></span>
         <span class="largada-mark" id="largada-mark" hidden></span>
         <span class="playhead" id="playhead"></span>
       </div>
+      <span class="timecode total" id="total-time">{{ (job.duration_s or 0)|timecode }}</span>
     </div>
     {% if job.proxy_available and preview %}
     <label class="check preview-toggle"><input type="checkbox" id="overlay-preview-toggle">

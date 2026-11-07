@@ -194,6 +194,10 @@ video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: var(
 }
 .transport { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.6rem; }
 .timecode { min-width: 6.5em; font-size: 1rem; }
+.timecode.total { text-align: right; color: var(--muted); }
+/* Play and frame step under the picture (LIVESTACK-51 item 4). */
+.player-button { min-width: 2.2rem; padding: 0.2rem 0.4rem; line-height: 1; }
+.cut-bar { touch-action: none; }
 .cut-bar { position: relative; flex: 1; height: 14px; background: var(--surface-2); border-radius: 7px; cursor: pointer; }
 .cut-range { position: absolute; top: 0; bottom: 0; background: var(--accent); opacity: 0.45; border-radius: 7px; }
 .playhead { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); }
