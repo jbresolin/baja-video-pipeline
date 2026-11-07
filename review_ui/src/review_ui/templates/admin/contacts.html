@@ -17,7 +17,7 @@
 
 {% if contacts %}
 <table class="admin-table">
-  <thead><tr><th>{{ t("contacts.col.phone") }}</th><th>{{ t("contacts.col.status") }}</th><th>{{ t("contacts.col.name") }}</th><th>{{ t("contacts.col.default_prova") }}</th><th>{{ t("contacts.col.notes") }}</th><th>{{ t("contacts.col.last_message") }}</th><th></th></tr></thead>
+  <thead><tr><th>{{ t("contacts.col.phone") }}</th><th>{{ t("contacts.col.status") }}</th><th>{{ t("contacts.col.name") }}</th><th>{{ t("contacts.col.default_prova") }}</th><th>{{ t("contacts.col.notes") }}</th><th>{{ t("contacts.col.last_message") }}</th><th>{{ t("contacts.col.welcome") }}</th><th></th></tr></thead>
   <tbody>
   {% for c in contacts %}
   {% include "admin/_contact_row.html" %}
@@ -34,7 +34,7 @@
   <label>{{ t("contacts.phone") }} <input name="phone" required placeholder="55 11 98765-4321" inputmode="tel"></label>
   <label>{{ t("contacts.name") }} <input name="display_name" maxlength="100"></label>
   <label>{{ t("contacts.status") }}
-    <select name="status">
+    <select name="status" data-welcome-status>
       {% for value, label in status_labels.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
     </select>
   </label>
@@ -45,6 +45,12 @@
     </select>
   </label>
   <label>{{ t("contacts.notes") }} <input name="notes" maxlength="500"></label>
+  {# LIVESTACK-44. Checked for "Permitido" (the first status); js/admin.js
+     unchecks and disables it for "Bloqueado" (the orchestrator never sends
+     to a blocked contact anyway). Disabled while the message is empty. #}
+  <label class="checkbox"><input type="checkbox" name="send_welcome" value="1"
+    {% if welcome_message_set %}checked data-welcome-checkbox{% else %}disabled{% endif %}> {{ t("contacts.send_welcome") }}</label>
   <button type="submit" class="primary">{{ t("admin.add") }}</button>
 </form>
+{% if not welcome_message_set %}<p class="hint">{{ t("contacts.welcome.empty_hint") }}</p>{% endif %}
 {% endblock %}

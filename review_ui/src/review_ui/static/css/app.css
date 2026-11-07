@@ -312,6 +312,12 @@ textarea { font: inherit; font-family: var(--mono); font-size: 0.85rem; width: 1
 .inline-fields { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: flex-end; margin: 0; }
 .inline-fields label { margin: 0; }
 .inline-fields input, .inline-fields select { width: auto; min-width: 9rem; }
+/* A checkbox and its words on one line ("Enviar mensagem de boas-vindas"). */
+.inline-fields label.checkbox { display: inline-flex; align-items: center; gap: 0.35rem; padding-bottom: 0.4rem; }
+.inline-fields label.checkbox input { min-width: 0; }
+/* The welcome message as the contact will read it (Settings, LIVESTACK-44). */
+.welcome-preview { white-space: pre-wrap; padding: 0.6rem 0.75rem; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--surface-2); max-width: 34rem; }
 .stacked { max-width: 34rem; }
 /* History folded at the bottom of an admin page (revoked workers, used tokens). */
 .folded-section { margin-top: 1.25rem; }

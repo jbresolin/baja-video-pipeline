@@ -28,7 +28,10 @@ from tools.openapi_contract import (
 # additionalProperties: false: clients ignore fields they do not know.
 # 2.5.0: Job/JobSummary.recorded_at and recorded_at_source, IntakeSource.sent_at
 # and received_at, the review queue in filming order, GET /review/car-videos
-# (help reviewers number the passagens, LIVESTACK-45).
+# (help reviewers number the passagens, LIVESTACK-45); the welcome message for
+# new contacts (AdminSettings.welcome_message, CreateContactRequest.send_welcome
+# → ContactCreated.welcome, POST /admin/contacts/{phone}/welcome,
+# Contact.welcome_sent_at, ContactsResponse.welcome_message_set; LIVESTACK-44).
 CONTRACT_VERSION = "2.5.0"
 
 DESCRIPTION = """\

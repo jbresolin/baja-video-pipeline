@@ -804,3 +804,53 @@ car (brief "08 — Help reviewers number the passagens"). Contract 2.5.0.
   `com.apple.quicktime.creationdate` (local time with offset) is not read.
   Matching passagens to official results and automatic numbering stay out
   of scope.
+
+## 28. Welcome message for new contacts (LIVESTACK-44, 2026-11-06)
+
+When João adds a filmmaker on Admin → Contatos, the bot now tells them
+which number it is and how to send videos (brief "07 — Welcome message
+for new contacts"). This also answers §12 open question 1 for anyone
+added by hand. Part of contract 2.5.0, with LIVESTACK-45 (§27); neither was
+deployed before both merged.
+
+* **One text, a setting.** `AdminSettings.welcome_message`, edited on
+  Configurações, stored with the other settings (no `.env` value; the
+  shipped pt-BR default lives in `shared/welcome_message.py`, seeded on
+  first start like every new key). Stored with `\n` line ends and the ends
+  trimmed; at most 2000 characters. Empty = feature off.
+* **Placeholders.** `{nome}` = the contact's display name, `{prova}` = their
+  default prova; nothing when missing, and then the one space and a comma
+  right before the placeholder go too ("Olá {nome}!" and "Olá, {nome}!" →
+  "Olá!"). Anything else in braces stays as typed. The same rule in Python (sending, server-side preview)
+  and `review_ui/static/js/welcome.js` (live preview), tested on the same
+  cases. The preview uses the example values "Maria Conceição" / "Enduro".
+* **Sending.** `CreateContactRequest.send_welcome` (default false, so
+  scripts behave as before) → after the contact is committed the
+  orchestrator sends the filled text with Evolution `sendText` to the
+  contact's number (not a quoted reply). The answer is `ContactCreated`
+  (a `Contact` plus `welcome: {sent, error}`); a failed send never undoes
+  the contact. `POST /admin/contacts/{phone}/welcome` sends it again and
+  answers 200 with the same `welcome` even when Evolution refused (the
+  attempt happened); 409 `conflict` for a blocked contact or an empty
+  message, 404 for an unknown contact.
+* **Never to blocked contacts, never with an empty message.** On create
+  these are not attempts: nothing is sent, no event, `welcome.error` says
+  why. The page disables the controls in both cases; the orchestrator
+  enforces it anyway (a page without JavaScript keeps the box ticked).
+* **Record.** Every attempt is an admin event, `welcome_sent` or
+  `welcome_failed` (actor = the admin, `details.after` = phone, text as
+  sent, and Evolution's reason), shown under "Últimas alterações" on
+  Contatos. `contacts.welcome_sent_at` (migration 0012) is the last time
+  Evolution accepted it, shown on the row; failures are only events.
+* **Evolution's reason** is what `sendText` answered (`HTTP 500 {…}`) or the
+  connection error. The page shows it inside `lang="en"` in a yellow
+  banner: "Contato criado, mas a mensagem não foi enviada: …" on create,
+  "A mensagem de boas-vindas não foi enviada: …" from the row. That page is
+  rendered in answer to the POST (not a redirect), because the reason
+  cannot travel in `?feito=`.
+* **Contacts page.** The add form's box is ticked for "Permitido", unticked
+  for "Desconhecido", unticked and disabled for "Bloqueado" (`js/admin.js`).
+  Each row has a "Boas-vindas" column: when last sent and "Enviar
+  boas-vindas", which asks to confirm. `ContactsResponse.welcome_message_set`
+  tells the page whether a message exists, so the Contacts page never asks
+  Evolution for the Settings status block.

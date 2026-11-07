@@ -30,6 +30,9 @@ class Contact(ReadByClients):
     # None for a contact the admin added before they ever wrote.
     first_seen_at: datetime | None = None
     last_seen_at: datetime | None = None
+    # When Evolution last accepted the welcome message for this contact
+    # (LIVESTACK-44); None if it never did. Failed sends are only events.
+    welcome_sent_at: datetime | None = None
 
 
 class ContactsResponse(ReadByClients):
@@ -37,6 +40,44 @@ class ContactsResponse(ReadByClients):
 
     # Newest contact (last message) first.
     contacts: list[Contact]
+    # The Settings page's welcome message is not empty, so it can be sent
+    # (LIVESTACK-44). The Contacts page disables its welcome controls when false.
+    welcome_message_set: bool = False
+
+
+class WelcomeResult(ReadByClients):
+    """What happened to one welcome message (LIVESTACK-44).
+
+    Read by clients: unknown fields are ignored.
+    """
+
+    # Evolution accepted the text (it then delivers it like any bot reply).
+    sent: bool
+    # Why it was not sent: Evolution's answer ("HTTP 500 ...", "connection
+    # refused"), or why it was not tried (blocked contact, empty message).
+    error: str | None = None
+
+
+class ContactCreated(Contact):
+    """POST /admin/contacts: the new contact, and the welcome message if one was asked for.
+
+    Read by clients: unknown fields are ignored.
+    """
+
+    # None when the request did not ask for a welcome message. The contact
+    # exists either way: a failed send never undoes it.
+    welcome: WelcomeResult | None = None
+
+
+class WelcomeSendResponse(ReadByClients):
+    """POST /admin/contacts/{phone}/welcome ("Enviar boas-vindas").
+
+    Read by clients: unknown fields are ignored.
+    """
+
+    # The contact after the attempt (welcome_sent_at moved on if it was sent).
+    contact: Contact
+    welcome: WelcomeResult
 
 
 class CreateContactRequest(ReceivedByServer):
@@ -51,6 +92,10 @@ class CreateContactRequest(ReceivedByServer):
     status: ContactStatus = ContactStatus.ALLOWED
     default_prova_id: int | None = None
     notes: str | None = Field(default=None, max_length=500)
+    # Send the Settings page's welcome message once the contact is created
+    # (LIVESTACK-44). Never sent to a blocked contact or when the message is
+    # empty; the answer's `welcome` says what happened.
+    send_welcome: bool = False
 
 
 class UpdateContactRequest(ReceivedByServer):

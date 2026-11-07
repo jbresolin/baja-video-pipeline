@@ -67,12 +67,24 @@ class EvolutionClient:
             body["quoted"] = quoted
         return self._post("sendText", body, f"bot reply to {recipient_jid}")
 
+    def send_text_reporting_failure(self, phone: str, text: str) -> str | None:
+        """Send one WhatsApp text to `phone` (digits); None if accepted, else why not.
+
+        For the welcome message (LIVESTACK-44), whose failure the admin sees.
+        """
+        body = {"number": phone, "text": text}
+        return self._post_reporting_failure("sendText", body, f"welcome message to {phone}")
+
     def send_reaction(self, key: dict[str, Any], emoji: str) -> bool:
         """React to one message (identified by its key) with `emoji`. True if accepted."""
         body = {"key": key, "reaction": emoji}
         return self._post("sendReaction", body, f"reaction to message {key.get('id')}")
 
     def _post(self, endpoint: str, body: dict[str, Any], what: str) -> bool:
+        return self._post_reporting_failure(endpoint, body, what) is None
+
+    def _post_reporting_failure(self, endpoint: str, body: dict[str, Any], what: str) -> str | None:
+        """POST one message; None if Evolution accepted it, else the reason (also logged)."""
         try:
             response = self._http.post(
                 f"{self._base_url}/message/{endpoint}/{self._instance}",
@@ -80,12 +92,15 @@ class EvolutionClient:
                 headers={"apikey": self._api_key},
             )
         except httpx.HTTPError as error:
-            logger.warning("%s failed: %s", what, error)
-            return False
+            # Some httpx errors have no message (a bare timeout): name the kind then.
+            reason = str(error) or type(error).__name__
+            logger.warning("%s failed: %s", what, reason)
+            return reason
         if response.is_error:
-            logger.warning("%s failed: HTTP %s %s", what, response.status_code, response.text[:200])
-            return False
-        return True
+            reason = f"HTTP {response.status_code} {response.text[:200]}".strip()
+            logger.warning("%s failed: %s", what, reason)
+            return reason
+        return None
 
     def instance_status(self) -> EvolutionStatus:
         """Connection state and webhook of the Baja Bot instance, for the Settings page.

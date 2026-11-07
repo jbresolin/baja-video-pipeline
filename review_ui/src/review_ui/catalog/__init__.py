@@ -28,6 +28,7 @@ from review_ui.catalog import (
     job,
     passagens,
     scripts,
+    welcome,
 )
 
 
@@ -48,6 +49,7 @@ CATALOG: dict[str, str] = _merge(
     clips_and_fleet.TEXT,
     admin_pages.TEXT,
     admin_settings.TEXT,
+    welcome.TEXT,
     scripts.TEXT,
 )
 

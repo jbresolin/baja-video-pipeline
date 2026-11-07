@@ -13,6 +13,7 @@
 </div>
 {% if done %}<div class="banner ok" role="status"><p>{{ done }}</p></div>{% endif %}
 {% if error %}<div class="banner error" role="alert"><p>{{ error }}</p></div>{% endif %}
+{% if warning %}<div class="banner warning" role="alert"><p>{{ warning }}</p></div>{% endif %}
 
 {% block admin_content %}{% endblock %}
 

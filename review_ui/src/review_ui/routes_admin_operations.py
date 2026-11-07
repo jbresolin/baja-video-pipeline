@@ -27,6 +27,12 @@ from shared.models import (
     UpdateSettingsRequest,
     WorkerRole,
 )
+from shared.welcome_message import (
+    EXAMPLE_VALUES,
+    MAX_WELCOME_MESSAGE_LENGTH,
+    PLACEHOLDERS,
+    fill_welcome_message,
+)
 
 router = APIRouter(prefix="/review/admin")
 
@@ -186,6 +192,10 @@ def _settings_page(request: Request, error: str | None = None, status_code: int 
         intake_modes=INTAKE_MODE_LABELS,
         team_name_styles=TEAM_NAME_STYLE_LABELS,
         school_name_styles=SCHOOL_NAME_STYLE_LABELS,
+        welcome_placeholders=PLACEHOLDERS,
+        welcome_examples=EXAMPLE_VALUES,
+        welcome_preview=fill_welcome_message(page.settings.welcome_message, EXAMPLE_VALUES),
+        welcome_max_length=MAX_WELCOME_MESSAGE_LENGTH,
         audit=audit_lines(admin.audit(AdminArea.SETTINGS)),
     )
     context["error"] = error
@@ -224,6 +234,9 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
             clip_school_name_style=form.get("clip_school_name_style") or None,
             originals_keep_hours=_optional_number(form, "originals_keep_hours"),
             originals_cap_gb=_optional_number(form, "originals_cap_gb"),
+            # Kept as typed (empty = no welcome message); the orchestrator
+            # trims it. A form without the field (an older page) keeps it.
+            welcome_message=form.get("welcome_message"),
         )
     except ValueError:
         return _settings_page(

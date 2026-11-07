@@ -1,4 +1,7 @@
-"""Admin Contacts page: list senders, allow/block them, name them, set a default prova."""
+"""Admin Contacts page: list senders, allow/block them, name them, set a default prova.
+
+Adding a contact may also send them the welcome message (domain/welcome.py).
+"""
 
 import sqlite3
 from typing import Any
@@ -6,11 +9,13 @@ from typing import Any
 from orchestrator.context import OrchestratorContext
 from orchestrator.domain.audit import AdminActor, record_admin_change
 from orchestrator.domain.contacts import normalize_phone
+from orchestrator.domain.welcome import welcome_after_create
 from orchestrator.errors import ApiError, not_found, validation_error
 from orchestrator.repositories import catalog as catalog_repo
 from orchestrator.repositories import contacts as contacts_repo
 from shared.models import (
     Contact,
+    ContactCreated,
     ContactsResponse,
     ContactStatus,
     CreateContactRequest,
@@ -37,12 +42,15 @@ def _clean_text(value: str | None) -> str | None:
 def list_contacts(context: OrchestratorContext, status: ContactStatus | None) -> ContactsResponse:
     with context.database.transaction() as connection:
         rows = contacts_repo.list_contact_rows(connection, status)
-    return ContactsResponse(contacts=[contacts_repo.contact_from_row(row) for row in rows])
+    return ContactsResponse(
+        contacts=[contacts_repo.contact_from_row(row) for row in rows],
+        welcome_message_set=bool(context.admin_settings.current.welcome_message),
+    )
 
 
 def create_contact(
     context: OrchestratorContext, actor: AdminActor, request: CreateContactRequest
-) -> Contact:
+) -> ContactCreated:
     phone = normalize_phone(request.phone)
     if phone is None:
         raise validation_error("phone must have 8 to 20 digits, e.g. 5511987654321")
@@ -69,7 +77,14 @@ def create_contact(
             f"{phone} added as {request.status}",
             after=_contact_json(contact),
         )
-    return contact
+    # After the commit: the contact exists whatever happens to the message.
+    welcome = welcome_after_create(context, actor, contact) if request.send_welcome else None
+    if welcome is not None and welcome.sent:
+        # Read again for its welcome_sent_at.
+        with context.database.transaction() as connection:
+            row = contacts_repo.get_contact_row(connection, phone)
+        contact = contacts_repo.contact_from_row(row)
+    return ContactCreated(**contact.model_dump(), welcome=welcome)
 
 
 def update_contact(

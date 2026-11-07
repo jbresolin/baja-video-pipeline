@@ -117,7 +117,7 @@ sudo install -d -o 10001 -g 10001 /srv/pipeline/{inbox,proxies,thumbs,outbox,db}
 | `app.py`, `__main__.py` | wiring (`build_context`, `create_app`) and `python -m orchestrator` |
 | `db/` | SQLite in WAL mode, numbered `migrations/*.sql` applied at startup |
 | `repositories/` | plain SQL, one module per table group |
-| `domain/` | the rules: sessions, users/contacts/provas/teams admin, `results_sync`, `first_start` imports, intake, enrollment, `recording_time` (when a video was filmed), `car_videos` (one car's videos in a prova), `task_rules` (who gets what, delivery plan), `worker_loop` (`/next` order incl. the master's backfill), `task_results` (failure scopes), leases, uploads, review, delivery, fleet, `event_log`, `/auth/file` |
+| `domain/` | the rules: sessions, users/contacts/provas/teams admin, the welcome message to new contacts (`welcome.py`), `results_sync`, `first_start` imports, intake, enrollment, `recording_time` (when a video was filmed), `car_videos` (one car's videos in a prova), `task_rules` (who gets what, delivery plan), `worker_loop` (`/next` order incl. the master's backfill), `task_results` (failure scopes), leases, uploads, review, delivery, fleet, `event_log`, `/auth/file` |
 | `clients/` | Evolution `sendText` and instance status, Tailscale key minting, the Baja results API (`results_api.py`), the old teams CSV parser |
 | `api/` | FastAPI routes, the auth schemes and roles, rate limits, the error shape |
 | `background/` | lease expiry, inbox cleanup, proxy eviction, outbox cleanup |

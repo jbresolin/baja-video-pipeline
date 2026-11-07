@@ -84,4 +84,5 @@ def contact_from_row(row: sqlite3.Row) -> Contact:
         notes=row["notes"],
         first_seen_at=from_db_time(row["first_seen_at"]),
         last_seen_at=from_db_time(row["last_seen_at"]),
+        welcome_sent_at=from_db_time(row["welcome_sent_at"]),
     )

@@ -14,6 +14,7 @@ from shared.models.enums import (
     SecretState,
     WorkerRole,
 )
+from shared.welcome_message import DEFAULT_WELCOME_MESSAGE, MAX_WELCOME_MESSAGE_LENGTH
 
 # --- Enrollment tokens ---
 
@@ -104,6 +105,12 @@ class AdminSettings(ReadByClients):
     originals_keep_hours: float = Field(default=24, ge=0, le=720)
     # ...and the originals/ folder never grows past this (oldest go first).
     originals_cap_gb: float = Field(default=10, ge=0)
+    # Sent by the bot to a contact the admin adds, or on "Enviar boas-vindas"
+    # (LIVESTACK-44); {nome} and {prova} are filled in (shared.welcome_message).
+    # Empty = no welcome message: the Contacts page disables both controls.
+    welcome_message: str = Field(
+        default=DEFAULT_WELCOME_MESSAGE, max_length=MAX_WELCOME_MESSAGE_LENGTH
+    )
 
 
 class UpdateSettingsRequest(ReceivedByServer):
@@ -124,6 +131,10 @@ class UpdateSettingsRequest(ReceivedByServer):
     clip_school_name_style: NameStyle | None = None
     originals_keep_hours: float | None = Field(default=None, ge=0, le=720)
     originals_cap_gb: float | None = Field(default=None, ge=0)
+    # "" empties it (no welcome message). Line ends are stored as \n and the
+    # ends trimmed, then the stored text may be at most 2000 characters; a
+    # browser sends each line end as two, hence the larger limit here.
+    welcome_message: str | None = Field(default=None, max_length=2 * MAX_WELCOME_MESSAGE_LENGTH)
 
 
 class EvolutionStatus(ReadByClients):

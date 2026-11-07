@@ -80,9 +80,17 @@ async def set_contact_status(request: Request, phone: str) -> JSONResponse:
         admin.update_contact, phone, UpdateContactRequest(status=status)
     )
     provas = await run_in_threadpool(admin.provas)
+    # Only for its welcome_message_set: the row's "Enviar boas-vindas" button
+    # is disabled while the Settings page's message is empty (LIVESTACK-44).
+    listing = await run_in_threadpool(admin.contacts, status)
     html = render_fragment(
         request,
         "admin/_contact_row.html",
-        {"c": contact, "provas": provas, "status_labels": CONTACT_STATUS_LABELS},
+        {
+            "c": contact,
+            "provas": provas,
+            "status_labels": CONTACT_STATUS_LABELS,
+            "welcome_message_set": listing.welcome_message_set,
+        },
     )
     return JSONResponse({"html": html, "message": text(f"contacts.inline.{status.value}")})

@@ -72,6 +72,8 @@ REQUIRED_ENDPOINTS = {
     ("get", "/admin/contacts"),
     ("post", "/admin/contacts"),
     ("patch", "/admin/contacts/{phone}"),
+    # The welcome message, sent again from a contact's row (LIVESTACK-44).
+    ("post", "/admin/contacts/{phone}/welcome"),
     ("post", "/admin/provas"),
     ("put", "/admin/provas/order"),
     ("patch", "/admin/provas/{prova_id}"),

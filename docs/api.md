@@ -531,7 +531,8 @@ the event log with `details: {before, after}`, readable at `GET
 | Method & path | Body → response | Notes |
 | --- | --- | --- |
 | `GET/POST /admin/users`, `PATCH /admin/users/{username}` | `CreateUserRequest`/`UpdateUserRequest` → `User` | never deleted, only disabled; disable or new password ends sessions; 409 for the last admin |
-| `GET/POST /admin/contacts`, `PATCH /admin/contacts/{phone}` | `CreateContactRequest`/`UpdateContactRequest` → `Contact` | see "Contacts" below; null clears name, default prova, notes |
+| `GET/POST /admin/contacts`, `PATCH /admin/contacts/{phone}` | `CreateContactRequest`/`UpdateContactRequest` → `Contact` (`ContactCreated` on POST) | see "Contacts" below; null clears name, default prova, notes |
+| `POST /admin/contacts/{phone}/welcome` | → `WelcomeSendResponse` | sends the welcome message (again); see "Welcome message" below |
 | `POST /admin/provas`, `PATCH /admin/provas/{prova_id}`, `PUT /admin/provas/order` | → `Prova` / `ProvasResponse` | manual provas; synced ones only (de)activate |
 | `GET /admin/teams`, `PUT/DELETE /admin/teams/{car_number}` | `SaveTeamRequest` → `TeamRow` | on a synced team PUT stores a correction kept across syncs, DELETE removes it |
 | `POST /admin/results-sync` | → `ResultsSyncReport` | see "Results API" below; 422 unknown event, 503 API down/limited |
@@ -539,7 +540,7 @@ the event log with `details: {before, after}`, readable at `GET
 | `PATCH /admin/workers/{worker_id}` | `UpdateWorkerRequest` → `Worker` | the display name (below); revoked workers too |
 | `POST /admin/workers/{worker_id}/make-master` | → `Worker` | "Tornar master" (below); 409 for a studio or a revoked worker |
 | `POST /admin/workers/{worker_id}/revoke` | → `Worker` | its token answers 401, leases end, holder rows dropped |
-| `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing; the clip name choices have no `.env` value (default short) |
+| `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing; the clip name choices and the welcome message have no `.env` value |
 | `GET /admin/audit?area=&limit=` | → `EventsResponse` | newest first |
 
 **Worker names** (LIVESTACK-42). `Worker.name` is the **display name**:
@@ -563,6 +564,25 @@ revoked worker. The PCs learn it from the heartbeat (§5 "Role").
 ignored, no reply; in intake mode `allowlist`, not `allowed` → 200 ignored
 and `SENDER_NOT_AUTHORIZED` at most once per 24 h; otherwise the job is
 created with the contact's default prova filled in.
+
+**Welcome message** (LIVESTACK-44). `AdminSettings.welcome_message` (pt-BR
+default shipped, edited on Settings; empty turns it off) is sent with
+Evolution `sendText` to a contact's number, with `{nome}` (display name)
+and `{prova}` (default prova) filled in; with no value the placeholder,
+the space and a comma right before it disappear ("Olá, {nome}!" →
+"Olá!"), any other `{…}` stays as typed
+(`shared/welcome_message.py`). `POST /admin/contacts` with `send_welcome:
+true` sends it after storing the contact and answers `ContactCreated`, a
+`Contact` plus `welcome: {sent, error}` (null when not asked); the contact
+is created whatever happens to the message. `POST
+/admin/contacts/{phone}/welcome` sends it again: 200 with `{contact,
+welcome}` even when Evolution refused (`sent: false`, its reason in
+`error`), 409 `conflict` for a blocked contact or an empty message, 404
+for an unknown contact. On create a blocked contact or an empty message is
+not tried (`sent: false`, no event). Each try is an admin event,
+`welcome_sent` or `welcome_failed` (`details.after`: phone, text, error);
+`Contact.welcome_sent_at` is the last accepted send.
+`ContactsResponse.welcome_message_set` says whether a message is set.
 
 **Results API.** Provas and teams come from the Baja results API
 (`GET {base}/resultados/evento.php?evt=` and `equipes.php?evt=`; contract:

@@ -28,5 +28,17 @@
   </td>
   <td><input name="notes" form="{{ form_id }}" value="{{ c.notes or '' }}" maxlength="500" aria-label="{{ t('contacts.notes_of', phone=c.phone) }}"></td>
   <td>{% if c.last_seen_at %}{{ m.time(c.last_seen_at, relative=true) }}{% else %}<span class="muted">{{ t("contacts.never_wrote") }}</span>{% endif %}</td>
+  {# Welcome message (LIVESTACK-44): when it was last sent, and sending it (again). #}
+  <td>
+    {% if c.welcome_sent_at %}<span class="small">{{ t("contacts.welcome.sent") }} {{ m.time(c.welcome_sent_at, relative=true) }}</span>{% else %}<span class="small">{{ t("contacts.welcome.never") }}</span>{% endif %}
+    {% if not welcome_message_set %}{% set why_not = t("contacts.welcome.disabled_empty") %}
+    {% elif c.status == "blocked" %}{% set why_not = t("contacts.welcome.disabled_blocked") %}
+    {% else %}{% set why_not = none %}{% endif %}
+    <form method="post" action="/review/admin/contacts/{{ c.phone }}/welcome" class="quick-actions"
+          data-confirm="{{ t('contacts.welcome.confirm', who=c.display_name or c.phone) }}">
+      <input type="hidden" name="send" value="1">
+      <button type="submit" {% if why_not %}disabled title="{{ why_not }}"{% endif %}>{{ t("contacts.welcome.send") }}</button>
+    </form>
+  </td>
   <td><form id="{{ form_id }}" method="post" action="/review/admin/contacts/{{ c.phone }}"><button type="submit">{{ t("admin.save") }}</button></form></td>
 </tr>

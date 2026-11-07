@@ -4,10 +4,11 @@ from fastapi import APIRouter, Depends, Query
 
 from orchestrator.api.auth import get_context, require_admin
 from orchestrator.context import OrchestratorContext
-from orchestrator.domain import contacts_admin, users_admin
+from orchestrator.domain import contacts_admin, users_admin, welcome
 from orchestrator.domain.audit import AdminActor
 from shared.models import (
     Contact,
+    ContactCreated,
     ContactsResponse,
     ContactStatus,
     CreateContactRequest,
@@ -16,6 +17,7 @@ from shared.models import (
     UpdateUserRequest,
     User,
     UsersResponse,
+    WelcomeSendResponse,
 )
 
 router = APIRouter()
@@ -63,12 +65,12 @@ def list_contacts(
     return contacts_admin.list_contacts(context, status)
 
 
-@router.post("/admin/contacts", tags=["admin"], response_model=Contact, status_code=201)
+@router.post("/admin/contacts", tags=["admin"], response_model=ContactCreated, status_code=201)
 def create_contact(
     body: CreateContactRequest,
     actor: AdminActor = Depends(require_admin),
     context: OrchestratorContext = Depends(get_context),
-) -> Contact:
+) -> ContactCreated:
     return contacts_admin.create_contact(context, actor, body)
 
 
@@ -80,3 +82,12 @@ def update_contact(
     context: OrchestratorContext = Depends(get_context),
 ) -> Contact:
     return contacts_admin.update_contact(context, actor, phone, body)
+
+
+@router.post("/admin/contacts/{phone}/welcome", tags=["admin"], response_model=WelcomeSendResponse)
+def send_welcome(
+    phone: str,
+    actor: AdminActor = Depends(require_admin),
+    context: OrchestratorContext = Depends(get_context),
+) -> WelcomeSendResponse:
+    return welcome.send_welcome_again(context, actor, phone)

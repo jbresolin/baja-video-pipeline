@@ -2495,6 +2495,19 @@ paths:
       tags:
       - admin
       summary: Add a sender before they write (e.g. to allow them in allowlist mode)
+      description: 'With `send_welcome: true` the Settings page''s welcome message
+
+        (`AdminSettings.welcome_message`, {nome} and {prova} filled in) is sent
+
+        to the new contact through Evolution sendText after the contact is
+
+        stored. The contact is created whatever happens to the message:
+
+        `welcome` says whether Evolution accepted it, and why not (Evolution''s
+
+        answer; a blocked contact or an empty message is not tried). Each try is
+
+        an event, `welcome_sent` or `welcome_failed`.'
       operationId: create_contact_admin_contacts_post
       security:
       - sessionBearer: []
@@ -2511,7 +2524,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Contact'
+                $ref: '#/components/schemas/ContactCreated'
         '400':
           description: Malformed request (validation_error)
           content:
@@ -2606,6 +2619,70 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such job / worker / team / user / ... (not_found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /admin/contacts/{phone}/welcome:
+    post:
+      tags:
+      - admin
+      summary: Send the welcome message to this contact (again)
+      description: 'The "Enviar boas-vindas" button on the Contacts page, e.g. after the message was
+
+        edited. 409 `conflict` for a blocked contact or an empty welcome
+
+        message. Evolution refusing the text is not an error: the answer is 200
+
+        with `welcome.sent: false` and Evolution''s reason, and the event
+
+        `welcome_failed` is written, as on create. A send Evolution accepts sets
+
+        `Contact.welcome_sent_at`.'
+      operationId: send_welcome_admin_contacts__phone__welcome_post
+      security:
+      - sessionBearer: []
+      - adminBearer: []
+      parameters:
+      - name: phone
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Phone
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WelcomeSendResponse'
+        '401':
+          description: Missing or wrong credentials (unauthenticated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated but not allowed (forbidden)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No such job / worker / team / user / ... (not_found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflicts with the current state (see error.code)
           content:
             application/json:
               schema:
@@ -3462,6 +3539,24 @@ components:
           minimum: 0.0
           title: Originals Cap Gb
           default: 10
+        welcome_message:
+          type: string
+          maxLength: 2000
+          title: Welcome Message
+          default: 'Olá {nome}! 👋 Este é o *Baja Bot*, da Baja SAE Brasil.
+
+
+            Os vídeos que você enviar aqui vão direto para a equipe da transmissão ao vivo.
+
+
+            Como enviar:
+
+            • Envie cada vídeo como *documento* (📎 → Documento), não como vídeo, para manter a qualidade.
+
+            • Um vídeo por passagem.
+
+
+            Salve este número nos seus contatos. Obrigado!'
       type: object
       required:
       - intake_mode
@@ -3864,12 +3959,81 @@ components:
             format: date-time
           - type: 'null'
           title: Last Seen At
+        welcome_sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Welcome Sent At
       type: object
       required:
       - phone
       - status
       title: Contact
       description: 'Read by clients: unknown fields are ignored.'
+    ContactCreated:
+      properties:
+        phone:
+          type: string
+          title: Phone
+        display_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Display Name
+        push_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Push Name
+        status:
+          $ref: '#/components/schemas/ContactStatus'
+        default_prova_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Default Prova Id
+        default_prova:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Default Prova
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        first_seen_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: First Seen At
+        last_seen_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Seen At
+        welcome_sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Welcome Sent At
+        welcome:
+          anyOf:
+          - $ref: '#/components/schemas/WelcomeResult'
+          - type: 'null'
+      type: object
+      required:
+      - phone
+      - status
+      title: ContactCreated
+      description: 'POST /admin/contacts: the new contact, and the welcome message if one was asked for.
+
+
+        Read by clients: unknown fields are ignored.'
     ContactStatus:
       type: string
       enum:
@@ -3885,6 +4049,10 @@ components:
             $ref: '#/components/schemas/Contact'
           type: array
           title: Contacts
+        welcome_message_set:
+          type: boolean
+          title: Welcome Message Set
+          default: false
       type: object
       required:
       - contacts
@@ -3917,6 +4085,10 @@ components:
             maxLength: 500
           - type: 'null'
           title: Notes
+        send_welcome:
+          type: boolean
+          title: Send Welcome
+          default: false
       additionalProperties: false
       type: object
       required:
@@ -6835,6 +7007,12 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Originals Cap Gb
+        welcome_message:
+          anyOf:
+          - type: string
+            maxLength: 4000
+          - type: 'null'
+          title: Welcome Message
       additionalProperties: false
       type: object
       title: UpdateSettingsRequest
@@ -7007,6 +7185,39 @@ components:
       - msg
       - type
       title: ValidationError
+    WelcomeResult:
+      properties:
+        sent:
+          type: boolean
+          title: Sent
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - sent
+      title: WelcomeResult
+      description: 'What happened to one welcome message (LIVESTACK-44).
+
+
+        Read by clients: unknown fields are ignored.'
+    WelcomeSendResponse:
+      properties:
+        contact:
+          $ref: '#/components/schemas/Contact'
+        welcome:
+          $ref: '#/components/schemas/WelcomeResult'
+      type: object
+      required:
+      - contact
+      - welcome
+      title: WelcomeSendResponse
+      description: 'POST /admin/contacts/{phone}/welcome ("Enviar boas-vindas").
+
+
+        Read by clients: unknown fields are ignored.'
     Worker:
       properties:
         id:
