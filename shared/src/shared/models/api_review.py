@@ -117,6 +117,9 @@ class ReviewUpdate(ReceivedByServer):
     framing: Framing | None = None
     crop_position: CropPosition | None = None
     no_audio: bool | None = None
+    # "Mostrar resultado da passagem" (LIVESTACK-47). Left out = keep. A job
+    # never set follows its prova's `show_by_default` (Job.show_pass_result).
+    show_pass_result: bool | None = None
 
     @model_validator(mode="after")
     def _cuts_in_order(self) -> "ReviewUpdate":

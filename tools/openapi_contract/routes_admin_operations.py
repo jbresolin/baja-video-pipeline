@@ -10,8 +10,12 @@ from shared.models import (
     EnrollmentTokenInfo,
     EnrollmentTokensResponse,
     EventsResponse,
+    PassResultsSettings,
+    PassResultTestRequest,
+    PassResultTestResponse,
     ResultsSyncReport,
     SettingsResponse,
+    UpdatePassResultsConfigRequest,
     UpdateSettingsRequest,
     UpdateWorkerRequest,
     Worker,
@@ -148,6 +152,58 @@ def sync_from_results_api() -> ResultsSyncReport:
     report). API unreachable or rate-limited → 503 `upstream_error`. The
     report is kept either way (GET /admin/settings, `status.results_sync`).
     """
+    not_implemented()
+
+
+@router.get(
+    "/admin/pass-results",
+    tags=["admin"],
+    summary="The pass-results configuration and how fetching each prova's results goes",
+    response_model=PassResultsSettings,
+    dependencies=ADMIN_ONLY,
+    responses=error_responses(401, 403),
+)
+def get_pass_results() -> PassResultsSettings:
+    """LIVESTACK-47. `config_text` exactly as saved ("" = none). One entry per
+    configured prova: our prova with that results API id (null when none was
+    synced), its table ("26BR_MAN"), whether jobs need it now (then it is
+    fetched every 30 s, every 5 min once the event is finished) and the
+    last fetch: when, whether it worked, the error, since when it fails."""
+    not_implemented()
+
+
+@router.put(
+    "/admin/pass-results/config",
+    tags=["admin"],
+    summary="Replace the pass-results configuration (a JSON text, checked before it is stored)",
+    response_model=PassResultsSettings,
+    dependencies=ADMIN_ONLY,
+    responses=error_responses(400, 401, 403, 422),
+)
+def update_pass_results_config(body: UpdatePassResultsConfigRequest) -> PassResultsSettings:
+    """A configuration that is not valid answers 422 `validation_error` with
+    `details` = {`path` (e.g. "provas.MAN.result.decimals"), `problem` (one of
+    not_json, wrong_type, unknown_key, missing_key, empty_text, too_long,
+    out_of_range, not_one_of, bad_id, bad_name, nothing_to_show), and the
+    problem's own values (`line`/`column` for not_json, `expected`,
+    `minimum`/`maximum`, `choices`, `allowed`, `max_length`)}; the one in force
+    stays. Audited as `pass_results_config_updated`. Shape: docs/design.md §31."""
+    not_implemented()
+
+
+@router.post(
+    "/admin/pass-results/test",
+    tags=["admin"],
+    summary='"Testar": the result line for one prova, car and passagem, from live data',
+    response_model=PassResultTestResponse,
+    dependencies=ADMIN_ONLY,
+    responses=error_responses(400, 401, 403, 422),
+)
+def test_pass_result(body: PassResultTestRequest) -> PassResultTestResponse:
+    """Fetches the prova's table now (an answer from the last 5 s is reused)
+    and builds the text exactly as a render would, with the car's row as the
+    API sent it. `config_text`, when given, is tried instead of the saved
+    configuration (422 as for PUT …/config when it is not valid)."""
     not_implemented()
 
 

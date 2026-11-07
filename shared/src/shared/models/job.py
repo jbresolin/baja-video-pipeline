@@ -25,6 +25,7 @@ from shared.models.enums import (
     RecordedAtSource,
     TaskKind,
 )
+from shared.models.pass_results import PassResult
 from shared.models.render_inputs import ClipInputsComparison, RenderInputs
 
 
@@ -259,6 +260,10 @@ class Job(ReadByClients):
     crop_position: CropPosition = 0.5
     # "Sem áudio": the clip goes out without sound.
     no_audio: bool = False
+    # "Mostrar resultado da passagem" (LIVESTACK-47) as the reviewer set it;
+    # None = never set, so the prova's `show_by_default` applies
+    # (`pass_result.show` is the value in force).
+    show_pass_result: bool | None = None
     reviewed_by: str | None = None
     reviewed_at: datetime | None = None
 
@@ -271,6 +276,10 @@ class Job(ReadByClients):
     # and only a reprocess fixes it. None without a clip version, for a
     # version rendered before inputs were recorded, and for a discarded job.
     clip_inputs: ClipInputsComparison | None = None
+    # The official result of the passagem from the results API (LIVESTACK-47):
+    # the text the overlay would show now, or why there is none. None from
+    # an orchestrator older than this.
+    pass_result: PassResult | None = None
     # Set when a worker reported a failure; shown to the reviewer, who then
     # chooses retry or discard. Cleared by "retry".
     failure: JobFailure | None = None
