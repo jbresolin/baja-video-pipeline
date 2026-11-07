@@ -199,8 +199,13 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
 
 * **heartbeat** (`heartbeat.py`): every 15 s sends free bytes, cap,
   tailnet address, ports, the leases in use (which renews them), held job
-  ids, new measurements and the role it runs as. Acts on `lost` leases,
-  `accepting_new_raws`, `deletable_job_ids` and `role`.
+  ids, new measurements, the role it runs as and the render features
+  this version can do (`render_features.py`: `framing`, `no_audio`,
+  LIVESTACK-50; the orchestrator gives renders that need one only to
+  workers that declared it). An orchestrator older than contract 2.6.0
+  refuses that field with 400: the beat is resent without it, and it is
+  left out for 5 minutes. Acts on `lost` leases, `accepting_new_raws`,
+  `deletable_job_ids` and `role`.
 * **role switch** (`role_change.py`, LIVESTACK-42): when an admin presses
   "Tornar master" on Admin → Workers, the next heartbeat answer's `role`
   differs from the running one. The worker writes it into `worker.json`
@@ -221,10 +226,17 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   are downloaded from the worker that keeps it (`:8710/clip/…`, no token)
   or the VPS outbox (with the token), hash-checked, then confirmed with
   `POST /jobs/{id}/clip-archived`.
-* **process** first tells the orchestrator what the clip was rendered
+* **process** renders every clip at 1920×1080 (LIVESTACK-50): the raw's
+  shape as ffprobe sees it after its rotation note, plus the task's
+  `rotation` ("Girar"), decide the plan (`shared.framing`): a 16:9 picture
+  gets the old `scale=-2:1080`, any other is fitted and filled per
+  `framing` (blurred, black bars, or a cropped band at `crop_position`).
+  The overlay is always drawn 1920 wide. `no_audio` ("Sem áudio") renders
+  without sound. Then it tells the orchestrator what the clip was rendered
   from (LIVESTACK-43, `PUT /jobs/{id}/render-inputs` under the lease:
-  cuts, review fields, the overlay texts as drawn, the SHA-256 of the
-  vendored `overlay_theme/tokens.css` and of the clip), so the review UI
+  cuts, review fields, the render options, the overlay texts as drawn,
+  the SHA-256 of the vendored `overlay_theme/tokens.css` and of the
+  clip), so the review UI
   can warn when a reviewer edits a job whose clip is already on air. A
   refused report is logged and the clip is delivered anyway. A reprocess
   arrives with a `…-vN.mp4` `clip_relative_path`, so the studio puts the

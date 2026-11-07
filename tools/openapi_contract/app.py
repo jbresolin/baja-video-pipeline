@@ -32,7 +32,15 @@ from tools.openapi_contract import (
 # new contacts (AdminSettings.welcome_message, CreateContactRequest.send_welcome
 # → ContactCreated.welcome, POST /admin/contacts/{phone}/welcome,
 # Contact.welcome_sent_at, ContactsResponse.welcome_message_set; LIVESTACK-44).
-CONTRACT_VERSION = "2.5.0"
+# 2.6.0: render options (LIVESTACK-50): Job.rotation/framing/crop_position/
+# no_audio (also on ReviewUpdate and ProcessTask), Job.display_width/height and
+# vertical, JobSummary.vertical, RenderInputs/RenderInputsReport options and
+# their RenderInputField values; render features (WorkerCapabilities.
+# render_features, HeartbeatRequest.render_features, ProcessTask.
+# required_render_features); AdminSettings.vertical_video_message.
+# Deploy the VPS first: an older orchestrator refuses the new heartbeat and
+# render-inputs fields (the worker falls back for heartbeats).
+CONTRACT_VERSION = "2.6.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

@@ -26,13 +26,15 @@ from pydantic import Field
 
 from shared.models.common import (
     CarNumber,
+    CropPosition,
     PassNumber,
     ReadByClients,
     ReceivedByServer,
+    Rotation,
     Seconds,
     Sha256Hex,
 )
-from shared.models.enums import NameStyle
+from shared.models.enums import Framing, NameStyle
 
 
 class RenderInputField(StrEnum):
@@ -51,6 +53,13 @@ class RenderInputField(StrEnum):
     SCHOOL_NAME = "school_name"
     # The raw video itself (never expected to differ; listed for completeness).
     RAW = "raw"
+    # The reviewer's extra turn ("Girar", LIVESTACK-50).
+    ROTATION = "rotation"
+    # How a picture that is not 16:9 fills the frame, with the crop band's
+    # place ("Enquadramento"). Never listed for a 16:9 picture.
+    FRAMING = "framing"
+    # Sound kept or dropped ("Sem áudio").
+    AUDIO = "audio"
 
 
 class RenderInputs(ReadByClients):
@@ -80,6 +89,15 @@ class RenderInputs(ReadByClients):
     # tokens.css): which look the clip was drawn with. Only workers know
     # it, so it is None in the orchestrator's snapshot and in "now".
     overlay_theme_version: Sha256Hex | None = None
+    # Render options (LIVESTACK-50). `framing` and `crop_position` as they
+    # affect the picture (shared.framing.effective_framing): None when the
+    # picture is 16:9 after the turn, `crop_position` only for "crop".
+    # Inputs recorded before LIVESTACK-50 have rotation and no_audio None,
+    # which the comparison reads as 0 and False (what was rendered then).
+    rotation: Rotation | None = None
+    framing: Framing | None = None
+    crop_position: CropPosition | None = None
+    no_audio: bool | None = None
     # True when the rendering worker reported these itself; False for the
     # orchestrator's snapshot of the task it handed out (older workers).
     reported_by_worker: bool = False
@@ -109,6 +127,14 @@ class RenderInputsReport(ReceivedByServer):
     overlay_team_name: str | None = None
     overlay_school_name: str | None = None
     overlay_theme_version: Sha256Hex
+    # The render options as the worker used them, i.e. the ProcessTask's
+    # (LIVESTACK-50); the orchestrator works out which of them showed.
+    # Left out by workers before 0.4.0, which rendered with no turn, no
+    # framing and the sound kept.
+    rotation: Rotation | None = None
+    framing: Framing | None = None
+    crop_position: CropPosition | None = None
+    no_audio: bool | None = None
 
 
 class ClipInputsComparison(ReadByClients):

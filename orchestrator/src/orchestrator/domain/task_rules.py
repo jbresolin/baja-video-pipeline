@@ -26,6 +26,7 @@ from orchestrator.domain.fleet_snapshot import (
     peer_raw_url,
 )
 from orchestrator.domain.originals import evaluate_upload_original
+from orchestrator.domain.render_features import can_render, required_render_features
 from orchestrator.domain.task_decision import TaskDecision, refuse
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.storage import VpsLayout
@@ -35,6 +36,7 @@ from shared.models import (
     DeliveryRoute,
     DownloadRawTask,
     ErrorCode,
+    Framing,
     HolderStatus,
     JobState,
     MakeProxyTask,
@@ -154,6 +156,14 @@ def _evaluate_process(
             return refuse(ErrorCode.NOT_CLAIMABLE, "job is claimed")
     elif state != JobState.READY:
         return refuse(ErrorCode.NOT_CLAIMABLE, f"job is '{state}', not ready")
+    # Render features (LIVESTACK-50): a worker version that cannot render
+    # the job's options would ignore them and make the old clip.
+    required = required_render_features(job_row)
+    if not can_render(worker_row, required):
+        return refuse(
+            ErrorCode.NOT_CLAIMABLE,
+            "this worker's version cannot render this job: it needs " + ", ".join(required),
+        )
     job_id = job_row["id"]
     # The overlay text, by the Settings' name choices (full or short).
     names = clip_names_for_job(name_styles(connection), job_row)
@@ -177,6 +187,11 @@ def _evaluate_process(
             clip_relative_path=next_clip_relative_path(connection, job_row),
             outbox_upload_url=layout.api_url(f"/jobs/{job_id}/clip"),
             delivery=delivery_plan(snapshot, job_id, worker_row),
+            rotation=job_row["rotation"],
+            framing=Framing(job_row["framing"]),
+            crop_position=job_row["crop_position"],
+            no_audio=bool(job_row["no_audio"]),
+            required_render_features=required,
         )
     )
 

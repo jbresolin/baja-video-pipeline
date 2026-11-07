@@ -31,7 +31,6 @@ from tests.worker.overlay_golden import (
 from worker import overlay_tokens as theme
 from worker.overlay import (
     OverlayText,
-    final_frame_width,
     layout_name_pill,
     render_overlay_png,
 )
@@ -137,10 +136,11 @@ def test_720p_output_scales_every_size_by_two_thirds(tmp_path):
     assert pill_rows(image, 63) == []
 
 
-def test_vertical_output_keeps_the_pills_inside_the_frame(tmp_path):
-    # A phone filmed upright renders at 608x1080 (scale=-2:1080).
-    width = final_frame_width(1080, 1920)
-    assert width == 608
+def test_a_narrow_frame_keeps_the_pills_inside_it(tmp_path):
+    # Before LIVESTACK-50 a phone filmed upright rendered at 608x1080
+    # (scale=-2:1080). Clips are always 1920 wide now (shared.framing), but
+    # the overlay still keeps its pills inside whatever width it is given.
+    width = 608
     long_text = OverlayText(
         "Enduro de Resistência", 1234, "Equipe Com Um Nome Muito Comprido Mesmo", 12, True, "UFMG"
     )
@@ -150,11 +150,6 @@ def test_vertical_output_keeps_the_pills_inside_the_frame(tmp_path):
     # ...but no pill may run past the right safe edge (608 − 96).
     assert pill_right_edge(image, 865) <= width - 96
     assert pill_right_edge(image, 920) <= width - 96
-
-
-def test_frame_width_follows_the_aspect_ratio():
-    assert final_frame_width(3840, 2160) == 1920
-    assert final_frame_width(None, None) == 1920  # unknown: assume 16:9
 
 
 # --- Long names: shrink first, then cut ---

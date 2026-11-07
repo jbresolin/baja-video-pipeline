@@ -2,7 +2,7 @@
 
 import sqlite3
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from orchestrator.api.auth import (
@@ -22,6 +22,7 @@ from orchestrator.domain import (
     worker_loop,
 )
 from orchestrator.domain.file_access import authorize_file_request
+from orchestrator.domain.vertical_reply import send_vertical_reply
 from shared.models import (
     ChunkAccepted,
     ClaimRequest,
@@ -176,10 +177,15 @@ async def upload_media_info(
     body = await request.body()
     media_info.check_media_info_size(body)
     report = media_info.parse_media_info(body)
-    await run_in_threadpool(
+    vertical_reply = await run_in_threadpool(
         media_info.store_media_info, context, worker_row, job_id, lease_id, report
     )
-    return Response(status_code=204)
+    # The bot's "grave na horizontal" reply (LIVESTACK-50) goes out after
+    # the answer, so the worker never waits for Evolution.
+    background = BackgroundTasks()
+    if vertical_reply is not None:
+        background.add_task(send_vertical_reply, context, vertical_reply)
+    return Response(status_code=204, background=background)
 
 
 @router.put("/jobs/{job_id}/render-inputs", status_code=204, response_class=Response)

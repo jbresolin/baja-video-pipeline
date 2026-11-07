@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import Field
 
-from shared.models.common import ByteCount, ReadByClients
+from shared.models.common import ByteCount, ReadByClients, RenderFeatureName
 from shared.models.enums import WorkerRole
 
 
@@ -23,6 +23,11 @@ class WorkerCapabilities(ReadByClients):
     os: str | None = None
     cpu_count: int | None = Field(default=None, ge=1)
     gpu_name: str | None = None
+    # The render features (RenderFeature) this worker's version can do, e.g.
+    # ["framing", "no_audio"] from installer 0.4.0 (LIVESTACK-50). Sent at
+    # enrollment; every heartbeat replaces it (HeartbeatRequest.render_features).
+    # Empty = none: a worker older than 0.4.0 renders only what it always did.
+    render_features: list[RenderFeatureName] = Field(default_factory=list, max_length=32)
 
 
 class WorkerStats(ReadByClients):

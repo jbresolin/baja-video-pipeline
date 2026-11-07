@@ -14,6 +14,9 @@
 4. Recording times (LIVESTACK-45): migration 0011 gives every older job
    its creation as recording time; once, every job whose probe report is
    already stored gets the raw's creation_time instead, when plausible.
+5. Picture sizes (LIVESTACK-50): once, every job whose probe report is
+   already stored gets its display size (after the rotation note), so the
+   queue marks older vertical videos too. No bot reply for those.
 
 Each import runs in its own transaction and logs what it did.
 """
@@ -33,6 +36,7 @@ from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import teams as teams_repo
 from orchestrator.repositories import users as users_repo
+from shared.framing import display_size_from_probe
 from shared.layout import slugify_prova
 from shared.models import ProbeReport, UserRole
 from shared.reviewers_file import ReviewersFileError, load_reviewers_file
@@ -42,6 +46,7 @@ logger = logging.getLogger(__name__)
 TEAMS_IMPORT = "teams_file"
 PROVAS_BACKFILL = "prova_backfill"
 RECORDED_AT_BACKFILL = "recorded_at_backfill"
+DISPLAY_SIZE_BACKFILL = "display_size_backfill"
 
 
 def run_first_start_imports(database: Database, settings: Settings, now: datetime) -> None:
@@ -49,6 +54,7 @@ def run_first_start_imports(database: Database, settings: Settings, now: datetim
     import_teams_file(database, settings.teams_file, now)
     backfill_provas(database, now)
     backfill_recorded_at(database, now)
+    backfill_display_size(database, now)
 
 
 def import_reviewers_file(
@@ -187,4 +193,24 @@ def backfill_recorded_at(database: Database, now: datetime) -> int:
         )
     if changed:
         logger.info("recording time read from the stored probe report of %d job(s)", changed)
+    return changed
+
+
+def backfill_display_size(database: Database, now: datetime) -> int:
+    """Picture sizes from the probe reports already stored, once; returns how many were set."""
+    with database.transaction() as connection:
+        if settings_repo.import_was_done(connection, DISPLAY_SIZE_BACKFILL):
+            return 0
+        changed = 0
+        for row in jobs_repo.list_job_rows_with_media_info(connection):
+            report = ProbeReport.model_validate_json(row["media_info_json"])
+            size = display_size_from_probe(report.streams)
+            if size is not None and size != (row["display_width"], row["display_height"]):
+                jobs_repo.set_display_size(connection, row["id"], *size)
+                changed += 1
+        settings_repo.mark_import_done(
+            connection, DISPLAY_SIZE_BACKFILL, now, f"{changed} job(s) from their probe report"
+        )
+    if changed:
+        logger.info("picture size read from the stored probe report of %d job(s)", changed)
     return changed

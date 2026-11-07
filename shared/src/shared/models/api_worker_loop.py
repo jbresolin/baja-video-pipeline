@@ -4,7 +4,14 @@ from datetime import datetime
 
 from pydantic import Field
 
-from shared.models.common import ByteCount, ReadByClients, ReceivedByServer, Seconds, Sha256Hex
+from shared.models.common import (
+    ByteCount,
+    ReadByClients,
+    ReceivedByServer,
+    RenderFeatureName,
+    Seconds,
+    Sha256Hex,
+)
 from shared.models.enums import (
     FailureScope,
     JobState,
@@ -74,6 +81,13 @@ class HeartbeatRequest(ReceivedByServer):
     # cannot reach it, so it is never a second holder or a peer source, and
     # its clips go through the outbox.
     shared_tailnet: bool = False
+    # The render features this worker can do (RenderFeature, LIVESTACK-50);
+    # replaces Worker.capabilities.render_features on every beat. Left out
+    # (workers before 0.4.0) = none, so a process task that needs one is
+    # never offered to it. An orchestrator older than contract 2.6.0
+    # refuses this field (400): the worker then sends its beats without it
+    # for a while (worker/heartbeat.py).
+    render_features: list[RenderFeatureName] | None = Field(default=None, max_length=32)
 
 
 class HeartbeatResponse(ReadByClients):

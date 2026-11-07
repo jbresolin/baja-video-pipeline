@@ -1,8 +1,11 @@
 """process: render the final clip from a held raw, then deliver it.
 
-Render (docs/api.md §5, contract §30): trim to the reviewer's cuts, draw
-the overlay PNG bottom-left, loudnorm, tone-map HDR. Delivery is in
-worker.tasks.clip_delivery (direct push to the studio, else the outbox).
+Render (docs/api.md §5, contract §30): trim to the reviewer's cuts, turn
+and fit the picture into 1920×1080 (LIVESTACK-50: "Girar", and the
+framing for a picture that is not 16:9, shared.framing), draw the overlay
+PNG bottom-left, loudnorm (or no sound at all: "Sem áudio"), tone-map
+HDR. Delivery is in worker.tasks.clip_delivery (direct push to the
+studio, else the outbox).
 
 Before delivering, the worker tells the orchestrator what the clip was
 rendered from (PUT /jobs/{id}/render-inputs, LIVESTACK-43), so the review
@@ -25,13 +28,15 @@ import logging
 import time
 from pathlib import Path, PurePosixPath
 
+from shared.framing import OUTPUT_HEIGHT, OUTPUT_WIDTH, FramePlan, plan_frame
 from shared.hashing import sha256_of_file
+from shared.media_probe import MediaInfo
 from shared.models import MeasurementKind, ProcessTask, RenderInputsReport
 from worker import overlay_tokens
 from worker.api_client import ApiError, OrchestratorUnreachableError
 from worker.failures import TaskFailedError, probe_input
 from worker.leases import ActiveLease, CancelToken, TaskCancelledError
-from worker.overlay import OverlayText, final_frame_width, render_overlay_png
+from worker.overlay import OverlayText, render_overlay_png
 from worker.tasks.clip_delivery import deliver_clip
 from worker.tasks.environment import TaskEnvironment
 
@@ -69,6 +74,7 @@ def render_inputs(task: ProcessTask) -> dict:
     fields = (
         "raw_sha256", "cut_in_s", "cut_out_s", "prova", "car_number",
         "team_name", "school_short", "passagem", "show_pass", "has_audio",
+        "rotation", "framing", "crop_position", "no_audio",
     )  # fmt: skip
     return {name: getattr(task, name) for name in fields}
 
@@ -92,6 +98,11 @@ def render_inputs_report(task: ProcessTask, clip_sha256: str) -> RenderInputsRep
         overlay_team_name=overlay.team_name,
         overlay_school_name=overlay.school_short,
         overlay_theme_version=overlay_tokens.THEME_VERSION,
+        # The options as used; the orchestrator works out which ones showed.
+        rotation=task.rotation,
+        framing=task.framing,
+        crop_position=task.crop_position,
+        no_audio=task.no_audio,
     )
 
 
@@ -123,6 +134,23 @@ def overlay_text_for(task: ProcessTask) -> OverlayText:
     )
 
 
+def frame_plan_for(task: ProcessTask, info: MediaInfo) -> FramePlan:
+    """How the picture is turned and fitted, from the raw as ffprobe sees it.
+
+    The size that counts is the one players show (after the file's own
+    rotation note); the task adds the reviewer's turn and framing. A 16:9
+    result is rendered exactly as before LIVESTACK-50.
+    """
+    width, height = info.display_size or (OUTPUT_WIDTH, OUTPUT_HEIGHT)
+    return plan_frame(
+        width,
+        height,
+        rotation=task.rotation,
+        framing=task.framing,
+        crop_position=task.crop_position,
+    )
+
+
 def _sidecar_matches(sidecar_path: Path, task: ProcessTask) -> bool:
     if not sidecar_path.exists():
         return False
@@ -149,8 +177,9 @@ def _reuse_or_render(
         # Unreadable raw → scope "job"; a failing ffmpeg render
         # (MediaToolError) → scope "worker" (worker.failures).
         info = probe_input(env.media, raw_path)
+        plan = frame_plan_for(task, info)
         overlay = overlay_text_for(task)
-        render_overlay_png(overlay_path, overlay, final_frame_width(info.width, info.height))
+        render_overlay_png(overlay_path, overlay, OUTPUT_WIDTH)
         env.media.render_final(
             raw_path,
             render_path,
@@ -159,6 +188,8 @@ def _reuse_or_render(
             overlay_png=overlay_path,
             info=info,
             cancel=cancel,
+            frame_plan=plan,
+            keep_audio=not task.no_audio,
         )
         # Order matters for crash safety: the old sidecar is already gone,
         # so a crash between these two lines leaves a clip without a

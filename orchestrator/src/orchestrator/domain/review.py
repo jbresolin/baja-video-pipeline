@@ -8,7 +8,7 @@ from orchestrator.db.database import to_db_time
 from orchestrator.domain import provas_catalog
 from orchestrator.domain.discard import discard_job, restore_job
 from orchestrator.domain.job_view import load_job, require_job_row
-from orchestrator.domain.review_queue import NO_HOLDER_ONLINE, holder_available
+from orchestrator.domain.render_features import process_waiting_reason
 from orchestrator.domain.transitions import move_job, revoke_job_leases
 from orchestrator.errors import ApiError, illegal_transition
 from orchestrator.repositories import events as events_repo
@@ -33,7 +33,11 @@ from shared.state_machine import (
 )
 
 REQUIRED_REVIEW_FIELDS = ("prova", "car_number", "passagem", "cut_in_s", "cut_out_s")
-EDITABLE_FIELDS = ("prova", "car_number", "passagem", "show_pass", "cut_in_s", "cut_out_s")
+EDITABLE_FIELDS = (
+    "prova", "car_number", "passagem", "show_pass", "cut_in_s", "cut_out_s",
+    # Render options (LIVESTACK-50).
+    "rotation", "framing", "crop_position", "no_audio",
+)  # fmt: skip
 CLEARED_CLIP_COLUMNS = {
     "clip_sha256": None,
     "clip_size_bytes": None,
@@ -96,6 +100,8 @@ def _merged_fields(job_row: sqlite3.Row, update: ReviewUpdate) -> dict[str, Any]
         if value is not None:
             merged[name] = value
     merged["show_pass"] = int(bool(merged["show_pass"]))
+    merged["no_audio"] = int(bool(merged["no_audio"]))
+    merged["framing"] = str(merged["framing"])
     return merged
 
 
@@ -218,9 +224,11 @@ def _apply_action(
             kinds={TaskKind.PROCESS, TaskKind.DELIVER},
         )
         delete_file_and_partials(context.layout.outbox_path(job_id))
-        # Accepted even with every holder of the raw offline; the job page
-        # says it waits for one (the sweeper keeps this sentence current).
-        waiting = None if holder_available(connection, job_id, now) else NO_HOLDER_ONLINE
+        # Accepted even with every holder of the raw offline, or none able to
+        # render the options; the job page says what it waits for (the
+        # sweeper keeps this sentence current).
+        merged_row = {**dict(job_row), **merged}
+        waiting = process_waiting_reason(connection, merged_row, now)
         move_job(
             connection,
             job_row,

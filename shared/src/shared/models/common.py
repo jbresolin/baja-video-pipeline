@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,6 +20,17 @@ CarNumber = Annotated[int, Field(ge=0, le=9999)]
 
 # Passes (passagens) are counted from 1.
 PassNumber = Annotated[int, Field(ge=1, le=999)]
+
+# The reviewer's extra clockwise turn of the picture ("Girar", LIVESTACK-50).
+Rotation = Literal[0, 90, 180, 270]
+
+# Where a cropped 16:9 band sits in the picture (Framing.CROP): 0 = at the
+# top (or left), 1 = at the bottom (or right), 0.5 = in the middle.
+CropPosition = Annotated[float, Field(ge=0, le=1)]
+
+# A render feature's name (RenderFeature) as it travels: a plain string, so
+# a newer worker may declare one an older orchestrator does not know.
+RenderFeatureName = Annotated[str, Field(pattern=r"^[a-z0-9_]{1,40}$")]
 
 
 def utc_now() -> datetime:

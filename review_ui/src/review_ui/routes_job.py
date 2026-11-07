@@ -18,6 +18,7 @@ from review_ui.orchestrator_client import (
     OrchestratorUnavailableError,
 )
 from review_ui.passagem_help_view import PassagemHelp, passagem_help
+from review_ui.render_options_view import render_options_box
 from review_ui.request_context import orchestrator_for, render_page
 from review_ui.settings import JOB_PANEL_POLL_SECONDS
 from shared.models import Job, Team
@@ -91,6 +92,8 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
         intake=intake_text(job),
         frame_rate=frame_rate_for_stepping(job),
         media=media_panel(job),
+        # "Imagem e som": Girar, Enquadramento, Sem áudio (LIVESTACK-50).
+        render_box=render_options_box(job),
         actions=action_buttons(job.state),
         prova_choices=prova_choices(orchestrator, job),
         team=team_or_none(orchestrator, job),

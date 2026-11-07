@@ -11,10 +11,18 @@ beat. The answer tells us:
     cap we evict those (oldest first), never any other (worker.clip_store);
   * role: the role the orchestrator has for us (an admin may switch master
     and worker); handed to `on_role_answer` (worker.role_change).
+
+Each beat also declares our render features (worker.render_features), so
+the orchestrator offers us only renders we can make. An orchestrator older
+than contract 2.6.0 refuses that unknown field with 400; the beat is then
+sent again without it, and so is every beat for the next 5 minutes (after
+which we try again, in case the VPS was updated). Such an orchestrator
+never asks for a feature anyway.
 """
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 
 from shared.models import HeartbeatRequest, HeartbeatResponse, LeaseHeartbeatStatus, WorkerRole
@@ -23,6 +31,7 @@ from worker.api_client import ApiError, OrchestratorClient, OrchestratorUnreacha
 from worker.config import CONNECTION_STEP_PENDING_MESSAGE
 from worker.leases import LeaseTracker
 from worker.pause import PauseSwitch
+from worker.render_features import DECLARED_RENDER_FEATURES
 from worker.status import StatusBoard
 from worker.storage import Storage
 from worker.tasks.environment import MeasurementLog
@@ -31,6 +40,9 @@ logger = logging.getLogger(__name__)
 
 # What the orchestrator answers to a bearer token it does not accept.
 UNAUTHENTICATED_STATUS = 401
+# After an orchestrator refused `render_features`, beats leave it out for
+# this long before trying again (as dispatcher.py does for task kinds).
+RETRY_RENDER_FEATURES_AFTER_SECONDS = 300.0
 
 
 class Heartbeater:
@@ -51,6 +63,7 @@ class Heartbeater:
         pause: PauseSwitch | None = None,
         on_role_answer: Callable[[WorkerRole], None] | None = None,
         shared_tailnet: bool = False,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         """`fixed_interval_seconds` overrides the orchestrator's
         heartbeat_interval_s (in-process test runs beat faster).
@@ -60,7 +73,8 @@ class Heartbeater:
         `pause`: the volunteer's switch; each beat reports `paused`.
         `on_role_answer`: called with the answer's `role` after every
         successful beat (worker.role_change decides what to do with it).
-        `shared_tailnet`: WorkerConfig.shared_tailnet, reported in every beat."""
+        `shared_tailnet`: WorkerConfig.shared_tailnet, reported in every beat.
+        `monotonic`: the steady clock (tests move it by hand)."""
         self._api = api
         self._role = role
         self._storage = storage
@@ -75,6 +89,9 @@ class Heartbeater:
         self._pause = pause
         self._on_role_answer = on_role_answer
         self._shared_tailnet = shared_tailnet
+        self._monotonic = monotonic
+        # When an orchestrator last refused our render_features (steady clock).
+        self._render_features_refused_at: float | None = None
         self.interval_seconds: float = fixed_interval_seconds or HEARTBEAT_INTERVAL_SECONDS
         # How many of our kept clips the master has archived (status page).
         self.clips_archived_by_master = 0
@@ -111,14 +128,38 @@ class Heartbeater:
             # Also asks the orchestrator to answer with our role (role_change).
             role=self._role,
             shared_tailnet=self._shared_tailnet,
+            render_features=None
+            if self._render_features_refused_recently()
+            else (DECLARED_RENDER_FEATURES),
         )
+
+    def _render_features_refused_recently(self) -> bool:
+        refused_at = self._render_features_refused_at
+        if refused_at is None:
+            return False
+        return self._monotonic() - refused_at < RETRY_RENDER_FEATURES_AFTER_SECONDS
+
+    def _send(self, request: HeartbeatRequest) -> HeartbeatResponse:
+        """POST the beat; resend it without render_features if the orchestrator refuses them."""
+        try:
+            return self._api.heartbeat(request)
+        except ApiError as error:
+            if request.render_features is None or not refuses_render_features(error):
+                raise
+        logger.info(
+            "the orchestrator does not know render_features yet (older than contract 2.6.0);"
+            " leaving them out of heartbeats for %d s",
+            RETRY_RENDER_FEATURES_AFTER_SECONDS,
+        )
+        self._render_features_refused_at = self._monotonic()
+        return self._api.heartbeat(request.model_copy(update={"render_features": None}))
 
     def beat_once(self) -> HeartbeatResponse | None:
         """Send one heartbeat and act on the answer; None if it failed."""
         request = self.build_request()
         self._publish_storage(request)
         try:
-            answer = self._api.heartbeat(request)
+            answer = self._send(request)
         except (OrchestratorUnreachableError, ApiError) as error:
             # Leases keep running on the orchestrator's side for 45 s, so a
             # single missed beat is harmless; just keep the measurements.
@@ -196,3 +237,15 @@ class Heartbeater:
             except Exception:
                 logger.exception("unexpected error in the heartbeat loop")
             shutdown.wait(self.interval_seconds)
+
+
+def refuses_render_features(error: ApiError) -> bool:
+    """True for an older orchestrator's 400 naming the field it does not know.
+
+    Its answer looks like {"code": "validation_error", "details": {"errors":
+    [{"loc": ["body", "render_features"], "msg": "Extra inputs are not permitted"}]}}.
+    """
+    if error.status_code != 400 or error.code != "validation_error":
+        return False
+    problems = error.details.get("errors") or []
+    return any("render_features" in (problem.get("loc") or []) for problem in problems)

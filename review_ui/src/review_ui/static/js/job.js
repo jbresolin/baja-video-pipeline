@@ -4,6 +4,7 @@ import { errorMessage, isTyping, localizeTimes, sendJson, showFlash } from "./co
 import { setupPlayer } from "./player.js";
 import { parseFragment, startPolling } from "./poll.js";
 import { setupPassagemHelp } from "./passagem_help.js";
+import { setupRenderOptions } from "./render_options.js";
 import { setupReviewForm } from "./review_form.js";
 import { t } from "./text.js";
 
@@ -12,6 +13,7 @@ const form = document.getElementById("review-form");
 const video = document.getElementById("player");
 const player = setupPlayer({ video, form, jobElement });
 const passagemHelp = setupPassagemHelp({ form });
+setupRenderOptions({ form, video });
 const review = setupReviewForm({
   form,
   jobElement,

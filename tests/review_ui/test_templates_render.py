@@ -21,6 +21,7 @@ from review_ui.job_view import (
 from review_ui.media_info_view import media_panel
 from review_ui.passagem_help_view import passagem_help
 from review_ui.queue_view import STATES_IN_PIPELINE_ORDER, QueueFilter
+from review_ui.render_options_view import render_options_box
 from review_ui.settings import ReviewUiSettings
 from review_ui.templating import TEMPLATES_DIR, build_templates
 from shared.models import CurrentUser, JobState, JobSummary
@@ -61,6 +62,8 @@ def job_context(job) -> dict:
         "prova_choices": ["Enduro", "Suspensão"],
         "poll_seconds": 5,
         "media": media_panel(job),
+        # "Imagem e som" (LIVESTACK-50), as routes_job.job_page adds it.
+        "render_box": render_options_box(job),
     }
 
 
@@ -128,6 +131,10 @@ CASES = {
     "_job_status.html": lambda: job_context(edited_after_delivery_job()),
     "_job_events.html": lambda: job_context(delivered_job()),
     "_media_info.html": lambda: job_context(make_job(media_info=IPHONE_REPORT)),
+    # A phone video filmed upright, "Cortar" chosen: the whole box shows.
+    "_render_options.html": lambda: job_context(
+        make_job(display_width=1080, display_height=1920, vertical=True, framing="crop")
+    ),
     "clips.html": clips_context,
     "fleet.html": fleet_context,
     "_fleet_body.html": fleet_context,

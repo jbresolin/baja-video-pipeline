@@ -26,8 +26,10 @@ from datetime import datetime
 from orchestrator.domain.clip_names import NameStyles, clip_names_for_job, name_styles
 from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import jobs as jobs_repo
+from shared.framing import effective_framing
 from shared.models import (
     ClipInputsComparison,
+    Framing,
     JobState,
     ProcessTask,
     RenderInputField,
@@ -38,9 +40,44 @@ from shared.models import (
 # Cuts are floats typed in a form; anything closer than half a millisecond
 # is the same cut (a frame is 33 ms).
 SAME_CUT_TOLERANCE_S = 0.0005
+# The crop band's place comes from a slider; half a percent is the same place.
+SAME_CROP_TOLERANCE = 0.005
 
 
-def inputs_from_task(task: ProcessTask, styles: NameStyles) -> RenderInputs:
+def picture_inputs(
+    job_row: sqlite3.Row,
+    *,
+    rotation: int | None,
+    framing: Framing | None,
+    crop_position: float | None,
+    no_audio: bool | None,
+) -> dict:
+    """The render options (LIVESTACK-50) as RenderInputs fields.
+
+    Framing and the crop band are kept only when they show, i.e. when the
+    picture is not 16:9 after the turn (shared.framing.effective_framing);
+    the picture size is the job's (from its probe report). None for
+    `framing` means the worker used none: a worker before 0.4.0, which
+    reports no options and renders with no turn and the sound kept.
+    """
+    shown_framing, shown_position = (None, None)
+    if framing is not None:
+        shown_framing, shown_position = effective_framing(
+            job_row["display_width"],
+            job_row["display_height"],
+            rotation=rotation or 0,
+            framing=framing,
+            crop_position=0.5 if crop_position is None else crop_position,
+        )
+    return {
+        "rotation": rotation or 0,
+        "framing": shown_framing,
+        "crop_position": shown_position,
+        "no_audio": bool(no_audio),
+    }
+
+
+def inputs_from_task(task: ProcessTask, styles: NameStyles, job_row: sqlite3.Row) -> RenderInputs:
     """The orchestrator's snapshot of a process task it hands out."""
     return RenderInputs(
         raw_sha256=task.raw_sha256,
@@ -56,6 +93,13 @@ def inputs_from_task(task: ProcessTask, styles: NameStyles) -> RenderInputs:
         # ProcessTask.school_short is the sigla or the full school name,
         # whichever the Settings chose (clip_names.py).
         overlay_school_name=task.school_short,
+        **picture_inputs(
+            job_row,
+            rotation=task.rotation,
+            framing=task.framing,
+            crop_position=task.crop_position,
+            no_audio=task.no_audio,
+        ),
         reported_by_worker=False,
     )
 
@@ -69,11 +113,14 @@ def remember_claimed_inputs(
     version's inputs if the worker reports none. Machine activity: no
     review version bump.
     """
-    snapshot = inputs_from_task(task, name_styles(connection)).model_dump_json()
+    job_row = jobs_repo.get_job_row(connection, job_id)
+    snapshot = inputs_from_task(task, name_styles(connection), job_row).model_dump_json()
     jobs_repo.update_job(connection, job_id, now, {"claimed_render_inputs_json": snapshot})
 
 
-def inputs_from_report(report: RenderInputsReport, claimed: RenderInputs | None) -> RenderInputs:
+def inputs_from_report(
+    report: RenderInputsReport, claimed: RenderInputs | None, job_row: sqlite3.Row
+) -> RenderInputs:
     """A worker's report as the version's inputs.
 
     The worker's own values win; the name choices come from the claim
@@ -92,6 +139,13 @@ def inputs_from_report(report: RenderInputsReport, claimed: RenderInputs | None)
         overlay_team_name=report.overlay_team_name,
         overlay_school_name=report.overlay_school_name,
         overlay_theme_version=report.overlay_theme_version,
+        **picture_inputs(
+            job_row,
+            rotation=report.rotation,
+            framing=report.framing,
+            crop_position=report.crop_position,
+            no_audio=report.no_audio,
+        ),
         reported_by_worker=True,
     )
 
@@ -111,7 +165,7 @@ def inputs_json_for_clip(job_row: sqlite3.Row, clip_sha256: str) -> str | None:
     if reported_text is not None:
         report = RenderInputsReport.model_validate_json(reported_text)
         if report.clip_sha256 == clip_sha256:
-            return inputs_from_report(report, claimed).model_dump_json()
+            return inputs_from_report(report, claimed, job_row).model_dump_json()
     return claimed.model_dump_json() if claimed is not None else None
 
 
@@ -130,6 +184,13 @@ def inputs_now(styles: NameStyles, job_row: sqlite3.Row) -> RenderInputs:
         school_name_style=styles.school,
         overlay_team_name=names.team,
         overlay_school_name=names.school,
+        **picture_inputs(
+            job_row,
+            rotation=job_row["rotation"],
+            framing=Framing(job_row["framing"]),
+            crop_position=job_row["crop_position"],
+            no_audio=bool(job_row["no_audio"]),
+        ),
     )
 
 
@@ -162,7 +223,24 @@ def changed_inputs(clip: RenderInputs, now: RenderInputs) -> list[RenderInputFie
     for field, clip_value, now_value in plain_fields:
         if clip_value != now_value:
             changed.append(field)
+    # Render options (LIVESTACK-50). Inputs recorded before them have
+    # rotation and no_audio None: what was rendered then, 0 and False.
+    if (clip.rotation or 0) != (now.rotation or 0):
+        changed.append(RenderInputField.ROTATION)
+    if not _same_framing(clip, now):
+        changed.append(RenderInputField.FRAMING)
+    if bool(clip.no_audio) != bool(now.no_audio):
+        changed.append(RenderInputField.AUDIO)
     return changed
+
+
+def _same_framing(clip: RenderInputs, now: RenderInputs) -> bool:
+    """Same framing as it shows, and for "crop" the band in (nearly) the same place."""
+    if clip.framing != now.framing:
+        return False
+    if clip.framing != Framing.CROP:
+        return True
+    return abs((clip.crop_position or 0.5) - (now.crop_position or 0.5)) <= SAME_CROP_TOLERANCE
 
 
 def compare_newest_clip(

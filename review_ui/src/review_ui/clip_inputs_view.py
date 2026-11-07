@@ -15,7 +15,14 @@ from dataclasses import dataclass
 
 from review_ui.catalog import text
 from review_ui.formatting import format_duration, format_timecode
-from shared.models import ClipInputsComparison, JobState, NameStyle, RenderInputField, RenderInputs
+from shared.models import (
+    ClipInputsComparison,
+    Framing,
+    JobState,
+    NameStyle,
+    RenderInputField,
+    RenderInputs,
+)
 
 # While the job waits for (or is in) its new rendering, the version on air
 # stays until the new one arrives: the banner says a new one is coming
@@ -60,6 +67,16 @@ def _style_note(field: RenderInputField, clip: RenderInputs, now: RenderInputs) 
     return text("outdated.style_changed", style=text(f"outdated.style.{kind}.{style}"))
 
 
+def _framing_text(inputs: RenderInputs) -> str:
+    """ "desfocado", "cortar, faixa a 30%", or "nenhum (16:9)" when no framing showed."""
+    if inputs.framing is None:
+        return text("outdated.framing.none")
+    if inputs.framing == Framing.CROP:
+        position = 0.5 if inputs.crop_position is None else inputs.crop_position
+        return text("outdated.framing.crop", percent=round(position * 100))
+    return text(f"outdated.framing.{inputs.framing.value}")
+
+
 def difference_sentence(field: RenderInputField, clip: RenderInputs, now: RenderInputs) -> str:
     """One sentence for one differing input."""
     if field == RenderInputField.CUT:
@@ -75,6 +92,16 @@ def difference_sentence(field: RenderInputField, clip: RenderInputs, now: Render
         )
     if field == RenderInputField.RAW:
         return text("outdated.raw")
+    if field == RenderInputField.ROTATION:
+        return text(
+            "outdated.rotation",
+            clip=text(f"render.rotation.{clip.rotation or 0}"),
+            now=text(f"render.rotation.{now.rotation or 0}"),
+        )
+    if field == RenderInputField.FRAMING:
+        return text("outdated.framing", clip=_framing_text(clip), now=_framing_text(now))
+    if field == RenderInputField.AUDIO:
+        return text("outdated.audio.dropped_now" if now.no_audio else "outdated.audio.kept_now")
     if field in (RenderInputField.TEAM_NAME, RenderInputField.SCHOOL_NAME):
         attribute = (
             "overlay_team_name" if field == RenderInputField.TEAM_NAME else "overlay_school_name"

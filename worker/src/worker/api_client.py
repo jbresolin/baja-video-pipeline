@@ -114,7 +114,13 @@ class OrchestratorClient:
 
     def heartbeat(self, request: HeartbeatRequest) -> HeartbeatResponse:
         path = f"/workers/{self.worker_id}/heartbeat"
-        return HeartbeatResponse.model_validate(self._post_json(path, request).json())
+        body = request.model_dump(mode="json")
+        if body["render_features"] is None:
+            # Left out, not null: an orchestrator older than contract 2.6.0
+            # refuses the key itself, whatever its value (worker/heartbeat.py).
+            del body["render_features"]
+        response = self._send("POST", path, json=body)
+        return HeartbeatResponse.model_validate(response.json())
 
     def next_task(self, accept_kinds: list[TaskKind]) -> NextTaskResponse:
         path = f"/workers/{self.worker_id}/next"

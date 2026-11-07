@@ -27,6 +27,7 @@ from shared.models import (
     UpdateSettingsRequest,
     WorkerRole,
 )
+from shared.vertical_video_message import MAX_VERTICAL_VIDEO_MESSAGE_LENGTH
 from shared.welcome_message import (
     EXAMPLE_VALUES,
     MAX_WELCOME_MESSAGE_LENGTH,
@@ -196,6 +197,7 @@ def _settings_page(request: Request, error: str | None = None, status_code: int 
         welcome_examples=EXAMPLE_VALUES,
         welcome_preview=fill_welcome_message(page.settings.welcome_message, EXAMPLE_VALUES),
         welcome_max_length=MAX_WELCOME_MESSAGE_LENGTH,
+        vertical_message_max_length=MAX_VERTICAL_VIDEO_MESSAGE_LENGTH,
         audit=audit_lines(admin.audit(AdminArea.SETTINGS)),
     )
     context["error"] = error
@@ -237,6 +239,8 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
             # Kept as typed (empty = no welcome message); the orchestrator
             # trims it. A form without the field (an older page) keeps it.
             welcome_message=form.get("welcome_message"),
+            # The bot's reply to a vertical video (LIVESTACK-50); same rules.
+            vertical_video_message=form.get("vertical_video_message"),
         )
     except ValueError:
         return _settings_page(

@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from shared.framing import display_size, rotation_of_video_stream
+
 # ffprobe's `color_transfer` values that mean HDR (design §15):
 #   smpte2084    = PQ, used by HDR10 / Dolby Vision (e.g. iPhone "HDR" video)
 #   arib-std-b67 = HLG, used by many Android phones and broadcast cameras
@@ -39,6 +41,10 @@ class MediaInfo:
     # Frames per second of the first video stream (e.g. 29.97), from
     # avg_frame_rate, else r_frame_rate; None when neither is usable.
     frame_rate: float | None = None
+    # How far players turn the picture clockwise (0, 90, 180, 270), from
+    # the display matrix or the old `rotate` tag (LIVESTACK-50). A phone
+    # filmed upright stores 1920×1080 frames with rotation 90.
+    rotation: int = 0
     # ffprobe's whole answer, parsed (format + streams), for the media-info
     # report (shared.media_details). Not part of equality: two MediaInfos
     # with the same facts are equal whatever else ffprobe printed.
@@ -48,6 +54,13 @@ class MediaInfo:
     def is_hdr(self) -> bool:
         """True when the video must be tone-mapped before it can be shown as SDR."""
         return self.color_transfer in HDR_COLOR_TRANSFERS
+
+    @property
+    def display_size(self) -> tuple[int, int] | None:
+        """(width, height) as players show it, after `rotation`; None without a size."""
+        if not self.width or not self.height:
+            return None
+        return display_size(self.width, self.height, self.rotation)
 
 
 def parse_frame_rate(rate_text: str | None) -> float | None:
@@ -78,5 +91,6 @@ def parse_probe_output(probe_json: str) -> MediaInfo:
             parse_frame_rate(video.get("avg_frame_rate"))
             or parse_frame_rate(video.get("r_frame_rate"))
         ),
+        rotation=rotation_of_video_stream(video),
         probe=probe,
     )

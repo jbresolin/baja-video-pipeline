@@ -64,6 +64,20 @@ strip shows a warning banner with one sentence per difference
 revisão agora diz 0:05–0:12." It is part of the polled panel, so it goes
 away by itself when the new version arrives.
 
+**Imagem e som** (LIVESTACK-50). The job page says the video's shape
+("Vídeo na vertical (1080×1920)."; vertical videos are also marked in the
+queue and the header) and has a box under "Mostrar o número da
+passagem": **Girar** (0°/90°/180°/270°, for a phone whose rotation note
+is wrong; the player turns with it), **Enquadramento** (desfocado, barras
+pretas, cortar with the band's place; hidden for a 16:9 picture, where it
+changes nothing; "cortar" draws the band over the player) and **Sem
+áudio** (the player is muted while ticked). `static/js/render_options.js`
+keeps all of that in step with the fields before saving, with the same
+rules as `shared/framing.py` (tested in Node); the server side is
+`render_options_view.py`. A job waiting because no holder runs 0.4.0 says
+so; Frota shows what each worker version can render; Configurações holds
+the bot's reply to vertical videos.
+
 **Welcome message** (LIVESTACK-44). Configurações has the text the bot
 sends to new contacts, its placeholders (`{nome}`, `{prova}`) and a preview
 filled with example values (refreshed while typing by `js/welcome.js`,
@@ -154,6 +168,7 @@ base Caddy as `bvp-review-ui:8001` on `baja-edge`.
 | `job_view.py`, `queue_view.py`, `clips_and_fleet_view.py` | Plain functions that turn API data into what the pages show |
 | `passagem_help_view.py` | The job page's passagem panel: the car's videos in filming order, the suggestion and the warnings (LIVESTACK-45) |
 | `clip_inputs_view.py` | A clip that no longer matches its review, in sentences (job page banner, clips page detail) |
+| `render_options_view.py` | The job page's "Imagem e som" box: orientation sentence, whether "Enquadramento" applies, the choices (LIVESTACK-50) |
 | `event_log_view.py` | Orchestrator events (`Event`) in words: actor names, state changes, reasons; used by the job and fleet pages |
 | `catalog/` | Every pt-BR text the UI shows, by English key (see "Language") |
 | `formatting.py` | Dates (São Paulo time) and numbers (decimal comma) for the templates |
