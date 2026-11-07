@@ -10,6 +10,10 @@
   <p class="hint">
     {{ t("job.hint", intake=intake, received=m.time(job.created_at), size=job.size_bytes|bytes, duration=job.duration_s|duration, version=job.version) }}
   </p>
+  {# When it was filmed, and how sure that is (LIVESTACK-45). #}
+  {% if job.recorded_at %}
+  <p class="hint" id="recorded-at">{{ t("recorded.job." ~ (job.recorded_at_source or "received"), time=m.time(job.recorded_at)) }}</p>
+  {% endif %}
 </div>
 
 <div id="stale-banner" class="banner warning with-action" hidden>
@@ -103,6 +107,10 @@
                  value="{{ job.passagem if job.passagem is not none else '' }}">
         </div>
       </div>
+      {# Warnings for the passagem typed (LIVESTACK-45); js/passagem_help.js keeps them current. #}
+      <ul class="passagem-warnings" id="passagem-warnings" aria-live="polite">
+        {% for warning in (help.warnings if help else []) %}<li>{{ warning }}</li>{% endfor %}
+      </ul>
       {# The team and school as the clip names them (Settings: full or short names). #}
       <p class="team" id="team-name" aria-live="polite">
         {%- if team %}{{ t("job.team_with_school", name=team.clip_team_name or team.team_name, school=team.clip_school_name) if team.clip_school_name else t("job.team", name=team.clip_team_name or team.team_name) }}
@@ -112,6 +120,18 @@
       <label class="check"><input type="checkbox" name="show_pass" {% if job.show_pass %}checked{% endif %}>
         {{ t("job.show_pass") }}</label>
 
+      {# "Outros vídeos de <prova>, carro <n>": refreshed in place while prova,
+         car or passagem change, saved or not (no page reload). #}
+      <section class="passagem-help" id="passagem-help" aria-label="{{ t('passagens.label') }}" aria-live="polite"
+               data-url="/review/api/jobs/{{ job.id }}/passagem-help">
+        {% include "_passagem_help.html" %}
+      </section>
+
+      {# The same warnings, next to "Pronto"; they never block. #}
+      <div class="banner warning ready-warnings" id="ready-warnings"{% if not (help and help.warnings) %} hidden{% endif %}>
+        <p>{{ t("passagens.warnings_on_ready") }}</p>
+        <ul>{% for warning in (help.warnings if help else []) %}<li>{{ warning }}</li>{% endfor %}</ul>
+      </div>
       <div class="actions">
         {# Primary first ("Salvar e reprocessar" once a clip exists, LIVESTACK-43). #}
         {% for button in actions %}

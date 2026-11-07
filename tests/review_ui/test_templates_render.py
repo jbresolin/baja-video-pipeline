@@ -19,18 +19,21 @@ from review_ui.job_view import (
     intake_text,
 )
 from review_ui.media_info_view import media_panel
+from review_ui.passagem_help_view import passagem_help
 from review_ui.queue_view import STATES_IN_PIPELINE_ORDER, QueueFilter
 from review_ui.settings import ReviewUiSettings
 from review_ui.templating import TEMPLATES_DIR, build_templates
 from shared.models import CurrentUser, JobState, JobSummary
 from tests.review_ui.sample_data import (
     T0,
+    car_7_video,
     delivered_job,
     edited_after_delivery_job,
     failed_job,
     make_fleet,
     make_job,
     make_manifest,
+    on_event_day,
 )
 from tests.review_ui.sample_events import make_events
 from tests.review_ui.test_media_panel import IPHONE_REPORT
@@ -59,6 +62,18 @@ def job_context(job) -> dict:
         "poll_seconds": 5,
         "media": media_panel(job),
     }
+
+
+def passagem_help_context() -> dict:
+    """Car 7 in Suspensão: passes 1 and 2 numbered, this video filmed after both."""
+    this_video = car_7_video("job-this", on_event_day(14, 50))
+    others = [
+        car_7_video("job-p1", on_event_day(14, 2), passagem=1),
+        car_7_video("job-p2", on_event_day(14, 31), passagem=2),
+    ]
+    summaries = [JobSummary.from_job(other) for other in others]
+    panel = passagem_help(this_video, "Suspensão", 7, summaries, 3)
+    return {**job_context(this_video), "help": panel}
 
 
 def queue_context() -> dict:
@@ -107,6 +122,7 @@ CASES = {
     "queue.html": queue_context,
     "_queue_rows.html": queue_context,
     "job.html": lambda: job_context(make_job()),
+    "_passagem_help.html": passagem_help_context,
     "_job_panel.html": lambda: job_context(failed_job()),
     # A clip edited after delivery: the status strip carries the warning banner.
     "_job_status.html": lambda: job_context(edited_after_delivery_job()),

@@ -18,7 +18,7 @@
           {% if item.prova %}{{ t("queue.row_title", prova=item.prova, car=m.or_unknown(item.car_number), passagem=m.or_unknown(item.passagem)) }}{% else %}{{ t("queue.not_reviewed") }}{% endif %}
         </span>
         <span class="row-meta">
-          {{ m.time(item.created_at, relative=true) }} · {{ item.sender_name or t("queue.unknown_sender") }} · {{ item.size_bytes|bytes }} · <code>{{ item.id|short_id }}</code>
+          {{ t("recorded.label") }} {{ m.recorded(item, now) }} · {{ m.time(item.created_at, relative=true) }} · {{ item.sender_name or t("queue.unknown_sender") }} · {{ item.size_bytes|bytes }} · <code>{{ item.id|short_id }}</code>
         </span>
         {% if item.failure_message %}
         <span class="row-note error">{{ m.english(item.failure_message) }}</span>

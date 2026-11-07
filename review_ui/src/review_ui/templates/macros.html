@@ -26,3 +26,13 @@
 {% macro waiting(reason) -%}
 {% set described = waiting_reason(reason) %}{{ described.text }}{% if described.detail %} {{ english(described.detail) }}{% endif %}
 {%- endmacro %}
+
+{# When a video was filmed (LIVESTACK-45): "14:02" on `reference`'s day, else
+   with the date; a marker when it is only the send or arrival time. `video`
+   is a Job or JobSummary (recorded_at, recorded_at_source, created_at). #}
+{% macro recorded(video, reference) -%}
+{% set moment = video.recorded_at or video.created_at %}
+{% set source = video.recorded_at_source or "received" %}
+<time class="recorded" datetime="{{ moment|iso }}" title="{{ moment|clock }}">{{ recorded_time(moment, reference) }}</time>
+{%- if source != "metadata" %} <span class="time-hint" title="{{ t('recorded.hint.' ~ source ~ '.title') }}">{{ t("recorded.hint." ~ source) }}</span>{% endif %}
+{%- endmacro %}

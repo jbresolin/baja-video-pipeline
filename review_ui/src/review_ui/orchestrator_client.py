@@ -14,6 +14,7 @@ import httpx
 from pydantic import ValidationError
 
 from shared.models import (
+    CarVideosResponse,
     CurrentUser,
     ErrorResponse,
     Event,
@@ -133,6 +134,13 @@ class OrchestratorClient:
             params.append(("outdated", "true"))
         response = self._request("GET", "/review/queue", params=params)
         return self._parse(ReviewQueueResponse, response).items
+
+    def car_videos(self, prova: str, car_number: int) -> list[JobSummary]:
+        """Every job of that car in that prova, discarded ones left out, in
+        filming order (LIVESTACK-45). The prova may be its name or its slug."""
+        params = {"prova": prova, "car_number": car_number}
+        response = self._request("GET", "/review/car-videos", params=params)
+        return self._parse(CarVideosResponse, response).items
 
     def get_job(self, job_id: str) -> Job:
         response = self._request("GET", f"/jobs/{_path_segment(job_id)}")

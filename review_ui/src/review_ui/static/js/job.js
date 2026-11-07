@@ -3,6 +3,7 @@
 import { errorMessage, isTyping, localizeTimes, sendJson, showFlash } from "./common.js";
 import { setupPlayer } from "./player.js";
 import { parseFragment, startPolling } from "./poll.js";
+import { setupPassagemHelp } from "./passagem_help.js";
 import { setupReviewForm } from "./review_form.js";
 import { t } from "./text.js";
 
@@ -10,7 +11,12 @@ const jobElement = document.getElementById("job");
 const form = document.getElementById("review-form");
 const video = document.getElementById("player");
 const player = setupPlayer({ video, form, jobElement });
-const review = setupReviewForm({ form, jobElement });
+const passagemHelp = setupPassagemHelp({ form });
+const review = setupReviewForm({
+  form,
+  jobElement,
+  confirmForward: () => passagemHelp.confirmForward(),
+});
 
 document.addEventListener("keydown", (event) => {
   const withCommand = event.ctrlKey || event.metaKey;

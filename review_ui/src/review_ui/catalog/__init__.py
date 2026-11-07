@@ -20,7 +20,15 @@ are one catalog, and a key may be defined only once (checked at import).
 
 from markupsafe import Markup
 
-from review_ui.catalog import admin_pages, admin_settings, clips_and_fleet, common, job, scripts
+from review_ui.catalog import (
+    admin_pages,
+    admin_settings,
+    clips_and_fleet,
+    common,
+    job,
+    passagens,
+    scripts,
+)
 
 
 def _merge(*parts: dict[str, str]) -> dict[str, str]:
@@ -36,6 +44,7 @@ def _merge(*parts: dict[str, str]) -> dict[str, str]:
 CATALOG: dict[str, str] = _merge(
     common.TEXT,
     job.TEXT,
+    passagens.TEXT,
     clips_and_fleet.TEXT,
     admin_pages.TEXT,
     admin_settings.TEXT,

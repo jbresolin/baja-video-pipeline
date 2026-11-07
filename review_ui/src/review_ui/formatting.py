@@ -80,6 +80,18 @@ def short_clock_text(moment: datetime) -> str:
     return moment.astimezone(DISPLAY_TIME_ZONE).strftime("%H:%M")
 
 
+def recorded_time_text(moment: datetime | None, reference: datetime) -> str:
+    """When a video was filmed, short (LIVESTACK-45): "14:02" on the same São
+    Paulo day as `reference` (today in the queue, this video's day on the job
+    page), else with the date, "26/03/2026 14:02"."""
+    if moment is None:
+        return "—"
+    local = moment.astimezone(DISPLAY_TIME_ZONE)
+    if local.date() == reference.astimezone(DISPLAY_TIME_ZONE).date():
+        return local.strftime("%H:%M")
+    return local.strftime("%d/%m/%Y %H:%M")
+
+
 def age_text(moment: datetime | None, now: datetime) -> str:
     """How long ago, roughly: "há 12 s", "há 5 min", "há 3 h", "há 2 d"; "nunca" for None."""
     if moment is None:
