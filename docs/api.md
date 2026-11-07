@@ -69,7 +69,7 @@ types**; this page explains the behaviour around them. Design background:
 | `POST /auth/login` | none (the password is the credential; 20 per source IP per 600 s) |
 | `/admin/*`, `POST /intake/test-upload`, `GET /metrics` | sessionBearer (role admin) **or** adminBearer |
 | worker loop, `/workers`, `/auth/file`, `/outbox/{id}/ack` | workerBearer |
-| `/review/queue`, `/review/car-videos`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
+| `/review/queue`, `/review/car-videos`, `GET /jobs/{job_id}/sender-messages`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
 | `GET /auth/media` | sessionCookie |
 | `GET /jobs/{job_id}`, `GET /manifest` | sessionBearer **or** workerBearer |
 | `GET /fleet`, `GET /jobs/{job_id}/events`, `GET /events`, `GET /provas` | sessionBearer **or** adminBearer |
@@ -532,9 +532,10 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `PUT /jobs/{job_id}/render-inputs` | `RenderInputsReport` JSON, `Lease-Id` → 204 | process lease, before the upload or push; what the clip was rendered from (§5 "Render inputs"); state unchanged |
 | `GET /jobs/{job_id}/original` | → `OriginalDownload` | where "Baixar original" stands; no side effects |
 | `POST /jobs/{job_id}/original` | → `OriginalDownload` | "Baixar original"; see below |
-| `GET /review/queue?state=…&limit=…&outdated=…` | → `ReviewQueueResponse` | default `awaiting_review`; in filming order, oldest `recorded_at` first, ties by arrival (below, "Recording time"); `outdated=true`: only jobs whose clip no longer matches the review (§5 "Render inputs") |
+| `GET /review/queue?state=…&limit=…&outdated=…` | → `ReviewQueueResponse` | default `awaiting_review`; in filming order, oldest `recorded_at` first, ties by arrival (below, "Recording time"); `outdated=true`: only jobs whose clip no longer matches the review (§5 "Render inputs"); each item carries `received_at` and `sender_message_count` |
 | `GET /review/car-videos?prova=…&car_number=…` | → `CarVideosResponse` | one car's jobs in one prova, discarded left out, filming order; the job page's passagem panel (below) |
 | `GET /jobs/{job_id}` | → `Job` | |
+| `GET /jobs/{job_id}/sender-messages` | → `SenderMessagesResponse` | reviewer session only; the job page's "Mensagens de <remetente>" (below, "Sender messages"); 404 unknown job |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
 | `POST /jobs/{job_id}/regenerate-proxy` | → 202 `RegenerateProxyResponse` | no state change |
 | `GET /teams/{car_number}` | → `Team` | the teams table (results API sync + admin corrections); 404 unknown car |
@@ -566,7 +567,7 @@ the event log with `details: {before, after}`, readable at `GET
 | `PATCH /admin/workers/{worker_id}` | `UpdateWorkerRequest` → `Worker` | the display name (below); revoked workers too |
 | `POST /admin/workers/{worker_id}/make-master` | → `Worker` | "Tornar master" (below); 409 for a studio or a revoked worker |
 | `POST /admin/workers/{worker_id}/revoke` | → `Worker` | its token answers 401, leases end, holder rows dropped |
-| `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing; the clip name choices, the welcome message and the vertical-video reply have no `.env` value |
+| `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing; the clip name choices, the welcome message, the vertical-video reply and `sender_messages_keep_days` have no `.env` value |
 | `GET /admin/audit?area=&limit=` | → `EventsResponse` | newest first |
 
 **Worker names** (LIVESTACK-42). `Worker.name` is the **display name**:
@@ -641,12 +642,15 @@ name.
 the VPS's internal Docker network (no public route), and `infra/vps/up.sh`
 configures it as the Baja Bot **instance** webhook (no global webhook; nothing else consumes it).
 Only `event == "messages.upsert"` from others (`fromMe == false`) in a
-private chat is considered: a `remoteJid` ending in `@g.us` or
+private chat is considered, plus `messages.edited` and `messages.delete`
+(below, "Sender messages"): a `remoteJid` ending in `@g.us` or
 `@broadcast`, or a key with a `participant` (group sender), → 200
 `ignored: true`, no job and no bot reply (design §3, videos by DM only). `shared.models.find_incoming_video` decides: a
 `documentMessage` (also inside `documentWithCaptionMessage`) with a
-`video/*` mimetype → normal job; a `videoMessage` → `low_res: true` and the
-bot asks for a resend as document; anything else → 200 `ignored: true`.
+`video/*` mimetype → normal job, its caption kept as `IntakeSource.caption`;
+a `videoMessage` → `low_res: true` and the bot asks for a resend as
+document; anything else → 200 `ignored: true`, and kept for the job page
+when the sender's videos would be accepted (`message_stored: true`).
 The fields read are `url`, `directPath`, `mediaKey`, `fileEncSha256`,
 `fileSha256`, `fileLength`, `mimetype`, `fileName`; binary ones arrive as
 base64 text (Node's `{"type":"Buffer","data":[…]}` and index-keyed objects
@@ -764,6 +768,39 @@ digits (no jobs). The asking job is in the list when it is saved with that
 prova and car. The review UI places the video among them and works out
 the passagem suggestion and the warnings itself
 (`review_ui/passagem_help_view.py`); the orchestrator only lists.
+
+**Sender messages** (contract 2.6.0, LIVESTACK-49). A private message
+that is not a video, from a contact whose videos would be accepted (not
+blocked; in allowlist mode, allowed), is kept for the job page, never
+answered: text (`conversation`, `extendedTextMessage`), captions of images
+and documents, and for anything else only its kind (`audio`, `image`,
+`sticker`, `location`, `contact`, `document`, `other`). Nothing is
+downloaded. Reactions and poll votes are not kept. Stored: the WhatsApp
+id, the sender, when it was received (the webhook's arrival) and the
+quoted message's id (Evolution 2.3.7: `data.contextInfo.stanzaId`, since
+it rewrites a reply into `conversation`; `<content>.contextInfo.stanzaId`
+is read too). Edits and deletions arrive as `messages.edited` with `data`
+= WhatsApp's protocolMessage (`key.id`, `type` 14 / `"MESSAGE_EDIT"` with
+`editedMessage`, or 0 / `"REVOKE"`) and, for deletions, `messages.delete`
+(`data` = the key plus `status: "DELETED"`); both answer 200,
+`message_stored: true` when a kept message changed. An edit replaces the
+text (`edited: true`); a deletion drops it (`deleted: true`, no text).
+Messages older than `AdminSettings.sender_messages_keep_days` (14) are
+deleted by the background loop; the video's own caption stays with its job.
+
+`GET /jobs/{id}/sender-messages` (reviewer session; workers never get
+these) answers `SenderMessagesResponse {job_id, sender_name, items}`, each
+item `{message_id, role, kind, text, received_at, edited, deleted}`, in
+display order: `caption` (the video's), `reply` (quotes this video,
+whenever sent), `after` (received after this video and before the
+sender's next one), `before` (after the sender's previous video and before
+this one; for the first video, everything earlier still kept), oldest
+first within each role. Every job of the sender is a boundary, whatever
+its state; a reply quoting another of the sender's videos is listed only
+there; a message at the same instant as a video counts as after it.
+`JobSummary.sender_message_count` (in `GET /review/queue` and `GET
+/review/car-videos`; 0 elsewhere) is the number of items, and
+`JobSummary.received_at` the job's `source.received_at`.
 
 **Review update.** `expected_version` must equal the job's `version`
 (else 409 `version_conflict`). Since `version` only moves on review
