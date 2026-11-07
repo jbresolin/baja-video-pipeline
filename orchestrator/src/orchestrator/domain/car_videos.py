@@ -14,11 +14,12 @@ videos.
 import sqlite3
 
 from orchestrator.context import OrchestratorContext
-from orchestrator.domain import provas_catalog
+from orchestrator.domain import provas_catalog, sender_messages
 from orchestrator.domain.job_view import job_from_row
+from orchestrator.domain.review_queue import summaries_with_message_counts
 from orchestrator.repositories import catalog as catalog_repo
 from orchestrator.repositories import jobs as jobs_repo
-from shared.models import CarVideosResponse, JobSummary
+from shared.models import CarVideosResponse
 
 
 def prova_slug_for(connection: sqlite3.Connection, prova: str) -> str | None:
@@ -54,8 +55,9 @@ def car_videos(context: OrchestratorContext, prova: str, car_number: int) -> Car
                 if folder_of[row["prova"]] == slug:
                     rows.append(row)
         jobs = [job_from_row(connection, row, context.layout) for row in rows]
+        counts = sender_messages.message_counts(connection, rows)
     return CarVideosResponse(
         prova_slug=slug,
         car_number=car_number,
-        items=[JobSummary.from_job(job) for job in jobs],
+        items=summaries_with_message_counts(jobs, counts),
     )

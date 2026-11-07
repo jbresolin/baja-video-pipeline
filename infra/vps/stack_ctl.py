@@ -23,8 +23,10 @@ import json
 import os
 import sys
 
-# What the orchestrator consumes (docs/api.md "Evolution webhook").
-WANTED_EVENTS = ["MESSAGES_UPSERT", "CONNECTION_UPDATE"]
+# What the orchestrator consumes (docs/api.md "Evolution webhook"). Evolution
+# 2.3.7 sends a filmmaker's edit or deletion only as MESSAGES_EDITED /
+# MESSAGES_DELETE, never as an upsert (LIVESTACK-49).
+WANTED_EVENTS = ["MESSAGES_UPSERT", "MESSAGES_EDITED", "MESSAGES_DELETE", "CONNECTION_UPDATE"]
 SECRET_HEADER = "X-Webhook-Secret"
 
 

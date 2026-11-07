@@ -93,6 +93,18 @@ class IntakeDecision:
     default_prova: str | None = None
 
 
+def messages_are_kept(contact_row: sqlite3.Row, mode: IntakeMode) -> bool:
+    """Are this sender's other messages kept for the job page? (LIVESTACK-49)
+
+    Exactly when their videos would become jobs (the table above), but
+    never with a reply: texts are only read, not answered.
+    """
+    status = ContactStatus(contact_row["status"])
+    if status == ContactStatus.BLOCKED:
+        return False
+    return mode == IntakeMode.OPEN or status == ContactStatus.ALLOWED
+
+
 def intake_decision(
     connection: sqlite3.Connection, contact_row: sqlite3.Row, mode: IntakeMode, now: datetime
 ) -> IntakeDecision:

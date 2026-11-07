@@ -45,7 +45,7 @@ def stored(**overrides) -> dict:
     webhook = {
         "enabled": True,
         "url": WEBHOOK_URL,
-        "events": ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+        "events": ["MESSAGES_UPSERT", "MESSAGES_EDITED", "MESSAGES_DELETE", "CONNECTION_UPDATE"],
         "headers": {"X-Webhook-Secret": SECRET},
         "webhookByEvents": False,
         "webhookBase64": False,
@@ -64,6 +64,8 @@ def test_up_sets_a_missing_or_wrong_webhook_and_leaves_a_right_one():
         ({"enabled": False}, "disabled"),
         ({"url": "http://old-consumer/hook"}, "old-consumer"),
         ({"events": ["MESSAGES_UPSERT"]}, "events"),
+        # As set before LIVESTACK-49: edits and deletions would never arrive.
+        ({"events": ["MESSAGES_UPSERT", "CONNECTION_UPDATE"]}, "events"),
         ({"webhookBase64": True}, "base64"),
         ({"headers": {"X-Webhook-Secret": "rotated"}}, "X-Webhook-Secret"),
         ({"headers": None}, "X-Webhook-Secret"),
@@ -96,7 +98,12 @@ def test_webhook_body_is_the_nested_shape_evolution_2_3_7_validates():
             "byEvents": False,
             # base64 on would buffer every 2 GB document in Evolution's RAM.
             "base64": False,
-            "events": ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+            "events": [
+                "MESSAGES_UPSERT",
+                "MESSAGES_EDITED",
+                "MESSAGES_DELETE",
+                "CONNECTION_UPDATE",
+            ],
             "headers": {"X-Webhook-Secret": SECRET},
         }
     }

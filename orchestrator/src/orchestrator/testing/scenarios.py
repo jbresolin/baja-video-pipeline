@@ -38,6 +38,7 @@ def send_video(
     file_name: str = "VID_20261025_101500.mp4",
     sender_phone: str = "5511999999999",
     reshape: Callable[[dict], dict] | None = None,
+    caption: str | None = None,
 ) -> tuple[httpx.Response, dict]:
     """Encrypt `data` like WhatsApp, put it on the fake CDN and post the webhook.
 
@@ -61,6 +62,7 @@ def send_video(
             file_name=file_name,
             sender_phone=sender_phone,
             message_id=message_id,
+            caption=caption,
         )
     if reshape is not None:
         payload = reshape(payload)
@@ -274,3 +276,23 @@ def save_review_fields(harness: OrchestratorHarness, job_id: str, **fields) -> d
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def post_webhook(
+    harness: OrchestratorHarness, payload: dict, reshape: Callable[[dict], dict] | None = None
+) -> dict:
+    """Post any Evolution webhook body; insists on a 200 and returns the answer."""
+    if reshape is not None:
+        payload = reshape(payload)
+    response = harness.client.post(
+        "/intake/evolution-webhook", json=payload, headers=harness.webhook_headers
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def sender_messages(harness: OrchestratorHarness, job_id: str) -> list[dict]:
+    """GET /jobs/{id}/sender-messages as the reviewer ana: the section's items."""
+    response = harness.client.get(f"/jobs/{job_id}/sender-messages", auth=harness.reviewer_auth)
+    assert response.status_code == 200, response.text
+    return response.json()["items"]

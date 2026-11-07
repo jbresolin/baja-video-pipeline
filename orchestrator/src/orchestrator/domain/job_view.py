@@ -134,6 +134,7 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
             raw_file_name=row["raw_file_name"],
             sent_at=from_db_time(row["sent_at"]),
             received_at=from_db_time(row["received_at"]),
+            caption=row["caption"],
         ),
         low_res=bool(row["low_res"]),
         recorded_at=from_db_time(row["recorded_at"]),

@@ -33,19 +33,23 @@ paths:
     post:
       tags:
       - intake
-      summary: Evolution instance webhook (messages.upsert) → background download → job
+      summary: 'Evolution instance webhook: videos → background download → job; other messages kept'
       description: "Exact route Caddy forwards: `POST /intake/evolution-webhook`, with the\n`X-Webhook-Secret`\
         \ header (wrong or missing → 401).\n\n* Only `event == \"messages.upsert\"` with `data.key.fromMe\
-        \ == false` is\n  considered; anything else gets 200 with `ignored: true`.\n* A `documentMessage`\
-        \ (also inside `documentWithCaptionMessage`) with a\n  `video/*` mimetype → normal job. A `videoMessage`\
-        \ → `low_res: true`\n  (the bot asks for a resend as document). Other messages → 200 ignored.\n\
-        * Answer fast: 202 `accepted: true`, then download the encrypted file\n  from the WhatsApp CDN\
-        \ and decrypt it while streaming\n  (`shared.whatsapp_media.download_incoming_media`) into the\
-        \ inbox. The\n  job is created in state `received` only after every check passed;\n  on failure\
-        \ no job is created and the bot asks the sender to resend.\n* Duplicate `data.key.id` (in progress\
-        \ or done) → 200 `duplicate: true`\n  with the existing `job_id` if there is one.\n* Inbox above\
-        \ BVP_INBOX_CAP_GB → 413 `inbox_full`. Above\n  BVP_INBOX_HOLD_GB the media is still accepted\
-        \ but the bot asks the\n  sender to hold further videos."
+        \ == false`,\n  and the sender's `messages.edited` / `messages.delete`, are\n  considered; anything\
+        \ else gets 200 with `ignored: true`.\n* A `documentMessage` (also inside `documentWithCaptionMessage`)\
+        \ with a\n  `video/*` mimetype → normal job, its caption kept with it. A\n  `videoMessage` → `low_res:\
+        \ true` (the bot asks for a resend as\n  document).\n* Any other private message (text, image,\
+        \ audio, ...) from a sender\n  whose videos would be accepted is kept for the job page and never\n\
+        \  answered: 200 `ignored: true, message_stored: true` (LIVESTACK-49).\n  `messages.edited` (edit\
+        \ or deletion) and `messages.delete` change a\n  kept message: 200, `message_stored: true` when\
+        \ one was changed.\n* Answer fast: 202 `accepted: true`, then download the encrypted file\n  from\
+        \ the WhatsApp CDN and decrypt it while streaming\n  (`shared.whatsapp_media.download_incoming_media`)\
+        \ into the inbox. The\n  job is created in state `received` only after every check passed;\n \
+        \ on failure no job is created and the bot asks the sender to resend.\n* Duplicate `data.key.id`\
+        \ (in progress or done) → 200 `duplicate: true`\n  with the existing `job_id` if there is one.\n\
+        * Inbox above BVP_INBOX_CAP_GB → 413 `inbox_full`. Above\n  BVP_INBOX_HOLD_GB the media is still\
+        \ accepted but the bot asks the\n  sender to hold further videos."
       operationId: evolution_webhook_intake_evolution_webhook_post
       requestBody:
         content:
@@ -1632,6 +1636,65 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Job'
+        '401':
+          description: Missing or wrong credentials (unauthenticated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No such job / worker / team / user / ... (not_found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /jobs/{job_id}/sender-messages:
+    get:
+      tags:
+      - review
+      summary: The sender's messages around this video (job page)
+      description: 'For the job page''s "Mensagens de <remetente>" (LIVESTACK-49), in
+
+        display order: the video''s caption; the sender''s messages that quote
+
+        this video (role `reply`, whenever they were sent); those received
+
+        after it and before the sender''s next video (`after`); those received
+
+        after the sender''s previous video and before this one (`before`). A
+
+        message quoting another of the sender''s videos is listed only there.
+
+        Oldest first within each role. Texts and captions only; other messages
+
+        by kind (`audio`, `image`, ...). Edited messages carry the new text and
+
+        `edited: true`; deleted ones `deleted: true` and no text. Messages are
+
+        kept for the Settings'' `sender_messages_keep_days` (14).'
+      operationId: get_sender_messages_jobs__job_id__sender_messages_get
+      security:
+      - sessionBearer: []
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderMessagesResponse'
         '401':
           description: Missing or wrong credentials (unauthenticated)
           content:
@@ -3587,6 +3650,12 @@ components:
           maxLength: 500
           title: Vertical Video Message
           default: 📱 Vídeo na vertical. Da próxima vez, grave na horizontal, por favor.
+        sender_messages_keep_days:
+          type: integer
+          maximum: 365.0
+          minimum: 1.0
+          title: Sender Messages Keep Days
+          default: 14
       type: object
       required:
       - intake_mode
@@ -5238,6 +5307,10 @@ components:
           type: boolean
           title: Low Res
           default: false
+        message_stored:
+          type: boolean
+          title: Message Stored
+          default: false
       type: object
       required:
       - job_id
@@ -5301,6 +5374,11 @@ components:
             format: date-time
           - type: 'null'
           title: Received At
+        caption:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Caption
       type: object
       required:
       - message_id
@@ -5639,6 +5717,17 @@ components:
           anyOf:
           - $ref: '#/components/schemas/RecordedAtSource'
           - type: 'null'
+        received_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Received At
+        sender_message_count:
+          type: integer
+          minimum: 0.0
+          title: Sender Message Count
+          default: 0
         size_bytes:
           type: integer
           minimum: 0.0
@@ -6875,6 +6964,101 @@ components:
       - missing
       title: SecretState
       description: Whether a secret from .env is set. The UI never shows the value itself.
+    SenderMessage:
+      properties:
+        message_id:
+          type: string
+          title: Message Id
+        role:
+          $ref: '#/components/schemas/SenderMessageRole'
+        kind:
+          $ref: '#/components/schemas/SenderMessageKind'
+        text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Text
+        received_at:
+          type: string
+          format: date-time
+          title: Received At
+        edited:
+          type: boolean
+          title: Edited
+          default: false
+        deleted:
+          type: boolean
+          title: Deleted
+          default: false
+      type: object
+      required:
+      - message_id
+      - role
+      - kind
+      - received_at
+      title: SenderMessage
+      description: 'One WhatsApp message from the video''s sender, as the job page lists it (LIVESTACK-49).
+
+
+        Read by clients: unknown fields are ignored.'
+    SenderMessageKind:
+      type: string
+      enum:
+      - text
+      - image
+      - audio
+      - video
+      - document
+      - sticker
+      - location
+      - contact
+      - other
+      title: SenderMessageKind
+      description: 'What a filmmaker''s message was (LIVESTACK-49). Only text and captions
+
+        are kept; for the rest the job page just says "(áudio)", "(imagem)".'
+    SenderMessageRole:
+      type: string
+      enum:
+      - caption
+      - reply
+      - after
+      - before
+      title: SenderMessageRole
+      description: Why a message is listed in a video's "Mensagens de <remetente>" section.
+    SenderMessagesResponse:
+      properties:
+        job_id:
+          type: string
+          title: Job Id
+        sender_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sender Name
+        items:
+          items:
+            $ref: '#/components/schemas/SenderMessage'
+          type: array
+          title: Items
+      type: object
+      required:
+      - job_id
+      - items
+      title: SenderMessagesResponse
+      description: 'GET /jobs/{job_id}/sender-messages: the job page''s "Mensagens de <remetente>".
+
+
+        `items` in display order: the caption, then the replies to this video,
+
+        then the messages received after it (before the sender''s next video),
+
+        then those received before it (after the sender''s previous video);
+
+        oldest first within each role.
+
+
+        Read by clients: unknown fields are ignored.'
     ServerDisk:
       properties:
         inbox_bytes:
@@ -7226,6 +7410,13 @@ components:
             maxLength: 1000
           - type: 'null'
           title: Vertical Video Message
+        sender_messages_keep_days:
+          anyOf:
+          - type: integer
+            maximum: 365.0
+            minimum: 1.0
+          - type: 'null'
+          title: Sender Messages Keep Days
       additionalProperties: false
       type: object
       title: UpdateSettingsRequest

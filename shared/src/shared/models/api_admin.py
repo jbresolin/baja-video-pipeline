@@ -43,6 +43,11 @@ class IntakeResponse(ReadByClients):
     reason: str | None = None
     duplicate: bool = False
     low_res: bool = False
+    # True when a message that is not a video (a text, a photo, an audio)
+    # was kept for the job page's "Mensagens de <remetente>" (LIVESTACK-49),
+    # or an edit or deletion was applied to one. Such a message makes no
+    # job, so `ignored` is true as well.
+    message_stored: bool = False
 
 
 # --- Enrollment ---

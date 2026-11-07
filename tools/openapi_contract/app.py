@@ -40,6 +40,10 @@ from tools.openapi_contract import (
 # required_render_features); AdminSettings.vertical_video_message.
 # Deploy the VPS first: an older orchestrator refuses the new heartbeat and
 # render-inputs fields (the worker falls back for heartbeats).
+# Also in 2.6.0, the sender's messages for the reviewer (GET /jobs/{id}/sender-messages,
+# IntakeSource.caption, JobSummary.received_at and sender_message_count,
+# AdminSettings.sender_messages_keep_days, IntakeResponse.message_stored; the
+# webhook also reads messages.edited and messages.delete; LIVESTACK-49).
 CONTRACT_VERSION = "2.6.0"
 
 DESCRIPTION = """\

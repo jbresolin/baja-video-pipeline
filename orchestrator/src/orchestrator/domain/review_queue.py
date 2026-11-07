@@ -1,6 +1,7 @@
 """Review-side reads and requests that do not edit the review: queue, job, team, proxy."""
 
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain import sender_messages
 from orchestrator.domain.clip_names import clip_names, name_styles
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
 from orchestrator.domain.job_view import job_from_row, load_job, require_job_row
@@ -37,7 +38,16 @@ def review_queue(
         else:
             rows = jobs_repo.list_review_queue_rows(connection, states, limit)
             jobs = [job_from_row(connection, row, context.layout) for row in rows]
-    return ReviewQueueResponse(items=[JobSummary.from_job(job) for job in jobs])
+        counts = sender_messages.message_counts(connection, rows)
+    return ReviewQueueResponse(items=summaries_with_message_counts(jobs, counts))
+
+
+def summaries_with_message_counts(jobs: list[Job], counts: dict[str, int]) -> list[JobSummary]:
+    """JobSummary of each job, with how many sender messages its page lists (LIVESTACK-49)."""
+    return [
+        JobSummary.from_job(job).model_copy(update={"sender_message_count": counts.get(job.id, 0)})
+        for job in jobs
+    ]
 
 
 def holder_available(connection, job_id: str, now) -> bool:

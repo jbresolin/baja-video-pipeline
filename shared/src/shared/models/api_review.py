@@ -14,7 +14,14 @@ from shared.models.common import (
     Rotation,
     Seconds,
 )
-from shared.models.enums import Framing, JobState, OriginalState, ReviewAction
+from shared.models.enums import (
+    Framing,
+    JobState,
+    OriginalState,
+    ReviewAction,
+    SenderMessageKind,
+    SenderMessageRole,
+)
 from shared.models.job import JobSummary, check_cut_order
 
 
@@ -44,6 +51,44 @@ class CarVideosResponse(ReadByClients):
     prova_slug: str | None
     car_number: CarNumber
     items: list[JobSummary]
+
+
+class SenderMessage(ReadByClients):
+    """One WhatsApp message from the video's sender, as the job page lists it (LIVESTACK-49).
+
+    Read by clients: unknown fields are ignored.
+    """
+
+    # WhatsApp message id (Evolution data.key.id); the video's own for the caption.
+    message_id: str
+    role: SenderMessageRole
+    kind: SenderMessageKind
+    # The text, or the caption of an image or document. None for media
+    # without a caption (audio, sticker, ...) and for a deleted message.
+    text: str | None = None
+    # When the bot received it (the webhook's arrival).
+    received_at: datetime
+    # The sender changed the text after sending it; `text` is the new one.
+    edited: bool = False
+    # The sender deleted it for everyone ("apagar para todos"); `text` is gone.
+    deleted: bool = False
+
+
+class SenderMessagesResponse(ReadByClients):
+    """GET /jobs/{job_id}/sender-messages: the job page's "Mensagens de <remetente>".
+
+    `items` in display order: the caption, then the replies to this video,
+    then the messages received after it (before the sender's next video),
+    then those received before it (after the sender's previous video);
+    oldest first within each role.
+
+    Read by clients: unknown fields are ignored.
+    """
+
+    job_id: str
+    # The sender's name as the job has it (IntakeSource.sender_name).
+    sender_name: str | None = None
+    items: list[SenderMessage]
 
 
 class ReviewUpdate(ReceivedByServer):
