@@ -28,6 +28,9 @@ from shared.models import (
     RecordedAtSource,
     RenderInputField,
     RenderInputs,
+    SenderMessage,
+    SenderMessageKind,
+    SenderMessageRole,
     ServerDisk,
     TaskKind,
     Team,
@@ -327,4 +330,36 @@ def make_provas() -> list[Prova]:
         Prova(id=1, name="Enduro", slug="enduro", display_order=1, active=True),
         Prova(id=2, name="Suspensão", slug="suspensao", display_order=2, active=True),
         Prova(id=3, name="Lama", slug="lama", display_order=3, active=False),
+    ]
+
+
+def sender_message(
+    role: SenderMessageRole,
+    text: str | None,
+    minutes_after_t0: int,
+    *,
+    kind: SenderMessageKind = SenderMessageKind.TEXT,
+    message_id: str | None = None,
+    **changes,
+) -> SenderMessage:
+    """One of the sender's messages as GET /jobs/{id}/sender-messages lists it (LIVESTACK-49)."""
+    return SenderMessage(
+        message_id=message_id or f"3EB0{role.upper()}{minutes_after_t0:04d}",
+        role=role,
+        kind=kind,
+        text=text,
+        received_at=T0 + timedelta(minutes=minutes_after_t0),
+        **changes,
+    )
+
+
+def bruno_messages() -> list[SenderMessage]:
+    """What Bruno wrote around job-awaiting-1 (received at T0), in display order."""
+    return [
+        sender_message(SenderMessageRole.CAPTION, "carro 42", 0, kind=SenderMessageKind.VIDEO),
+        sender_message(SenderMessageRole.AFTER, "segunda passagem", 1),
+        sender_message(SenderMessageRole.AFTER, None, 2, kind=SenderMessageKind.AUDIO),
+        sender_message(SenderMessageRole.AFTER, "o 42 de novo", 3, edited=True),
+        sender_message(SenderMessageRole.AFTER, None, 4, deleted=True),
+        sender_message(SenderMessageRole.BEFORE, "vou mandar o 42 agora", -5),
     ]

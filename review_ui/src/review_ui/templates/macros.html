@@ -36,3 +36,16 @@
 <time class="recorded" datetime="{{ moment|iso }}" title="{{ moment|clock }}">{{ recorded_time(moment, reference) }}</time>
 {%- if source != "metadata" %} <span class="time-hint" title="{{ t('recorded.hint.' ~ source ~ '.title') }}">{{ t("recorded.hint." ~ source) }}</span>{% endif %}
 {%- endmacro %}
+
+{# When the bot received a video (LIVESTACK-49), in the same short format as
+   `recorded`: "recebido 14:05". `video` is a JobSummary. #}
+{% macro received(video, reference) -%}
+{% set moment = video.received_at or video.created_at %}
+<time class="received" datetime="{{ moment|iso }}" title="{{ t('received.title') }}: {{ moment|clock }}">{{ t("received.label") }} {{ recorded_time(moment, reference) }}</time>
+{%- endmacro %}
+
+{# The queue row's speech bubble: how many messages the sender wrote about
+   this video (JobSummary.sender_message_count, LIVESTACK-49). #}
+{% macro message_count(video) -%}
+{% if video.sender_message_count %}<span class="badge messages" title="{{ tn('queue.messages.title', video.sender_message_count) }}">💬 {{ video.sender_message_count }}</span>{% endif %}
+{%- endmacro %}

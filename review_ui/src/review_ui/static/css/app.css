@@ -235,6 +235,23 @@ video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: var(
 .small-thumb { width: 96px; }
 .passagem-registered, .passagem-suggestion { font-size: 0.85rem; margin: 0.5rem 0 0; }
 .passagem-suggestion button { margin-left: 0.4rem; padding: 0.2rem 0.6rem; font-size: 0.85rem; }
+/* Job header: Gravado · Recebido · Enviado por, side by side (LIVESTACK-49). */
+.job-origin { display: flex; flex-wrap: wrap; gap: 0.15rem 1.25rem; }
+.job-origin p { margin: 0.25rem 0 0; }
+.passagem-time .secondary { display: block; color: var(--muted); font-size: 0.8rem; }
+/* "Mensagens de <remetente>": the filmmaker's own words, closed by default. */
+.sender-messages { margin: 0.75rem 0 0; padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.sender-messages > summary { cursor: pointer; font-weight: 600; }
+.message-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.3rem; font-size: 0.9rem; }
+.sender-message { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.5rem; }
+.sender-message.is-reply { padding: 0.2rem 0.4rem; border-left: 3px solid var(--accent); background: var(--info-bg); border-radius: 4px; }
+.message-time { color: var(--muted); font-family: var(--mono); font-size: 0.8rem; }
+.message-body { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; flex: 1 1 12rem; }
+.message-role { background: var(--info-bg); color: var(--info-ink); }
+.message-edited { font-size: 0.8rem; font-style: italic; }
+.messages-before { margin-top: 0.5rem; }
+.messages-before > summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
+.badge.messages { background: var(--info-bg); color: var(--info-ink); }
 .ready-warnings { margin: 1rem 0 0; font-size: 0.85rem; }
 .ready-warnings p, .ready-warnings ul { margin: 0; }
 .ready-warnings ul { padding-left: 1.2rem; }

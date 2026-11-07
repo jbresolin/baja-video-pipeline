@@ -22,11 +22,13 @@ from review_ui.media_info_view import media_panel
 from review_ui.passagem_help_view import passagem_help
 from review_ui.queue_view import STATES_IN_PIPELINE_ORDER, QueueFilter
 from review_ui.render_options_view import render_options_box
+from review_ui.sender_messages_view import sender_messages_section
 from review_ui.settings import ReviewUiSettings
 from review_ui.templating import TEMPLATES_DIR, build_templates
-from shared.models import CurrentUser, JobState, JobSummary
+from shared.models import CurrentUser, JobState, JobSummary, SenderMessagesResponse
 from tests.review_ui.sample_data import (
     T0,
+    bruno_messages,
     car_7_video,
     delivered_job,
     edited_after_delivery_job,
@@ -121,11 +123,18 @@ def fleet_context() -> dict:
 
 # (template name, function building its context). Every template file in
 # the folder must appear here; the last test checks that none is forgotten.
+def sender_messages_context() -> dict:
+    job = make_job()
+    response = SenderMessagesResponse(job_id=job.id, sender_name="Bruno", items=bruno_messages())
+    return {**job_context(job), "messages": sender_messages_section(response, job)}
+
+
 CASES = {
     "queue.html": queue_context,
     "_queue_rows.html": queue_context,
     "job.html": lambda: job_context(make_job()),
     "_passagem_help.html": passagem_help_context,
+    "_sender_messages.html": sender_messages_context,
     "_job_panel.html": lambda: job_context(failed_job()),
     # A clip edited after delivery: the status strip carries the warning banner.
     "_job_status.html": lambda: job_context(edited_after_delivery_job()),

@@ -32,7 +32,7 @@ TEXT: dict[str, str] = {
     # --- Job page: header and player ---
     "job.title": "Vídeo {id}",
     "job.back": "← Fila",
-    "job.hint": "De {intake} · recebido {received} · {size} · {duration} · v{version}",
+    "job.hint": "{size} · {duration} · v{version}",
     "job.stale": "Alguém alterou este vídeo depois que você abriu a página.",
     "job.reload": "Recarregar",
     "job.player": "Player do proxy",

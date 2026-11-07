@@ -207,7 +207,7 @@ def test_event_log_failure_does_not_break_the_page(ui, fake_orchestrator):
 def test_page_head_says_who_sent_the_raw_and_how(ui):
     html = ui.get("/review/jobs/job-awaiting-1").text
 
-    assert "De Bruno, como documento do WhatsApp (VID_0042.mp4)" in html
+    assert "Enviado por Bruno, como documento do WhatsApp (VID_0042.mp4)." in html
 
 
 def test_frame_step_uses_the_jobs_frame_rate(ui, fake_orchestrator):
