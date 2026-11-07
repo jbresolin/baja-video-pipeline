@@ -31,6 +31,18 @@
       {% endfor %}
     </select>
   </label>
+  {# "Enviado por" (LIVESTACK-51): the senders with videos in this view. #}
+  <label class="field-inline">{{ t("queue.filter.sender") }}
+    <select name="sender">
+      <option value="">{{ t("queue.filter.any_sender") }}</option>
+      {% if filter.sender and filter.sender not in sender_options|map(attribute="phone")|list %}
+      <option value="{{ filter.sender }}" selected>{{ filter.sender }}</option>
+      {% endif %}
+      {% for option in sender_options %}
+      <option value="{{ option.phone }}" {% if option.phone == filter.sender %}selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
   <label class="chip"><input type="checkbox" name="flagged" value="1" {% if filter.flagged_only %}checked{% endif %}> {{ t("queue.filter.low_res_only") }}</label>
   <label class="chip"><input type="checkbox" name="outdated" value="1" {% if filter.outdated_only %}checked{% endif %}> {{ t("queue.filter.outdated_only") }}</label>
   <noscript><button type="submit">{{ t("filter.apply") }}</button></noscript>

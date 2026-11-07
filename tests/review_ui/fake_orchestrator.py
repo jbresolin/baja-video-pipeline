@@ -129,7 +129,15 @@ class FakeOrchestrator:
         """JobSummary as the lists send it, with the message count (LIVESTACK-49)."""
         summary = JobSummary.from_job(job)
         count = len(self.sender_messages.get(job.id, []))
-        return summary.model_copy(update={"sender_message_count": count}).model_dump(mode="json")
+        # The sender for the "Enviado por" filter (LIVESTACK-51): the JID's
+        # digits and, with no contacts here, the WhatsApp name.
+        jid = job.source.sender_jid
+        update = {
+            "sender_message_count": count,
+            "sender_phone": jid.split("@", 1)[0] if jid else None,
+            "sender_display_name": job.source.sender_name,
+        }
+        return summary.model_copy(update=update).model_dump(mode="json")
 
     def http_client(self) -> httpx.Client:
         """An httpx.Client whose requests are answered by this fake, in memory."""

@@ -9,6 +9,7 @@ from review_ui.queue_view import (
     apply_local_filters,
     distinct_provas,
     parse_queue_filter,
+    sender_options,
 )
 from review_ui.request_context import orchestrator_for, render_page
 from review_ui.settings import QUEUE_POLL_SECONDS
@@ -25,6 +26,8 @@ def _queue_context(request: Request, queue_filter: QueueFilter) -> dict:
         # Prova choices come from the unfiltered list, so picking one prova
         # does not make the others disappear from the menu.
         "prova_options": distinct_provas([item.prova for item in all_items]),
+        # Likewise the senders ("Enviado por", LIVESTACK-51).
+        "sender_options": sender_options(all_items),
         "filter": queue_filter,
     }
 
@@ -43,8 +46,9 @@ def queue_page(
     prova: str | None = None,
     flagged: str | None = None,
     outdated: str | None = None,
+    sender: str | None = None,
 ) -> HTMLResponse:
-    queue_filter = parse_queue_filter(state, prova, flagged, outdated)
+    queue_filter = parse_queue_filter(state, prova, flagged, outdated, sender)
     context = _queue_context(request, queue_filter)
     context.update(
         active_nav="queue",
@@ -61,7 +65,8 @@ def queue_rows_partial(
     prova: str | None = None,
     flagged: str | None = None,
     outdated: str | None = None,
+    sender: str | None = None,
 ) -> HTMLResponse:
     """Only the rows, for the page's auto-refresh (same filters as the page)."""
-    queue_filter = parse_queue_filter(state, prova, flagged, outdated)
+    queue_filter = parse_queue_filter(state, prova, flagged, outdated, sender)
     return render_page(request, "_queue_rows.html", _queue_context(request, queue_filter))

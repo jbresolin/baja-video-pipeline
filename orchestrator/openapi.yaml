@@ -5984,6 +5984,16 @@ components:
           - type: boolean
           - type: 'null'
           title: Vertical
+        sender_phone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sender Phone
+        sender_display_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sender Display Name
       type: object
       required:
       - id

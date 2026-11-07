@@ -39,6 +39,7 @@ def send_video(
     sender_phone: str = "5511999999999",
     reshape: Callable[[dict], dict] | None = None,
     caption: str | None = None,
+    sender_name: str = "Voluntário Teste",
 ) -> tuple[httpx.Response, dict]:
     """Encrypt `data` like WhatsApp, put it on the fake CDN and post the webhook.
 
@@ -52,7 +53,12 @@ def send_video(
     url = harness.cdn.add_blob(path, blob)
     if as_video_message:
         payload = video_message_payload(
-            encrypted, url, path, sender_phone=sender_phone, message_id=message_id
+            encrypted,
+            url,
+            path,
+            sender_phone=sender_phone,
+            sender_name=sender_name,
+            message_id=message_id,
         )
     else:
         payload = document_message_payload(
@@ -61,6 +67,7 @@ def send_video(
             path,
             file_name=file_name,
             sender_phone=sender_phone,
+            sender_name=sender_name,
             message_id=message_id,
             caption=caption,
         )

@@ -63,7 +63,10 @@ from tools.openapi_contract import (
 # first: an older orchestrator refuses every render-inputs report of a 0.6.0
 # worker (it always carries the pass_clock key); the worker logs it and
 # delivers anyway, and the version keeps the claim snapshot.
-CONTRACT_VERSION = "2.8.0"
+# 2.9.0: review fixes from the 2026-11-07 test (LIVESTACK-51): JobSummary.
+# sender_phone and sender_display_name (the queue's "Enviado por" filter).
+# Only reviewer-facing answers changed; workers ignore them (§14).
+CONTRACT_VERSION = "2.9.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

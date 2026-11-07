@@ -42,6 +42,13 @@ def phone_from_jid(remote_jid: str) -> str:
     return re.sub(r"\D", "", user_part)
 
 
+def sender_phone(sender_jid: str | None) -> str | None:
+    """The contact key of a job's or message's sender JID; None without one (test uploads)."""
+    if not sender_jid:
+        return None
+    return phone_from_jid(sender_jid) or None
+
+
 def normalize_phone(typed: str) -> str | None:
     """Digits of a number an admin typed ("+55 (11) 98765-4321"), or None if implausible."""
     digits = re.sub(r"\D", "", typed)

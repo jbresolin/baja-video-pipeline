@@ -358,6 +358,12 @@ class JobSummary(ReadByClients):
     clip_outdated: bool = False
     # Taller than wide (Job.vertical); None while the size is unknown.
     vertical: bool | None = None
+    # Who sent it, for the queue's "Enviado por" filter (LIVESTACK-51): the
+    # contact's number (digits, the key of Admin → Contatos) and the name the
+    # admin gave that contact, else the WhatsApp profile name. Filled in by
+    # GET /review/queue only; None for test uploads.
+    sender_phone: str | None = None
+    sender_display_name: str | None = None
 
     @classmethod
     def from_job(cls, job: Job) -> "JobSummary":

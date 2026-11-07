@@ -32,6 +32,7 @@ from review_ui.catalog import (
     passagens,
     render_options,
     scripts,
+    senders,
     welcome,
 )
 
@@ -58,6 +59,7 @@ CATALOG: dict[str, str] = _merge(
     admin_pages.TEXT,
     admin_settings.TEXT,
     welcome.TEXT,
+    senders.TEXT,
     scripts.TEXT,
 )
 
