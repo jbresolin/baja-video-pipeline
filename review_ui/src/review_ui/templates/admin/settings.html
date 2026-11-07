@@ -16,6 +16,20 @@
     {% endfor %}
     <p class="hint">{{ t("settings.intake_mode.hint") }}</p>
   </fieldset>
+  {# Sent to new contacts (Contatos, LIVESTACK-44). The preview is filled
+     here with example values; js/admin.js refreshes it while typing. #}
+  <label for="welcome_message">{{ t("settings.welcome_message") }}</label>
+  <textarea id="welcome_message" name="welcome_message" rows="11" maxlength="{{ welcome_max_length }}"
+            data-welcome-preview="welcome-preview">{{ values.welcome_message }}</textarea>
+  <ul class="plain hint">
+    {% for name in welcome_placeholders %}
+    <li><code>{{ "{" ~ name ~ "}" }}</code>: {{ t("settings.welcome_placeholder." ~ name) }}</li>
+    {% endfor %}
+  </ul>
+  <p class="hint">{{ t("settings.welcome_message.hint") }}</p>
+  <p class="hint">{{ t("settings.welcome_preview", nome=welcome_examples.nome, prova=welcome_examples.prova) }}</p>
+  <div id="welcome-preview" class="welcome-preview" aria-live="polite"
+       data-example-values='{{ welcome_examples|tojson }}'>{{ welcome_preview or t("script.welcome_preview_empty") }}</div>
   {# Which names the clips show (the overlay, the clips page, the job page). #}
   <fieldset class="choices">
     <legend>{{ t("settings.clip_team_name") }}</legend>

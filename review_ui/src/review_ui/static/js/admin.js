@@ -9,8 +9,14 @@
 //                          "tr"), so the page does not reload or jump to the
 //                          top; a short note beside the button says it worked
 //                          (routes_admin_inline.py; LIVESTACK-42)
+//   textarea[data-welcome-preview=id]  refreshes the preview #id while
+//                          typing (Settings, welcome message; LIVESTACK-44)
+//   select[data-welcome-status]  on the add-contact form: "Bloqueado"
+//                          unchecks and disables [data-welcome-checkbox],
+//                          "Permitido" checks it again
 import { errorMessage, localizeTimes, sendJson } from "./common.js";
 import { t } from "./text.js";
+import { fillWelcomeMessage } from "./welcome.js";
 
 // How long the "done" note stays beside the button.
 const INLINE_NOTE_SECONDS = 4;
@@ -32,12 +38,18 @@ for (const button of document.querySelectorAll("[data-copy-from]")) {
   });
 }
 
-for (const form of document.querySelectorAll("form[data-confirm]")) {
-  if (form.dataset.inline) continue; // submitInline asks itself
-  form.addEventListener("submit", (event) => {
-    if (!window.confirm(form.dataset.confirm)) event.preventDefault();
-  });
+// Also run on rows swapped in by a data-inline form (a contact row's
+// "Enviar boas-vindas" asks before sending).
+function enhanceConfirmForms(root) {
+  for (const form of root.querySelectorAll("form[data-confirm]")) {
+    if (form.dataset.inline) continue; // submitInline asks itself
+    form.addEventListener("submit", (event) => {
+      if (!window.confirm(form.dataset.confirm)) event.preventDefault();
+    });
+  }
 }
+
+enhanceConfirmForms(document);
 
 // The element a data-inline form's answer replaces.
 function inlineTarget(form) {
@@ -73,6 +85,7 @@ async function submitInline(form) {
   const fresh = template.content.firstElementChild;
   inlineTarget(form).replaceWith(fresh);
   enhanceInlineForms(fresh);
+  enhanceConfirmForms(fresh);
   localizeTimes(fresh);
   // The same action's form in the new rows (same URL and, for ↑/↓, the
   // same direction), so the note appears beside the button that was pressed.
@@ -99,4 +112,26 @@ enhanceInlineForms(document);
 
 for (const select of document.querySelectorAll("select[data-autosubmit]")) {
   select.addEventListener("change", () => select.form.submit());
+}
+
+// Settings: the welcome message's preview, filled with the example values
+// the server put on the preview box.
+for (const textarea of document.querySelectorAll("textarea[data-welcome-preview]")) {
+  const preview = document.getElementById(textarea.dataset.welcomePreview);
+  const examples = JSON.parse(preview.dataset.exampleValues);
+  textarea.addEventListener("input", () => {
+    const filled = fillWelcomeMessage(textarea.value.trim(), examples);
+    preview.textContent = filled || t("script.welcome_preview_empty");
+  });
+}
+
+// Contacts, add form: no welcome message for a blocked contact. The
+// checkbox exists with data-welcome-checkbox only when a message is set.
+for (const select of document.querySelectorAll("select[data-welcome-status]")) {
+  const checkbox = select.form.querySelector("[data-welcome-checkbox]");
+  if (!checkbox) continue;
+  select.addEventListener("change", () => {
+    checkbox.disabled = select.value === "blocked";
+    checkbox.checked = select.value === "allowed";
+  });
 }

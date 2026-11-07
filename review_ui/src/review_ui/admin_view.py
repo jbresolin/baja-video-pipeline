@@ -44,7 +44,9 @@ DONE_KEYS = {
     "user_created",
     "user_updated",
     "contact_created",
+    "contact_created_welcome_sent",
     "contact_updated",
+    "welcome_sent",
     "prova_created",
     "prova_updated",
     "provas_reordered",
@@ -91,10 +93,15 @@ def apply_change(
     try:
         action()
     except OrchestratorError as error:
-        if error.status_code in (401, 403):
-            raise
-        return show_page(orchestrator_error_text(error), error.status_code)
+        return show_refusal(error, show_page)
     return redirect_done(done_path, done_key)
+
+
+def show_refusal(error: OrchestratorError, show_page: Callable[[str, int], Response]) -> Response:
+    """The page again with the orchestrator's refusal; 401 and 403 go on to the app's handler."""
+    if error.status_code in (401, 403):
+        raise error
+    return show_page(orchestrator_error_text(error), error.status_code)
 
 
 def form_text(form: dict[str, str], name: str) -> str | None:
@@ -153,5 +160,8 @@ def admin_context(request: Request, section: str, **values) -> dict:
         "section": section,
         "done": done_message(request.query_params.get("feito")),
         "error": None,
+        # Something worked but not all of it (a contact saved, its welcome
+        # message not sent): a yellow banner.
+        "warning": None,
         **values,
     }

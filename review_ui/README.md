@@ -64,6 +64,16 @@ strip shows a warning banner with one sentence per difference
 revisão agora diz 0:05–0:12." It is part of the polled panel, so it goes
 away by itself when the new version arrives.
 
+**Welcome message** (LIVESTACK-44). Configurações has the text the bot
+sends to new contacts, its placeholders (`{nome}`, `{prova}`) and a preview
+filled with example values (refreshed while typing by `js/welcome.js`,
+which mirrors `shared/welcome_message.py`). On Contatos the add form has
+"Enviar mensagem de boas-vindas" (ticked for Permitido, disabled for
+Bloqueado) and each row a "Boas-vindas" column: when it was last sent and
+"Enviar boas-vindas" (asks first). An empty message disables both. When
+the orchestrator could not send it, the page answers the POST directly with
+a yellow banner and Evolution's reason (`warning` in `admin_context`).
+
 Every action sends the version of the job the page was loaded with
 (`expected_version`). If someone else changed the job first, the
 orchestrator answers 409. The page then reloads and says so, listing the

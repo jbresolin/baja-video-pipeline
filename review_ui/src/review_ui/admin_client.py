@@ -10,6 +10,7 @@ from review_ui.orchestrator_client import OrchestratorClient
 from shared.models import (
     AdminArea,
     Contact,
+    ContactCreated,
     ContactsResponse,
     ContactStatus,
     CreateContactRequest,
@@ -35,6 +36,7 @@ from shared.models import (
     UpdateWorkerRequest,
     User,
     UsersResponse,
+    WelcomeSendResponse,
     Worker,
 )
 
@@ -64,13 +66,21 @@ class AdminClient(OrchestratorClient):
 
     # --- Contacts ---
 
-    def contacts(self, status: ContactStatus | None = None) -> list[Contact]:
+    def contacts(self, status: ContactStatus | None = None) -> ContactsResponse:
+        """The contacts, and whether a welcome message is set (to enable its controls)."""
         params = {"status": status.value} if status else {}
         response = self._request("GET", "/admin/contacts", params=params)
-        return self._parse(ContactsResponse, response).contacts
+        return self._parse(ContactsResponse, response)
 
-    def create_contact(self, request: CreateContactRequest) -> Contact:
-        return self._parse(Contact, self._request("POST", "/admin/contacts", json=_body(request)))
+    def create_contact(self, request: CreateContactRequest) -> ContactCreated:
+        """The new contact; `welcome` says what happened to the welcome message, if asked."""
+        response = self._request("POST", "/admin/contacts", json=_body(request))
+        return self._parse(ContactCreated, response)
+
+    def send_welcome(self, phone: str) -> WelcomeSendResponse:
+        """ "Enviar boas-vindas": 200 even when Evolution refused (welcome.sent false)."""
+        path = f"/admin/contacts/{_segment(phone)}/welcome"
+        return self._parse(WelcomeSendResponse, self._request("POST", path))
 
     def update_contact(self, phone: str, request: UpdateContactRequest) -> Contact:
         path = f"/admin/contacts/{_segment(phone)}"
