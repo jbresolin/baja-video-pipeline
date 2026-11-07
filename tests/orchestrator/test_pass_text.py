@@ -92,7 +92,7 @@ def test_a_run_without_penalties_but_a_different_corrected_value_shows_both():
 # --- Values that must never reach the overlay ---
 
 
-@pytest.mark.parametrize("hidden", ["-", "SPOILERS", "?", None, "", "–"])
+@pytest.mark.parametrize("hidden", ["-", "---", "SPOILERS", "?", None, "", "–", "——"])
 def test_no_result_values_give_no_text(hidden):
     # The judges have not entered the run, or spoilers hide it: the job
     # page says "no result yet" and the clip gets no result pill.

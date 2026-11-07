@@ -184,17 +184,64 @@ def test_the_table_is_fetched_every_30_seconds_while_the_event_runs(harness):
     assert len(table_requests(harness)) == 2
 
 
-def test_once_the_event_is_finished_the_api_says_300_s_and_it_waits_that_long(harness):
+def test_once_the_event_is_finished_one_last_fetch_after_300_s_then_no_more(harness):
     # A finished event's answers are cached 300 s (Cache-Control max-age).
     set_up_manobrabilidade(harness)
     harness.results_api.table_max_age_s = 300
     job_in_review(harness)
     poll_due_tables(harness.context)
 
+    # The last fetch waits for the API's cache to expire, so it is fresh.
     harness.clock.advance(60)
     assert poll_due_tables(harness.context) == []
     harness.clock.advance(240)
     assert poll_due_tables(harness.context) == [RESULTADO_ID]
+
+    # Then nothing more, however long the job stays in the queue.
+    harness.clock.advance(300)
+    assert poll_due_tables(harness.context) == []
+    harness.clock.advance(24 * 3600)
+    assert poll_due_tables(harness.context) == []
+    assert len(table_requests(harness)) == 2
+    prova = settings_block(harness)["provas"][0]
+    assert (prova["polling"], prova["fetch"]["event_finished"]) == (False, True)
+
+
+def test_an_answer_saying_the_event_runs_again_starts_fetching_again(harness):
+    # Setup: the event finished and the last fetch was done.
+    set_up_manobrabilidade(harness)
+    harness.results_api.table_max_age_s = 300
+    job_in_review(harness)
+    poll_due_tables(harness.context)
+    harness.clock.advance(300)
+    poll_due_tables(harness.context)
+
+    # The organizers reopen the event; "Testar" is what still asks the API.
+    harness.results_api.table_max_age_s = 5
+    harness.clock.advance(300)
+    body = {"prova_id": "MAN", "car_number": 26, "passagem": 1}
+    harness.client.post("/admin/pass-results/test", json=body, auth=harness.admin_auth)
+
+    harness.clock.advance(30)
+    assert poll_due_tables(harness.context) == [RESULTADO_ID]
+    assert settings_block(harness)["provas"][0]["fetch"]["event_finished"] is False
+
+
+def test_a_failure_after_the_event_finished_does_not_count_as_the_last_fetch(harness):
+    set_up_manobrabilidade(harness)
+    harness.results_api.table_max_age_s = 300
+    job_in_review(harness)
+    poll_due_tables(harness.context)
+
+    # The last fetch fails: it is tried again 30 s later until one works.
+    harness.results_api.unreachable = True
+    harness.clock.advance(300)
+    assert poll_due_tables(harness.context) == [RESULTADO_ID]
+    harness.results_api.unreachable = False
+    harness.clock.advance(30)
+    assert poll_due_tables(harness.context) == [RESULTADO_ID]
+    harness.clock.advance(300)
+    assert poll_due_tables(harness.context) == []
 
 
 def test_a_failure_keeps_the_last_good_answer_and_says_since_when(harness):

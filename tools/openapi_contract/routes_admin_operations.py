@@ -187,7 +187,7 @@ def update_pass_results_config(body: UpdatePassResultsConfigRequest) -> PassResu
     out_of_range, not_one_of, bad_id, bad_name, nothing_to_show), and the
     problem's own values (`line`/`column` for not_json, `expected`,
     `minimum`/`maximum`, `choices`, `allowed`, `max_length`)}; the one in force
-    stays. Audited as `pass_results_config_updated`. Shape: docs/design.md §31."""
+    stays. Audited as `pass_results_config_updated`. Shape: docs/design.md §32."""
     not_implemented()
 
 

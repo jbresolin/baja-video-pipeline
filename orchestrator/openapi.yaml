@@ -3551,7 +3551,7 @@ paths:
 
         `minimum`/`maximum`, `choices`, `allowed`, `max_length`)}; the one in force
 
-        stays. Audited as `pass_results_config_updated`. Shape: docs/design.md §31.'
+        stays. Audited as `pass_results_config_updated`. Shape: docs/design.md §32.'
       operationId: update_pass_results_config_admin_pass_results_config_put
       requestBody:
         content:
@@ -6465,6 +6465,10 @@ components:
         stale:
           type: boolean
           title: Stale
+          default: false
+        event_finished:
+          type: boolean
+          title: Event Finished
           default: false
       type: object
       required:

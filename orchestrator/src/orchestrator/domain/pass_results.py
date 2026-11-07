@@ -116,6 +116,23 @@ def api_prova_id(connection: sqlite3.Connection, prova_name: str | None) -> str 
 
 # --- The fetched tables ---
 
+# An answer the API lets caches keep this long or longer says the event is
+# finished: 5 s while it runs, 300 s once it is over.
+FINISHED_MAX_AGE_S = 60
+# Good answers in a row saying so before fetching stops: the one that first
+# said it, then one last fetch (after its max-age, so a fresh answer) for
+# corrections made right at the end.
+FINISHED_ANSWERS_TO_STOP = 2
+
+
+def event_finished(max_age_s: int | None) -> bool:
+    return max_age_s is not None and max_age_s >= FINISHED_MAX_AGE_S
+
+
+def fetching_stopped(row: sqlite3.Row | None) -> bool:
+    """The event is finished and the last fetch after that was done: fetch no more."""
+    return row is not None and row["finished_answers"] >= FINISHED_ANSWERS_TO_STOP
+
 
 def fetch_status(row: sqlite3.Row | None, resultado_id: str) -> PassResultFetch:
     """How fetching a table has gone, from its pass_result_tables row (None: never tried)."""
@@ -130,6 +147,7 @@ def fetch_status(row: sqlite3.Row | None, resultado_id: str) -> PassResultFetch:
         last_success_at=from_db_time(row["success_at"]),
         failing_since=from_db_time(row["failing_since"]),
         stale=ok is False and row["body_json"] is not None,
+        event_finished=fetching_stopped(row),
     )
 
 

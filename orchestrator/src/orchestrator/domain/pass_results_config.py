@@ -3,7 +3,7 @@
 One JSON document, edited as text on the admin Settings page and stored
 as typed (app_settings key "pass_results_config"). It is checked here on
 every save; a bad one is refused with the path of the bad key and the old
-one stays in force. Shape (docs/design.md §31 has a commented example):
+one stays in force. Shape (docs/design.md §32 has a commented example):
 
     {
       "penalties": {                      # penalty icon class → its names
@@ -16,7 +16,8 @@ one stays in force. Shape (docs/design.md §31 has a commented example):
           "runs": "list_columns",         # or "rows" (one row per run)
           "show_by_default": true,        # the job page's toggle, until a reviewer sets it
           "result": {"column": "Tempo", "unit": "s", "decimals": 0,
-                     "penalties": true, "corrected_column": "Tempo Corrigido"},
+                     "penalties": true, "corrected_column": "Tempo Corrigido",
+                     "extra": [{"column": "Obstáculos", "unit": "obstáculos"}]},
           "clock": {"column": "Tempo", "decimals": 1}   # read by LIVESTACK-48
         }
       }
@@ -40,6 +41,8 @@ MAX_DECIMALS = 3
 MAX_UNIT_LENGTH = 12
 MAX_NAME_LENGTH = 60
 MAX_COLUMN_LENGTH = 100
+# More than this would not fit the pill anyway.
+MAX_EXTRAS = 4
 RUNS_MODES = ("list_columns", "rows")
 
 
@@ -69,14 +72,25 @@ class PenaltyNames:
 
 
 @dataclass(frozen=True)
+class ExtraSpec:
+    """One more column's value at the end of the line: "· 8 obstáculos"."""
+
+    column: str
+    unit: str = ""
+    decimals: int = 0
+
+
+@dataclass(frozen=True)
 class ResultSpec:
-    """What the result line shows: a column's value, its penalties, the corrected value."""
+    """What the result line shows: a column's value, its penalties, the corrected value,
+    then the `extra` columns' values."""
 
     column: str
     unit: str = ""
     decimals: int = 0
     penalties: bool = False
     corrected_column: str | None = None
+    extra: tuple[ExtraSpec, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -179,7 +193,7 @@ def _result(value: Any, path: list[str]) -> ResultSpec:
     entry = _object(
         value,
         path,
-        allowed={"column", "unit", "decimals", "penalties", "corrected_column"},
+        allowed={"column", "unit", "decimals", "penalties", "corrected_column", "extra"},
         required={"column"},
     )
     corrected = entry.get("corrected_column")
@@ -193,6 +207,26 @@ def _result(value: Any, path: list[str]) -> ResultSpec:
             if corrected is None
             else _text(corrected, [*path, "corrected_column"], MAX_COLUMN_LENGTH)
         ),
+        extra=_extras(entry.get("extra", []), [*path, "extra"]),
+    )
+
+
+def _extras(value: Any, path: list[str]) -> tuple[ExtraSpec, ...]:
+    if not isinstance(value, list):
+        raise ConfigError(path, "wrong_type", "must be a list […]", expected="list")
+    if len(value) > MAX_EXTRAS:
+        raise ConfigError(path, "too_many", f"at most {MAX_EXTRAS} items", maximum=MAX_EXTRAS)
+    return tuple(
+        _extra(item, [*path[:-1], f"{path[-1]}[{index}]"]) for index, item in enumerate(value)
+    )
+
+
+def _extra(value: Any, path: list[str]) -> ExtraSpec:
+    entry = _object(value, path, allowed={"column", "unit", "decimals"}, required={"column"})
+    return ExtraSpec(
+        column=_text(entry["column"], [*path, "column"], MAX_COLUMN_LENGTH),
+        unit=_text(entry.get("unit", ""), [*path, "unit"], MAX_UNIT_LENGTH, allow_empty=True),
+        decimals=_decimals(entry.get("decimals", 0), [*path, "decimals"]),
     )
 
 

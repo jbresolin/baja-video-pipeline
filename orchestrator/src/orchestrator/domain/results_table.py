@@ -16,7 +16,8 @@ order (runs mode "list_columns"); the API also allows one row per run
 `raw` is a number only when the cell is exactly one; "66 (4 )" is text
 because the penalty icons were removed from it. The penalties are only in
 `display`: a count followed by an icon, `8<img class='cone'>/2<img
-class='gate'>`. "-", empty, "SPOILERS" and "?" mean no result for that run.
+class='gate'>`. Dashes ("-", "---"), empty, "SPOILERS" and "?" mean no
+result for that run.
 """
 
 import re
@@ -30,8 +31,10 @@ RUNS_LIST_COLUMNS = "list_columns"
 RUNS_ROWS = "rows"
 
 # Texts that mean "nothing to show for this run": a run not done, an empty
-# cell, or a value hidden by spoilers. Compared in capitals.
-NO_RESULT_TEXTS = frozenset({"", "-", "–", "—", "SPOILERS", "?"})
+# cell, or a value hidden by spoilers. Compared in capitals. Dashes of any
+# kind and number ("-", "---", "—") also mean a run not done.
+NO_RESULT_TEXTS = frozenset({"", "SPOILERS", "?"})
+DASHES = re.compile(r"^[-–—]+$")
 # "66", "66,5", "66.5", optionally followed by the penalties' leftovers
 # "(4 )" or "(8 /2 )" (raw values lose the icons, not the counts).
 NUMBER_TEXT = re.compile(r"^(-?\d+(?:[.,]\d+)?)\s*(?:\([^()]*\))?$")
@@ -162,7 +165,7 @@ def run_number(raw: Any) -> RunNumber:
     if isinstance(raw, int | float):
         return RunNumber(value=Decimal(str(raw)))
     text = " ".join(str(raw).split())
-    if text.upper() in NO_RESULT_TEXTS:
+    if text.upper() in NO_RESULT_TEXTS or DASHES.match(text):
         return RunNumber(problem=PassResultProblem.NO_RESULT_YET, detail=repr(text))
     match = NUMBER_TEXT.match(text)
     if match is None:

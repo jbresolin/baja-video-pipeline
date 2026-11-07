@@ -4,7 +4,7 @@ The orchestrator fetches each configured prova's results table from the
 Baja results API (`resultado.php?…&display=1`), keeps the last good
 answer, and builds one line of text per passagem ("66 s · 4 cones →
 86 s"). Which provas, which columns and how penalties are named is one
-JSON document edited on the admin Settings page (docs/design.md §31).
+JSON document edited on the admin Settings page (docs/design.md §32).
 """
 
 from datetime import datetime
@@ -42,6 +42,9 @@ class PassResultFetch(ReadByClients):
     failing_since: datetime | None = None
     # True when the last request failed but an older answer is in use.
     stale: bool = False
+    # The API said the event is finished and the last fetch after that was
+    # done: the table is no longer fetched (only "Testar" still asks).
+    event_finished: bool = False
 
 
 class PassResult(ReadByClients):
@@ -82,8 +85,9 @@ class PassResultsProvaStatus(ReadByClients):
     prova_name: str | None = None
     # "26BR_MAN"; None while no event id is set.
     resultado_id: str | None = None
-    # True when jobs need its results now (in review, ready or delivered in
-    # the last few hours), so the orchestrator fetches it every 30 s.
+    # True when the orchestrator fetches it: jobs of the prova need results
+    # (in review, ready, rendering or delivered) and the event is not
+    # finished (fetch.event_finished says when that stopped it).
     polling: bool = False
     fetch: PassResultFetch | None = None
 

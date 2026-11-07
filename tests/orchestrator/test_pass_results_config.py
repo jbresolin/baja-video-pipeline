@@ -66,6 +66,32 @@ def test_defaults_for_the_optional_keys():
     assert (sus.resultado, sus.runs, sus.show_by_default) == ("SUS", "list_columns", True)
     assert (sus.result.unit, sus.result.decimals, sus.result.penalties) == ("", 0, False)
     assert sus.result.corrected_column is None and sus.clock is None
+    assert sus.result.extra == ()
+
+
+def test_extra_columns_are_read_in_order_with_their_own_unit_and_decimals():
+    config = parse_config(
+        json.dumps(
+            {
+                "provas": {
+                    "SUS": {
+                        "result": {
+                            "column": "Tempo[s]",
+                            "extra": [
+                                {"column": "Obstáculos", "unit": "obstáculos"},
+                                {"column": "Velocidade", "unit": "km/h", "decimals": 1},
+                            ],
+                        }
+                    }
+                }
+            }
+        )
+    )
+    extra = config.provas["SUS"].result.extra
+    assert [(item.column, item.unit, item.decimals) for item in extra] == [
+        ("Obstáculos", "obstáculos", 0),
+        ("Velocidade", "km/h", 1),
+    ]
 
 
 def test_keys_starting_with_an_underscore_are_comments():
@@ -102,6 +128,20 @@ def test_text_that_is_not_json_says_where():
         ({"clock__decimals": -1}, "provas.MAN.clock.decimals", "out_of_range"),
         ({"result": None, "clock": None}, "provas.MAN", "nothing_to_show"),
         ({"result": []}, "provas.MAN.result", "wrong_type"),
+        # Extra columns: a list of objects; the item's place is in brackets.
+        ({"result__extra": {"column": "Obstáculos"}}, "provas.MAN.result.extra", "wrong_type"),
+        ({"result__extra": [{"unit": "x"}]}, "provas.MAN.result.extra[0].column", "missing_key"),
+        (
+            {"result__extra": [{"column": "A"}, {"column": "B", "decimal": 1}]},
+            "provas.MAN.result.extra[1].decimal",
+            "unknown_key",
+        ),
+        (
+            {"result__extra": [{"column": "A", "decimals": 5}]},
+            "provas.MAN.result.extra[0].decimals",
+            "out_of_range",
+        ),
+        ({"result__extra": [{"column": "A"}] * 5}, "provas.MAN.result.extra", "too_many"),
     ],
 )
 def test_each_mistake_is_refused_with_its_path_and_problem(edit, path, problem):

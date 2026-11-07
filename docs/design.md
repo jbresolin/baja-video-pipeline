@@ -1070,8 +1070,9 @@ installer 0.5.0.
   `display`: lines split on `<br />`, each `count<img class='kind'>`,
   struck-through text dropped. If a cell's display lines do not pair one to
   one with its runs, no penalties are shown rather than another run's.
-  `"-"`, empty, `"SPOILERS"`, `"?"` and any other text are "no result" and
-  never reach the overlay.
+  Dashes of any length (`"-"`, `"---"`, as in the 2024 Sudeste
+  Manobrabilidade), empty, `"SPOILERS"`, `"?"` and any other text are "no
+  result" and never reach the overlay.
 * **Configuration**: one JSON text on Configurações, stored as typed
   (`app_settings` key `pass_results_config`), checked on every save
   (`orchestrator/domain/pass_results_config.py`): a bad one answers 422 with
@@ -1100,6 +1101,16 @@ installer 0.5.0.
           "corrected_column": "Tempo Corrigido" // optional; shown after "→" when it differs
         },
         "clock": {"column": "Tempo", "decimals": 1}  // LIVESTACK-48; validated now
+      },
+      "SUS": {                                  // Suspensão: "37,81 s · 8 obstáculos"
+        "result": {
+          "column": "Tempo[s]",
+          "unit": "s",
+          "decimals": 2,
+          "extra": [                            // optional, up to 4: "· <value> <unit>" each, in order
+            {"column": "Obstáculos", "unit": "obstáculos"}  // unit default "", decimals default 0
+          ]
+        }
       }
     }
   }
@@ -1115,13 +1126,25 @@ installer 0.5.0.
   then `→` and the corrected value when it differs *as shown* (after
   rounding to the configured decimals). pt-BR numbers: decimal comma,
   half-up rounding, no thousands separator (a time is never read as
-  "1.234"). A missing corrected value leaves just the time.
+  "1.234"). A missing corrected value leaves just the time. Then each
+  `extra` column's value for the same run, `· <value> <unit>`, with its own
+  decimals (Suspensão's obstacles, from the 2024 Sudeste table); an extra
+  with no value for the run is left out. The unit is fixed text, so "1
+  obstáculos" is possible; names by count exist only for penalties.
 * **Fetching** (`domain/pass_results_fetch.py`, background every 10 s):
   tables of configured provas that have jobs in `awaiting_review`,
-  `ready`, `claimed` or `uploaded`, or `delivered`/`done` updated in the
-  last 6 h. Each is asked every 30 s, or after its `Cache-Control: max-age`
-  when longer: the API says 300 s once the event is finished, so the "is
-  the event finished" question needs no `evento.php` call. "Testar" fetches
+  `ready`, `claimed`, `uploaded`, `delivered` or `done`, however long ago
+  they were delivered, so a correction made the next morning still flags
+  the clip. Each is asked every 30 s, or after its `Cache-Control: max-age`
+  when longer. **Until the event is finished**: the API says so by caching
+  300 s instead of 5 (so the question needs no `evento.php` call; any
+  max-age of 60 s or more counts). After the first answer that says it,
+  one last fetch 300 s later (a fresh answer, for corrections made at the
+  close), then that table is no longer fetched
+  (`pass_result_tables.finished_answers` reaches 2; the Settings page says
+  "parada: o evento terminou…"). A failed fetch does not count as the last
+  one. An answer saying the event runs again resets it; only "Testar" can
+  still see one, so reopening an event means clicking "Testar". "Testar" fetches
   at once, reusing an answer from the last 5 s. Table `pass_result_tables`
   (migration 0015) keeps the last good answer and, per table, the last
   attempt, its error, and `failing_since`; a failure never removes the good
@@ -1166,5 +1189,7 @@ installer 0.5.0.
   = the car's n-th row) is built as the brief says but no real table of
   that kind was seen, and the API documents rows **in position order**, so
   the n-th row may not be the n-th run; times written as "1:05,3" would be
-  "not a number" (none seen); results of delivered clips older than 6 h
-  are no longer fetched, so a late correction of those is not flagged.
+  "not a number" (none seen); a correction made after the event's last
+  fetch is not seen (the event is over by then); how the API writes a
+  "---" run in `raw` was not seen (the 24SE snapshots are of the old pages;
+  `"---"`, `"-"` and null all mean no result).

@@ -141,9 +141,10 @@ Every state change goes through `domain/transitions.move_job`, which asks
   set on the admin Settings page (`domain/results_sync.py`); manual provas
   and team corrections live alongside. Unknown cars answer 404 and leave
   `team_name` empty.
-* **Pass results** (LIVESTACK-47, design §31): configured provas' results
-  tables are fetched every 30 s (5 min once the event is finished) while
-  their jobs need them; a failure keeps the last good answer. The result
+* **Pass results** (LIVESTACK-47, design §32): configured provas' results
+  tables are fetched every 30 s while they have jobs (delivered ones
+  included) and the event is not finished, then once more and no more; a
+  failure keeps the last good answer. The result
   line goes to the worker as `ProcessTask.pass_result_text`, only to
   workers that declare `pass_result` (installer 0.5.0).
 * **Users** sign in with `POST /auth/login` (`domain/sessions.py`); review

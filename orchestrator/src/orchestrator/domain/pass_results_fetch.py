@@ -1,12 +1,18 @@
 """Fetching the configured provas' results tables (LIVESTACK-47).
 
 Which tables: those of configured provas that have jobs whose result
-matters now (in review, ready, rendering, uploaded, or delivered in the
-last 6 hours; repositories/pass_results.py). When: every 30 s, or less
-often when the API says its answer stays fresh longer (Cache-Control
-max-age: 300 s once the event is finished, so then every 5 minutes). The
-API caches 5 s and allows 120 requests a minute per endpoint; a handful
-of provas at 2 requests a minute each stays far below that.
+matters (in review, ready, rendering, uploaded or delivered, however long
+ago; repositories/pass_results.py), so a correction made the next morning
+still flags a delivered clip. When: every 30 s, or less often when the API
+says its answer stays fresh longer. The API caches 5 s and allows 120
+requests a minute per endpoint; a handful of provas at 2 requests a minute
+each stays far below that.
+
+Until the event is finished. The API says so by caching its answers 300 s
+instead of 5 (Cache-Control max-age). After the first answer that says it,
+one last fetch follows (300 s later, so a fresh answer), and then that
+table is no longer fetched. An answer saying the event runs again (only
+"Testar" could still see one) starts fetching again.
 
 Also on demand, from "Testar" on the Settings page (reusing an answer
 from the last 5 seconds, which the API would serve from its cache anyway).
@@ -26,6 +32,8 @@ from orchestrator.db.database import from_db_time
 from orchestrator.domain.pass_results import (
     api_prova_id,
     current_config,
+    event_finished,
+    fetching_stopped,
     resultado_id_for,
 )
 from orchestrator.domain.results_table import BadTableError, parse_table
@@ -34,15 +42,15 @@ from orchestrator.repositories import pass_results as pass_results_repo
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = timedelta(seconds=30)
-# Delivered clips keep their tables fetched this long: a corrected result
-# then flags the clip on air as no longer matching.
-RECENT_DELIVERY = timedelta(hours=6)
 # "Testar" reuses an answer at most this old.
 TEST_REUSE = timedelta(seconds=5)
 
 
 def tables_needing_results(context: OrchestratorContext, now: datetime) -> list[str]:
-    """Resultado ids ("26BR_MAN") of configured provas whose jobs need results now."""
+    """Resultado ids ("26BR_MAN") of configured provas whose jobs need results.
+
+    Tables whose fetching stopped (the event is finished) are left out.
+    """
     event = context.admin_settings.current.event_id
     if not event:
         return []
@@ -50,14 +58,17 @@ def tables_needing_results(context: OrchestratorContext, now: datetime) -> list[
         config = current_config(connection)
         if not config.provas:
             return []
-        names = pass_results_repo.prova_names_with_jobs_needing_results(
-            connection, now - RECENT_DELIVERY
-        )
+        names = pass_results_repo.prova_names_with_jobs_needing_results(connection)
         wanted = set()
         for name in names:
             prova_config = config.for_prova(api_prova_id(connection, name))
             if prova_config is not None:
                 wanted.add(resultado_id_for(event, prova_config))
+        wanted = {
+            resultado_id
+            for resultado_id in wanted
+            if not fetching_stopped(pass_results_repo.get_table_row(connection, resultado_id))
+        }
     return sorted(wanted)
 
 
@@ -95,6 +106,7 @@ def fetch_table(context: OrchestratorContext, resultado_id: str) -> bool:
             resultado_id,
             json.dumps(answer.body, ensure_ascii=False),
             answer.max_age_s,
+            event_finished(answer.max_age_s),
             context.clock.now(),
         )
     return True

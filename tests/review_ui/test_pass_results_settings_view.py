@@ -4,6 +4,7 @@
   problem, ...}) becomes one precise pt-BR sentence per problem code.
 * "Testar" offers the provas of the text being edited, and names penalty
   icons the configuration has no name for.
+* Each configured prova says whether its table is fetched, and why not.
 """
 
 import pytest
@@ -11,10 +12,17 @@ import pytest
 from review_ui.orchestrator_client import OrchestratorError
 from review_ui.pass_results_settings_view import (
     config_refusal,
+    prova_status_row,
     trial_outcome,
     trial_prova_choices,
 )
-from shared.models import PassResultCell, PassResultTestRequest, PassResultTestResponse
+from shared.models import (
+    PassResultCell,
+    PassResultFetch,
+    PassResultsProvaStatus,
+    PassResultTestRequest,
+    PassResultTestResponse,
+)
 from tests.review_ui.sample_data import T0
 
 
@@ -34,6 +42,8 @@ def refusal(**details) -> str:
         ({"problem": "wrong_type", "expected": "text"}, "o valor deve ser um texto entre aspas"),
         ({"problem": "wrong_type", "expected": "object"}, "um objeto (entre chaves)"),
         ({"problem": "wrong_type", "expected": "whole_number"}, "um número inteiro"),
+        ({"problem": "wrong_type", "expected": "list"}, "uma lista (entre colchetes)"),
+        ({"problem": "too_many", "maximum": 4}, "no máximo 4 itens"),
         ({"problem": "unknown_key", "allowed": ["column", "unit"]}, "(aceitas: column, unit)"),
         ({"problem": "missing_key"}, "falta esta chave, que é obrigatória"),
         ({"problem": "empty_text"}, "o texto não pode ficar vazio"),
@@ -90,3 +100,28 @@ def test_testar_names_penalty_icons_the_configuration_has_no_name_for():
     assert outcome.unknown_penalties == "Ícones de penalidade sem nome na configuração: flag"
     # The cells become plain strings (a list of runs joined); the template escapes them.
     assert outcome.rows == [[("Tempo", "58 (1 )", "58 (1<img class='flag'>)")]]
+
+
+@pytest.mark.parametrize(
+    ("polling", "event_finished", "words"),
+    [
+        (True, False, "buscando a cada 30 s"),
+        (False, False, "parada: nenhum vídeo desta prova precisa agora"),
+        (False, True, "parada: o evento terminou e a última busca foi feita"),
+    ],
+)
+def test_each_prova_says_whether_its_table_is_fetched(polling, event_finished, words):
+    prova = PassResultsProvaStatus(
+        prova_id="MAN",
+        prova_name="Manobrabilidade",
+        resultado_id="26BR_MAN",
+        polling=polling,
+        fetch=PassResultFetch(
+            resultado_id="26BR_MAN",
+            last_attempt_at=T0,
+            last_attempt_ok=True,
+            last_success_at=T0,
+            event_finished=event_finished,
+        ),
+    )
+    assert prova_status_row(prova, T0).schedule == words

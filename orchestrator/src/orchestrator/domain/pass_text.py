@@ -8,11 +8,14 @@ Settings page's "Testar" all ask build_pass_text(), so they always agree.
     car 26, passagem 2 of the 2026 Manobrabilidade → "66 s · 4 cones → 86 s"
     car 2, passagem 1                              → "58 s · 8 cones, 2 saídas de pista → 118 s"
     car 26, passagem 1 (a clean run)               → "59 s"
+    car 1, passagem 2 of a Suspensão with an extra → "37,81 s · 8 obstáculos"
 
 The time, then its penalties by their configured names, then "→" and the
 corrected value when it differs from the time (as shown, i.e. after
-rounding to the configured decimals). Numbers are written the Brazilian
-way (decimal comma), with exactly the configured decimals.
+rounding to the configured decimals), then each `extra` column's value
+for the same run. An extra with no value for the run is left out; the
+time alone is still the result. Numbers are written the Brazilian way
+(decimal comma), with exactly the configured decimals.
 """
 
 import logging
@@ -119,6 +122,12 @@ def build_pass_text(
             shown_corrected = format_number(corrected.value, spec.decimals)
             if shown_corrected != shown_time:
                 text += CORRECTED_ARROW + with_unit(shown_corrected, spec.unit)
+    for extra in spec.extra:
+        value = run_value(table, config, extra.column, car_number, passagem)
+        if value.value is not None:
+            text += PART_SEPARATOR + with_unit(
+                format_number(value.value, extra.decimals), extra.unit
+            )
     if len(text) > MAX_TEXT_LENGTH:
         text = text[: MAX_TEXT_LENGTH - 1].rstrip() + ELLIPSIS
     return PassText(text=text, unknown_penalties=tuple(unknown))

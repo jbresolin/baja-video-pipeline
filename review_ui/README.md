@@ -104,7 +104,7 @@ failing: "API de resultados inacessível desde 14:02 (último resultado de
 turned off since it was made shows as out of date with that sentence.
 **Configurações → "Resultados das passagens"** (`templates/admin/_pass_results.html`,
 its own form, `routes_admin_pass_results.py`, `pass_results_settings_view.py`):
-the JSON configuration (format in `docs/design.md` §31) with "Salvar" (a
+the JSON configuration (format in `docs/design.md` §32) with "Salvar" (a
 refused text is shown again as typed, with the place and the rule in pt-BR,
 e.g. "em `provas.MAN.result.decimals`, o valor deve estar entre 0 e 3") and
 "Testar" (tries the text in the box, saved or not, for a prova, car and

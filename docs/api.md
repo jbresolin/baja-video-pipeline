@@ -650,16 +650,18 @@ official result of a passagem, burned into the clip as a third pill
 provas carry it as `external_id`); the event is the Settings' event id,
 so `"MAN"` reads table `26BR_MAN`. The orchestrator fetches
 `resultado.php?evt=…&id=…&display=1` for configured provas with jobs in
-`awaiting_review`, `ready`, `claimed` or `uploaded`, or `delivered`/`done`
-within 6 h: every 30 s, or the answer's `Cache-Control: max-age` when
-longer (300 s once the event is finished). A failure keeps the last good
-answer (`PassResultFetch.stale`, `failing_since`). One function
+`awaiting_review`, `ready`, `claimed`, `uploaded`, `delivered` or `done`:
+every 30 s, or the answer's `Cache-Control: max-age` when longer, until
+the event is finished (max-age 300 s); then one last fetch and no more
+(`PassResultFetch.event_finished`). A failure keeps the last good answer
+(`PassResultFetch.stale`, `failing_since`). One function
 (`orchestrator/domain/pass_text.py`) builds the line for the render task
 (`ProcessTask.pass_result_text`, only to workers that declared
 `pass_result`), the job page (`Job.pass_result`: `configured`, `show`,
 `text` or `problem`, `fetch`), "Testar" and the render-input comparison.
 `Job.show_pass_result` (also `ReviewUpdate`) is the reviewer's toggle;
-null follows the prova's `show_by_default`. Values `"-"`, empty,
+null follows the prova's `show_by_default`. A prova's `result.extra`
+columns are appended as `· <value> <unit>`. Values `"-"`, `"---"`, empty,
 `"SPOILERS"`, `"?"` and any text that is not a number never reach the
 overlay (`problem`: `no_result_yet`, `not_a_number`).
 

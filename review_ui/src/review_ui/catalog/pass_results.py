@@ -62,7 +62,7 @@ TEXT: dict[str, str] = {
     "pass_results.hint": (
         "Quais provas mostram o resultado oficial na tarja do clipe, de qual coluna da API de "
         "resultados, e o nome de cada penalidade. É um texto JSON; o formato está em "
-        "<code>docs/design.md</code> §31. Chaves que começam com <code>_</code> são ignoradas "
+        "<code>docs/design.md</code> §32. Chaves que começam com <code>_</code> são ignoradas "
         "(servem de comentário). Vazio desliga os resultados."
     ),
     "pass_results.config": "Configuração (JSON)",
@@ -102,6 +102,7 @@ TEXT: dict[str, str] = {
     "pass_results.no_event": "sem evento definido",
     "pass_results.polling": "buscando a cada 30 s",
     "pass_results.not_polling": "parada: nenhum vídeo desta prova precisa agora",
+    "pass_results.event_finished": "parada: o evento terminou e a última busca foi feita",
     "pass_results.last_fetch.ok": "última busca {time}: ok",
     "pass_results.last_fetch.failed": "última busca {time}: falhou",
     "pass_results.never_fetched": "nunca buscada",
@@ -121,6 +122,7 @@ TEXT: dict[str, str] = {
     "pass_results.config_problem.empty_text": "o texto não pode ficar vazio",
     "pass_results.config_problem.too_long": ("o texto pode ter no máximo {max_length} caracteres"),
     "pass_results.config_problem.out_of_range": "o valor deve estar entre {minimum} e {maximum}",
+    "pass_results.config_problem.too_many": "a lista pode ter no máximo {maximum} itens",
     "pass_results.config_problem.not_one_of": "o valor deve ser um destes: {choices}",
     "pass_results.config_problem.bad_id": "o id deve ter de 1 a 3 letras ou números",
     "pass_results.config_problem.bad_name": (
@@ -135,4 +137,5 @@ TEXT: dict[str, str] = {
     "pass_results.expected.text": "um texto entre aspas",
     "pass_results.expected.boolean": "<code>true</code> ou <code>false</code>",
     "pass_results.expected.whole_number": "um número inteiro",
+    "pass_results.expected.list": "uma lista (entre colchetes)",
 }

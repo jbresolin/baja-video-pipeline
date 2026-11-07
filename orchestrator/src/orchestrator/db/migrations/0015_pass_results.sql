@@ -19,7 +19,10 @@ CREATE TABLE pass_result_tables (
     failing_since  TEXT,
     -- The answer's Cache-Control max-age (5 s while the event runs, 300 s
     -- once finished): the next fetch waits at least 30 s and at least this.
-    max_age_s      INTEGER
+    max_age_s      INTEGER,
+    -- Good answers in a row that said the event is finished. At 2 (the one
+    -- that said so, then one last fetch) the table is no longer fetched.
+    finished_answers INTEGER NOT NULL DEFAULT 0
 );
 
 -- "Mostrar resultado da passagem" on the job page. NULL = never set by a

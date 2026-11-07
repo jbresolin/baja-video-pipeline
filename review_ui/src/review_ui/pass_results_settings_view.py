@@ -47,6 +47,14 @@ class ProvaStatusRow:
     failing: str | None
 
 
+def _schedule_key(prova: PassResultsProvaStatus) -> str:
+    if prova.polling:
+        return "pass_results.polling"
+    if prova.fetch is not None and prova.fetch.event_finished:
+        return "pass_results.event_finished"
+    return "pass_results.not_polling"
+
+
 def prova_status_row(prova: PassResultsProvaStatus, now: datetime) -> ProvaStatusRow:
     fetch = prova.fetch
     failed = fetch is not None and fetch.last_attempt_ok is False
@@ -65,7 +73,7 @@ def prova_status_row(prova: PassResultsProvaStatus, now: datetime) -> ProvaStatu
         prova_name=prova.prova_name or text("pass_results.no_synced_prova"),
         synced=prova.prova_name is not None,
         table=prova.resultado_id,
-        schedule=text("pass_results.polling" if prova.polling else "pass_results.not_polling"),
+        schedule=text(_schedule_key(prova)),
         last_fetch=last_fetch,
         last_fetch_failed=failed,
         error=fetch.last_error if failed and fetch is not None else None,

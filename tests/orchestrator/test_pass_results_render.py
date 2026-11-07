@@ -319,6 +319,22 @@ def test_a_result_corrected_after_delivery_flags_the_clip(harness):
     assert job["clip_inputs"]["now"]["pass_result_text"] == "66 s · 5 cones → 91 s"
 
 
+def test_a_correction_the_next_morning_still_flags_the_clip(harness):
+    # Delivered in the afternoon; the event goes on (answers cached 5 s),
+    # so the table is still fetched however long ago the clip went out.
+    set_up_manobrabilidade(harness)
+    master = enroll_master(harness, FEATURES_0_5_0)
+    studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
+    job_id = ready_job(harness, master, car=26, passagem=2)
+    deliver(harness, master, studio, job_id)
+    harness.clock.advance(16 * 3600)
+    poll_due_tables(harness.context)
+
+    judges_publish(harness, 26, 2, "66 (5 )", 91, "66 (5<img class='cone'>)")
+
+    assert harness.job(job_id)["clip_inputs"]["changed"] == ["pass_result"]
+
+
 def test_turning_the_line_off_after_delivery_flags_the_clip_and_back_on_clears_it(harness):
     set_up_manobrabilidade(harness)
     master = enroll_master(harness, FEATURES_0_5_0)
