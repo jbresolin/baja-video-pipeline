@@ -17,6 +17,7 @@ from review_ui import (
     routes_admin_catalog,
     routes_admin_inline,
     routes_admin_operations,
+    routes_admin_pass_results,
     routes_admin_people,
     routes_api,
     routes_auth,
@@ -68,6 +69,7 @@ def create_app(
     app.include_router(routes_admin_people.router)
     app.include_router(routes_admin_catalog.router)
     app.include_router(routes_admin_operations.router)
+    app.include_router(routes_admin_pass_results.router)
     app.include_router(routes_admin_inline.router)
     register_error_handlers(app)
 

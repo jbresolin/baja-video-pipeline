@@ -19,6 +19,7 @@ from review_ui.job_view import (
     intake_text,
 )
 from review_ui.media_info_view import media_panel
+from review_ui.pass_result_view import pass_result_box
 from review_ui.passagem_help_view import passagem_help
 from review_ui.queue_view import STATES_IN_PIPELINE_ORDER, QueueFilter
 from review_ui.render_options_view import render_options_box
@@ -33,10 +34,13 @@ from tests.review_ui.sample_data import (
     delivered_job,
     edited_after_delivery_job,
     failed_job,
+    failing_fetch,
     make_fleet,
     make_job,
     make_manifest,
     on_event_day,
+    pass_result,
+    pass_result_job,
 )
 from tests.review_ui.sample_events import make_events
 from tests.review_ui.test_media_panel import IPHONE_REPORT
@@ -66,6 +70,8 @@ def job_context(job) -> dict:
         "media": media_panel(job),
         # "Imagem e som" (LIVESTACK-50), as routes_job.job_page adds it.
         "render_box": render_options_box(job),
+        # "Mostrar resultado da passagem" (LIVESTACK-47); None for most sample jobs.
+        "pass_box": pass_result_box(job.pass_result, T0),
     }
 
 
@@ -143,6 +149,10 @@ CASES = {
     # A phone video filmed upright, "Cortar" chosen: the whole box shows.
     "_render_options.html": lambda: job_context(
         make_job(display_width=1080, display_height=1920, vertical=True, framing="crop")
+    ),
+    # A result shown, the results API failing since a while (LIVESTACK-47).
+    "_pass_result.html": lambda: job_context(
+        pass_result_job(pass_result=pass_result(fetch=failing_fetch()))
     ),
     "clips.html": clips_context,
     "fleet.html": fleet_context,

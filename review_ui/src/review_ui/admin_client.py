@@ -21,6 +21,9 @@ from shared.models import (
     EnrollmentTokensResponse,
     Event,
     EventsResponse,
+    PassResultsSettings,
+    PassResultTestRequest,
+    PassResultTestResponse,
     Prova,
     ProvasResponse,
     ReorderProvasRequest,
@@ -30,6 +33,7 @@ from shared.models import (
     TeamRow,
     TeamsResponse,
     UpdateContactRequest,
+    UpdatePassResultsConfigRequest,
     UpdateProvaRequest,
     UpdateSettingsRequest,
     UpdateUserRequest,
@@ -158,6 +162,23 @@ class AdminClient(OrchestratorClient):
     def update_settings(self, request: UpdateSettingsRequest) -> SettingsResponse:
         response = self._request("PATCH", "/admin/settings", json=_body(request))
         return self._parse(SettingsResponse, response)
+
+    # --- Pass results in the overlay (LIVESTACK-47) ---
+
+    def pass_results(self) -> PassResultsSettings:
+        """The configuration as saved, and each configured prova's fetch status."""
+        return self._parse(PassResultsSettings, self._request("GET", "/admin/pass-results"))
+
+    def update_pass_results_config(self, config_text: str) -> PassResultsSettings:
+        """Replace the configuration; a bad one is 422 with details {path, problem, ...}."""
+        body = _body(UpdatePassResultsConfigRequest(config_text=config_text))
+        response = self._request("PUT", "/admin/pass-results/config", json=body)
+        return self._parse(PassResultsSettings, response)
+
+    def run_pass_result_test(self, request: PassResultTestRequest) -> PassResultTestResponse:
+        """ "Testar": the text for one prova, car and passagem, with `config_text` if sent."""
+        response = self._request("POST", "/admin/pass-results/test", json=_body(request))
+        return self._parse(PassResultTestResponse, response)
 
     def audit(self, area: AdminArea, limit: int = 10) -> list[Event]:
         params = {"area": area.value, "limit": limit}

@@ -130,6 +130,8 @@
 
       <label class="check"><input type="checkbox" name="show_pass" {% if job.show_pass %}checked{% endif %}>
         {{ t("job.show_pass") }}</label>
+      {# The official result of the passagem (LIVESTACK-47), for a configured prova. #}
+      {% if pass_box %}{% include "_pass_result.html" %}{% endif %}
 
       {% include "_render_options.html" %}
 

@@ -7,7 +7,8 @@ docs/api.md describes:
     GET   /review/car-videos?prova=…&car_number=…
     GET   /jobs/{job_id}
     GET   /jobs/{job_id}/sender-messages   (LIVESTACK-49)
-    PATCH /jobs/{job_id}/review          (expected_version, actions, 409/422)
+    PATCH /jobs/{job_id}/review          (expected_version, actions, 409/422;
+                                          show_pass_result updates pass_result.show)
     POST  /jobs/{job_id}/regenerate-proxy
     GET   /jobs/{job_id}/original, POST /jobs/{job_id}/original
     GET   /teams/{car_number}
@@ -178,6 +179,13 @@ class FakeOrchestrator:
         if "car_number" in changes and changes["car_number"] in self.teams:
             changes["team_name"] = self.teams[changes["car_number"]].team_name
         updated = job.model_copy(update=changes)
+        if update.show_pass_result is not None and job.pass_result is not None:
+            # Like the orchestrator (LIVESTACK-47): the toggle in force follows
+            # the reviewer's choice, for a prova that shows results at all.
+            shown = job.pass_result.configured and update.show_pass_result
+            updated = updated.model_copy(
+                update={"pass_result": job.pass_result.model_copy(update={"show": shown})}
+            )
         needs_fields = update.action in {
             ReviewAction.READY,
             ReviewAction.REPROCESS,

@@ -57,6 +57,11 @@ NO_HOLDER_CAN_RENDER_REASON = (
     "waiting for a holder of the raw that can render these options"
     " (a worker updated to 0.4.0 or later)"
 )
+# The same, when what the job needs is the pass result pill (LIVESTACK-47).
+NO_HOLDER_CAN_RENDER_PASS_RESULT_REASON = (
+    "waiting for a holder of the raw that can draw the pass result"
+    " (a worker updated to 0.5.0 or later)"
+)
 _TASK_FAILED_ON = re.compile(
     r"^(?P<kind>[a-z_]+) failed on (?P<worker>.+?): (?P<message>.*)$", re.DOTALL
 )
@@ -88,6 +93,8 @@ def describe_waiting_reason(reason: str) -> WaitingReason:
         return WaitingReason(text("waiting.no_holder_online"), None)
     if reason == NO_HOLDER_CAN_RENDER_REASON:
         return WaitingReason(text("waiting.no_holder_can_render"), None)
+    if reason == NO_HOLDER_CAN_RENDER_PASS_RESULT_REASON:
+        return WaitingReason(text("waiting.no_holder_can_render_pass_result"), None)
     match = _TASK_FAILED_ON.match(reason)
     if match and match["kind"] in {kind.value for kind in TaskKind}:
         task = TASK_VERBS[TaskKind(match["kind"])]

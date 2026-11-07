@@ -77,6 +77,19 @@ def _framing_text(inputs: RenderInputs) -> str:
     return text(f"outdated.framing.{inputs.framing.value}")
 
 
+def _pass_result_sentence(clip: str | None, now: str | None) -> str:
+    """The official result line changed (LIVESTACK-47): published, corrected, or no longer shown.
+
+    "Not shown now" covers both the reviewer's toggle turned off and the
+    prova taken out of the configuration: the render would draw no line.
+    """
+    if clip is None:
+        return text("outdated.pass_result.published", now=_value(now))
+    if now is None:
+        return text("outdated.pass_result.removed", clip=clip)
+    return text("outdated.pass_result.changed", clip=clip, now=now)
+
+
 def difference_sentence(field: RenderInputField, clip: RenderInputs, now: RenderInputs) -> str:
     """One sentence for one differing input."""
     if field == RenderInputField.CUT:
@@ -102,6 +115,8 @@ def difference_sentence(field: RenderInputField, clip: RenderInputs, now: Render
         return text("outdated.framing", clip=_framing_text(clip), now=_framing_text(now))
     if field == RenderInputField.AUDIO:
         return text("outdated.audio.dropped_now" if now.no_audio else "outdated.audio.kept_now")
+    if field == RenderInputField.PASS_RESULT:
+        return _pass_result_sentence(clip.pass_result_text, now.pass_result_text)
     if field in (RenderInputField.TEAM_NAME, RenderInputField.SCHOOL_NAME):
         attribute = (
             "overlay_team_name" if field == RenderInputField.TEAM_NAME else "overlay_school_name"

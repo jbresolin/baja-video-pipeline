@@ -1,0 +1,94 @@
+{# Configurações → "Resultados das passagens" (LIVESTACK-47). Its own form,
+   so it never sends (or is blocked by) the settings form above. `pass_results`
+   is a pass_results_settings_view.PassResultsBlock. Everything from the
+   results API (cells, errors) is shown as escaped text, never as HTML. #}
+{% import "macros.html" as m with context %}
+{% set block = pass_results %}
+{% set typed = block.form %}
+<section class="pass-results" id="pass-results" aria-labelledby="pass-results-title">
+  <h2 id="pass-results-title">{{ t("pass_results.title") }}</h2>
+  <p class="hint">{{ t("pass_results.hint") }}</p>
+  {% if not block.available %}<p class="error-text">{{ t("pass_results.unavailable") }}</p>{% endif %}
+  {% if typed.error %}<div class="banner error" role="alert" id="pass-results-error"><p>{{ typed.error }}</p></div>{% endif %}
+
+  <form method="post" action="/review/admin/pass-results" class="pass-results-form">
+    <label for="config_text">{{ t("pass_results.config") }}</label>
+    <textarea id="config_text" name="config_text" rows="16" spellcheck="false" autocapitalize="off"
+              autocomplete="off" maxlength="{{ config_max_length }}">{{ block.config_text }}</textarea>
+    <button type="submit" name="action" value="save" class="primary">{{ t("admin.save") }}</button>
+
+    <fieldset class="choices pass-results-test">
+      <legend>{{ t("pass_results.test") }}</legend>
+      <p class="hint">{{ t("pass_results.test.hint") }}</p>
+      <div class="inline-fields">
+        <label>{{ t("pass_results.test.prova") }}
+          {% if block.prova_choices %}
+          <select name="test_prova">
+            {% for prova_id in block.prova_choices %}
+            <option {% if prova_id == typed.prova %}selected{% endif %}>{{ prova_id }}</option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <input name="test_prova" value="{{ typed.prova }}" maxlength="3" size="4">
+          {% endif %}
+        </label>
+        <label>{{ t("pass_results.test.car") }}
+          <input name="test_car" type="number" min="0" max="9999" inputmode="numeric" value="{{ typed.car }}"></label>
+        <label>{{ t("pass_results.test.passagem") }}
+          <input name="test_passagem" type="number" min="1" max="999" inputmode="numeric" value="{{ typed.passagem }}"></label>
+        <button type="submit" name="action" value="test">{{ t("pass_results.test") }}</button>
+      </div>
+    </fieldset>
+  </form>
+
+  {% set outcome = typed.outcome %}
+  {% if outcome %}
+  <div class="pass-results-outcome" id="pass-results-outcome">
+    <h3>{{ outcome.title }}</h3>
+    {% if outcome.unsaved %}<p class="hint">{{ t("pass_results.test.unsaved") }}</p>{% endif %}
+    {% if outcome.text %}<p class="pass-pill">{{ outcome.text }}</p>
+    {% else %}<p>{{ outcome.problem }}{% if outcome.detail %} {{ m.english(outcome.detail, class="small") }}{% endif %}</p>{% endif %}
+    {% if outcome.fetched %}<p class="hint">{{ outcome.fetched }}</p>{% endif %}
+    {% if outcome.fetch_warning %}<p class="warning-text">{{ outcome.fetch_warning }}
+      {%- if outcome.fetch_error %} {{ m.english(outcome.fetch_error, class="small") }}{% endif %}</p>{% endif %}
+    {% if outcome.unknown_penalties %}<p class="warning-text">{{ outcome.unknown_penalties }}</p>{% endif %}
+    {% for row in outcome.rows %}
+    <table class="admin-table pass-results-row">
+      <caption>{{ t("pass_results.test.row_n", n=loop.index) if outcome.rows|length > 1 else t("pass_results.test.row") }}</caption>
+      <thead><tr><th>{{ t("pass_results.col.column") }}</th><th>{{ t("pass_results.col.raw") }}</th><th>{{ t("pass_results.col.display") }}</th></tr></thead>
+      <tbody>
+        {% for column, raw, display in row %}
+        <tr><td>{{ column }}</td><td><code>{{ raw }}</code></td><td><code>{{ display }}</code></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <h3>{{ t("pass_results.status") }}</h3>
+  {% if block.rows %}
+  <table class="admin-table" id="pass-results-provas">
+    <thead><tr>
+      <th>{{ t("pass_results.col.prova_id") }}</th><th>{{ t("pass_results.col.prova") }}</th>
+      <th>{{ t("pass_results.col.table") }}</th><th>{{ t("pass_results.col.fetch") }}</th>
+    </tr></thead>
+    <tbody>
+      {% for row in block.rows %}
+      <tr>
+        <td><code>{{ row.prova_id }}</code></td>
+        <td>{% if row.synced %}{{ row.prova_name }}{% else %}<em>{{ row.prova_name }}</em>{% endif %}</td>
+        <td>{% if row.table %}<code>{{ row.table }}</code>{% else %}{{ t("pass_results.no_event") }}{% endif %}</td>
+        <td>
+          {{ row.schedule }} · <span{% if row.last_fetch_failed %} class="error-text"{% endif %}>{{ row.last_fetch }}</span>
+          {%- if row.error %} {{ m.english(row.error, class="small") }}{% endif %}
+          {%- if row.failing %} · <strong class="error-text">{{ row.failing }}</strong>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="hint">{{ t("pass_results.status.empty") }}</p>
+  {% endif %}
+</section>

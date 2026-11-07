@@ -17,11 +17,18 @@ import pytest
 from orchestrator.testing.scenarios import ensure_prova, send_video
 from review_ui.job_view import NO_HOLDER_ONLINE_REASON
 from review_ui.templating import STATIC_DIR
-from shared.models import JobState, Lease, TaskKind, WorkerRole
+from shared.models import JobState, Lease, PassResultProblem, TaskKind, WorkerRole
 from shared.testing.credentials import PLACEHOLDER_WRONG_PASSWORD
 from tests.review_ui.admin_browser import follow, post_form
 from tests.review_ui.english_guard import english_in_js, english_words_in, visible_text
-from tests.review_ui.sample_data import MASTER_ID, T0, make_job
+from tests.review_ui.sample_data import (
+    MASTER_ID,
+    T0,
+    failing_fetch,
+    make_job,
+    pass_result,
+    pass_result_job,
+)
 from tests.review_ui.test_admin_pages_catalog import set_event
 from tests.review_ui.test_login import sign_in
 from tests.review_ui.test_media_panel import IPHONE_REPORT
@@ -93,6 +100,12 @@ def every_kind_of_job(fake_orchestrator):
         discarded_job("job-discarded-grace"),
         discarded_job("job-discarded-over", discard_grace_ends_at=T0 - timedelta(days=1)),
     ]
+    # The official result (LIVESTACK-47): shown with the API down, and every
+    # reason for no result, each with the orchestrator's English detail.
+    extra.append(pass_result_job("job-result-down", pass_result=pass_result(fetch=failing_fetch())))
+    for problem in PassResultProblem:
+        result = pass_result(text=None, problem=problem, problem_detail="no value yet")
+        extra.append(pass_result_job(f"job-result-{problem.value}", pass_result=result))
     for job in extra:
         fake_orchestrator.add_job(job)
     return fake_orchestrator

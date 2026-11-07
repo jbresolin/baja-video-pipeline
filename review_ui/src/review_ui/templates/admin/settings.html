@@ -84,6 +84,8 @@
   <button type="submit" class="primary">{{ t("admin.save") }}</button>
 </form>
 
+{% include "admin/_pass_results.html" %}
+
 <h2>{{ t("settings.status") }}</h2>
 <dl class="status-list">
   <dt>{{ t("settings.evolution", instance=status.evolution.instance) }}</dt>

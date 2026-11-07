@@ -89,6 +89,29 @@ rules as `shared/framing.py` (tested in Node); the server side is
 so; Frota shows what each worker version can render; Configurações holds
 the bot's reply to vertical videos.
 
+**Official pass results** (LIVESTACK-47). For a prova in the
+pass-results configuration (`Job.pass_result.configured`), the job page has
+**"Mostrar resultado da passagem"** under "Mostrar o número da passagem",
+ticked as `pass_result.show` says (the reviewer's choice, else the prova's
+default), and one line under it: what will be burned in ("Na tarja: 66 s ·
+4 cones → 86 s"), "Não será gravado (resultado: …)" when unticked, or why
+there is no result yet (one sentence per `PassResultProblem`, the
+orchestrator's details after it in `lang="en"`). When the results API is
+failing: "API de resultados inacessível desde 14:02 (último resultado de
+13:58)". Nothing blocks "Pronto". `js/review_form.js` sends
+`show_pass_result` only when the box is on the page; the words are in
+`pass_result_view.py`. A clip whose result was published, corrected or
+turned off since it was made shows as out of date with that sentence.
+**Configurações → "Resultados das passagens"** (`templates/admin/_pass_results.html`,
+its own form, `routes_admin_pass_results.py`, `pass_results_settings_view.py`):
+the JSON configuration (format in `docs/design.md` §31) with "Salvar" (a
+refused text is shown again as typed, with the place and the rule in pt-BR,
+e.g. "em `provas.MAN.result.decimals`, o valor deve estar entre 0 e 3") and
+"Testar" (tries the text in the box, saved or not, for a prova, car and
+passagem: the line or why none, the fetch time, unnamed penalty icons and
+the car's row from the results API, shown as text); next to it, each
+configured prova's name, table and fetch status.
+
 **Welcome message** (LIVESTACK-44). Configurações has the text the bot
 sends to new contacts, its placeholders (`{nome}`, `{prova}`) and a preview
 filled with example values (refreshed while typing by `js/welcome.js`,
@@ -121,7 +144,7 @@ in a template, a view or a script.
 * API values stay English (job states, actions, error codes, event kinds in
   the DB); only their labels are translated. Text from the orchestrator or a
   worker (failure messages, event reasons, refusal details) is shown as it
-  came, inside `lang="en"`. The two waiting reasons the orchestrator writes
+  came, inside `lang="en"`. The waiting reasons the orchestrator writes
   itself are recognised and shown in pt-BR.
 * Dates: `05/11/2026 09:23:41`, 24-hour clock, America/Sao_Paulo, whatever
   the laptop's zone; relative ones read `há 5 min (09:18)`. Numbers shown to
@@ -174,12 +197,14 @@ base Caddy as `bvp-review-ui:8001` on `baja-edge`.
 | `orchestrator_client.py` | Every orchestrator call, with the reviewer's Authorization |
 | `routes_queue.py`, `routes_job.py`, `routes_clips_fleet.py` | HTML pages and their refresh fragments |
 | `routes_api.py` | JSON endpoints for the page scripts (review actions, proxy request, team lookup, the passagem panel) |
+| `routes_admin_pass_results.py` | Configurações → "Resultados das passagens": "Salvar" and "Testar" (LIVESTACK-47) |
 | `routes_admin_inline.py` | JSON endpoints behind the admin toggles that change a row in place (provas active/order, contacts allow/block): they answer with the re-rendered rows (`templates/admin/_provas_rows.html`, `_contact_row.html`) and `static/js/admin.js` swaps them in, so the page neither reloads nor scrolls |
 | `errors.py` | Error page for browsers, JSON errors for scripts, 401 sign-in challenge |
 | `job_view.py`, `queue_view.py`, `clips_and_fleet_view.py` | Plain functions that turn API data into what the pages show |
 | `passagem_help_view.py` | The job page's passagem panel: the car's videos in filming order, the suggestion and the warnings (LIVESTACK-45) |
 | `sender_messages_view.py` | The job page's "Mensagens de <remetente>": title, open/folded lines (LIVESTACK-49) |
 | `clip_inputs_view.py` | A clip that no longer matches its review, in sentences (job page banner, clips page detail) |
+| `pass_result_view.py`, `pass_results_settings_view.py` | The official result of the passagem: the job page's line, the Settings block (status, refusals, "Testar") (LIVESTACK-47) |
 | `render_options_view.py` | The job page's "Imagem e som" box: orientation sentence, whether "Enquadramento" applies, the choices (LIVESTACK-50) |
 | `event_log_view.py` | Orchestrator events (`Event`) in words: actor names, state changes, reasons; used by the job and fleet pages |
 | `catalog/` | Every pt-BR text the UI shows, by English key (see "Language") |
