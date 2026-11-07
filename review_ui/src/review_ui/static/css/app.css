@@ -393,3 +393,16 @@ table.admin-table tr.muted td { color: var(--muted); }
 .presets { display: flex; gap: 0.4rem; margin: 0 0 0.6rem; }
 .presets .chip { text-decoration: none; color: var(--ink); }
 .presets .chip.active { background: var(--accent); color: var(--accent-ink); }
+
+/* --- Official pass results (LIVESTACK-47): job page and Configurações --- */
+.warning-text { color: var(--warn-ink); }
+.pass-result { margin: 0.4rem 0 0.2rem; }
+.pass-result .hint { margin-left: 1.6rem; }
+.pass-results { margin-top: 2rem; max-width: 52rem; }
+.pass-results-form textarea { font-size: 0.85rem; }
+.pass-results-form > button { margin-top: 0.6rem; }
+/* The line as the overlay's pill would read it (Testar). */
+.pass-pill { display: inline-block; padding: 0.35rem 0.8rem; border-radius: 999px;
+  background: var(--ink); color: var(--surface); font-weight: 600; }
+.pass-results-row caption { text-align: left; font-weight: 600; padding: 0.3rem 0; }
+.pass-results-row code { white-space: pre-wrap; word-break: break-word; }

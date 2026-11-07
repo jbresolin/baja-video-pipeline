@@ -15,6 +15,7 @@ from shared.models.common import (
     CarNumber,
     CropPosition,
     PassNumber,
+    PassResultText,
     ReadByClients,
     ReceivedByServer,
     RenderFeatureName,
@@ -121,6 +122,13 @@ class ProcessTask(ReadByClients):
     crop_position: CropPosition = 0.5
     # "Sem áudio": render the clip without a sound track.
     no_audio: bool = False
+    # The official result of this passagem, ready to draw as the overlay's
+    # third pill ("66 s · 4 cones → 86 s"; LIVESTACK-47). Built by the
+    # orchestrator from the Baja results API; the worker never fetches.
+    # None = no result pill (none published yet, the prova is not
+    # configured, or the reviewer turned it off). Only sent to workers that
+    # declared RenderFeature.PASS_RESULT.
+    pass_result_text: PassResultText | None = None
     # The render features (RenderFeature) this task needs. The orchestrator
     # offers it only to a worker that declared every one of them; empty =
     # any worker. For the record: a worker does not need to check it.

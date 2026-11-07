@@ -5,6 +5,7 @@ The models are split over several files only to keep each file short:
     common.py           field types, ErrorResponse
     job.py              Job, Lease, Holder, ClipInfo
     render_inputs.py    what a clip was rendered from, compared with the review
+    pass_results.py     official pass results in the overlay (job page, Settings)
     worker.py           Worker, WorkerCapabilities, EnrollmentToken
     tasks.py            the four task kinds handed out by /next
     api_worker_loop.py  heartbeat, holder-confirm, uploads, ACKs, peers
@@ -115,6 +116,7 @@ from shared.models.enums import (
     MeasurementKind,
     NameStyle,
     OriginalState,
+    PassResultProblem,
     ReceivedAs,
     RecordedAtSource,
     RenderFeature,
@@ -138,6 +140,17 @@ from shared.models.job import (
     JobSummary,
     Lease,
     ProbeReport,
+)
+from shared.models.pass_results import (
+    MAX_PASS_RESULTS_CONFIG_LENGTH,
+    PassResult,
+    PassResultCell,
+    PassResultFetch,
+    PassResultsProvaStatus,
+    PassResultsSettings,
+    PassResultTestRequest,
+    PassResultTestResponse,
+    UpdatePassResultsConfigRequest,
 )
 from shared.models.render_inputs import (
     ClipInputsComparison,
@@ -255,6 +268,16 @@ __all__ = [
     "RecordedAtSource",
     "RegenerateProxyResponse",
     "RenderFeature",
+    "MAX_PASS_RESULTS_CONFIG_LENGTH",
+    "PassResult",
+    "PassResultCell",
+    "PassResultFetch",
+    "PassResultProblem",
+    "PassResultsProvaStatus",
+    "PassResultsSettings",
+    "PassResultTestRequest",
+    "PassResultTestResponse",
+    "UpdatePassResultsConfigRequest",
     "ReorderProvasRequest",
     "ReviewAction",
     "ReviewQueueFilter",

@@ -306,3 +306,31 @@ class RenderFeature(StrEnum):
     FRAMING = "framing"
     # Dropping the sound ("Sem áudio"). Installer 0.4.0, LIVESTACK-50.
     NO_AUDIO = "no_audio"
+    # The official result of the passagem, drawn as a third pill under the
+    # other two (ProcessTask.pass_result_text). Installer 0.5.0, LIVESTACK-47.
+    PASS_RESULT = "pass_result"
+
+
+class PassResultProblem(StrEnum):
+    """Why a job has no pass result text (LIVESTACK-47); the job page says it in pt-BR."""
+
+    # The job's prova has no entry in the pass-results configuration (or is
+    # a manual prova, without a results API id): no result line at all.
+    NOT_CONFIGURED = "not_configured"
+    # No event id on the Settings page: nothing to ask the results API for.
+    NO_EVENT = "no_event"
+    # The review has no car number or no passagem yet.
+    INCOMPLETE_REVIEW = "incomplete_review"
+    # The results table was never fetched successfully (see the fetch status).
+    NOT_FETCHED = "not_fetched"
+    # The configured column is not in the table the API sent.
+    COLUMN_MISSING = "column_missing"
+    # The car is not in the table.
+    CAR_NOT_IN_TABLE = "car_not_in_table"
+    # The car has fewer runs in the table than this passagem.
+    NO_SUCH_RUN = "no_such_run"
+    # The run has no value yet: "-", empty, or hidden by spoilers
+    # ("SPOILERS", "?"). Never shown on the overlay.
+    NO_RESULT_YET = "no_result_yet"
+    # The value is text that is not a number (e.g. "DNF"); never shown.
+    NOT_A_NUMBER = "not_a_number"

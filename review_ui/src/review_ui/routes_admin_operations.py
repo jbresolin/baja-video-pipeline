@@ -18,14 +18,18 @@ from review_ui.admin_view import (
 from review_ui.catalog import text
 from review_ui.clips_and_fleet_view import active_workers
 from review_ui.forms import read_form
-from review_ui.orchestrator_client import OrchestratorError
+from review_ui.orchestrator_client import OrchestratorError, OrchestratorUnavailableError
+from review_ui.pass_results_settings_view import PassResultsForm, pass_results_block
 from review_ui.request_context import admin_client_for, render_page
 from shared.models import (
+    MAX_PASS_RESULTS_CONFIG_LENGTH,
     AdminArea,
     CreateEnrollmentTokenRequest,
     EnrollmentTokenStatus,
+    PassResultsSettings,
     UpdateSettingsRequest,
     WorkerRole,
+    utc_now,
 )
 from shared.vertical_video_message import MAX_VERTICAL_VIDEO_MESSAGE_LENGTH
 from shared.welcome_message import (
@@ -182,7 +186,14 @@ def revoke_worker(request: Request, worker_id: str, form: dict = Depends(read_fo
 # --- Configurações (settings) ---
 
 
-def _settings_page(request: Request, error: str | None = None, status_code: int = 200):
+def settings_page_response(
+    request: Request,
+    error: str | None = None,
+    status_code: int = 200,
+    pass_results_form: PassResultsForm | None = None,
+):
+    """The Settings page; `pass_results_form` keeps what was typed in the
+    "Resultados das passagens" block (routes_admin_pass_results.py)."""
     admin = admin_client_for(request)
     page = admin.settings()
     context = admin_context(
@@ -199,14 +210,31 @@ def _settings_page(request: Request, error: str | None = None, status_code: int 
         welcome_max_length=MAX_WELCOME_MESSAGE_LENGTH,
         vertical_message_max_length=MAX_VERTICAL_VIDEO_MESSAGE_LENGTH,
         audit=audit_lines(admin.audit(AdminArea.SETTINGS)),
+        # "Resultados das passagens" (LIVESTACK-47), its own form on the page.
+        config_max_length=MAX_PASS_RESULTS_CONFIG_LENGTH,
+        pass_results=pass_results_block(
+            saved_pass_results(admin), pass_results_form or PassResultsForm(), utc_now()
+        ),
     )
     context["error"] = error
     return render_page(request, "admin/settings.html", context, status_code=status_code)
 
 
+def saved_pass_results(admin) -> PassResultsSettings | None:
+    """GET /admin/pass-results, or None when it cannot be read (the page still works)."""
+    try:
+        return admin.pass_results()
+    except OrchestratorError as error:
+        if error.status_code in (401, 403):
+            raise
+        return None
+    except OrchestratorUnavailableError:
+        return None
+
+
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request) -> HTMLResponse:
-    return _settings_page(request)
+    return settings_page_response(request)
 
 
 def _number(form: dict, name: str) -> float:
@@ -254,7 +282,7 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
             sender_messages_keep_days=_optional_whole_number(form, "sender_messages_keep_days"),
         )
     except ValueError:
-        return _settings_page(
+        return settings_page_response(
             request,
             text("settings.invalid"),
             400,
@@ -263,5 +291,5 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
         lambda: admin_client_for(request).update_settings(body),
         SETTINGS_PATH,
         "settings_updated",
-        lambda error, status: _settings_page(request, error, status),
+        lambda error, status: settings_page_response(request, error, status),
     )

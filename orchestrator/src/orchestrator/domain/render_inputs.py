@@ -18,12 +18,18 @@ but nothing said that the clip on air no longer matched the form. Now:
 Only inputs the orchestrator can know "now" are compared: the overlay
 theme version is kept for the record but not compared, because only
 workers know which theme they have.
+
+The official pass result (LIVESTACK-47) is compared as the text the
+overlay would show with the results fetched last: a result published or
+corrected by the judges after the clip was rendered makes it out of date,
+exactly like an edited cut. Reprocessing stays the reviewer's decision.
 """
 
 import sqlite3
 from datetime import datetime
 
 from orchestrator.domain.clip_names import NameStyles, clip_names_for_job, name_styles
+from orchestrator.domain.pass_results import pass_text_for_render
 from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import jobs as jobs_repo
 from shared.framing import effective_framing
@@ -100,6 +106,7 @@ def inputs_from_task(task: ProcessTask, styles: NameStyles, job_row: sqlite3.Row
             crop_position=task.crop_position,
             no_audio=task.no_audio,
         ),
+        pass_result_text=task.pass_result_text,
         reported_by_worker=False,
     )
 
@@ -146,6 +153,7 @@ def inputs_from_report(
             crop_position=report.crop_position,
             no_audio=report.no_audio,
         ),
+        pass_result_text=report.pass_result_text,
         reported_by_worker=True,
     )
 
@@ -169,8 +177,11 @@ def inputs_json_for_clip(job_row: sqlite3.Row, clip_sha256: str) -> str | None:
     return claimed.model_dump_json() if claimed is not None else None
 
 
-def inputs_now(styles: NameStyles, job_row: sqlite3.Row) -> RenderInputs:
-    """What a render would use if it started now (the same names a process task gets)."""
+def inputs_now(
+    connection: sqlite3.Connection, styles: NameStyles, job_row: sqlite3.Row
+) -> RenderInputs:
+    """What a render would use if it started now (the same names and result line
+    a process task gets)."""
     names = clip_names_for_job(styles, job_row)
     return RenderInputs(
         raw_sha256=job_row["sha256"],
@@ -191,6 +202,7 @@ def inputs_now(styles: NameStyles, job_row: sqlite3.Row) -> RenderInputs:
             crop_position=job_row["crop_position"],
             no_audio=bool(job_row["no_audio"]),
         ),
+        pass_result_text=pass_text_for_render(connection, job_row),
     )
 
 
@@ -231,6 +243,9 @@ def changed_inputs(clip: RenderInputs, now: RenderInputs) -> list[RenderInputFie
         changed.append(RenderInputField.FRAMING)
     if bool(clip.no_audio) != bool(now.no_audio):
         changed.append(RenderInputField.AUDIO)
+    # The result line (LIVESTACK-47); None on both sides = no pill either way.
+    if clip.pass_result_text != now.pass_result_text:
+        changed.append(RenderInputField.PASS_RESULT)
     return changed
 
 
@@ -261,7 +276,7 @@ def compare_newest_clip(
     clip = _load_inputs(newest["render_inputs_json"])
     if clip is None:
         return None
-    now = inputs_now(styles or name_styles(connection), job_row)
+    now = inputs_now(connection, styles or name_styles(connection), job_row)
     return ClipInputsComparison(
         version=newest["version"], clip=clip, now=now, changed=changed_inputs(clip, now)
     )

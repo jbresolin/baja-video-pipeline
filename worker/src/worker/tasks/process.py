@@ -75,6 +75,9 @@ def render_inputs(task: ProcessTask) -> dict:
         "raw_sha256", "cut_in_s", "cut_out_s", "prova", "car_number",
         "team_name", "school_short", "passagem", "show_pass", "has_audio",
         "rotation", "framing", "crop_position", "no_audio",
+        # The result line (LIVESTACK-47): a published or corrected result
+        # renders again instead of reusing the clip without it.
+        "pass_result_text",
     )  # fmt: skip
     return {name: getattr(task, name) for name in fields}
 
@@ -103,6 +106,8 @@ def render_inputs_report(task: ProcessTask, clip_sha256: str) -> RenderInputsRep
         framing=task.framing,
         crop_position=task.crop_position,
         no_audio=task.no_audio,
+        # The result line as drawn: None when the clip has no result pill.
+        pass_result_text=overlay.result_line(),
     )
 
 
@@ -131,6 +136,7 @@ def overlay_text_for(task: ProcessTask) -> OverlayText:
         passagem=task.passagem,
         show_pass=task.show_pass,
         school_short=task.school_short,
+        pass_result=task.pass_result_text,
     )
 
 

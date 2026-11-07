@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from orchestrator.background import sweepers
 from orchestrator.context import OrchestratorContext
 from orchestrator.domain.originals import sweep_originals
+from orchestrator.domain.pass_results_fetch import poll_due_tables
 from orchestrator.domain.results_sync import sync_if_due
 from orchestrator.domain.sessions import delete_idle_sessions
 
@@ -38,6 +39,9 @@ PERIODIC_TASKS = [
     # Provas and teams from the results API: every 6 h while an event is set
     # (checked every 10 min; it also retries a failed sync after 15 min).
     PeriodicTask("results-sync", 600, sync_if_due),
+    # Official pass results (LIVESTACK-47): each needed table every 30 s
+    # (5 min once the event is finished); checked every 10 s.
+    PeriodicTask("pass-results-poll", 10, poll_due_tables),
     # Expired sessions are already refused when used; this only tidies the table.
     PeriodicTask(
         "idle-session-cleanup",

@@ -26,6 +26,7 @@ from orchestrator.domain.fleet_snapshot import (
     peer_raw_url,
 )
 from orchestrator.domain.originals import evaluate_upload_original
+from orchestrator.domain.pass_results import pass_text_for_render
 from orchestrator.domain.render_features import can_render, required_render_features
 from orchestrator.domain.task_decision import TaskDecision, refuse
 from orchestrator.repositories import leases as leases_repo
@@ -156,9 +157,13 @@ def _evaluate_process(
             return refuse(ErrorCode.NOT_CLAIMABLE, "job is claimed")
     elif state != JobState.READY:
         return refuse(ErrorCode.NOT_CLAIMABLE, f"job is '{state}', not ready")
+    # The official result line (LIVESTACK-47), from the latest results
+    # fetched; None when there is none to show (the pill is then absent).
+    pass_result_text = pass_text_for_render(connection, job_row)
     # Render features (LIVESTACK-50): a worker version that cannot render
-    # the job's options would ignore them and make the old clip.
-    required = required_render_features(job_row)
+    # the job's options (or draw the result pill) would ignore them and
+    # make the old clip.
+    required = required_render_features(job_row, pass_result_text)
     if not can_render(worker_row, required):
         return refuse(
             ErrorCode.NOT_CLAIMABLE,
@@ -191,6 +196,7 @@ def _evaluate_process(
             framing=Framing(job_row["framing"]),
             crop_position=job_row["crop_position"],
             no_audio=bool(job_row["no_audio"]),
+            pass_result_text=pass_result_text,
             required_render_features=required,
         )
     )

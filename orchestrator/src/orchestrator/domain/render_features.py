@@ -8,7 +8,7 @@ declared all of them. A job that needs nothing new goes to any worker, as
 before. Without this, a 0.3.0 worker would take a vertical video and render
 the old narrow clip with its sound, ignoring task fields it does not know.
 
-To add a feature (LIVESTACK-47 will, for pass results in the overlay):
+To add a feature (LIVESTACK-47 did, for pass results in the overlay):
 
 1. add it to RenderFeature and to the list the worker declares
    (worker/render_features.py);
@@ -24,6 +24,7 @@ import sqlite3
 from datetime import datetime
 
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
+from orchestrator.domain.pass_results import pass_text_for_render
 from orchestrator.domain.review_queue import NO_HOLDER_ONLINE
 from orchestrator.repositories import leases as leases_repo
 from shared.framing import needs_framing
@@ -35,21 +36,31 @@ NO_HOLDER_CAN_RENDER = (
     "waiting for a holder of the raw that can render these options"
     " (a worker updated to 0.4.0 or later)"
 )
+# The same when the job needs the result pill (LIVESTACK-47): 0.5.0 draws it.
+NO_HOLDER_CAN_RENDER_PASS_RESULT = (
+    "waiting for a holder of the raw that can draw the pass result"
+    " (a worker updated to 0.5.0 or later)"
+)
 
 
-def required_render_features(job_row: sqlite3.Row) -> list[str]:
+def required_render_features(job_row, pass_result_text: str | None = None) -> list[str]:
     """The features a render of this job needs now, in a fixed order.
 
-    framing:  the reviewer turned the picture ("Girar"), or the picture is
-              not 16:9 (an upright phone, 4:3, ultra-wide);
-    no_audio: "Sem áudio" on a raw that has sound (a raw without sound
-              already renders silent everywhere).
+    framing:     the reviewer turned the picture ("Girar"), or the picture
+                 is not 16:9 (an upright phone, 4:3, ultra-wide);
+    no_audio:    "Sem áudio" on a raw that has sound (a raw without sound
+                 already renders silent everywhere);
+    pass_result: the render carries a result line (ProcessTask.
+                 pass_result_text; pass it here). A worker before 0.5.0
+                 would ignore it and render the clip without the pill.
     """
     needed = []
     if needs_framing(job_row["display_width"], job_row["display_height"], job_row["rotation"]):
         needed.append(RenderFeature.FRAMING.value)
     if job_row["no_audio"] and job_row["has_audio"] != 0:
         needed.append(RenderFeature.NO_AUDIO.value)
+    if pass_result_text is not None:
+        needed.append(RenderFeature.PASS_RESULT.value)
     return needed
 
 
@@ -82,13 +93,13 @@ def store_render_features(
     )
 
 
-def process_waiting_reason(
-    connection: sqlite3.Connection, job_row: sqlite3.Row, now: datetime
-) -> str | None:
+def process_waiting_reason(connection: sqlite3.Connection, job_row, now: datetime) -> str | None:
     """Why a ready job's render is not starting, or None when a holder can take it.
 
     No confirmed holder online (and not paused) → NO_HOLDER_ONLINE; holders
-    online but none declared the features the job needs → NO_HOLDER_CAN_RENDER.
+    online but none declared the features the job needs → NO_HOLDER_CAN_RENDER,
+    or NO_HOLDER_CAN_RENDER_PASS_RESULT when the result pill is what is
+    missing (it needs a newer worker than the other features).
     """
     snapshot = FleetSnapshot.take(connection, now)
     available = [
@@ -99,7 +110,12 @@ def process_waiting_reason(
     ]
     if not available:
         return NO_HOLDER_ONLINE
-    required = required_render_features(job_row)
-    if not any(can_render(worker_row, required) for worker_row in available):
-        return NO_HOLDER_CAN_RENDER
-    return None
+    required = required_render_features(job_row, pass_text_for_render(connection, job_row))
+    if any(can_render(worker_row, required) for worker_row in available):
+        return None
+    without_result = [name for name in required if name != RenderFeature.PASS_RESULT]
+    if len(without_result) < len(required) and any(
+        can_render(worker_row, without_result) for worker_row in available
+    ):
+        return NO_HOLDER_CAN_RENDER_PASS_RESULT
+    return NO_HOLDER_CAN_RENDER

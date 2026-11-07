@@ -28,6 +28,7 @@ from shared.models.common import (
     CarNumber,
     CropPosition,
     PassNumber,
+    PassResultText,
     ReadByClients,
     ReceivedByServer,
     Rotation,
@@ -60,6 +61,9 @@ class RenderInputField(StrEnum):
     FRAMING = "framing"
     # Sound kept or dropped ("Sem áudio").
     AUDIO = "audio"
+    # The official result line (LIVESTACK-47): published, corrected by the
+    # judges, or turned on or off by the reviewer since the clip was made.
+    PASS_RESULT = "pass_result"
 
 
 class RenderInputs(ReadByClients):
@@ -98,6 +102,11 @@ class RenderInputs(ReadByClients):
     framing: Framing | None = None
     crop_position: CropPosition | None = None
     no_audio: bool | None = None
+    # The overlay's result line (ProcessTask.pass_result_text, LIVESTACK-47).
+    # None = no result pill, which is also what inputs recorded before
+    # LIVESTACK-47 mean. In "now": the text from the latest results the
+    # orchestrator fetched, when the reviewer's toggle shows it.
+    pass_result_text: PassResultText | None = None
     # True when the rendering worker reported these itself; False for the
     # orchestrator's snapshot of the task it handed out (older workers).
     reported_by_worker: bool = False
@@ -135,6 +144,9 @@ class RenderInputsReport(ReceivedByServer):
     framing: Framing | None = None
     crop_position: CropPosition | None = None
     no_audio: bool | None = None
+    # The result line as drawn (ProcessTask.pass_result_text; LIVESTACK-47).
+    # Left out by workers before 0.5.0, which never get a task carrying one.
+    pass_result_text: PassResultText | None = None
 
 
 class ClipInputsComparison(ReadByClients):

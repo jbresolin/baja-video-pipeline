@@ -117,7 +117,7 @@ sudo install -d -o 10001 -g 10001 /srv/pipeline/{inbox,proxies,thumbs,outbox,db}
 | `app.py`, `__main__.py` | wiring (`build_context`, `create_app`) and `python -m orchestrator` |
 | `db/` | SQLite in WAL mode, numbered `migrations/*.sql` applied at startup |
 | `repositories/` | plain SQL, one module per table group |
-| `domain/` | the rules: sessions, users/contacts/provas/teams admin, the welcome message to new contacts (`welcome.py`), `results_sync`, `first_start` imports, intake, enrollment, `recording_time` (when a video was filmed), `car_videos` (one car's videos in a prova), `whatsapp_notes` / `intake_notes` / `sender_messages` (the sender's other messages: read, kept, edited or deleted, and which video they belong to), `task_rules` (who gets what, delivery plan), `render_features` (which worker versions may render which jobs, LIVESTACK-50), `vertical_reply` (the bot's "grave na horizontal"), `worker_loop` (`/next` order incl. the master's backfill), `task_results` (failure scopes), leases, uploads, review, delivery, fleet, `event_log`, `/auth/file` |
+| `domain/` | the rules: sessions, users/contacts/provas/teams admin, the welcome message to new contacts (`welcome.py`), `results_sync`, `first_start` imports, intake, enrollment, `recording_time` (when a video was filmed), `car_videos` (one car's videos in a prova), `whatsapp_notes` / `intake_notes` / `sender_messages` (the sender's other messages: read, kept, edited or deleted, and which video they belong to), `task_rules` (who gets what, delivery plan), `render_features` (which worker versions may render which jobs, LIVESTACK-50), the official pass results (LIVESTACK-47: `pass_results_config` checks the Settings' JSON, `results_table` reads the API's table, `pass_text` builds the overlay's result line, `pass_results` gives a job its line, `pass_results_fetch` fetches every 30 s, `pass_results_admin` serves Settings and "Testar"), `vertical_reply` (the bot's "grave na horizontal"), `worker_loop` (`/next` order incl. the master's backfill), `task_results` (failure scopes), leases, uploads, review, delivery, fleet, `event_log`, `/auth/file` |
 | `clients/` | Evolution `sendText` and instance status, Tailscale key minting, the Baja results API (`results_api.py`), the old teams CSV parser |
 | `api/` | FastAPI routes, the auth schemes and roles, rate limits, the error shape |
 | `background/` | lease expiry, inbox cleanup, proxy eviction, outbox cleanup, sender-messages retention |
@@ -141,5 +141,11 @@ Every state change goes through `domain/transitions.move_job`, which asks
   set on the admin Settings page (`domain/results_sync.py`); manual provas
   and team corrections live alongside. Unknown cars answer 404 and leave
   `team_name` empty.
+* **Pass results** (LIVESTACK-47, design §32): configured provas' results
+  tables are fetched every 30 s while they have jobs (delivered ones
+  included) and the event is not finished, then once more and no more; a
+  failure keeps the last good answer. The result
+  line goes to the worker as `ProcessTask.pass_result_text`, only to
+  workers that declare `pass_result` (installer 0.5.0).
 * **Users** sign in with `POST /auth/login` (`domain/sessions.py`); review
   routes take any session, `/admin/*` an admin session or the admin token.
