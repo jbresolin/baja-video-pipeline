@@ -6,7 +6,9 @@ needs a login (it is localhost only), so the tests also check what stops a
 random web site in the volunteer's browser from pressing those buttons.
 """
 
+import sys
 import threading
+import types
 
 import httpx
 import pytest
@@ -14,6 +16,7 @@ import pytest
 from shared.models import WorkerRole
 from shared.testing.asgi_transport import SyncAsgiTransport
 from worker.config import WorkerConfig, load_config, save_config
+from worker.local_api import INSTALLER_BUILD_INFO_MODULE, worker_version
 from worker.pause import PauseSwitch
 from worker.setup_page import build_setup_app
 from worker.status import StatusBoard
@@ -175,3 +178,31 @@ def test_the_page_explains_a_pending_connection_step(tmp_path):
     html = client.get("/").text
     assert "Conexão não concluída" in html
     assert "background:#d9a400" in html
+
+
+def test_an_installed_worker_reports_the_installers_version(monkeypatch):
+    # Arrange: pretend this is a Windows build. installer/build.py writes a
+    # small module holding the installer's version; here we put a stand-in
+    # with "0.3.0" where the worker looks for it.
+    stamped_build = types.ModuleType(INSTALLER_BUILD_INFO_MODULE)
+    stamped_build.VERSION = "0.3.0"
+    monkeypatch.setitem(sys.modules, INSTALLER_BUILD_INFO_MODULE, stamped_build)
+
+    # Act: ask which version this worker is.
+    version = worker_version()
+
+    # Assert: the page shows the version the volunteer installed, not the
+    # Python package's "0.1.0" that every installer showed until now.
+    assert version == "0.3.0", "the :8700 page must show the installer's version"
+
+
+def test_a_worker_run_from_source_still_reports_a_version(monkeypatch):
+    # Arrange: no build module at all, as when a developer runs the worker
+    # from the repository (None in sys.modules makes the import fail).
+    monkeypatch.setitem(sys.modules, INSTALLER_BUILD_INFO_MODULE, None)
+
+    # Act: ask which version this worker is.
+    version = worker_version()
+
+    # Assert: some version is still given (the Python package's), never a crash.
+    assert version, "running from source must not break the status page"

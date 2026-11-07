@@ -22,6 +22,7 @@ GET /api/status needs no extra check: a foreign page cannot read the answer
 (no CORS headers), and it holds no secret (never the bearer token).
 """
 
+import importlib
 import importlib.metadata
 from collections.abc import Callable
 from datetime import datetime
@@ -42,7 +43,23 @@ def _iso(moment: datetime | None) -> str | None:
     return moment.isoformat().replace("+00:00", "Z") if moment else None
 
 
+# Written by installer/build.py into every Windows build: the installer's
+# version ("0.3.0"). It does not exist when running from the source tree.
+INSTALLER_BUILD_INFO_MODULE = "baja_installer._build_info"
+
+
 def worker_version() -> str:
+    """The version a volunteer installed ("0.3.0"), shown on the :8700 page.
+
+    The Python package's own version (worker/pyproject.toml) is never
+    bumped, so every installer showed "0.1.0" there; the build's stamp is
+    the real one. From source: the package version, else "unknown".
+    """
+    try:
+        build_info = importlib.import_module(INSTALLER_BUILD_INFO_MODULE)
+        return build_info.VERSION
+    except ImportError:
+        pass
     try:
         return importlib.metadata.version("worker")
     except importlib.metadata.PackageNotFoundError:
