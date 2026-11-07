@@ -44,6 +44,7 @@ REQUIRED_ENDPOINTS = {
     ("put", "/jobs/{job_id}/render-inputs"),
     # Review
     ("get", "/review/queue"),
+    ("get", "/review/car-videos"),
     ("get", "/jobs/{job_id}"),
     ("patch", "/jobs/{job_id}/review"),
     ("post", "/jobs/{job_id}/regenerate-proxy"),
@@ -184,6 +185,8 @@ def test_the_media_check_reads_the_session_cookie_only():
 def test_review_routes_take_a_session_and_ready_can_fail_with_unknown_prova():
     paths = load_committed_contract()["paths"]
     assert paths["/review/queue"]["get"]["security"] == [{"sessionBearer": []}]
+    # The passagem panel's list (LIVESTACK-45): reviewers only.
+    assert paths["/review/car-videos"]["get"]["security"] == [{"sessionBearer": []}]
     assert paths["/jobs/{job_id}/review"]["patch"]["security"] == [{"sessionBearer": []}]
     assert (
         "unknown_prova" in load_committed_contract()["components"]["schemas"]["ErrorCode"]["enum"]

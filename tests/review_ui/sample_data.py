@@ -25,6 +25,7 @@ from shared.models import (
     NameStyle,
     Prova,
     ReceivedAs,
+    RecordedAtSource,
     RenderInputField,
     RenderInputs,
     ServerDisk,
@@ -133,6 +134,36 @@ def delivered_job(job_id: str = "job-done-1") -> Job:
             rendered_by_worker_id=MASTER_ID,
             delivered_at=T0 + timedelta(minutes=20),
         ),
+    )
+
+
+def on_event_day(hour: int, minute: int) -> datetime:
+    """14:02 on the track on 2026-03-26 (São Paulo, UTC-3) as a UTC datetime."""
+    return datetime(2026, 3, 26, hour + 3, minute, tzinfo=UTC)
+
+
+def car_7_video(
+    job_id: str,
+    filmed_at: datetime,
+    *,
+    passagem: int | None = None,
+    state: JobState = JobState.AWAITING_REVIEW,
+    source: RecordedAtSource = RecordedAtSource.METADATA,
+    prova: str = "Suspensão",
+) -> Job:
+    """A video of Baja UFPR's car 7 in Suspensão, filmed at `filmed_at`
+    (LIVESTACK-45). It arrived 40 minutes after it was filmed."""
+    return make_job(
+        job_id,
+        state,
+        created_at=filmed_at + timedelta(minutes=40),
+        updated_at=filmed_at + timedelta(minutes=41),
+        recorded_at=filmed_at,
+        recorded_at_source=source,
+        prova=prova,
+        car_number=7,
+        team_name="Baja UFPR",
+        passagem=passagem,
     )
 
 

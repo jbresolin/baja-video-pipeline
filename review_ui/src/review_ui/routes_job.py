@@ -17,6 +17,7 @@ from review_ui.orchestrator_client import (
     OrchestratorError,
     OrchestratorUnavailableError,
 )
+from review_ui.passagem_help_view import PassagemHelp, passagem_help
 from review_ui.request_context import orchestrator_for, render_page
 from review_ui.settings import JOB_PANEL_POLL_SECONDS
 from shared.models import Job, Team
@@ -93,6 +94,8 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
         actions=action_buttons(job.state),
         prova_choices=prova_choices(orchestrator, job),
         team=team_or_none(orchestrator, job),
+        # "Outros vídeos de <prova>, carro <n>" for the saved values (LIVESTACK-45).
+        help=passagem_help_or_none(orchestrator, job),
         poll_seconds=JOB_PANEL_POLL_SECONDS,
     )
     return render_page(request, "job.html", context)
@@ -108,6 +111,32 @@ def team_or_none(orchestrator: OrchestratorClient, job: Job) -> Team | None:
         return None
     try:
         return orchestrator.get_team(job.car_number)
+    except (OrchestratorError, OrchestratorUnavailableError):
+        return None
+
+
+def build_passagem_help(
+    orchestrator: OrchestratorClient,
+    job: Job,
+    prova: str | None,
+    car_number: int | None,
+    passagem: int | None,
+) -> PassagemHelp | None:
+    """The passagem panel for these form values; None until prova and car are set."""
+    if not prova or not prova.strip() or car_number is None:
+        return None
+    videos = orchestrator.car_videos(prova.strip(), car_number)
+    return passagem_help(job, prova.strip(), car_number, videos, passagem)
+
+
+def passagem_help_or_none(orchestrator: OrchestratorClient, job: Job) -> PassagemHelp | None:
+    """The panel for the job's saved values, for the first page load.
+
+    Helpful, not essential: if the call fails, the page still renders and
+    the script tries again as soon as the reviewer changes a field.
+    """
+    try:
+        return build_passagem_help(orchestrator, job, job.prova, job.car_number, job.passagem)
     except (OrchestratorError, OrchestratorUnavailableError):
         return None
 

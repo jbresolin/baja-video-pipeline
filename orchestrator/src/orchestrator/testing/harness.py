@@ -11,6 +11,7 @@ orchestrator.background.sweepers.* to run one pass.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 import bcrypt
@@ -193,7 +194,11 @@ class OrchestratorHarness:
         return response.json()
 
 
-def build_harness(data_dir: Path, **setting_overrides) -> OrchestratorHarness:
+def build_harness(
+    data_dir: Path, *, clock_start: datetime | None = None, **setting_overrides
+) -> OrchestratorHarness:
+    """A whole orchestrator wired to the fakes. `clock_start` sets the
+    ManualClock's first moment (default 2026-10-25 12:00 UTC)."""
     data_dir.mkdir(parents=True, exist_ok=True)
     # Imported into the users table on the first start (domain/first_start.py).
     reviewers_file = write_reviewers_file(
@@ -224,7 +229,7 @@ def build_harness(data_dir: Path, **setting_overrides) -> OrchestratorHarness:
             **setting_overrides,
         }
     )
-    clock = ManualClock()
+    clock = ManualClock(clock_start)
     cdn, evolution = FakeWhatsAppCdn(), FakeEvolutionApi()
     tailscale, results_api = FakeTailscaleApi(), FakeResultsApi()
     context = build_context(

@@ -57,6 +57,7 @@ def build_templates(settings: ReviewUiSettings) -> Jinja2Templates:
         percent=formatting.percent,
         age=formatting.age_text,
         relative_time=formatting.relative_time_text,
+        recorded_time=formatting.recorded_time_text,
         waiting_reason=describe_waiting_reason,
         # Every text a person reads comes from the catalog (review_ui/catalog/).
         t=markup,

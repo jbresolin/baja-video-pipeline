@@ -12,7 +12,7 @@ stops cross-site request forgery without tokens.
 
 import json
 
-from fastapi import APIRouter, Path, Request
+from fastapi import APIRouter, Path, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -20,7 +20,8 @@ from pydantic import ValidationError
 from review_ui.catalog import text
 from review_ui.errors import UiRequestError
 from review_ui.job_view import describe_waiting_reason, save_message
-from review_ui.request_context import orchestrator_for
+from review_ui.request_context import orchestrator_for, render_fragment
+from review_ui.routes_job import build_passagem_help
 from review_ui.templating import media_url
 from shared.models import ReviewAction, ReviewUpdate
 
@@ -107,6 +108,29 @@ async def original_status(request: Request, job_id: str) -> JSONResponse:
     """Polled by the job page while the original is being prepared."""
     orchestrator = orchestrator_for(request)
     return _original_answer(request, await run_in_threadpool(orchestrator.get_original, job_id))
+
+
+@router.get("/jobs/{job_id}/passagem-help")
+def passagem_help(
+    request: Request,
+    job_id: str,
+    prova: str = Query("", max_length=200),
+    car_number: int | None = Query(None, ge=0, le=9999),
+    passagem: int | None = Query(None, ge=1, le=999),
+) -> JSONResponse:
+    """The "Outros vídeos de <prova>, carro <n>" panel for what the form says
+    now, saved or not (LIVESTACK-45). The page swaps `html` in and shows
+    `warnings` next to the passagem field and the "Pronto" button."""
+    orchestrator = orchestrator_for(request)
+    job = orchestrator.get_job(job_id)
+    panel = build_passagem_help(orchestrator, job, prova, car_number, passagem)
+    return JSONResponse(
+        {
+            "html": render_fragment(request, "_passagem_help.html", {"help": panel}),
+            "warnings": panel.warnings if panel else [],
+            "suggestion": panel.suggestion if panel else None,
+        }
+    )
 
 
 @router.get("/teams/{car_number}")

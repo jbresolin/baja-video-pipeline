@@ -744,3 +744,63 @@ Fixed on main after João's first end-to-end test of installer 0.3.0.
   (the studio is shared into his tailnet), and pushed directly until the
   VPS was updated. The orchestrator cannot tell, so it offers the push and
   the worker's 3 s `/health` check (item 13) falls back to the outbox.
+
+## 27. Help numbering the passagens (LIVESTACK-45, 2026-11-06)
+
+A reviewer must say whether a video is a car's 1st, 2nd or nth passagem in
+a prova, and nothing on screen helped: the queue was in arrival order,
+which is not filming order, and the job page showed no other video of the
+car (brief "08 — Help reviewers number the passagens"). Contract 2.5.0.
+
+* **Every job has a recording time** (`Job.recorded_at` and
+  `recorded_at_source`, also on `JobSummary`): the raw's `creation_time`
+  (format tags, else the first video stream's) when plausible (not after
+  the bot received it, not more than 7 days before), else the WhatsApp
+  send time (`source.sent_at`, now stored), else the time received
+  (`source.received_at`, the webhook's arrival, not the job's creation
+  after the download). Rules in `orchestrator/domain/recording_time.py`.
+  The send time gets the same plausibility test. A `creation_time` without
+  a zone is UTC; one with an offset is converted.
+* **No worker change.** The first holder already sends the whole ffprobe
+  report (`PUT /jobs/{id}/media-info`, §22), tags included; the
+  orchestrator reads `creation_time` from it when it arrives. 0.3.0
+  workers need nothing, and they ignore the new answer fields (§14).
+* **Older jobs.** Migration 0011 gives every job its creation as
+  recording time (`received`); the first start then reads the probe report
+  already stored, once (`first_start.backfill_recorded_at`), without
+  touching `updated_at`.
+* **The review queue is in filming order**: `GET /review/queue` sorts by
+  `recorded_at`, then arrival, then id, for every state filter (the clips
+  page's outbox list uses the same call; its order does not matter there).
+  Each row says "gravado 14:02" (São Paulo time, with the date when not
+  today) with a small "envio" or "chegada" marker when it is not the
+  file's own time.
+* **One car's videos:** `GET /review/car-videos?prova=…&car_number=…`
+  (reviewer session) lists them, discarded ones left out, in filming
+  order. Jobs are matched by the prova's clip folder (slug), and `prova`
+  may be a name or a slug, so a renamed prova, or a page still showing
+  the old name, finds the same videos.
+* **The suggestion and the warnings are computed by the review UI**, in
+  Python (`review_ui/passagem_help_view.py`), from that list and the form
+  values; the job page asks `GET /review/api/jobs/{id}/passagem-help` on
+  every change of prova, car or passagem (debounced) and swaps the panel
+  in, never reloading. Suggestion: one more than the passagem of the last
+  numbered video filmed before this one; 1 when none was; **no
+  suggestion** when that number is already another video's (the text then
+  says which, so the reviewer checks both instead of clicking a wrong
+  number). It is applied only by the "Usar passagem N" button. Warnings:
+  one per other video with the same number; at most one per direction for
+  the order (the first video filmed after this one with a lower number,
+  the last one filmed before it with a higher number).
+* **Warnings never block.** They show under the passagem field and in a
+  box above the action buttons; "Pronto" and "Salvar e reprocessar" ask
+  for a confirmation listing them, and go ahead on OK.
+* Times in the panel show the date only when not on this video's day; the
+  order is called approximate when any time in it is a send or arrival
+  time. The job page's header says when the video was filmed and how that
+  is known.
+* **Not handled:** cameras that write local time as if it were UTC (some
+  action cams) look 3 h early and pass the plausibility test; a phone's
+  `com.apple.quicktime.creationdate` (local time with offset) is not read.
+  Matching passagens to official results and automatic numbering stay out
+  of scope.

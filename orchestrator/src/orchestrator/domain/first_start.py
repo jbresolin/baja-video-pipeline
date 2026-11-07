@@ -11,6 +11,9 @@
    once. Names that would share a clip folder (say "Enduro" and "enduro")
    become one prova named after the first one used, and the other jobs are
    relabelled to that name, so every job keeps a prova from the list.
+4. Recording times (LIVESTACK-45): migration 0011 gives every older job
+   its creation as recording time; once, every job whose probe report is
+   already stored gets the raw's creation_time instead, when plausible.
 
 Each import runs in its own transaction and logs what it did.
 """
@@ -23,25 +26,29 @@ from pathlib import Path
 from orchestrator.clients.teams import parse_teams_csv
 from orchestrator.config import Settings
 from orchestrator.db.database import Database
+from orchestrator.domain.media_info import recorded_at_columns_for
 from orchestrator.repositories import app_settings as settings_repo
 from orchestrator.repositories import catalog as catalog_repo
 from orchestrator.repositories import events as events_repo
+from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import teams as teams_repo
 from orchestrator.repositories import users as users_repo
 from shared.layout import slugify_prova
-from shared.models import UserRole
+from shared.models import ProbeReport, UserRole
 from shared.reviewers_file import ReviewersFileError, load_reviewers_file
 
 logger = logging.getLogger(__name__)
 
 TEAMS_IMPORT = "teams_file"
 PROVAS_BACKFILL = "prova_backfill"
+RECORDED_AT_BACKFILL = "recorded_at_backfill"
 
 
 def run_first_start_imports(database: Database, settings: Settings, now: datetime) -> None:
     import_reviewers_file(database, settings.reviewers_file, settings.bootstrap_admin, now)
     import_teams_file(database, settings.teams_file, now)
     backfill_provas(database, now)
+    backfill_recorded_at(database, now)
 
 
 def import_reviewers_file(
@@ -158,3 +165,26 @@ def _add_provas_used_by_jobs(connection: sqlite3.Connection, now: datetime) -> i
         catalog_repo.insert_prova(connection, name, slug, now)
         added += 1
     return added
+
+
+def backfill_recorded_at(database: Database, now: datetime) -> int:
+    """Recording times from the probe reports already stored, once; returns how many changed."""
+    with database.transaction() as connection:
+        if settings_repo.import_was_done(connection, RECORDED_AT_BACKFILL):
+            return 0
+        changed = 0
+        for row in jobs_repo.list_job_rows_with_media_info(connection):
+            report = ProbeReport.model_validate_json(row["media_info_json"])
+            columns = recorded_at_columns_for(row, report)
+            if (columns["recorded_at"], columns["recorded_at_source"]) != (
+                row["recorded_at"],
+                row["recorded_at_source"],
+            ):
+                jobs_repo.set_recorded_at(connection, row["id"], columns)
+                changed += 1
+        settings_repo.mark_import_done(
+            connection, RECORDED_AT_BACKFILL, now, f"{changed} job(s) from their probe report"
+        )
+    if changed:
+        logger.info("recording time read from the stored probe report of %d job(s)", changed)
+    return changed

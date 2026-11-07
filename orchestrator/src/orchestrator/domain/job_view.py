@@ -26,6 +26,7 @@ from shared.models import (
     JobState,
     ProbeReport,
     ReceivedAs,
+    RecordedAtSource,
     RenderInputs,
     TaskKind,
 )
@@ -121,8 +122,14 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
             original_filename=row["original_filename"],
             mimetype=row["mimetype"],
             raw_file_name=row["raw_file_name"],
+            sent_at=from_db_time(row["sent_at"]),
+            received_at=from_db_time(row["received_at"]),
         ),
         low_res=bool(row["low_res"]),
+        recorded_at=from_db_time(row["recorded_at"]),
+        recorded_at_source=(
+            RecordedAtSource(row["recorded_at_source"]) if row["recorded_at_source"] else None
+        ),
         sha256=row["sha256"],
         size_bytes=row["size_bytes"],
         duration_s=row["duration_s"],

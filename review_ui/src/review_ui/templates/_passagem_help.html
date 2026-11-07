@@ -1,0 +1,38 @@
+{# "Outros vídeos de <prova>, carro <n>" (LIVESTACK-45): the inside of #passagem-help.
+   Rendered with the page, and again by GET /review/api/jobs/{id}/passagem-help
+   whenever prova, car or passagem change in the form (js/passagem_help.js).
+   `help` is a passagem_help_view.PassagemHelp, or none while prova or car is empty. #}
+{% import "macros.html" as m with context %}
+{% if help %}
+<h2>{{ t("passagens.title", prova=help.prova, car=help.car_number) }}</h2>
+{% if not help.has_others %}<p class="hint">{{ t("passagens.none") }}</p>{% endif %}
+<ol class="passagem-list">
+  {% for row in help.rows %}
+  <li class="passagem-row{% if row.is_this_video %} this-video{% endif %}">
+    <span class="thumb small-thumb">
+      {% if row.video.thumbnail_url %}
+      <img src="{{ media_url(row.video.thumbnail_url) }}" alt="" loading="lazy" width="96" height="54">
+      {% else %}
+      <span class="thumb-empty">{{ t("queue.no_thumbnail") }}</span>
+      {% endif %}
+    </span>
+    <span class="passagem-time">{{ m.recorded(row.video, help.reference_time) }}</span>
+    <span class="passagem-number">
+      {%- if row.video.passagem is not none %}{{ t("passagens.passagem", passagem=row.video.passagem) }}{% else %}<span class="muted">{{ t("passagens.no_passagem") }}</span>{% endif -%}
+    </span>
+    <span class="passagem-state">{{ m.state_badge(row.video.state) }}</span>
+    <span class="passagem-link">
+      {%- if row.is_this_video %}<strong>{{ t("passagens.this_video") }}</strong>
+      {%- else %}<a href="/review/jobs/{{ row.video.id }}">{{ t("passagens.open") }}</a>{% endif -%}
+    </span>
+  </li>
+  {% endfor %}
+</ol>
+<p class="passagem-registered">{{ help.registered_text }}</p>
+<p class="passagem-suggestion" id="passagem-suggestion">{{ help.suggestion_text }}
+  {%- if help.suggestion is not none and help.suggestion != help.this_video.passagem %}
+  <button type="button" data-use-passagem="{{ help.suggestion }}">{{ t("passagens.use_suggestion", passagem=help.suggestion) }}</button>
+  {%- endif %}
+</p>
+{% if help.order_is_approximate %}<p class="hint">{{ t("passagens.approximate") }}</p>{% endif %}
+{% endif %}

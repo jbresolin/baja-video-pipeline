@@ -69,7 +69,7 @@ types**; this page explains the behaviour around them. Design background:
 | `POST /auth/login` | none (the password is the credential; 20 per source IP per 600 s) |
 | `/admin/*`, `POST /intake/test-upload`, `GET /metrics` | sessionBearer (role admin) **or** adminBearer |
 | worker loop, `/workers`, `/auth/file`, `/outbox/{id}/ack` | workerBearer |
-| `/review/queue`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
+| `/review/queue`, `/review/car-videos`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
 | `GET /auth/media` | sessionCookie |
 | `GET /jobs/{job_id}`, `GET /manifest` | sessionBearer **or** workerBearer |
 | `GET /fleet`, `GET /jobs/{job_id}/events`, `GET /events`, `GET /provas` | sessionBearer **or** adminBearer |
@@ -506,7 +506,8 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `PUT /jobs/{job_id}/render-inputs` | `RenderInputsReport` JSON, `Lease-Id` → 204 | process lease, before the upload or push; what the clip was rendered from (§5 "Render inputs"); state unchanged |
 | `GET /jobs/{job_id}/original` | → `OriginalDownload` | where "Baixar original" stands; no side effects |
 | `POST /jobs/{job_id}/original` | → `OriginalDownload` | "Baixar original"; see below |
-| `GET /review/queue?state=…&limit=…&outdated=…` | → `ReviewQueueResponse` | default `awaiting_review`, oldest first; `outdated=true`: only jobs whose clip no longer matches the review (§5 "Render inputs") |
+| `GET /review/queue?state=…&limit=…&outdated=…` | → `ReviewQueueResponse` | default `awaiting_review`; in filming order, oldest `recorded_at` first, ties by arrival (below, "Recording time"); `outdated=true`: only jobs whose clip no longer matches the review (§5 "Render inputs") |
+| `GET /review/car-videos?prova=…&car_number=…` | → `CarVideosResponse` | one car's jobs in one prova, discarded left out, filming order; the job page's passagem panel (below) |
 | `GET /jobs/{job_id}` | → `Job` | |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
 | `POST /jobs/{job_id}/regenerate-proxy` | → 202 `RegenerateProxyResponse` | no state change |
@@ -669,6 +670,36 @@ not a `ProbeReport` → 400; no live make_proxy lease → 409 `lease_lost`. A
 refusal never fails the proxy task; a task without the URL (older
 orchestrator) skips the upload. The review UI summarises it under the
 player with `shared.media_details.summarize_probe_report`.
+
+**Recording time** (contract 2.5.0, LIVESTACK-45). `Job.recorded_at` /
+`JobSummary.recorded_at` is when the video was filmed, and
+`recorded_at_source` where that came from:
+
+| Source | Value | When |
+| --- | --- | --- |
+| `metadata` | the raw's `creation_time`: format tags, else the first video stream's tags (from the media-info report above) | plausible: not after `source.received_at`, not more than 7 days before it |
+| `whatsapp` | `source.sent_at`, the webhook's `messageTimestamp` | no plausible metadata; the same plausibility test |
+| `received` | `source.received_at`, when the webhook arrived | neither of the above |
+
+A job starts with `whatsapp` or `received` at intake and moves to
+`metadata` when the media-info report arrives (no review version bump).
+Only `metadata` is exact; the review UI marks the others as hints. A
+`creation_time` without a zone is read as UTC. Jobs from before 2.5.0 got
+their creation time (`received`), then, once at the first start, the
+`creation_time` of the probe report already stored. No worker change:
+the report already carried the tags.
+
+**Car videos** (contract 2.5.0). `GET /review/car-videos?prova=…&car_number=…`
+(reviewer session) lists every job of that car in that prova as
+`JobSummary` items, discarded ones left out, oldest `recorded_at` first
+(ties by arrival), and says the prova's folder in `prova_slug`. `prova`
+may be a name or a slug: jobs are matched by the prova's clip folder, not
+by name, so a renamed prova (or a page that still shows the old name)
+finds the same jobs; `prova_slug` is null for a prova with no letters or
+digits (no jobs). The asking job is in the list when it is saved with that
+prova and car. The review UI places the video among them and works out
+the passagem suggestion and the warnings itself
+(`review_ui/passagem_help_view.py`); the orchestrator only lists.
 
 **Review update.** `expected_version` must equal the job's `version`
 (else 409 `version_conflict`). Since `version` only moves on review

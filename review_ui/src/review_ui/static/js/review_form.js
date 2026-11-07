@@ -9,6 +9,9 @@ import { t } from "./text.js";
 
 // The action Ctrl+Enter triggers: whichever "move it forward" button exists.
 const PRIMARY_ACTIONS = ["ready", "reprocess", "retry"];
+// Actions that send the passagem on to a clip: the passagem warnings
+// (LIVESTACK-45) are confirmed first.
+const RENDERING_ACTIONS = ["ready", "reprocess"];
 
 function numberOrNull(raw, parse) {
   const text = raw.trim();
@@ -17,7 +20,9 @@ function numberOrNull(raw, parse) {
   return Number.isFinite(value) ? value : null;
 }
 
-export function setupReviewForm({ form, jobElement }) {
+// `confirmForward()` is asked before "Pronto" and "Salvar e reprocessar";
+// false stops the action (js/passagem_help.js: the reviewer saw a warning).
+export function setupReviewForm({ form, jobElement, confirmForward = () => true }) {
   const jobId = jobElement.dataset.jobId;
   const teamText = document.getElementById("team-name");
   let version = Number(jobElement.dataset.version);
@@ -64,6 +69,7 @@ export function setupReviewForm({ form, jobElement }) {
   async function run(action) {
     if (busy || !form.querySelector(`[data-action="${action}"]`)) return;
     if (action === "discard" && !window.confirm(t("script.confirm_discard"))) return;
+    if (RENDERING_ACTIONS.includes(action) && !confirmForward()) return;
     // Discard and restore need no fields; sending none keeps them from failing on a half-typed one.
     const withoutFields = action === "discard" || action === "restore";
     const body = withoutFields ? { expected_version: version, action } : collect(action);

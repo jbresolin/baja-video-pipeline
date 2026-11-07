@@ -241,3 +241,36 @@ def make_proxy(harness: OrchestratorHarness, worker: EnrolledWorker, job_id: str
     assert thumbnail.status_code == 204, thumbnail.text
     proxy = upload_in_chunks(harness, worker, f"/jobs/{job_id}/proxy", lease_id, SAMPLE_PROXY)
     assert proxy.status_code == 200 and proxy.json()["complete"], proxy.text
+
+
+def probe_and_make_proxy(
+    harness: OrchestratorHarness, worker: EnrolledWorker, job_id: str, probe_report: dict
+) -> None:
+    """Be the first holder in full: hold the raw, send the probe report, the
+    thumbnail and the proxy. The job reaches awaiting_review with the
+    recording time the report gives it (LIVESTACK-45)."""
+    hold_raw(harness, worker, job_id)
+    lease_id, _ = claim_ok(harness, worker, job_id, TaskKind.MAKE_PROXY)
+    lease_header = {**worker.headers, LEASE_ID_HEADER: lease_id}
+    media_info = harness.client.put(
+        f"/jobs/{job_id}/media-info", json=probe_report, headers=lease_header
+    )
+    assert media_info.status_code == 204, media_info.text
+    thumbnail = harness.client.put(
+        f"/jobs/{job_id}/thumbnail", content=SAMPLE_JPEG, headers=lease_header
+    )
+    assert thumbnail.status_code == 204, thumbnail.text
+    proxy = upload_in_chunks(harness, worker, f"/jobs/{job_id}/proxy", lease_id, SAMPLE_PROXY)
+    assert proxy.status_code == 200 and proxy.json()["complete"], proxy.text
+
+
+def save_review_fields(harness: OrchestratorHarness, job_id: str, **fields) -> dict:
+    """PATCH …/review with action "save" (no state change) as the reviewer ana."""
+    job = harness.job(job_id)
+    response = harness.client.patch(
+        f"/jobs/{job_id}/review",
+        json={"expected_version": job["version"], "action": "save", **fields},
+        auth=harness.reviewer_auth,
+    )
+    assert response.status_code == 200, response.text
+    return response.json()

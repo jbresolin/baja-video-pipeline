@@ -23,7 +23,7 @@ public. So the page scripts call the UI's own JSON endpoints under
 
 | Path | What |
 | --- | --- |
-| `/review/` | Queue: awaiting review + failed by default; filters by state, prova, low-res, "Clipes desatualizados" (`?outdated=1`: clips that no longer match their review, badge "desatualizado"); auto-refresh every 5 s; `↑↓`/`j k` + `Enter` |
+| `/review/` | Queue: awaiting review + failed by default, in filming order (`recorded_at`, LIVESTACK-45; each row says when it was filmed, marked "envio"/"chegada" when that is only the send or arrival time); filters by state, prova, low-res, "Clipes desatualizados" (`?outdated=1`: clips that no longer match their review, badge "desatualizado"); auto-refresh every 5 s; `↑↓`/`j k` + `Enter` |
 | `/review/jobs/{id}` | Proxy player, cut in/out marks, fields, actions, status strip, event log from `GET /jobs/{id}/events` (refreshes every 5 s; if the log cannot be read the page still works and says so) |
 | `/review/clips` | Delivery manifest, newest first, prova filter, copyable studio path; a clip that no longer matches its review is marked "desatualizado" with the differences on expand |
 | `/review/fleet` | Workers (role, online, heartbeat age, held raws, storage vs cap, stats, leases, last 5 events from `GET /events?worker_id=…&limit=5`), VPS disk, jobs per state; refreshes every 10 s |
@@ -36,6 +36,19 @@ ready/reprocess/retry, `?` shows the list. A frame is `1 / Job.frame_rate`
 seconds (the proxy's fps, measured by the holder that uploaded it), or
 1/30 s when the job has no frame rate yet; the server puts the value in
 `data-frame-rate` on the page and the shortcut list shows it.
+
+**Passagem help** (LIVESTACK-45). As soon as the form has a prova and a
+car (saved or not), the panel "Outros vídeos de <prova>, carro <n>" lists
+the car's other videos in that prova (`GET /review/car-videos`) in
+filming order, with this one placed among them: thumbnail, recording
+time, passagem, state, link. Below it, "Passagens já registradas: …" and
+a suggestion with a "Usar passagem N" button (the field is never filled
+otherwise). Warnings for the passagem typed (number already used, filming
+order broken) show under the field and above the buttons; "Pronto" and
+"Salvar e reprocessar" ask to confirm them, never block.
+`static/js/passagem_help.js` refreshes the panel in place through
+`GET /review/api/jobs/{id}/passagem-help` (debounced, no reload); the
+rules are in `passagem_help_view.py`.
 
 **Edits after delivery** (LIVESTACK-43). Once a clip exists (claimed,
 uploaded, delivered, done), the primary button is **"Salvar e
@@ -125,10 +138,11 @@ base Caddy as `bvp-review-ui:8001` on `baja-edge`.
 | `app.py` | `create_app()`: wiring, static files, routers |
 | `orchestrator_client.py` | Every orchestrator call, with the reviewer's Authorization |
 | `routes_queue.py`, `routes_job.py`, `routes_clips_fleet.py` | HTML pages and their refresh fragments |
-| `routes_api.py` | JSON endpoints for the page scripts (review actions, proxy request, team lookup) |
+| `routes_api.py` | JSON endpoints for the page scripts (review actions, proxy request, team lookup, the passagem panel) |
 | `routes_admin_inline.py` | JSON endpoints behind the admin toggles that change a row in place (provas active/order, contacts allow/block): they answer with the re-rendered rows (`templates/admin/_provas_rows.html`, `_contact_row.html`) and `static/js/admin.js` swaps them in, so the page neither reloads nor scrolls |
 | `errors.py` | Error page for browsers, JSON errors for scripts, 401 sign-in challenge |
 | `job_view.py`, `queue_view.py`, `clips_and_fleet_view.py` | Plain functions that turn API data into what the pages show |
+| `passagem_help_view.py` | The job page's passagem panel: the car's videos in filming order, the suggestion and the warnings (LIVESTACK-45) |
 | `clip_inputs_view.py` | A clip that no longer matches its review, in sentences (job page banner, clips page detail) |
 | `event_log_view.py` | Orchestrator events (`Event`) in words: actor names, state changes, reasons; used by the job and fleet pages |
 | `catalog/` | Every pt-BR text the UI shows, by English key (see "Language") |

@@ -4,6 +4,7 @@ It implements only the endpoints the review UI calls, with the behaviour
 docs/api.md describes:
 
     GET   /review/queue?state=…&limit=…
+    GET   /review/car-videos?prova=…&car_number=…
     GET   /jobs/{job_id}
     PATCH /jobs/{job_id}/review          (expected_version, actions, 409/422)
     POST  /jobs/{job_id}/regenerate-proxy
@@ -35,6 +36,7 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from shared.layout import slugify_prova
 from shared.models import (
     Event,
     FleetResponse,
@@ -108,6 +110,7 @@ class FakeOrchestrator:
     requests: list[RecordedRequest] = field(default_factory=list)
     # Switches that make an endpoint fail, to test the UI's error handling.
     fleet_fails: bool = False
+    car_videos_fail: bool = False
     teams_upstream_down: bool = False
     # Makes both event endpoints answer 500.
     events_fail: bool = False
@@ -185,6 +188,11 @@ class FakeOrchestrator:
         return JSONResponse(self.jobs[job_id].model_dump(mode="json"))
 
 
+def filming_order(job: Job) -> tuple:
+    """The orchestrator's order: recording time, then arrival, then id."""
+    return (job.recorded_at or job.created_at, job.created_at, job.id)
+
+
 def _reviewer_from(request: Request) -> str | None:
     """The reviewer's user name if the request carries the accepted session token."""
     if request.headers.get("authorization") != REVIEWER_AUTHORIZATION:
@@ -241,9 +249,31 @@ def build_app(fake: FakeOrchestrator) -> FastAPI:
         if outdated:
             # Like the orchestrator: only jobs whose clip no longer matches the review.
             matching = [job for job in matching if JobSummary.from_job(job).clip_outdated]
-        oldest_first = sorted(matching, key=lambda job: job.created_at)[:limit]
+        # Filming order, like the orchestrator (LIVESTACK-45).
+        oldest_first = sorted(matching, key=filming_order)[:limit]
         items = [JobSummary.from_job(job).model_dump(mode="json") for job in oldest_first]
         return {"items": items}
+
+    @app.get("/review/car-videos")
+    def car_videos(prova: str, car_number: int):
+        if fake.car_videos_fail:
+            return _error(500, "internal", "car videos unavailable")
+        # Like the orchestrator: same clip folder (slug) and car, not
+        # discarded, in filming order.
+        slug = slugify_prova(prova)
+        matching = [
+            job
+            for job in fake.jobs.values()
+            if job.prova
+            and slugify_prova(job.prova) == slug
+            and job.car_number == car_number
+            and job.state != JobState.DISCARDED
+        ]
+        items = [
+            JobSummary.from_job(job).model_dump(mode="json")
+            for job in sorted(matching, key=filming_order)
+        ]
+        return {"prova_slug": slug, "car_number": car_number, "items": items}
 
     @app.get("/jobs/{job_id}")
     def get_job(job_id: str):

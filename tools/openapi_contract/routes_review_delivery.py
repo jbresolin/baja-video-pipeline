@@ -9,6 +9,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 
 from shared.models import (
+    CarVideosResponse,
     EventsResponse,
     FleetResponse,
     Job,
@@ -45,7 +46,7 @@ _reviewer_or_admin = [Depends(session_bearer), Depends(admin_bearer)]
 @router.get(
     "/review/queue",
     tags=["review"],
-    summary="Jobs waiting for review, oldest first",
+    summary="Jobs waiting for review, in filming order",
     response_model=ReviewQueueResponse,
     dependencies=_reviewer_only,
     responses=error_responses(401),
@@ -62,6 +63,34 @@ def review_queue(
         "(JobSummary.clip_outdated), e.g. ?outdated=true&state=done",
     ),
 ) -> ReviewQueueResponse:
+    """Oldest recording first (`JobSummary.recorded_at`), ties by arrival
+    (LIVESTACK-45): arrival order is not filming order."""
+    not_implemented()
+
+
+@router.get(
+    "/review/car-videos",
+    tags=["review"],
+    summary="One car's videos in one prova, in filming order",
+    response_model=CarVideosResponse,
+    dependencies=_reviewer_only,
+    responses=error_responses(400, 401),
+)
+def car_videos(
+    prova: str = Query(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="The prova's name or slug. Jobs are matched by the prova's clip "
+        "folder (slug), so a renamed prova still finds every video.",
+    ),
+    car_number: int = Query(..., ge=0, le=9999),
+) -> CarVideosResponse:
+    """For the job page's "Outros vídeos de <prova>, carro <n>" panel
+    (LIVESTACK-45): every job of that car in that prova, discarded ones
+    left out, oldest recording first (ties by arrival). The asking job is
+    included when it is saved with that prova and car; the review UI places
+    it among the others and works out the passagem suggestion and warnings."""
     not_implemented()
 
 
