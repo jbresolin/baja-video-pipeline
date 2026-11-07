@@ -934,8 +934,8 @@ audio". Contract 2.6.0, installer 0.4.0.
   While holders are online but none can render it, the job's waiting
   reason says so ("Esperando um PC … Baja Worker 0.4.0 ou mais novo").
   Feature names travel as plain strings, so a newer worker may declare
-  one an older orchestrator ignores. **To add one** (LIVESTACK-47, pass
-  results in the overlay): add it to `RenderFeature` and to the worker's
+  one an older orchestrator ignores. **To add one** (LIVESTACK-47 added
+  `pass_result`, §32): add it to `RenderFeature` and to the worker's
   `worker/render_features.py`, say in `required_render_features()` when a
   job needs it, bump the installer. Frota shows what each worker declares.
 * **Deployment order: the VPS first, then the workers.** The orchestrator
@@ -1052,3 +1052,144 @@ context: received time and the sender's messages"). Part of contract
 * **Installer CI ffmpeg.** The Linux job downloads a pinned static ffmpeg
   build checked against its SHA-256 and cached, instead of `apt-get
   install ffmpeg`, which once hung for 24 minutes on Ubuntu's mirrors.
+
+## 32. Official pass results in the overlay (LIVESTACK-47, 2026-11-07)
+
+The audience wants the result of the passagem as the judges recorded it
+(brief "09 — Official pass results and a running clock in the overlay",
+part A; part B, the running clock, is LIVESTACK-48). Contract 2.7.0,
+installer 0.5.0.
+
+* **The data** (checked against the real 2026 Manobrabilidade in
+  `tests/fixtures/results_api/`). `resultado.php?evt=26BR&id=26BR_MAN&display=1`
+  answers `columns` plus `rows[].cells[]`, cells in column order (not one
+  object per car). A prova with several runs has `list` cells, one value
+  per run in run order; raw values are a number only when the text is
+  exactly one, so `"66 (4 )"` is text (the icons are gone) and the time is
+  read from its leading number (comma or dot). The penalties are only in
+  `display`: lines split on `<br />`, each `count<img class='kind'>`,
+  struck-through text dropped. If a cell's display lines do not pair one to
+  one with its runs, no penalties are shown rather than another run's.
+  Dashes of any length (`"-"`, `"---"`, as in the 2024 Sudeste
+  Manobrabilidade), empty, `"SPOILERS"`, `"?"` and any other text are "no
+  result" and never reach the overlay.
+* **Configuration**: one JSON text on Configurações, stored as typed
+  (`app_settings` key `pass_results_config`), checked on every save
+  (`orchestrator/domain/pass_results_config.py`): a bad one answers 422 with
+  `details.path` ("provas.MAN.result.decimals") and a `problem` code the
+  review UI writes in pt-BR, and the old one stays. Unknown keys are errors
+  (a typo must not be ignored silently); keys starting with `_` are
+  comments, since JSON has none. Empty = off. Example:
+
+  ```jsonc
+  {
+    "_comment": "Nacional 2026",                // "_" keys: ignored anywhere
+    "penalties": {                              // icon class → its names
+      "cone": {"one": "cone", "other": "cones"},
+      "gate": {"one": "saída de pista", "other": "saídas de pista"}
+    },
+    "provas": {
+      "MAN": {                                  // the results API's prova id
+        "resultado": "MAN",                     // table "<event>_MAN"; default: the key
+        "runs": "list_columns",                 // or "rows": one row per run
+        "show_by_default": true,                // the job's toggle until a reviewer sets it; default true
+        "result": {
+          "column": "Tempo",                    // required
+          "unit": "s",                          // default "" (no unit)
+          "decimals": 0,                        // 0–3, default 0
+          "penalties": true,                    // read the icons; default false
+          "corrected_column": "Tempo Corrigido" // optional; shown after "→" when it differs
+        },
+        "clock": {"column": "Tempo", "decimals": 1}  // LIVESTACK-48; validated now
+      },
+      "SUS": {                                  // Suspensão: "37,81 s · 8 obstáculos"
+        "result": {
+          "column": "Tempo[s]",
+          "unit": "s",
+          "decimals": 2,
+          "extra": [                            // optional, up to 4: "· <value> <unit>" each, in order
+            {"column": "Obstáculos", "unit": "obstáculos"}  // unit default "", decimals default 0
+          ]
+        }
+      }
+    }
+  }
+  ```
+
+  A prova needs `result` or `clock`. Ids are 1–3 letters/digits. An icon
+  class without a name is shown by its class name ("1 flag") and logged.
+  A job's prova is matched by its results API id (`Prova.external_id`, from
+  the sync): a manual prova never gets a result line.
+* **The text**, from one function (`orchestrator/domain/pass_text.py`) for
+  the render task, the job page, "Testar" and the mismatch check: the time
+  with its unit, then `·` and the penalties ("8 cones, 2 saídas de pista"),
+  then `→` and the corrected value when it differs *as shown* (after
+  rounding to the configured decimals). pt-BR numbers: decimal comma,
+  half-up rounding, no thousands separator (a time is never read as
+  "1.234"). A missing corrected value leaves just the time. Then each
+  `extra` column's value for the same run, `· <value> <unit>`, with its own
+  decimals (Suspensão's obstacles, from the 2024 Sudeste table); an extra
+  with no value for the run is left out. The unit is fixed text, so "1
+  obstáculos" is possible; names by count exist only for penalties.
+* **Fetching** (`domain/pass_results_fetch.py`, background every 10 s):
+  tables of configured provas that have jobs in `awaiting_review`,
+  `ready`, `claimed`, `uploaded`, `delivered` or `done`, however long ago
+  they were delivered, so a correction made the next morning still flags
+  the clip. Each is asked every 30 s, or after its `Cache-Control: max-age`
+  when longer. **Until the event is finished**: the API says so by caching
+  300 s instead of 5 (so the question needs no `evento.php` call; any
+  max-age of 60 s or more counts). After the first answer that says it,
+  one last fetch 300 s later (a fresh answer, for corrections made at the
+  close), then that table is no longer fetched
+  (`pass_result_tables.finished_answers` reaches 2; the Settings page says
+  "parada: o evento terminou…"). A failed fetch does not count as the last
+  one. An answer saying the event runs again resets it; only "Testar" can
+  still see one, so reopening an event means clicking "Testar". "Testar" fetches
+  at once, reusing an answer from the last 5 s. Table `pass_result_tables`
+  (migration 0015) keeps the last good answer and, per table, the last
+  attempt, its error, and `failing_since`; a failure never removes the good
+  answer, so texts keep coming from it (marked stale) and nothing on air is
+  blanked. The Settings page shows that status per configured prova.
+* **The job page**: "Mostrar resultado da passagem" next to the passagem
+  toggle, only when the prova is configured. `jobs.show_pass_result` is NULL
+  until a reviewer sets it, and NULL follows the prova's `show_by_default`
+  (`Job.pass_result.show` is the value in force). Under it, the text that
+  will be burned in, or why there is none (`PassResultProblem`), and
+  "inacessível desde …" when the last fetch failed.
+* **The worker** draws `ProcessTask.pass_result_text` as a third pill
+  **below** the role pill (its top 3 px under y 940): the name and role
+  pills stay exactly where they were, so a clip looks the same with or
+  without a result and the existing golden images did not change. Board
+  row tokens (`--board-row-height` 40 px, `--size-board` 30 px,
+  `--tracking-row`), capitals, the "·" muted like the role pill's. The
+  vendored Bebas Neue has **no "→"**: the worker draws the arrow as a
+  shape (0.6 em long, centred on the capitals), and a cut text never ends
+  on it. Golden images: clean run, cones only, cones and gates, a long
+  line that shrinks (`tests/worker/golden/overlay-result-*.png`).
+* **Render feature `pass_result`** (in the §29 mechanism; no separate
+  gating): a task needs it when it carries a text. A 0.4.0 worker would
+  ignore the field and render without the pill, so it is not offered that
+  render; the job says "Esperando um PC … 0.5.0" when that is the only
+  thing missing. A job without a result (none yet, toggle off, prova not
+  configured) needs nothing new and goes to any worker.
+* **Results that arrive or change later** (§25): `pass_result_text` is a
+  render input. "Now" is the text from the latest fetch, when shown, so a
+  result published or corrected after the render, the toggle changed, or
+  the prova taken out of the configuration flags the clip ("no longer
+  matches", `?outdated=true`) with a sentence saying the result was
+  published or changed. A failed fetch never flags anything. Reprocessing
+  stays the reviewer's decision.
+* **Deployment order: the VPS first, then the workers.** A 0.5.0 worker
+  always sends `pass_result_text` (null or not) in its render-inputs
+  report, which an orchestrator before 2.7.0 refuses (`extra="forbid"`);
+  the worker logs it and delivers, and the version keeps the claim
+  snapshot. Heartbeats are fine either way (feature names are plain
+  strings). The review UI goes with the orchestrator.
+* **Not built / not checked without a real event**: the "rows" mode (run n
+  = the car's n-th row) is built as the brief says but no real table of
+  that kind was seen, and the API documents rows **in position order**, so
+  the n-th row may not be the n-th run; times written as "1:05,3" would be
+  "not a number" (none seen); a correction made after the event's last
+  fetch is not seen (the event is over by then); how the API writes a
+  "---" run in `raw` was not seen (the 24SE snapshots are of the old pages;
+  `"---"`, `"-"` and null all mean no result).

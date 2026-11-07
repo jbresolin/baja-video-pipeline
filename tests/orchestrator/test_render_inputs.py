@@ -162,6 +162,9 @@ def test_the_workers_report_becomes_the_versions_inputs(harness, fleet):
         "framing": None,
         "crop_position": None,
         "no_audio": False,
+        # No result line (LIVESTACK-47): this prova is not in the
+        # pass-results configuration, and the report says none was drawn.
+        "pass_result_text": None,
         "reported_by_worker": True,
     }
 

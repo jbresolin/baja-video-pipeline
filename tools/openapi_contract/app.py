@@ -47,7 +47,15 @@ from tools.openapi_contract import (
 # 2.6.1: worker-read answers accept values a client does not know yet
 # (HeartbeatResponse.lease_status values and role, JobStateResponse.state:
 # the enum or any string), so an older worker can still read them (LIVESTACK-46).
-CONTRACT_VERSION = "2.6.1"
+# 2.7.0: official pass results in the overlay (LIVESTACK-47): ProcessTask.
+# pass_result_text and the render feature "pass_result"; Job.show_pass_result
+# (also on ReviewUpdate) and Job.pass_result; RenderInputs/RenderInputsReport.
+# pass_result_text and RenderInputField "pass_result"; GET /admin/pass-results,
+# PUT /admin/pass-results/config, POST /admin/pass-results/test. Deploy the
+# VPS first: an older orchestrator refuses every render-inputs report of a
+# 0.5.0 worker (it always carries the pass_result_text key, null or not); the
+# worker logs it and delivers anyway, and the version keeps the claim snapshot.
+CONTRACT_VERSION = "2.7.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

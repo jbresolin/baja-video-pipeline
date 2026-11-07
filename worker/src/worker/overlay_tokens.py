@@ -139,14 +139,20 @@ NAME_PILL_PADDING_PX = pixels(_TOKENS, "--space-5")
 ROLE_PILL_HEIGHT_PX = pixels(_TOKENS, "--role-height")
 ROLE_PILL_PADDING_PX = pixels(_TOKENS, "--space-4")
 ROLE_PART_GAP_PX = pixels(_TOKENS, "--space-3")  # around the "·" between role parts
+# The result pill (LIVESTACK-47) is sized like a row of the theme's
+# scoreboard, so a penalty count stays readable at 1080p.
+RESULT_PILL_HEIGHT_PX = pixels(_TOKENS, "--board-row-height")  # 40
+RESULT_PILL_PADDING_PX = pixels(_TOKENS, "--space-4")
 
 # --- Text ---
 TEXT_COLOUR = colour(_TOKENS, "--text")
 MUTED_TEXT_COLOUR = colour(_TOKENS, "--text-muted")
 NAME_FONT_PX = pixels(_TOKENS, "--size-name")  # 44
 ROLE_FONT_PX = pixels(_TOKENS, "--size-role")  # 22
+RESULT_FONT_PX = pixels(_TOKENS, "--size-board")  # 30
 NAME_TRACKING_EM = em(_TOKENS, "--tracking-row")
 ROLE_TRACKING_EM = em(_TOKENS, "--tracking-caption")
+RESULT_TRACKING_EM = em(_TOKENS, "--tracking-row")
 FONT_WEIGHT = number(_TOKENS, "--weight-display")  # 400: the face's only weight
 
 # --- The car chip inside the name pill ---

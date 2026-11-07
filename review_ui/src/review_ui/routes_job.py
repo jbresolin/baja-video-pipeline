@@ -17,12 +17,13 @@ from review_ui.orchestrator_client import (
     OrchestratorError,
     OrchestratorUnavailableError,
 )
+from review_ui.pass_result_view import pass_result_box
 from review_ui.passagem_help_view import PassagemHelp, passagem_help
 from review_ui.render_options_view import render_options_box
 from review_ui.request_context import orchestrator_for, render_page
 from review_ui.sender_messages_view import SenderMessagesSection, sender_messages_section
 from review_ui.settings import JOB_PANEL_POLL_SECONDS
-from shared.models import Job, Team
+from shared.models import Job, Team, utc_now
 
 router = APIRouter()
 
@@ -95,6 +96,9 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
         media=media_panel(job),
         # "Imagem e som": Girar, Enquadramento, Sem áudio (LIVESTACK-50).
         render_box=render_options_box(job),
+        # "Mostrar resultado da passagem" and its status line (LIVESTACK-47),
+        # or None when the job's prova shows no result.
+        pass_box=pass_result_box(job.pass_result, utc_now()),
         actions=action_buttons(job.state),
         prova_choices=prova_choices(orchestrator, job),
         team=team_or_none(orchestrator, job),

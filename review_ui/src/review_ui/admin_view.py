@@ -58,6 +58,8 @@ DONE_KEYS = {
     "worker_renamed",
     "master_changed",
     "settings_updated",
+    # Configurações → "Resultados das passagens" (LIVESTACK-47).
+    "pass_results_saved",
 }
 
 

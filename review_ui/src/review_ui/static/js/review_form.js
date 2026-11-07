@@ -20,6 +20,37 @@ function numberOrNull(raw, parse) {
   return Number.isFinite(value) ? value : null;
 }
 
+// The body of PATCH …/review: only the fields that have a value
+// (an empty field means "leave as is", like in the API). Exported so the
+// tests can run it in Node on a stand-in form (test_pass_result_toggle_js.py).
+export function collectReviewBody(form, version, action) {
+  const body = { expected_version: version, action };
+  const prova = form.elements.prova.value.trim();
+  if (prova) body.prova = prova;
+  const carNumber = numberOrNull(form.elements.car_number.value, (t) => parseInt(t, 10));
+  if (carNumber !== null) body.car_number = carNumber;
+  const passagem = numberOrNull(form.elements.passagem.value, (t) => parseInt(t, 10));
+  if (passagem !== null) body.passagem = passagem;
+  const cutIn = numberOrNull(form.elements.cut_in_s.value, parseFloat);
+  if (cutIn !== null) body.cut_in_s = cutIn;
+  const cutOut = numberOrNull(form.elements.cut_out_s.value, parseFloat);
+  if (cutOut !== null) body.cut_out_s = cutOut;
+  body.show_pass = form.elements.show_pass.checked;
+  // "Imagem e som" (LIVESTACK-50): always sent, like show_pass.
+  body.rotation = Number(form.elements.rotation.value) || 0;
+  const framing = form.elements.framing?.value;
+  if (framing) body.framing = framing;
+  const cropPosition = Number(form.elements.crop_position?.value);
+  if (Number.isFinite(cropPosition)) body.crop_position = cropPosition;
+  body.no_audio = form.elements.no_audio.checked;
+  // "Mostrar resultado da passagem" (LIVESTACK-47): the box is only on the
+  // page for a prova with results configured; left out, the orchestrator
+  // keeps the job's value (or the prova's default).
+  const showPassResult = form.elements.show_pass_result;
+  if (showPassResult) body.show_pass_result = showPassResult.checked;
+  return body;
+}
+
 // `confirmForward()` is asked before "Pronto" and "Salvar e reprocessar";
 // false stops the action (js/passagem_help.js: the reviewer saw a warning).
 export function setupReviewForm({ form, jobElement, confirmForward = () => true }) {
@@ -29,29 +60,8 @@ export function setupReviewForm({ form, jobElement, confirmForward = () => true 
   let unsavedChanges = false;
   let busy = false;
 
-  // The body of PATCH …/review: only the fields that have a value
-  // (an empty field means "leave as is", like in the API).
   function collect(action) {
-    const body = { expected_version: version, action };
-    const prova = form.elements.prova.value.trim();
-    if (prova) body.prova = prova;
-    const carNumber = numberOrNull(form.elements.car_number.value, (t) => parseInt(t, 10));
-    if (carNumber !== null) body.car_number = carNumber;
-    const passagem = numberOrNull(form.elements.passagem.value, (t) => parseInt(t, 10));
-    if (passagem !== null) body.passagem = passagem;
-    const cutIn = numberOrNull(form.elements.cut_in_s.value, parseFloat);
-    if (cutIn !== null) body.cut_in_s = cutIn;
-    const cutOut = numberOrNull(form.elements.cut_out_s.value, parseFloat);
-    if (cutOut !== null) body.cut_out_s = cutOut;
-    body.show_pass = form.elements.show_pass.checked;
-    // "Imagem e som" (LIVESTACK-50): always sent, like show_pass.
-    body.rotation = Number(form.elements.rotation.value) || 0;
-    const framing = form.elements.framing?.value;
-    if (framing) body.framing = framing;
-    const cropPosition = Number(form.elements.crop_position?.value);
-    if (Number.isFinite(cropPosition)) body.crop_position = cropPosition;
-    body.no_audio = form.elements.no_audio.checked;
-    return body;
+    return collectReviewBody(form, version, action);
   }
 
   // "Os valores que você tinha digitado: prova Enduro, carro 42." (or nothing).

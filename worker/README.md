@@ -201,8 +201,9 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   tailnet address, ports, the leases in use (which renews them), held job
   ids, new measurements, the role it runs as and the render features
   this version can do (`render_features.py`: `framing`, `no_audio`,
-  LIVESTACK-50; the orchestrator gives renders that need one only to
-  workers that declared it). An orchestrator older than contract 2.6.0
+  LIVESTACK-50, installer 0.4.0; `pass_result`, LIVESTACK-47, installer
+  0.5.0; the orchestrator gives renders that need one only to workers
+  that declared it). An orchestrator older than contract 2.6.0
   refuses that field with 400: the beat is resent without it, and it is
   left out for 5 minutes. Acts on `lost` leases, `accepting_new_raws`,
   `deletable_job_ids` and `role`.
@@ -232,7 +233,15 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   gets the old `scale=-2:1080`, any other is fitted and filled per
   `framing` (blurred, black bars, or a cropped band at `crop_position`).
   The overlay is always drawn 1920 wide. `no_audio` ("Sem áudio") renders
-  without sound. Then it tells the orchestrator what the clip was rendered
+  without sound. When the task carries `pass_result_text` (LIVESTACK-47,
+  e.g. "66 s · 4 cones → 86 s", built by the orchestrator; the worker
+  never fetches results), the overlay gets a third pill *under* the role
+  pill (`overlay_result.py`): sized like the theme's scoreboard rows
+  (`--board-row-height`, `--size-board`), in capitals, shrunk then cut with
+  "…" like the other pills. The name and role pills do not move. Bebas
+  Neue has no "→", so the arrow is drawn as a shape (`overlay_arrow.py`).
+  The text is in the clip's sidecar (a corrected result renders again)
+  and in the render-inputs report. Then it tells the orchestrator what the clip was rendered
   from (LIVESTACK-43, `PUT /jobs/{id}/render-inputs` under the lease:
   cuts, review fields, the render options, the overlay texts as drawn,
   the SHA-256 of the vendored `overlay_theme/tokens.css` and of the

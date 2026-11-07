@@ -91,6 +91,10 @@ REQUIRED_ENDPOINTS = {
     ("patch", "/admin/settings"),
     ("get", "/admin/audit"),
     ("post", "/admin/results-sync"),
+    # LIVESTACK-47: official pass results (Settings: configuration, "Testar").
+    ("get", "/admin/pass-results"),
+    ("put", "/admin/pass-results/config"),
+    ("post", "/admin/pass-results/test"),
 }
 
 # Routes that must work without an auth header: the health check, /enroll

@@ -1,0 +1,16 @@
+{# "Mostrar resultado da passagem" (LIVESTACK-47), only for a prova in the
+   pass-results configuration. `pass_box` is a pass_result_view.PassResultBox:
+   the line that will be burned in, or why there is none, and whether the
+   results API is failing. js/review_form.js sends show_pass_result only
+   when this checkbox is on the page. #}
+{% import "macros.html" as m with context %}
+<div class="pass-result" id="pass-result">
+  <label class="check"><input type="checkbox" name="show_pass_result" {% if pass_box.show %}checked{% endif %}>
+    {{ t("pass_result.show") }}</label>
+  <p class="hint" id="pass-result-status">{{ pass_box.status }}
+    {%- if pass_box.detail %} {{ m.english(pass_box.detail) }}{% endif %}</p>
+  {% if pass_box.fetch_warning %}
+  <p class="hint warning-text" id="pass-result-fetch">{{ pass_box.fetch_warning }}
+    {%- if pass_box.fetch_error %} {{ m.english(pass_box.fetch_error, class="small") }}{% endif %}</p>
+  {% endif %}
+</div>

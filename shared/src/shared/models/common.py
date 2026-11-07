@@ -32,6 +32,11 @@ CropPosition = Annotated[float, Field(ge=0, le=1)]
 # a newer worker may declare one an older orchestrator does not know.
 RenderFeatureName = Annotated[str, Field(pattern=r"^[a-z0-9_]{1,40}$")]
 
+# The official result of a passagem as the overlay draws it ("66 s · 4 cones
+# → 86 s", LIVESTACK-47). Penalty names come from the admin's configuration,
+# so a long line is possible; the overlay shrinks or cuts what does not fit.
+PassResultText = Annotated[str, Field(min_length=1, max_length=300)]
+
 
 def utc_now() -> datetime:
     """The current time with an explicit UTC timezone (never naive)."""

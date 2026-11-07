@@ -23,6 +23,8 @@ from shared.models import (
     ManifestEntry,
     ManifestResponse,
     NameStyle,
+    PassResult,
+    PassResultFetch,
     Prova,
     ReceivedAs,
     RecordedAtSource,
@@ -363,3 +365,56 @@ def bruno_messages() -> list[SenderMessage]:
         sender_message(SenderMessageRole.AFTER, None, 4, deleted=True),
         sender_message(SenderMessageRole.BEFORE, "vou mandar o 42 agora", -5),
     ]
+
+
+# --- Official pass results (LIVESTACK-47) ---
+
+
+def pass_result(**changes) -> PassResult:
+    """Job.pass_result for a Manobrabilidade job whose result is published.
+
+    Car 26's second run: "66 s · 4 cones → 86 s", shown, fetched at T0 and
+    fetching fine. Keyword arguments override any field.
+    """
+    fields = {
+        "configured": True,
+        "show": True,
+        "text": "66 s · 4 cones → 86 s",
+        "fetch": PassResultFetch(
+            resultado_id="26BR_MAN",
+            last_attempt_at=T0,
+            last_attempt_ok=True,
+            last_success_at=T0,
+        ),
+    }
+    fields.update(changes)
+    return PassResult(**fields)
+
+
+def failing_fetch(**changes) -> PassResultFetch:
+    """The results API down since 14:02 (São Paulo), last good answer at 13:58."""
+    good = datetime(2026, 10, 25, 16, 58, tzinfo=UTC)
+    since = datetime(2026, 10, 25, 17, 2, tzinfo=UTC)
+    fields = {
+        "resultado_id": "26BR_MAN",
+        "last_attempt_at": since + timedelta(seconds=30),
+        "last_attempt_ok": False,
+        "last_error": "results API unreachable: connection refused",
+        "last_success_at": good,
+        "failing_since": since,
+        "stale": True,
+    }
+    fields.update(changes)
+    return PassResultFetch(**fields)
+
+
+def pass_result_job(job_id: str = "job-result-1", **changes) -> Job:
+    """A Manobrabilidade job (car 26, passagem 2) with its official result."""
+    fields = {
+        "prova": "Manobrabilidade",
+        "car_number": 26,
+        "passagem": 2,
+        "pass_result": pass_result(),
+    }
+    fields.update(changes)
+    return make_job(job_id, **fields)

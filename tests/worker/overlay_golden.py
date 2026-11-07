@@ -59,6 +59,61 @@ GOLDEN_CASES: dict[tuple[str, str], tuple[OverlayText, Path]] = {
 }
 
 
+# The result pill (LIVESTACK-47): four full overlays (name + role +
+# result) at 1920x1080, prova "Manobrabilidade". The first three result
+# lines are what the orchestrator builds from the real results data in
+# tests/fixtures/results_api/26BR_MAN*.json (the orchestrator's tests check
+# it produces exactly these strings), so the golden images show real data.
+RESULT_CLEAN = "59 s"  # car 26, passagem 1: no penalties
+RESULT_CONES = "66 s · 4 cones → 86 s"  # car 26, passagem 2
+RESULT_CONES_GATES = "58 s · 8 cones, 2 saídas de pista → 118 s"  # car 2, passagem 1
+# Not from the data: a line too wide for the pill at full size, so it is
+# drawn a step smaller (95 %) but still whole. Cutting with an ellipsis,
+# past 75 %, is checked on a longer line (test_overlay_result.py).
+RESULT_LONG = (
+    "109 s · 17 cones, 1 saída de pista, 2 toques na barreira de pneus, "
+    "1 queima de largada, 3 advertências do fiscal → 204 s"
+)
+CAR_26_TEXT = OverlayText(
+    prova="Manobrabilidade",
+    car_number=26,
+    team_name="Saci Baja",
+    passagem=1,
+    show_pass=True,
+    school_short="UNIFEI",
+)
+RESULT_GOLDEN_CASES: dict[str, tuple[OverlayText, Path]] = {
+    "clean": (
+        replace(CAR_26_TEXT, pass_result=RESULT_CLEAN),
+        GOLDEN_PATH.with_name("overlay-result-clean-1080p.png"),
+    ),
+    "cones": (
+        replace(CAR_26_TEXT, passagem=2, pass_result=RESULT_CONES),
+        GOLDEN_PATH.with_name("overlay-result-cones-1080p.png"),
+    ),
+    "cones-gates": (
+        replace(
+            CAR_26_TEXT,
+            car_number=2,
+            team_name="FEI",
+            school_short="FEI",
+            pass_result=RESULT_CONES_GATES,
+        ),
+        GOLDEN_PATH.with_name("overlay-result-cones-gates-1080p.png"),
+    ),
+    "long": (
+        replace(
+            CAR_26_TEXT,
+            car_number=47,
+            team_name="Equipe Exemplo",
+            school_short="UFX",
+            pass_result=RESULT_LONG,
+        ),
+        GOLDEN_PATH.with_name("overlay-result-long-1080p.png"),
+    ),
+}
+
+
 def golden_case_id(choice: tuple[str, str]) -> str:
     """A readable test id for a GOLDEN_CASES key, e.g. "team-full-school-short"."""
     team_style, school_style = choice
@@ -85,6 +140,6 @@ if __name__ == "__main__":
     GOLDEN_PATH.parent.mkdir(parents=True, exist_ok=True)
     render_golden(GOLDEN_PATH)
     print(f"wrote {GOLDEN_PATH}")
-    for text, path in GOLDEN_CASES.values():
+    for text, path in [*GOLDEN_CASES.values(), *RESULT_GOLDEN_CASES.values()]:
         render_golden(path, text)
         print(f"wrote {path}")

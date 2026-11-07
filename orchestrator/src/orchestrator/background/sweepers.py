@@ -16,7 +16,11 @@ from orchestrator.domain.discard import discard_grace_is_over
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
 from orchestrator.domain.leases import sweep_expired_leases
 from orchestrator.domain.raw_copies import drop_inbox_copy, inbox_copy_is_redundant
-from orchestrator.domain.render_features import NO_HOLDER_CAN_RENDER, process_waiting_reason
+from orchestrator.domain.render_features import (
+    NO_HOLDER_CAN_RENDER,
+    NO_HOLDER_CAN_RENDER_PASS_RESULT,
+    process_waiting_reason,
+)
 from orchestrator.domain.review_queue import NO_HOLDER_ONLINE
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
@@ -66,7 +70,9 @@ def _refresh_waiting_reasons(connection, now) -> None:
 
 
 # The sentences the sweeper writes itself (and so may replace or clear).
-OWN_WAITING_REASONS = frozenset({None, NO_HOLDER_ONLINE, NO_HOLDER_CAN_RENDER})
+OWN_WAITING_REASONS = frozenset(
+    {None, NO_HOLDER_ONLINE, NO_HOLDER_CAN_RENDER, NO_HOLDER_CAN_RENDER_PASS_RESULT}
+)
 
 
 def _set_own_waiting_reason(connection, row, now, wanted: str | None) -> None:

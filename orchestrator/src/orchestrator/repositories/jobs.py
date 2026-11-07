@@ -29,6 +29,7 @@ UPDATABLE_JOB_COLUMNS = frozenset(
         "failure_exit_code", "failure_at", "failed_from", "waiting_reason",
         "claimed_render_inputs_json", "reported_render_inputs_json",
         "display_width", "display_height", "rotation", "framing", "crop_position", "no_audio",
+        "show_pass_result",
     }
 )  # fmt: skip
 

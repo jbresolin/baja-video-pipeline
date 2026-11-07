@@ -27,7 +27,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from review_ui.app import create_app  # noqa: E402
 from review_ui.settings import ReviewUiSettings  # noqa: E402
 from tests.review_ui.fake_orchestrator import FakeOrchestrator  # noqa: E402
-from tests.review_ui.sample_data import delivered_job, failed_job, make_job  # noqa: E402
+from tests.review_ui.sample_data import (  # noqa: E402
+    delivered_job,
+    failed_job,
+    make_job,
+    pass_result_job,
+)
 
 
 def main() -> None:
@@ -41,6 +46,8 @@ def main() -> None:
     fake.add_job(make_job("job-lowres-1", low_res=True, waiting_reason=None))
     fake.add_job(failed_job("job-failed-1"))
     fake.add_job(delivered_job("job-done-1"))
+    # "Mostrar resultado da passagem" (LIVESTACK-47).
+    fake.add_job(pass_result_job("job-result-1"))
 
     app = create_app(ReviewUiSettings(), orchestrator_http_client=fake.http_client())
     if arguments.media_dir:

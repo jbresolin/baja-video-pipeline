@@ -295,12 +295,18 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
   answers 400 `validation_error` (naming `render_features`) to the field:
   send the beat again **without the key** (not `null`) and leave it out
   for 5 minutes. Deploy the orchestrator first.
+  Contract 2.7.0 (LIVESTACK-47, installer 0.5.0) adds `pass_result`: a
+  task needs it when it carries `pass_result_text` (the overlay's result
+  pill, "Pass results" in §7.1). When holders that could render
+  everything else are online but none declared `pass_result`,
+  `waiting_reason` is "waiting for a holder of the raw that can draw the
+  pass result (a worker updated to 0.5.0 or later)".
 
 | Task kind | Who gets it | What to do | How it ends |
 | --- | --- | --- | --- |
 | `download_raw` | master (always, see backfill below), one more worker; never studio | GET `download_url` with your bearer (Caddy inbox), or the `fallback_download_urls` (peers, port 8710, no token), with `shared.http_transfer.download_file`; ffprobe it | `POST /jobs/{id}/holder-confirm` |
 | `make_proxy` | a confirmed holder | Probe (`shared.media_probe`), render thumbnail and proxy with `tone_map_hdr=info.is_hdr`; `PUT …/media-info` (when the task has `media_info_upload_url`), `PUT …/thumbnail`, then chunked `POST …/proxy` | completing chunk of `…/proxy` |
-| `process` | a confirmed holder that declared the task's `required_render_features` | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`; `rotation`, `framing`, `crop_position` and `no_audio` through `shared.framing.plan_frame`, below). Report what it was rendered from (`PUT …/render-inputs`, below). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
+| `process` | a confirmed holder that declared the task's `required_render_features` | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`; `rotation`, `framing`, `crop_position` and `no_audio` through `shared.framing.plan_frame`, below; `pass_result_text`, when set, as a third pill under the other two). Report what it was rendered from (`PUT …/render-inputs`, below). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
 | `deliver` | studio only | GET `download_url` (Caddy outbox) with your bearer, verify SHA-256, store at `clip_relative_path`, rewrite `latest.m3u` | `POST /outbox/{id}/ack` |
 | `upload_original` | a confirmed holder that is online, the master first (LIVESTACK-41 item 15) | A reviewer asked for the original: chunked upload of the held raw to `upload_url` (`POST /jobs/{id}/original-upload`, `Lease-Id`, `Upload-SHA256` = the job's sha256). Offered right after proxies. A failure report never fails the job; that holder is just not asked again for it | completing chunk of `…/original-upload` |
 | `archive_clip` | master only, lowest priority (after backfill) | Keep one clip version in the archive at `archive_relative_path`: move your own kept copy, else GET the first working `download_urls` entry (peers' `:8710/clip/{job_id}?sha256=…` without token, the Caddy outbox with it), verify SHA-256 | `POST /jobs/{id}/clip-archived` |
@@ -382,6 +388,15 @@ show** (`shared.framing.effective_framing`: none for a picture that is
 16:9 after the turn, the band only for `crop`). Inputs recorded before
 2.6.0 have `rotation`/`no_audio` null, compared as 0/false.
 
+Pass results (contract 2.7.0, LIVESTACK-47): the inputs also hold
+`pass_result_text`, the result line as drawn (null = no pill; also what
+inputs recorded before 2.7.0 mean). In `now` it is the line built from the
+**latest results fetched**, when the job's toggle shows it, so a result
+published or corrected by the judges after the clip was made, or the
+toggle changed, lists `pass_result` in `changed`. A failed fetch keeps the
+last good answer, so it never changes the comparison. Nothing is
+reprocessed automatically.
+
 `Job.clip_inputs` (`ClipInputsComparison`) puts the **newest** version's
 inputs (`clip`) next to what a render would use now (`now`: the review as
 saved, the Settings' name choices as they are) and lists in `changed`
@@ -389,7 +404,7 @@ every input that differs: `cut` (in and out together, 0.5 ms tolerance),
 `prova`, `car_number`, `passagem`, `show_pass`, `team_name`,
 `school_name` (the texts, so a name choice that draws the same text is no
 difference), `raw`, `rotation`, `framing` (framing and the crop band's
-place, half a percent tolerance) and `audio`. The theme version is recorded, not compared (only
+place, half a percent tolerance), `audio` and `pass_result`. The theme version is recorded, not compared (only
 workers know theirs). `clip_inputs` is null without a clip version, for a
 version without recorded inputs and for a discarded job;
 `JobSummary.clip_outdated` is true when `changed` is not empty;
@@ -569,6 +584,9 @@ the event log with `details: {before, after}`, readable at `GET
 | `POST /admin/workers/{worker_id}/make-master` | → `Worker` | "Tornar master" (below); 409 for a studio or a revoked worker |
 | `POST /admin/workers/{worker_id}/revoke` | → `Worker` | its token answers 401, leases end, holder rows dropped |
 | `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing; the clip name choices, the welcome message, the vertical-video reply and `sender_messages_keep_days` have no `.env` value |
+| `GET /admin/pass-results` | → `PassResultsSettings` | the configuration as saved and each configured prova's fetch status; see "Pass results" below |
+| `PUT /admin/pass-results/config` | `UpdatePassResultsConfigRequest` → `PassResultsSettings` | checked first: 422 `validation_error` with `details.path` and `details.problem`, the one in force stays; audit kind `pass_results_config_updated` |
+| `POST /admin/pass-results/test` | `PassResultTestRequest` → `PassResultTestResponse` | "Testar": fetches the table now (reuses one from the last 5 s) and builds the line; `config_text` tries an unsaved configuration |
 | `GET /admin/audit?area=&limit=` | → `EventsResponse` | newest first |
 
 **Worker names** (LIVESTACK-42). `Worker.name` is the **display name**:
@@ -624,6 +642,28 @@ adopted. `Job.team_name` keeps the team's full name. The team's short
 name, the school's full name and its sigla (the API's `school_short`, or an
 admin's correction on the Teams page) are copied onto the job when the car
 number is set.
+
+**Pass results** (LIVESTACK-47, contract 2.7.0; design §32). The
+official result of a passagem, burned into the clip as a third pill
+("66 s · 4 cones → 86 s"). Configured on Settings as one JSON document
+(`GET/PUT /admin/pass-results…`), keyed by the API's prova id (synced
+provas carry it as `external_id`); the event is the Settings' event id,
+so `"MAN"` reads table `26BR_MAN`. The orchestrator fetches
+`resultado.php?evt=…&id=…&display=1` for configured provas with jobs in
+`awaiting_review`, `ready`, `claimed`, `uploaded`, `delivered` or `done`:
+every 30 s, or the answer's `Cache-Control: max-age` when longer, until
+the event is finished (max-age 300 s); then one last fetch and no more
+(`PassResultFetch.event_finished`). A failure keeps the last good answer
+(`PassResultFetch.stale`, `failing_since`). One function
+(`orchestrator/domain/pass_text.py`) builds the line for the render task
+(`ProcessTask.pass_result_text`, only to workers that declared
+`pass_result`), the job page (`Job.pass_result`: `configured`, `show`,
+`text` or `problem`, `fetch`), "Testar" and the render-input comparison.
+`Job.show_pass_result` (also `ReviewUpdate`) is the reviewer's toggle;
+null follows the prova's `show_by_default`. A prova's `result.extra`
+columns are appended as `· <value> <unit>`. Values `"-"`, `"---"`, empty,
+`"SPOILERS"`, `"?"` and any text that is not a number never reach the
+overlay (`problem`: `no_result_yet`, `not_a_number`).
 
 **Names on the clips** (LIVESTACK-42). Two independent Settings,
 `clip_team_name_style` and `clip_school_name_style` (`full` | `short`,
