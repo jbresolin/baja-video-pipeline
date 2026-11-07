@@ -126,12 +126,13 @@ def delivery_plan(
 ) -> DeliveryPlan:
     """Direct push when a studio is online (heartbeat within 45 s), else the outbox.
 
-    A worker on a shared tailnet (LIVESTACK-41 item 4) cannot reach the
-    studio at all, so it is told "outbox" straight away instead of waiting
-    out a push that cannot connect (item 13).
+    A worker on a shared tailnet (LIVESTACK-41 item 4) is offered the push
+    too: the studio may well be shared into its tailnet (João's desktop
+    pushes to the studio that way), and the orchestrator cannot know. The
+    worker asks the studio's /health first (3 s) and uses the outbox when
+    it does not answer (item 13), so an unreachable studio costs seconds,
+    not the 60 s ACK wait. `worker_row` is kept for that reason's record.
     """
-    if worker_row is not None and on_shared_tailnet(worker_row):
-        return DeliveryPlan(mode=DeliveryRoute.OUTBOX, studio_url=None)
     studio_url = snapshot.studio_receive_url(job_id)
     if studio_url is None:
         return DeliveryPlan(mode=DeliveryRoute.OUTBOX, studio_url=None)

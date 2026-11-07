@@ -9,8 +9,10 @@ heartbeat now says `shared_tailnet: true`. The orchestrator must:
     from it);
   * never list it as a download source for others, and give it only VPS
     URLs (it cannot reach peers);
-  * tell it to deliver clips through the outbox, not by pushing to the
-    studio it cannot reach (item 13: no 60 s timeout per clip);
+  * still offer it the direct push to the studio: the studio may be shared
+    into its tailnet too (João's desktop delivers that way), and when it is
+    not, the worker's 3 s /health check sends the clip to the outbox
+    (item 13);
   * mark it on the fleet API, so the fleet page shows "rede compartilhada".
 """
 
@@ -74,7 +76,10 @@ def test_a_shared_tailnet_master_gets_only_vps_sources_and_is_no_source_for_peer
     assert all("100.80.0.1" not in url for url in peer_offer["fallback_download_urls"])
 
 
-def test_a_shared_tailnet_worker_delivers_through_the_outbox_even_with_a_studio_online(harness):
+def test_a_shared_tailnet_worker_is_still_offered_the_direct_push(harness):
+    # Arrange: a studio is online, and the master is on a shared tailnet (its
+    # own Tailscale network, into which the VPS and, here, the studio are
+    # shared). The reviewer marks a job ready and the master claims the render.
     master = harness.enroll(WorkerRole.MASTER, "master")
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.5")
     harness.heartbeat(studio, tailnet_address="100.70.0.5")
@@ -85,10 +90,18 @@ def test_a_shared_tailnet_worker_delivers_through_the_outbox_even_with_a_studio_
     make_proxy(harness, master, job_id)
     review_to_ready(harness, job_id)
 
+    # Act: the master claims the render.
     _, task = claim_ok(harness, master, job_id, TaskKind.PROCESS)
 
-    # A normal worker would get "direct" here (a studio is online).
-    assert task["delivery"] == {"mode": "outbox", "studio_url": None}
+    # Assert: it is told to push to the studio, like any worker. (Until
+    # 2026-11-06 it was always sent to the outbox, which stopped João's
+    # desktop from pushing to the studio shared into his tailnet.)
+    assert task["delivery"]["mode"] == "direct", (
+        "the orchestrator cannot know whether the studio is shared in; the worker checks"
+    )
+    assert task["delivery"]["studio_url"].startswith("http://100.70.0.5:8720/"), (
+        "the push goes to the studio's tailnet address"
+    )
 
 
 def test_the_fleet_api_marks_rede_compartilhada(harness):

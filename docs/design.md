@@ -738,3 +738,9 @@ Fixed on main after João's first end-to-end test of installer 0.3.0.
   every time, so a pulled `Caddyfile.tailnet` is really loaded.
 * **The :8700 page shows the installer's version** (it showed the Python
   package's "0.1.0" on every build).
+* **Shared-tailnet workers are offered the direct push again.** LIVESTACK-41
+  item 4 sent every clip from a "rede compartilhada" worker to the outbox,
+  on the assumption that it cannot reach the studio. João's desktop can
+  (the studio is shared into his tailnet), and pushed directly until the
+  VPS was updated. The orchestrator cannot tell, so it offers the push and
+  the worker's 3 s `/health` check (item 13) falls back to the outbox.
