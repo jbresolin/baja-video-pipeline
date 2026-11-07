@@ -84,8 +84,9 @@ def test_a_failed_heartbeat_shows_the_portuguese_hint_while_the_step_is_pending(
     values, _ = harness.status.snapshot()
     # The volunteer reads what to do, not "ConnectError"…
     assert values["orchestrator"] == CONNECTION_STEP_PENDING_MESSAGE
-    # …while the technical error is still kept for the "Detalhes" section.
-    assert "offline" in values["last error"]
+    # …while the technical error is still kept for the "Detalhes" section
+    # ("Último erro", which reads it from the board's facts).
+    assert "offline" in harness.status.facts().last_error
 
 
 def test_without_the_pending_step_the_error_is_shown_as_before(tmp_path):

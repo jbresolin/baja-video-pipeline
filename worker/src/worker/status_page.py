@@ -11,7 +11,8 @@ LIVESTACK-38 item 9, extended in LIVESTACK-41. From top to bottom:
     a copy button;
   * the same "Pausar"/"Retomar" and "Desligar o worker" buttons as the
     tray (they call the localhost JSON API, worker.local_api);
-  * technical details (worker id, URLs, version, last error) and
+  * technical details (worker id, URLs, version, working folder, last
+    error, all in pt-BR; the board's internal notes are not shown) and
     "Registrar de novo" in a collapsed "Detalhes" section.
 
 Everything here is the page's *live* region: worker.setup_page swaps it in
@@ -203,7 +204,7 @@ def render_status_body(document: dict, now: datetime) -> str:
         "<h1>Baja Worker</h1>"
         f"{state_line(document)}{_notices(document)}"
         f"<h2>Agora</h2>{doing_html}<table class='facts'>{facts}</table>"
-        f"{_studio_hint(document.get('studio'))}{actions}{_details(document)}"
+        f"{_studio_hint(document.get('studio'))}{actions}{_details(document, now)}"
     )
 
 
@@ -251,7 +252,23 @@ def _studio_hint(studio: dict | None) -> str:
     return hint
 
 
-def _details(document: dict) -> str:
+def describe_last_error(details: dict, now: datetime) -> str:
+    """ "Último erro" for a volunteer: the error, how long ago, and whether it is over.
+
+    A heartbeat that failed while the VPS restarted stays in the record, but
+    once the server answers again it reads "resolvido", so nobody chases a
+    problem that is already gone.
+    """
+    error = details.get("last_error")
+    if not error:
+        return "—"
+    when = _ago(details.get("last_error_at"), now) if details.get("last_error_at") else ""
+    if details.get("last_error_resolved_at"):
+        return f"{error} ({when}; resolvido)" if when else f"{error} (resolvido)"
+    return f"{error} ({when})" if when else error
+
+
+def _details(document: dict, now: datetime) -> str:
     details = document.get("details") or {}
     rows = {
         "Worker": f"{details.get('worker_name')} ({details.get('worker_id')})",
@@ -265,9 +282,9 @@ def _details(document: dict) -> str:
             else "Baja"
         ),
         "Versão": details.get("version"),
-        "Último erro": details.get("last_error") or "—",
+        "Pasta de trabalho": details.get("working_folder") or "—",
+        "Último erro": describe_last_error(details, now),
         "Pausado": "sim" if document.get("paused") else "não",
-        **(details.get("notes") or {}),
     }
     table = "".join(
         f"<tr><td>{html.escape(str(key))}</td><td>{html.escape(str(value))}</td></tr>"

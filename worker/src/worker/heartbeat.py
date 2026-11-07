@@ -168,7 +168,6 @@ class Heartbeater:
                 self._status.set("orchestrator", CONNECTION_STEP_PENDING_MESSAGE)
             else:
                 self._status.set("orchestrator", f"unreachable: {error}")
-            self._status.set("last error", str(error))
             self._status.record_unreachable(str(error))
             if isinstance(error, ApiError) and error.status_code == UNAUTHENTICATED_STATUS:
                 # Our bearer token is refused: an admin revoked this worker

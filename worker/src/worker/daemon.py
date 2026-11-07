@@ -39,7 +39,7 @@ from worker.pause import PauseSwitch
 from worker.role_change import adopt_role_from_heartbeat
 from worker.servers import BackgroundServer, build_peer_file_server_app
 from worker.stages import StageRunner
-from worker.status import StatusBoard
+from worker.status import WORKING_FOLDER_KEY, StatusBoard
 from worker.storage import Storage
 from worker.studio.acknowledger import RETRY_DELAY_SECONDS, DeliveryAcknowledger
 from worker.studio.library import StudioLibrary
@@ -196,7 +196,7 @@ class Daemon:
     def start(self) -> None:
         logger.info("starting as %s (%s)", self.role, self.config.worker_id)
         self.storage.clean_up_at_start()
-        self.status.set("working folder", str(self.storage.root))
+        self.status.set(WORKING_FOLDER_KEY, str(self.storage.root))
         # Servers first, so the first heartbeat already carries the real port.
         if self._start_servers:
             self._start_http_server()

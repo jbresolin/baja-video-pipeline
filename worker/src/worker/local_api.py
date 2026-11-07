@@ -35,7 +35,7 @@ from shared.models import WorkerRole
 from worker.config import WorkerConfig
 from worker.config_problems import ConfigProblem, ConfigReading, read_config
 from worker.pause import PauseSwitch
-from worker.status import StatusBoard, TailnetProblem
+from worker.status import WORKING_FOLDER_KEY, StatusBoard, TailnetProblem
 from worker.studio.clip_folder import playlist_path
 
 
@@ -138,7 +138,9 @@ def build_status_document(
             "shared_tailnet": known.shared_tailnet,
             "version": worker_version(),
             "last_error": facts.last_error,
-            "notes": values,
+            "last_error_at": _iso(facts.last_error_at),
+            "last_error_resolved_at": _iso(facts.last_error_resolved_at),
+            "working_folder": values.get(WORKING_FOLDER_KEY),
         },
     }
 

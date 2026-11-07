@@ -1031,3 +1031,24 @@ context: received time and the sender's messages"). Part of contract
   ignore the new answer fields, §14). Run `up.sh` after deploying, so the
   Evolution webhook gets the two new events; until then texts and replies
   are kept but edits and deletions are not seen.
+
+## 31. Leftovers from the 0.3.0 test (LIVESTACK-46, 2026-11-07)
+
+* **Worker page, "Detalhes".** Only Portuguese rows; the status board's
+  internal notes ("working folder", "last heartbeat", "accepting new raws",
+  "orchestrator") are no longer dumped into the table. The working folder
+  is a row of its own, "Pasta de trabalho".
+* **"Último erro" says when, and whether it is over.** The board keeps the
+  error's time and, after the next answered heartbeat, when it was
+  resolved: "HTTP 502 (há 5 min; resolvido)". A start failure is recorded
+  there too (it used to go to an English note while "Último erro" said "—").
+* **Unknown values from a newer orchestrator.** New *fields* were already
+  ignored (§14). New *values* in the fields workers act on (lease status,
+  role in the heartbeat answer, job state in state-change answers) are now
+  read as plain strings and left alone. Every answer a worker reads goes
+  through `read_answer`: an answer it still cannot read is an
+  `UnreadableAnswerError` (an `ApiError`), handled by the existing "call
+  refused" paths instead of crashing a task. Contract 2.6.1.
+* **Installer CI ffmpeg.** The Linux job downloads a pinned static ffmpeg
+  build checked against its SHA-256 and cached, instead of `apt-get
+  install ffmpeg`, which once hung for 24 minutes on Ubuntu's mirrors.

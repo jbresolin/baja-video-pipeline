@@ -73,14 +73,13 @@ def test_after_enrollment_the_page_shows_status_and_refuses_new_setup(page):
         config_path,
         WorkerConfig(worker_id="w-1", bearer_token="t", role=WorkerRole.WORKER, worker_name="pc"),
     )
-    status.set("last heartbeat", "2026-10-26 10:00:00 UTC")
     status.task_started("process", "job abc", job_id="abc", prova="Enduro", car_number=42)
 
     html = client.get("/").text
-    # The novice part says in Portuguese what it is doing; the worker id and
-    # the raw notes are in the "Detalhes" section further down.
+    # The novice part says in Portuguese what it is doing; the worker id is
+    # in the "Detalhes" section further down.
     assert "Editando o clipe — Enduro, carro 42" in html
-    assert "w-1" in html and "2026-10-26 10:00:00 UTC" in html
+    assert "w-1" in html
     assert "name='token'" not in html
     assert client.post("/setup", content="token=x&folder=/x&cap_gb=1").status_code == 409
 

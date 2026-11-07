@@ -57,6 +57,11 @@ class TailnetProblem:
     current_address: str | None = None
 
 
+# The status board key holding the working folder's path (set by the daemon,
+# shown on the status page as "Pasta de trabalho").
+WORKING_FOLDER_KEY = "working folder"
+
+
 @dataclass(frozen=True)
 class RunningTask:
     """One task a stage is working on, as the status page shows it."""
@@ -78,6 +83,11 @@ class StatusFacts:
     # First failed contact of the current outage; None while connected.
     unreachable_since: datetime | None = None
     last_error: str | None = None
+    # When last_error happened, and when things worked again after it (a
+    # heartbeat got an answer). The page shows a resolved error as history,
+    # so an old 502 from a VPS restart does not look like a current problem.
+    last_error_at: datetime | None = None
+    last_error_resolved_at: datetime | None = None
     used_bytes: int | None = None
     cap_bytes: int | None = None
     # The orchestrator said accepting_new_raws=false (near the storage cap).
@@ -130,17 +140,35 @@ class StatusBoard:
             self._current_tasks.pop(stage, None)
 
     def record_contact(self) -> None:
-        """A heartbeat got an answer: connected now."""
+        """A heartbeat got an answer: connected now, and any last error is resolved."""
         with self._lock:
+            now = self._clock()
+            resolved_at = self._facts.last_error_resolved_at
+            if self._facts.last_error is not None and resolved_at is None:
+                resolved_at = now
             self._facts = replace(
-                self._facts, last_contact_at=self._clock(), unreachable_since=None
+                self._facts,
+                last_contact_at=now,
+                unreachable_since=None,
+                last_error_resolved_at=resolved_at,
             )
 
     def record_unreachable(self, error: str) -> None:
         """A heartbeat failed; the outage starts at the first failure."""
         with self._lock:
             since = self._facts.unreachable_since or self._clock()
-            self._facts = replace(self._facts, unreachable_since=since, last_error=error)
+            self._facts = replace(self._facts, unreachable_since=since)
+        self.record_error(error)
+
+    def record_error(self, error: str) -> None:
+        """Something went wrong that the volunteer may need to see ("Último erro")."""
+        with self._lock:
+            self._facts = replace(
+                self._facts,
+                last_error=error,
+                last_error_at=self._clock(),
+                last_error_resolved_at=None,
+            )
 
     def set_storage(self, *, used_bytes: int, cap_bytes: int, held_raws: int) -> None:
         with self._lock:
@@ -181,6 +209,8 @@ class StatusBoard:
                 last_contact_at=None,
                 unreachable_since=None,
                 last_error=None,
+                last_error_at=None,
+                last_error_resolved_at=None,
                 identity_rejected=False,
                 enrollment_refused=False,
                 near_cap=False,

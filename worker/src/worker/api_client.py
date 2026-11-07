@@ -10,6 +10,7 @@ raises:
 from urllib.parse import urljoin
 
 import httpx
+from pydantic import BaseModel, ValidationError
 
 from shared.models import (
     ClaimRequest,
@@ -61,6 +62,38 @@ class ApiError(Exception):
         )
 
 
+class UnreadableAnswerError(ApiError):
+    """The orchestrator answered 2xx, but this worker cannot read the answer.
+
+    Normally a newer orchestrator sending something this version does not
+    know. It is an ApiError, so every caller that already copes with a
+    refused call (log it, fall back, try later) copes with this too,
+    instead of the task crashing with a pydantic traceback.
+    """
+
+    def __init__(self, status_code: int, what: str, error: ValidationError) -> None:
+        first_problem = error.errors()[0] if error.errors() else {}
+        where = ".".join(str(part) for part in first_problem.get("loc", ()))
+        message = f"cannot read the answer to {what} (at {where or '?'}); is this worker outdated?"
+        super().__init__(status_code, "unreadable_answer", message, {})
+
+
+def read_answer[Answer: BaseModel](
+    model: type[Answer], response: httpx.Response, what: str
+) -> Answer:
+    """`response`'s JSON as `model`, or UnreadableAnswerError naming `what`."""
+    try:
+        body = response.json()
+    except ValueError as error:
+        raise ApiError(
+            response.status_code, "unreadable_answer", f"{what}: not JSON", {}
+        ) from error
+    try:
+        return model.model_validate(body)
+    except ValidationError as error:
+        raise UnreadableAnswerError(response.status_code, what, error) from error
+
+
 class OrchestratorClient:
     def __init__(
         self,
@@ -108,7 +141,7 @@ class OrchestratorClient:
     def enroll(self, enroll_base_url: str, request: EnrollRequest) -> EnrollResponse:
         url = enroll_endpoint(enroll_base_url)
         response = self._send("POST", url, json=request.model_dump(mode="json"), auth=False)
-        return EnrollResponse.model_validate(response.json())
+        return read_answer(EnrollResponse, response, "enroll")
 
     # --- Worker loop ---
 
@@ -120,24 +153,25 @@ class OrchestratorClient:
             # refuses the key itself, whatever its value (worker/heartbeat.py).
             del body["render_features"]
         response = self._send("POST", path, json=body)
-        return HeartbeatResponse.model_validate(response.json())
+        return read_answer(HeartbeatResponse, response, "heartbeat")
 
     def next_task(self, accept_kinds: list[TaskKind]) -> NextTaskResponse:
         path = f"/workers/{self.worker_id}/next"
         body = NextTaskRequest(accept_kinds=accept_kinds)
-        return NextTaskResponse.model_validate(self._post_json(path, body).json())
+        return read_answer(NextTaskResponse, self._post_json(path, body), "next task")
 
     def claim(self, job_id: str, task_kind: TaskKind) -> ClaimResponse:
         body = ClaimRequest(task_kind=task_kind)
-        return ClaimResponse.model_validate(self._post_json(f"/jobs/{job_id}/claim", body).json())
+        response = self._post_json(f"/jobs/{job_id}/claim", body)
+        return read_answer(ClaimResponse, response, "claim")
 
     def report_failed(self, job_id: str, request: FailedRequest) -> JobStateResponse:
         response = self._post_json(f"/jobs/{job_id}/failed", request)
-        return JobStateResponse.model_validate(response.json())
+        return read_answer(JobStateResponse, response, "failure report")
 
     def holder_confirm(self, job_id: str, request: HolderConfirmRequest) -> HolderConfirmResponse:
         response = self._post_json(f"/jobs/{job_id}/holder-confirm", request)
-        return HolderConfirmResponse.model_validate(response.json())
+        return read_answer(HolderConfirmResponse, response, "holder confirm")
 
     def upload_thumbnail(self, url: str, lease_id: str, jpeg_bytes: bytes) -> None:
         headers = {LEASE_ID_HEADER: lease_id, "Content-Type": "image/jpeg"}
@@ -159,20 +193,20 @@ class OrchestratorClient:
 
     def clip_archived(self, job_id: str, request: ClipArchivedRequest) -> JobStateResponse:
         response = self._post_json(f"/jobs/{job_id}/clip-archived", request)
-        return JobStateResponse.model_validate(response.json())
+        return read_answer(JobStateResponse, response, "clip archived")
 
     def delivered(self, job_id: str, request: DeliveredRequest) -> JobStateResponse:
         response = self._post_json(f"/jobs/{job_id}/delivered", request)
-        return JobStateResponse.model_validate(response.json())
+        return read_answer(JobStateResponse, response, "delivered")
 
     def outbox_ack(self, job_id: str, request: OutboxAckRequest) -> JobStateResponse:
         response = self._post_json(f"/outbox/{job_id}/ack", request)
-        return JobStateResponse.model_validate(response.json())
+        return read_answer(JobStateResponse, response, "outbox ACK")
 
     # --- Lookups ---
 
     def get_job(self, job_id: str) -> Job:
-        return Job.model_validate(self._send("GET", f"/jobs/{job_id}").json())
+        return read_answer(Job, self._send("GET", f"/jobs/{job_id}"), "job lookup")
 
     # --- Plumbing ---
 

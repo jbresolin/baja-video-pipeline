@@ -1,6 +1,7 @@
 """Request/response bodies for the worker loop endpoints (bearer auth)."""
 
 from datetime import datetime
+from typing import Annotated
 
 from pydantic import Field
 
@@ -90,11 +91,23 @@ class HeartbeatRequest(ReceivedByServer):
     render_features: list[RenderFeatureName] | None = Field(default=None, max_length=32)
 
 
+# Values a newer orchestrator may add (a job state, a lease status, a role)
+# that an older worker does not know. Read as the enum member when known,
+# else kept as the plain string, so the worker can still read the rest of
+# the answer: the code that uses these only acts on values it knows. Before
+# this, one new value made the whole answer unreadable (seen 2026-11-06,
+# when a studio on 0.2.0 could not read the job and never confirmed a
+# delivery). "left_to_right" tries the enum first, then the string.
+LeaseStatusOrNewer = Annotated[LeaseHeartbeatStatus | str, Field(union_mode="left_to_right")]
+WorkerRoleOrNewer = Annotated[WorkerRole | str, Field(union_mode="left_to_right")]
+JobStateOrNewer = Annotated[JobState | str, Field(union_mode="left_to_right")]
+
+
 class HeartbeatResponse(ReadByClients):
     """Read by clients: unknown fields are ignored."""
 
     # For every lease id the worker sent: renewed, or lost (stop that task).
-    lease_status: dict[str, LeaseHeartbeatStatus] = Field(default_factory=dict)
+    lease_status: dict[str, LeaseStatusOrNewer] = Field(default_factory=dict)
     heartbeat_interval_s: int
     # False when the worker is near its storage cap: it will not be offered
     # new download_raw tasks but keeps processing what it holds (design §9).
@@ -109,7 +122,7 @@ class HeartbeatResponse(ReadByClients):
     # request carried `role` (left out of the JSON otherwise). An admin may
     # switch master and worker on Admin → Workers ("Tornar master"); a
     # worker whose running role differs saves this one and restarts.
-    role: WorkerRole | None = None
+    role: WorkerRoleOrNewer | None = None
 
 
 class LeaseRenewRequest(ReceivedByServer):
@@ -219,7 +232,7 @@ class JobStateResponse(ReadByClients):
     """
 
     job_id: str
-    state: JobState
+    state: JobStateOrNewer
 
 
 class Peer(ReadByClients):

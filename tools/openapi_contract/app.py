@@ -44,7 +44,10 @@ from tools.openapi_contract import (
 # IntakeSource.caption, JobSummary.received_at and sender_message_count,
 # AdminSettings.sender_messages_keep_days, IntakeResponse.message_stored; the
 # webhook also reads messages.edited and messages.delete; LIVESTACK-49).
-CONTRACT_VERSION = "2.6.0"
+# 2.6.1: worker-read answers accept values a client does not know yet
+# (HeartbeatResponse.lease_status values and role, JobStateResponse.state:
+# the enum or any string), so an older worker can still read them (LIVESTACK-46).
+CONTRACT_VERSION = "2.6.1"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

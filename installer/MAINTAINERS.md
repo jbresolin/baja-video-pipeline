@@ -91,7 +91,10 @@ gh api repos/BtbN/FFmpeg-Builds/releases/tags/<tag> \
 ```
 
 Set `url`, `sha256` and `path_in_archive` (the zip's top folder, i.e. the
-file name without `.zip`). **BtbN deletes old autobuild releases after a
+file name without `.zip`). Bump the Linux twin in the same commit: the
+`linux` job of `.github/workflows/installer.yml` downloads the same
+release's `ffmpeg-n<X.Y.Z>-…-linux64-gpl-<X.Y>.tar.xz` for its smoke build
+(`LINUX_FFMPEG_URL` and `LINUX_FFMPEG_SHA256`, the asset's digest). **BtbN deletes old autobuild releases after a
 while**, so an old pin eventually 404s. If that happens, bump; or, to keep
 a known-good build, upload the zip to a release of this repo and point
 `url` there (same hash).

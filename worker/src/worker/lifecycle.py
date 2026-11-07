@@ -196,7 +196,7 @@ class WorkerLifecycle:
             # E.g. the working folder's drive is missing. Shown in "Detalhes";
             # the page stays up and we try again.
             logger.exception("the worker could not start")
-            self.status.set("last error", "o worker não conseguiu iniciar; veja logs/worker.log")
+            self.status.record_error("o worker não conseguiu iniciar; veja logs/worker.log")
             self._should_stop(self._daemon_retry_seconds)
             return
         self.status.set_phase(Phase.RUNNING)
