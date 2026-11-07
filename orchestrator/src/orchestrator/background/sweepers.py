@@ -15,6 +15,7 @@ from orchestrator.domain.discard import discard_grace_is_over
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
 from orchestrator.domain.leases import sweep_expired_leases
 from orchestrator.domain.raw_copies import drop_inbox_copy, inbox_copy_is_redundant
+from orchestrator.domain.render_features import NO_HOLDER_CAN_RENDER, process_waiting_reason
 from orchestrator.domain.review_queue import NO_HOLDER_ONLINE
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
@@ -42,28 +43,36 @@ def expire_leases_once(context: OrchestratorContext) -> list[str]:
 
 
 def _refresh_waiting_reasons(connection, now) -> None:
-    """Say "waiting for a holder" on ready jobs (and requested proxies) with no holder online.
+    """Say why ready jobs (and requested proxies) are not moving, or clear it.
 
-    Only ever sets or clears its own sentence, never a failure message.
+    A ready job waits for a holder online, and for one whose version can
+    render its options (domain/render_features.py); a requested proxy only
+    for a holder online. Only ever sets or clears these sentences of its
+    own, never a failure message.
     """
     snapshot = FleetSnapshot.take(connection, now)
-    rows = jobs_repo.list_job_rows_in_states(connection, [JobState.READY])
-    rows += [
-        row
-        for row in jobs_repo.list_job_rows_needing_proxy(connection)
-        if row["proxy_requested"] and row["state"] != JobState.READY
-    ]
-    for row in rows:
+    for row in jobs_repo.list_job_rows_in_states(connection, [JobState.READY]):
+        _set_own_waiting_reason(connection, row, now, process_waiting_reason(connection, row, now))
+    for row in jobs_repo.list_job_rows_needing_proxy(connection):
+        if not row["proxy_requested"] or row["state"] == JobState.READY:
+            continue
         holder_online = any(
             holder.status == HolderStatus.CONFIRMED
             and snapshot.is_available_for_work(holder.worker_id)
             for holder in leases_repo.list_holders(connection, row["id"])
         )
-        wanted = None if holder_online else NO_HOLDER_ONLINE
-        current = row["waiting_reason"]
-        if current == wanted or (current not in (None, NO_HOLDER_ONLINE)):
-            continue
-        jobs_repo.update_job(connection, row["id"], now, {"waiting_reason": wanted})
+        _set_own_waiting_reason(connection, row, now, None if holder_online else NO_HOLDER_ONLINE)
+
+
+# The sentences the sweeper writes itself (and so may replace or clear).
+OWN_WAITING_REASONS = frozenset({None, NO_HOLDER_ONLINE, NO_HOLDER_CAN_RENDER})
+
+
+def _set_own_waiting_reason(connection, row, now, wanted: str | None) -> None:
+    current = row["waiting_reason"]
+    if current == wanted or current not in OWN_WAITING_REASONS:
+        return
+    jobs_repo.update_job(connection, row["id"], now, {"waiting_reason": wanted})
 
 
 def clean_inbox_once(context: OrchestratorContext) -> list[str]:

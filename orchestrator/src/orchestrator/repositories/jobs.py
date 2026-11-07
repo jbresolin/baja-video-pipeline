@@ -28,6 +28,7 @@ UPDATABLE_JOB_COLUMNS = frozenset(
         "failure_worker_id", "failure_task_kind", "failure_message",
         "failure_exit_code", "failure_at", "failed_from", "waiting_reason",
         "claimed_render_inputs_json", "reported_render_inputs_json",
+        "display_width", "display_height", "rotation", "framing", "crop_position", "no_audio",
     }
 )  # fmt: skip
 
@@ -139,6 +140,16 @@ def set_recorded_at(connection: sqlite3.Connection, job_id: str, columns: dict[s
     connection.execute(
         "UPDATE jobs SET recorded_at = ?, recorded_at_source = ? WHERE id = ?",
         (columns["recorded_at"], columns["recorded_at_source"], job_id),
+    )
+
+
+def set_display_size(
+    connection: sqlite3.Connection, job_id: str, width: int | None, height: int | None
+) -> None:
+    """Store a picture size worked out again later (startup backfill); updated_at stays."""
+    connection.execute(
+        "UPDATE jobs SET display_width = ?, display_height = ? WHERE id = ?",
+        (width, height, job_id),
     )
 
 

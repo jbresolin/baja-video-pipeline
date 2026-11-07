@@ -22,6 +22,10 @@ from orchestrator.domain.audit import AdminActor, record_admin_change
 from orchestrator.errors import validation_error
 from orchestrator.repositories import app_settings as settings_repo
 from shared.models import AdminSettings, UpdateSettingsRequest
+from shared.vertical_video_message import (
+    MAX_VERTICAL_VIDEO_MESSAGE_LENGTH,
+    normalize_vertical_video_message,
+)
 from shared.welcome_message import MAX_WELCOME_MESSAGE_LENGTH, normalize_welcome_message
 
 
@@ -108,6 +112,15 @@ class AdminSettingsStore:
                     max_length=MAX_WELCOME_MESSAGE_LENGTH,
                 )
             changes["welcome_message"] = message
+        if "vertical_video_message" in changes:
+            vertical_message = normalize_vertical_video_message(changes["vertical_video_message"])
+            if len(vertical_message) > MAX_VERTICAL_VIDEO_MESSAGE_LENGTH:
+                raise validation_error(
+                    "vertical_video_message must be at most"
+                    f" {MAX_VERTICAL_VIDEO_MESSAGE_LENGTH} characters",
+                    max_length=MAX_VERTICAL_VIDEO_MESSAGE_LENGTH,
+                )
+            changes["vertical_video_message"] = vertical_message
         with self._lock:
             before = self._current
             after = AdminSettings.model_validate(before.model_dump(mode="json") | changes)

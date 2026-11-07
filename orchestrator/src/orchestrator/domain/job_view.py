@@ -11,6 +11,7 @@ from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.storage import VpsLayout
+from shared.framing import display_size, is_vertical
 from shared.layout import (
     archive_relative_path,
     unversioned_clip_relative_path,
@@ -20,6 +21,7 @@ from shared.models import (
     ClipInfo,
     ClipVersion,
     DeliveryRoute,
+    Framing,
     IntakeSource,
     Job,
     JobFailure,
@@ -62,6 +64,14 @@ def clip_versions_of(connection: sqlite3.Connection, job_id: str) -> list[ClipVe
         )
         for version in clips_repo.list_versions(connection, job_id)
     ]
+
+
+def vertical_after_rotation(row: sqlite3.Row) -> bool | None:
+    """Taller than wide once the reviewer's "Girar" is applied; None while the size is unknown."""
+    if row["display_width"] is None or row["display_height"] is None:
+        return None
+    width, height = display_size(row["display_width"], row["display_height"], row["rotation"])
+    return is_vertical(width, height)
 
 
 def clip_download_file_name(relative_path: str, version: int) -> str:
@@ -136,6 +146,9 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
         has_audio=_optional_bool(row["has_audio"]),
         media_info=_media_info_from_row(row),
         frame_rate=row["frame_rate"],
+        display_width=row["display_width"],
+        display_height=row["display_height"],
+        vertical=vertical_after_rotation(row),
         raw_on_vps=bool(row["raw_on_vps"]),
         holders=leases_repo.list_holders(connection, row["id"]),
         leases=leases_repo.list_leases_for_job(connection, row["id"]),
@@ -151,6 +164,10 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
         show_pass=bool(row["show_pass"]),
         cut_in_s=row["cut_in_s"],
         cut_out_s=row["cut_out_s"],
+        rotation=row["rotation"],
+        framing=Framing(row["framing"]),
+        crop_position=row["crop_position"],
+        no_audio=bool(row["no_audio"]),
         reviewed_by=row["reviewed_by"],
         reviewed_at=from_db_time(row["reviewed_at"]),
         clip=clip,

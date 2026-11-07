@@ -155,6 +155,13 @@ def test_the_workers_report_becomes_the_versions_inputs(harness, fleet):
         "overlay_team_name": "Baja UFMG",
         "overlay_school_name": "UFMG",
         "overlay_theme_version": THEME_VERSION,
+        # The render options (LIVESTACK-50). This report, like a 0.3.0
+        # worker's, says nothing about them, which means what such a
+        # worker renders: no turn, the sound kept, no framing.
+        "rotation": 0,
+        "framing": None,
+        "crop_position": None,
+        "no_audio": False,
         "reported_by_worker": True,
     }
 

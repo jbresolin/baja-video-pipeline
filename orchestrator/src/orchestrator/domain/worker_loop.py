@@ -10,6 +10,7 @@ from orchestrator.domain.discard import discard_grace_is_over
 from orchestrator.domain.fleet_snapshot import FleetSnapshot, accepts_new_raws, is_paused
 from orchestrator.domain.job_view import require_job_row
 from orchestrator.domain.leases import renew_lease, require_active_lease, sweep_expired_leases
+from orchestrator.domain.render_features import store_render_features
 from orchestrator.domain.render_inputs import remember_claimed_inputs
 from orchestrator.domain.task_rules import evaluate_task
 from orchestrator.domain.transitions import move_job, new_lease
@@ -71,6 +72,8 @@ def process_heartbeat(
             paused=request.paused,
             shared_tailnet=request.shared_tailnet,
         )
+        # What this worker's version can render (LIVESTACK-50); left out = none.
+        store_render_features(connection, worker_row, request.render_features)
         for measurement in request.measurements:
             workers_repo.insert_stat_sample(
                 connection,
