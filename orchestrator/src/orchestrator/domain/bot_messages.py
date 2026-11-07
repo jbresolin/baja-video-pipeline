@@ -13,6 +13,10 @@ video (domain/bot_replies.py):
     SENDER_NOT_AUTHORIZED          ❌  allowlist mode, sender not allowed: no job (once per 24 h)
 
 The texts say "este vídeo" (this video): the quote shows which one.
+
+The one text not here is the welcome message to new contacts
+(LIVESTACK-44): João writes it on the Settings page (domain/welcome.py,
+default in shared/welcome_message.py).
 """
 
 # The video arrived as a WhatsApp *video* (recompressed). It is still used,

@@ -22,6 +22,7 @@ from orchestrator.domain.audit import AdminActor, record_admin_change
 from orchestrator.errors import validation_error
 from orchestrator.repositories import app_settings as settings_repo
 from shared.models import AdminSettings, UpdateSettingsRequest
+from shared.welcome_message import MAX_WELCOME_MESSAGE_LENGTH, normalize_welcome_message
 
 
 def defaults_from_environment(settings: Settings) -> AdminSettings:
@@ -99,6 +100,14 @@ class AdminSettingsStore:
                 changes[key] = url
         if changes.get("results_api_base_url") == "":
             raise validation_error("results_api_base_url cannot be empty")
+        if "welcome_message" in changes:
+            message = normalize_welcome_message(changes["welcome_message"])
+            if len(message) > MAX_WELCOME_MESSAGE_LENGTH:
+                raise validation_error(
+                    f"welcome_message must be at most {MAX_WELCOME_MESSAGE_LENGTH} characters",
+                    max_length=MAX_WELCOME_MESSAGE_LENGTH,
+                )
+            changes["welcome_message"] = message
         with self._lock:
             before = self._current
             after = AdminSettings.model_validate(before.model_dump(mode="json") | changes)

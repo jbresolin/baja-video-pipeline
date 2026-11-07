@@ -53,9 +53,12 @@ from shared.models.api_catalog import (
 )
 from shared.models.api_contacts import (
     Contact,
+    ContactCreated,
     ContactsResponse,
     CreateContactRequest,
     UpdateContactRequest,
+    WelcomeResult,
+    WelcomeSendResponse,
 )
 from shared.models.api_operations import (
     AdminSettings,
@@ -173,6 +176,7 @@ __all__ = [
     "CarVideosResponse",
     "ClipInfo",
     "Contact",
+    "ContactCreated",
     "ContactStatus",
     "ContactsResponse",
     "CatalogSource",
@@ -267,6 +271,8 @@ __all__ = [
     "User",
     "UserRole",
     "UsersResponse",
+    "WelcomeResult",
+    "WelcomeSendResponse",
     "Worker",
     "WorkerCapabilities",
     "WorkerRole",

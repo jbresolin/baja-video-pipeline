@@ -18,7 +18,7 @@ from shared.models import AdminArea
 # The event kinds each admin page shows under "Últimas alterações".
 KINDS_BY_AREA: dict[AdminArea, list[str]] = {
     AdminArea.USERS: ["user_created", "user_updated"],
-    AdminArea.CONTACTS: ["contact_created", "contact_updated"],
+    AdminArea.CONTACTS: ["contact_created", "contact_updated", "welcome_sent", "welcome_failed"],
     AdminArea.PROVAS: ["prova_created", "prova_updated", "provas_reordered", "results_synced"],
     AdminArea.TEAMS: ["team_saved", "team_deleted", "results_synced"],
     AdminArea.ENROLLMENT: ["enrollment_token_created", "enrollment_token_revoked"],

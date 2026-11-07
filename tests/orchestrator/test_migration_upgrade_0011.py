@@ -76,8 +76,10 @@ def test_0011_gives_every_old_job_its_arrival_as_recording_time(tmp_path):
     database_at_schema_10(tmp_path)
 
     database = Database(tmp_path / "db" / "bvp.sqlite3")
+    # 0011 runs first; later migrations (LIVESTACK-44's 0012) follow it.
     applied = database.apply_migrations()
     assert applied[0] == "0011_recorded_at.sql"
+    assert applied == [name for number, name, _ in list_migrations() if number > SCHEMA_ON_MAIN]
 
     with database.transaction() as connection:
         for job_id, arrived in ARRIVED.items():

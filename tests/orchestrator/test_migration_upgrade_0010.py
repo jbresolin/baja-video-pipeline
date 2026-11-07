@@ -50,7 +50,8 @@ def test_only_0010_runs_and_old_clips_have_no_recorded_inputs(tmp_path):
     database_at_schema_9(tmp_path)
 
     database = Database(tmp_path / "db" / "bvp.sqlite3")
-    # 0010 runs first; later migrations (LIVESTACK-45's 0011) follow it.
+    # 0010 runs first; later migrations (LIVESTACK-45's 0011, LIVESTACK-44's 0012)
+    # follow it.
     applied = database.apply_migrations()
     assert applied[0] == "0010_render_inputs.sql"
     assert applied == [name for number, name, _ in list_migrations() if number > SCHEMA_ON_MAIN]

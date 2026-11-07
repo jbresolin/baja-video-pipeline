@@ -92,8 +92,20 @@ class FakeEvolutionApi:
             "enabled": True,
             "url": "http://bvp-orchestrator:8000/intake/evolution-webhook",
         }
+        # True: every request fails as if Evolution were not running.
+        self.down = False
+        # An HTTP status (e.g. 500): sendText answers it, with Evolution's
+        # error shape, and sends nothing.
+        self.refuse_texts_with: int | None = None
 
     def handle(self, request: httpx.Request) -> httpx.Response:
+        if self.down:
+            raise httpx.ConnectError("connection refused (fake Evolution is down)", request=request)
+        if self.refuse_texts_with is not None and "/message/sendText/" in request.url.path:
+            return httpx.Response(
+                self.refuse_texts_with,
+                json={"status": self.refuse_texts_with, "message": ["Connection Closed"]},
+            )
         if request.method == "GET" and request.url.path.startswith("/instance/connectionState/"):
             instance = request.url.path.rsplit("/", 1)[-1]
             return httpx.Response(

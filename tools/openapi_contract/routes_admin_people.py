@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query
 
 from shared.models import (
     Contact,
+    ContactCreated,
     ContactsResponse,
     ContactStatus,
     CreateContactRequest,
@@ -18,6 +19,7 @@ from shared.models import (
     UpdateUserRequest,
     User,
     UsersResponse,
+    WelcomeSendResponse,
 )
 from tools.openapi_contract.auth import (
     admin_bearer,
@@ -92,12 +94,19 @@ def list_contacts(status: ContactStatus | None = Query(None)) -> ContactsRespons
     "/admin/contacts",
     tags=["admin"],
     summary="Add a sender before they write (e.g. to allow them in allowlist mode)",
-    response_model=Contact,
+    response_model=ContactCreated,
     status_code=201,
     dependencies=ADMIN_ONLY,
     responses=error_responses(400, 401, 403, 409),
 )
-def create_contact(body: CreateContactRequest) -> Contact:
+def create_contact(body: CreateContactRequest) -> ContactCreated:
+    """With `send_welcome: true` the Settings page's welcome message
+    (`AdminSettings.welcome_message`, {nome} and {prova} filled in) is sent
+    to the new contact through Evolution sendText after the contact is
+    stored. The contact is created whatever happens to the message:
+    `welcome` says whether Evolution accepted it, and why not (Evolution's
+    answer; a blocked contact or an empty message is not tried). Each try is
+    an event, `welcome_sent` or `welcome_failed`."""
     not_implemented()
 
 
@@ -120,4 +129,22 @@ def update_contact(phone: str, body: UpdateContactRequest) -> Contact:
 
     Jobs from a sender with a default prova start with it filled in.
     """
+    not_implemented()
+
+
+@router.post(
+    "/admin/contacts/{phone}/welcome",
+    tags=["admin"],
+    summary="Send the welcome message to this contact (again)",
+    response_model=WelcomeSendResponse,
+    dependencies=ADMIN_ONLY,
+    responses=error_responses(401, 403, 404, 409),
+)
+def send_welcome(phone: str) -> WelcomeSendResponse:
+    """The "Enviar boas-vindas" button on the Contacts page, e.g. after the message was
+    edited. 409 `conflict` for a blocked contact or an empty welcome
+    message. Evolution refusing the text is not an error: the answer is 200
+    with `welcome.sent: false` and Evolution's reason, and the event
+    `welcome_failed` is written, as on create. A send Evolution accepts sets
+    `Contact.welcome_sent_at`."""
     not_implemented()
