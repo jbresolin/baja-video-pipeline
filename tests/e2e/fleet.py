@@ -16,8 +16,10 @@ What is real and what is fake:
     (FakeMediaTools: writes placeholder files instead of rendering).
 
 Addresses on the fake network:
-    http://orchestrator.test       orchestrator API (worker orchestrator_url)
-    http://100.64.0.1:8080         "Caddy" tailnet listener (BVP_TAILNET_BASE_URL)
+    http://orchestrator.test       orchestrator API (the review UI's orchestrator_url)
+    http://100.64.0.1:8080         "Caddy" tailnet listener (BVP_TAILNET_BASE_URL), which is
+                                   also every worker's orchestrator_url, as on the real
+                                   VPS: worker API calls pass through Caddy's routing too
     http://<name>.test:8710        each master/worker's peer file server
     http://studio.test:8720        the studio receiver
 """
@@ -127,7 +129,8 @@ class System:
         config_path = folder / "worker.json"
         folder.mkdir(parents=True)
         config = WorkerConfig(
-            orchestrator_url=ORCHESTRATOR_URL,
+            # Through "Caddy", as on the VPS (http://<VPS tailnet IP>:8080).
+            orchestrator_url=TAILNET_BASE_URL,
             enrollment_token=token,
             worker_name=host,
             working_folder=folder,

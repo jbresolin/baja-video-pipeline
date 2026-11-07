@@ -6,13 +6,14 @@ other request to the orchestrator. This transport does the same three
 things, so the worker code under test sees the same answers it would see
 in production:
 
-  1. /inbox/<file> or /outbox/<file>: send GET /auth/file to the
+  1. GET/HEAD of /inbox/<file> or /outbox/<file>: send GET /auth/file to the
      orchestrator with the worker's Authorization header and the path in
      X-Forwarded-Uri. Anything but 2xx is returned to the worker as is.
   2. Allowed: serve the file from the orchestrator's data folder, honouring
      "Range: bytes=<start>-" (206), like Caddy's file_server. Dot-files are
      hidden, as in infra/vps/Caddyfile.tailnet.
-  3. Any other path: forwarded to the orchestrator unchanged.
+  3. Anything else (other paths, and other methods such as the studio's
+     POST /outbox/<job_id>/ack): forwarded to the orchestrator unchanged.
 """
 
 import re
@@ -21,6 +22,8 @@ from pathlib import Path
 import httpx
 
 FILE_PREFIXES = ("/inbox/", "/outbox/")
+# The real Caddyfile's @files matcher has "method GET HEAD" too.
+FILE_METHODS = ("GET", "HEAD")
 RANGE_PATTERN = re.compile(r"bytes=(\d+)-$")
 
 
@@ -33,7 +36,8 @@ class FakeCaddyTransport(httpx.BaseTransport):
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
-        if not path.startswith(FILE_PREFIXES):
+        is_file_request = path.startswith(FILE_PREFIXES) and request.method in FILE_METHODS
+        if not is_file_request:
             return self._orchestrator.handle_request(request)
         verdict = self._ask_orchestrator(request)
         if not 200 <= verdict.status_code < 300:

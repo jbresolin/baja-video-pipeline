@@ -38,6 +38,12 @@ check_base_stack() {
 start_containers() {
     "${COMPOSE[@]}" pull || die "docker compose pull failed (ghcr login? README §5)"
     "${COMPOSE[@]}" up -d --remove-orphans || die "docker compose up failed"
+    # Caddyfile.tailnet is bind-mounted as a single file. `git pull` replaces
+    # it with a new file, but the running container keeps the old one, and
+    # `up -d` sees no change to recreate it for. Recreating pipeline-edge on
+    # every start is cheap and makes sure a pulled Caddyfile is the one used.
+    "${COMPOSE[@]}" up -d --no-deps --force-recreate pipeline-edge ||
+        die "recreating pipeline-edge failed"
 }
 
 wait_for_orchestrator() {

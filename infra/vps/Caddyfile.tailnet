@@ -56,7 +56,14 @@ http://:8080 {
 	# `Authorization: Bearer …` plus X-Forwarded-Method / X-Forwarded-Uri
 	# (the path being fetched). A 2xx lets the request through, anything
 	# else is returned to the client as-is (design §15).
-	@files path /inbox/* /outbox/*
+	# GET/HEAD only: the studio's ACK is POST /outbox/<job_id>/ack, an API
+	# call that must reach the orchestrator, not the file check (which
+	# refused it with 403 "POST is not allowed on files", so a clip pulled
+	# from the outbox was never confirmed).
+	@files {
+		path /inbox/* /outbox/*
+		method GET HEAD
+	}
 	handle @files {
 		forward_auth orchestrator:8000 {
 			uri /auth/file

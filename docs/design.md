@@ -728,3 +728,13 @@ Fixed on main after João's first end-to-end test of installer 0.3.0.
 * **Frota.** The studio is never "perto do limite" (it takes no raws, so
   the orchestrator always reports `accepting_new_raws: false` for it), and
   the online count leaves out revoked workers, as the list already does.
+* **The studio's outbox ACK reaches the orchestrator.** Caddy's tailnet
+  listener sent every `/outbox/*` request to the file check, including the
+  studio's `POST /outbox/<job_id>/ack`, which it refused with 403. A clip
+  pulled from the outbox was stored but never confirmed, and the studio
+  retried every lease (45 s). Only GET/HEAD go to the file check now. The
+  end-to-end tests route the workers' API calls through the fake Caddy, as
+  on the VPS, and cover the outbox route. `up.sh` recreates `pipeline-edge`
+  every time, so a pulled `Caddyfile.tailnet` is really loaded.
+* **The :8700 page shows the installer's version** (it showed the Python
+  package's "0.1.0" on every build).

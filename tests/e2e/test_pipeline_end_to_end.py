@@ -14,7 +14,7 @@ their part on their own, then checks what the design says should be true.
 
 import pytest
 
-from orchestrator.testing.scenarios import SAMPLE_VIDEO_BYTES, receive_job
+from orchestrator.testing.scenarios import SAMPLE_VIDEO_BYTES, receive_job, review_to_ready
 from shared.models import WorkerRole
 from tests.e2e.fleet import build_system, wait_until
 
@@ -172,3 +172,39 @@ def test_a_whatsapp_video_reaches_the_studio_through_the_real_services(system):
     assert {"holder_confirmed", "lease_acquired"} <= {event["kind"] for event in events}
     # The review UI's job page shows that same log.
     assert "aguardando revisão" in system.review_ui.get(f"/review/jobs/{job_id}").text
+
+
+def test_a_clip_left_in_the_outbox_is_pulled_and_confirmed_by_the_studio(system):
+    # This is the delivery route used when the studio is offline at render
+    # time, or when the rendering PC cannot reach it (a worker on a shared
+    # tailnet). On 2026-11-06 the studio pulled the clip but its ACK
+    # (POST /outbox/<job_id>/ack) was stopped by Caddy's file check with
+    # 403, so the job never left "uploaded" and the studio retried forever.
+
+    # Arrange: only the master runs, so there is no studio to push to. A
+    # video arrives, gets its proxy, and the reviewer marks it ready.
+    master = system.start_worker(WorkerRole.MASTER, "master.test")
+    job_id = receive_job(system.harness, SAMPLE_VIDEO_BYTES)
+    wait_until(lambda: job_of(system, job_id)["state"] == "awaiting_review", what="review queue")
+    review_to_ready(system.harness, job_id, prova="Enduro", car_number=42, passagem=3)
+    # The master renders it and, with no studio online, leaves it in the outbox.
+    wait_until(lambda: job_of(system, job_id)["state"] == "uploaded", what="clip in the outbox")
+    assert job_of(system, job_id)["clip"]["route"] == "outbox", (
+        "with no studio online the clip must go to the outbox"
+    )
+
+    # Act: the streaming PC comes online.
+    studio = system.start_worker(WorkerRole.STUDIO, "studio.test")
+
+    # Assert: the studio downloads the clip through Caddy's /outbox/ and
+    # its ACK reaches the orchestrator, so the job is delivered and closed.
+    wait_until(lambda: job_of(system, job_id)["state"] == "done", what="job done")
+    assert f"/outbox/{job_id}.mp4" in system.caddy.served_paths, (
+        "the studio must fetch the clip from the outbox through Caddy"
+    )
+    clip_file = studio.library.root / "enduro" / "42" / "enduro-042-p3.mp4"
+    assert clip_file.is_file(), "the clip must be in the studio's clip folder"
+    assert job_of(system, job_id)["clip"]["delivered_at"] is not None, (
+        "the studio's ACK must have been accepted (it was refused with 403 before)"
+    )
+    assert master.config.worker_id == job_of(system, job_id)["clip"]["rendered_by_worker_id"]

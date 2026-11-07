@@ -260,6 +260,12 @@ def test_up_on_a_fresh_vps_does_every_step(tmp_path):
     assert completed.returncode == 0, completed.stdout + completed.stderr
     log = calls(environment)
     assert "docker compose" in log and " pull" in log and " up -d" in log
+    # The tailnet Caddy is always recreated, so a Caddyfile.tailnet that
+    # `git pull` just replaced is really loaded (a bind-mounted file is not
+    # picked up by a running container).
+    assert "up -d --no-deps --force-recreate pipeline-edge" in log, (
+        "up.sh must recreate pipeline-edge so it reads the pulled Caddyfile"
+    )
     # The routes are rendered for this domain and the base Caddy's view of
     # the data dir; Caddy's own placeholders are untouched.
     routes = installed(environment).read_text()
