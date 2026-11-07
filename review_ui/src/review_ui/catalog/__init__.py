@@ -27,6 +27,7 @@ from review_ui.catalog import (
     common,
     job,
     passagens,
+    render_options,
     scripts,
     welcome,
 )
@@ -46,6 +47,7 @@ CATALOG: dict[str, str] = _merge(
     common.TEXT,
     job.TEXT,
     passagens.TEXT,
+    render_options.TEXT,
     clips_and_fleet.TEXT,
     admin_pages.TEXT,
     admin_settings.TEXT,

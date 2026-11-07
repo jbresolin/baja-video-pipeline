@@ -178,6 +178,16 @@ label.check input { width: auto; }
 .job-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); gap: 1.5rem; align-items: start; }
 .player-pane { position: sticky; top: 4rem; }
 video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: var(--radius); display: block; }
+/* "Girar" turns the video inside this box; "Cortar" draws its band on top (js/render_options.js). */
+.player-stage { position: relative; overflow: hidden; border-radius: var(--radius); background: #000; }
+.player-stage video { transition: transform 0.15s ease-out; }
+.crop-band {
+  position: absolute; pointer-events: none; border: 2px solid var(--accent);
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.55);
+}
+.render-options { border: 1px solid var(--line); border-radius: var(--radius); padding: 0.6rem 0.8rem; margin: 0.8rem 0; }
+.render-options .orientation { margin-top: 0; }
+.render-options input[type="range"] { width: 100%; }
 .player-empty {
   aspect-ratio: 16 / 9; display: grid; place-content: center; justify-items: center; gap: 0.5rem;
   background: var(--surface-2); border-radius: var(--radius); color: var(--muted);

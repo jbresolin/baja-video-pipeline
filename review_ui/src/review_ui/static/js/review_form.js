@@ -44,6 +44,13 @@ export function setupReviewForm({ form, jobElement, confirmForward = () => true 
     const cutOut = numberOrNull(form.elements.cut_out_s.value, parseFloat);
     if (cutOut !== null) body.cut_out_s = cutOut;
     body.show_pass = form.elements.show_pass.checked;
+    // "Imagem e som" (LIVESTACK-50): always sent, like show_pass.
+    body.rotation = Number(form.elements.rotation.value) || 0;
+    const framing = form.elements.framing?.value;
+    if (framing) body.framing = framing;
+    const cropPosition = Number(form.elements.crop_position?.value);
+    if (Number.isFinite(cropPosition)) body.crop_position = cropPosition;
+    body.no_audio = form.elements.no_audio.checked;
     return body;
   }
 

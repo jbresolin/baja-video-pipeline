@@ -30,6 +30,11 @@
   <p class="hint">{{ t("settings.welcome_preview", nome=welcome_examples.nome, prova=welcome_examples.prova) }}</p>
   <div id="welcome-preview" class="welcome-preview" aria-live="polite"
        data-example-values='{{ welcome_examples|tojson }}'>{{ welcome_preview or t("script.welcome_preview_empty") }}</div>
+  {# Quoted by the bot on a video filmed upright, once per video (LIVESTACK-50). #}
+  <label for="vertical_video_message">{{ t("settings.vertical_video_message") }}</label>
+  <textarea id="vertical_video_message" name="vertical_video_message" rows="3"
+            maxlength="{{ vertical_message_max_length }}">{{ values.vertical_video_message }}</textarea>
+  <p class="hint">{{ t("settings.vertical_video_message.hint") }}</p>
   {# Which names the clips show (the overlay, the clips page, the job page). #}
   <fieldset class="choices">
     <legend>{{ t("settings.clip_team_name") }}</legend>

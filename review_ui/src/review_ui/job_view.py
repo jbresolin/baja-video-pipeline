@@ -47,10 +47,16 @@ ACTION_LABELS: dict[ReviewAction, str] = {
 }
 
 # Job.waiting_reason is an English sentence written by the orchestrator
-# (domain/review_queue.py and domain/task_results.py). The two kinds it
-# writes are put in pt-BR here; any other reason is shown as it came, marked
-# as English. A test keeps the first one equal to the orchestrator's.
+# (domain/review_queue.py, domain/render_features.py and domain/task_results.py).
+# The kinds it writes are put in pt-BR here; any other reason is shown as it
+# came, marked as English. Tests keep the sentences equal to the orchestrator's.
 NO_HOLDER_ONLINE_REASON = "waiting for a holder of the raw to come back online (or be resumed)"
+# Holders are online, but none runs a version that can render the job's
+# render options (orchestrator domain/render_features.py, LIVESTACK-50).
+NO_HOLDER_CAN_RENDER_REASON = (
+    "waiting for a holder of the raw that can render these options"
+    " (a worker updated to 0.4.0 or later)"
+)
 _TASK_FAILED_ON = re.compile(
     r"^(?P<kind>[a-z_]+) failed on (?P<worker>.+?): (?P<message>.*)$", re.DOTALL
 )
@@ -80,6 +86,8 @@ def describe_waiting_reason(reason: str) -> WaitingReason:
     """Put the orchestrator's waiting reason in pt-BR when it is one we know."""
     if reason == NO_HOLDER_ONLINE_REASON:
         return WaitingReason(text("waiting.no_holder_online"), None)
+    if reason == NO_HOLDER_CAN_RENDER_REASON:
+        return WaitingReason(text("waiting.no_holder_can_render"), None)
     match = _TASK_FAILED_ON.match(reason)
     if match and match["kind"] in {kind.value for kind in TaskKind}:
         task = TASK_VERBS[TaskKind(match["kind"])]

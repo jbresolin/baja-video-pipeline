@@ -61,6 +61,8 @@
             {% if worker.hostname and worker.hostname != worker.name %}<div class="small">{{ t("workers.hostname", hostname=worker.hostname) }}</div>{% endif %}
             {# Encoder and GPU names are the machine's own data. #}
             <div class="small"><code>{{ worker.capabilities.video_encoder }}</code>{% if worker.capabilities.gpu_name %} · <code>{{ worker.capabilities.gpu_name }}</code>{% endif %}</div>
+            {# What its version can render (LIVESTACK-50); an old one gets no vertical or "Sem áudio" jobs. #}
+            {% if row.render_features %}<div class="small">{{ row.render_features }}</div>{% endif %}
           </td>
           <td>
             <span class="dot {{ 'online' if entry.online else 'offline' }}"></span>{{ t("worker.online") if entry.online else t("worker.offline") }}

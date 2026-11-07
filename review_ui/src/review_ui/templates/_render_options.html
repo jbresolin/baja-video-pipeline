@@ -1,0 +1,36 @@
+{# "Imagem e som" (LIVESTACK-50): Girar, Enquadramento, Sem áudio.
+   js/render_options.js keeps the orientation line, the framing choices,
+   the player's turn and the crop band in step with these fields. #}
+<fieldset class="render-options" id="render-options"
+          data-display-width="{{ job.display_width or '' }}" data-display-height="{{ job.display_height or '' }}">
+  <legend>{{ t("render.legend") }}</legend>
+  <p class="hint orientation" id="orientation-note" aria-live="polite">{{ render_box.orientation }}</p>
+
+  <label for="rotation">{{ t("render.rotation") }}</label>
+  <select id="rotation" name="rotation">
+    {% for value, label in render_box.rotation_choices %}
+    <option value="{{ value }}" {% if job.rotation == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <p class="hint">{{ t("render.rotation.hint") }}</p>
+
+  <div class="framing" id="framing-box"{% if not render_box.framing_applies %} hidden{% endif %}>
+    <fieldset class="choices">
+      <legend>{{ t("render.framing") }}</legend>
+      <p class="hint">{{ t("render.framing.hint") }}</p>
+      {% for value, label in render_box.framing_choices %}
+      <label><input type="radio" name="framing" value="{{ value }}" {% if job.framing == value %}checked{% endif %}> {{ label }}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="crop-position" id="crop-position-box"{% if job.framing != "crop" %} hidden{% endif %}>
+      <label for="crop_position">{{ t("render.crop_position") }}</label>
+      <input id="crop_position" name="crop_position" type="range" min="0" max="1" step="0.01"
+             value="{{ job.crop_position }}">
+      <p class="hint">{{ t("render.crop_position.hint") }}</p>
+    </div>
+  </div>
+
+  <label class="check"><input type="checkbox" name="no_audio" {% if job.no_audio %}checked{% endif %}>
+    {{ t("render.no_audio") }}</label>
+  <p class="hint">{{ t("render.no_audio.hint") }}</p>
+</fieldset>

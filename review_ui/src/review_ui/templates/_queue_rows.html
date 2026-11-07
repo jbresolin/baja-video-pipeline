@@ -29,6 +29,7 @@
       <span class="row-badges">
         {{ m.state_badge(item.state) }}
         {% if item.low_res %}<span class="badge flag" title="{{ t('badge.low_res.title') }}">{{ t("badge.low_res") }}</span>{% endif %}
+        {% if item.vertical %}<span class="badge" title="{{ t('badge.vertical.title') }}">{{ t("badge.vertical") }}</span>{% endif %}
         {% if not item.proxy_available %}<span class="badge muted">{{ t("badge.no_proxy") }}</span>{% endif %}
         {% if item.clip_outdated %}<span class="badge flag" title="{{ t('badge.outdated.title') }}">{{ t("badge.outdated") }}</span>{% endif %}
       </span>

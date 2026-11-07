@@ -6,7 +6,8 @@
 <div class="page-head">
   <a class="back" href="/review/">{{ t("job.back") }}</a>
   <h1>{{ t("job.title", id=job.id|short_id) }} {{ m.state_badge(job.state) }}
-    {% if job.low_res %}<span class="badge flag">{{ t("badge.low_res") }}</span>{% endif %}</h1>
+    {% if job.low_res %}<span class="badge flag">{{ t("badge.low_res") }}</span>{% endif %}
+    {% if job.vertical %}<span class="badge flag" title="{{ t('badge.vertical.title') }}">{{ t("badge.vertical") }}</span>{% endif %}</h1>
   <p class="hint">
     {{ t("job.hint", intake=intake, received=m.time(job.created_at), size=job.size_bytes|bytes, duration=job.duration_s|duration, version=job.version) }}
   </p>
@@ -27,9 +28,13 @@
      data-frame-rate="{{ frame_rate }}">
   <section class="player-pane" aria-label="{{ t('job.player') }}">
     {% if job.proxy_available %}
-    <video id="player" src="{{ media_url(job.proxy_url or '/proxies/' ~ job.id ~ '.mp4') }}"
-           {% if job.thumbnail_url %}poster="{{ media_url(job.thumbnail_url) }}"{% endif %}
-           preload="auto" controls playsinline></video>
+    {# The stage turns the player with "Girar" and shows the "Cortar" band (js/render_options.js). #}
+    <div class="player-stage" id="player-stage">
+      <video id="player" src="{{ media_url(job.proxy_url or '/proxies/' ~ job.id ~ '.mp4') }}"
+             {% if job.thumbnail_url %}poster="{{ media_url(job.thumbnail_url) }}"{% endif %}
+             preload="auto" controls playsinline{% if job.no_audio %} muted{% endif %}></video>
+      <div class="crop-band" id="crop-band" hidden></div>
+    </div>
     {% else %}
     <div class="player-empty">
       <p>{{ t("job.proxy_missing") }}</p>
@@ -119,6 +124,8 @@
 
       <label class="check"><input type="checkbox" name="show_pass" {% if job.show_pass %}checked{% endif %}>
         {{ t("job.show_pass") }}</label>
+
+      {% include "_render_options.html" %}
 
       {# "Outros vídeos de <prova>, carro <n>": refreshed in place while prova,
          car or passagem change, saved or not (no page reload). #}
