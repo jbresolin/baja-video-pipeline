@@ -7,12 +7,14 @@ from pydantic import Field, model_validator
 from shared.models.common import (
     ByteCount,
     CarNumber,
+    CropPosition,
     PassNumber,
     ReadByClients,
     ReceivedByServer,
+    Rotation,
     Seconds,
 )
-from shared.models.enums import JobState, OriginalState, ReviewAction
+from shared.models.enums import Framing, JobState, OriginalState, ReviewAction
 from shared.models.job import JobSummary, check_cut_order
 
 
@@ -64,6 +66,12 @@ class ReviewUpdate(ReceivedByServer):
     show_pass: bool | None = None
     cut_in_s: Seconds | None = None
     cut_out_s: Seconds | None = None
+    # Render options (LIVESTACK-50): "Girar", "Enquadramento" and its band,
+    # "Sem áudio". Like the fields above, left out = keep.
+    rotation: Rotation | None = None
+    framing: Framing | None = None
+    crop_position: CropPosition | None = None
+    no_audio: bool | None = None
 
     @model_validator(mode="after")
     def _cuts_in_order(self) -> "ReviewUpdate":

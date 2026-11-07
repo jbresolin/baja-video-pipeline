@@ -8,8 +8,11 @@ Probing a file (duration, audio, HDR) lives in shared.media_probe.
 
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+from shared.ffmpeg_picture import BlurFill, picture_filters
+from shared.framing import FramePlan
 
 NVENC_ENCODER = "h264_nvenc"
 X264_ENCODER = "libx264"
@@ -68,6 +71,8 @@ class FinalRenderSettings:
     # Quality targets (lower = better/bigger): NVENC "cq" and x264 "crf".
     nvenc_constant_quality: int = 21
     x264_crf: int = 20
+    # The sides of a picture that is not 16:9 (Framing.BLURRED, LIVESTACK-50).
+    blur: BlurFill = field(default_factory=BlurFill)
 
 
 DEFAULT_PROXY_SETTINGS = ProxySettings()
@@ -155,28 +160,42 @@ def build_final_render_command(
     settings: FinalRenderSettings = DEFAULT_FINAL_RENDER_SETTINGS,
     ffmpeg_binary: str = "ffmpeg",
     tone_map_hdr: bool = False,
+    frame_plan: FramePlan | None = None,
 ) -> list[str]:
     """Command that trims the raw, draws the overlay and normalises loudness.
 
     `overlay_image` is a transparent PNG (team, car, pass) drawn in the
     bottom-left corner; the worker renders it. Without it, no overlay.
-    `has_audio=False` (from ffprobe) skips the audio chain entirely.
+    `has_audio=False` skips the audio chain entirely and writes a clip
+    without sound: the raw has none (ffprobe), or the reviewer ticked
+    "Sem áudio" (LIVESTACK-50).
     `tone_map_hdr=True` (MediaInfo.is_hdr) converts HDR footage to SDR
     first, so the SDR overlay is drawn onto an SDR picture.
+    `frame_plan` (shared.framing.plan_frame) turns and fits a picture
+    that is not 16:9 into 1920×1080; None, or a plan without framing and
+    rotation, is the render used before LIVESTACK-50, unchanged.
     """
     if cut_out_s <= cut_in_s:
         raise ValueError("cut_out_s must be greater than cut_in_s")
     duration_s = cut_out_s - cut_in_s
 
     inputs = ["-ss", f"{cut_in_s:.3f}", "-i", str(raw_path)]
-    video_steps = _with_optional_tone_map([f"scale=-2:{settings.height}"], tone_map_hdr)
-    scale = "[0:v]" + ",".join(video_steps)
+    # Every step up to the finished 1920×1080 picture. The last entry is
+    # left open (no output label) so the overlay or the pixel format can
+    # be chained onto it.
+    picture = picture_filters(
+        frame_plan,
+        height=settings.height,
+        tone_map=TONE_MAP_HDR_TO_SDR if tone_map_hdr else None,
+        blur=settings.blur,
+    )
     if overlay_image is None:
-        filters = [f"{scale},format=yuv420p[video]"]
+        filters = [*picture[:-1], f"{picture[-1]},format=yuv420p[video]"]
     else:
         inputs += ["-i", str(overlay_image)]
         filters = [
-            f"{scale}[base]",
+            *picture[:-1],
+            f"{picture[-1]}[base]",
             "[base][1:v]overlay=x=0:y=main_h-overlay_h,format=yuv420p[video]",
         ]
     maps = ["-map", "[video]"]

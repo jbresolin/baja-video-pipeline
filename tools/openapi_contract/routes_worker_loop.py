@@ -48,7 +48,11 @@ def heartbeat(worker_id: str, body: HeartbeatRequest) -> HeartbeatResponse:
     `deletable_job_ids` lists held raws of discarded jobs. A request with
     `role` gets `role` back: the role the orchestrator has for this worker
     (an admin may switch master and worker); without it the field is left
-    out of the answer entirely, for older workers."""
+    out of the answer entirely, for older workers.
+
+    `render_features` (contract 2.6.0) replaces the worker's declared render
+    features on every beat; left out = none. An orchestrator older than
+    2.6.0 answers 400 to it; the worker then beats without it for 5 min."""
     not_implemented()
 
 
@@ -72,6 +76,10 @@ def next_task(worker_id: str, body: NextTaskRequest) -> NextTaskResponse:
 
     `process` offers carry `delivery`: `direct` with the studio's
     `studio_url` when a studio heartbeated in the last 45 s, else `outbox`.
+    A `process` task lists `required_render_features` (a turned picture or
+    one that is not 16:9 needs `framing`; "Sem áudio" on a raw with sound
+    needs `no_audio`) and is offered only to a holder whose declared
+    render features include them all (LIVESTACK-50).
     The master is also offered `download_raw` for every non-discarded job
     it does not hold (including `done` and `failed`), after all live work.
     """
@@ -257,7 +265,10 @@ def upload_media_info(
     is ffprobe's `format` and `streams` for the raw with every location tag
     removed (`location_present` says there was one; the orchestrator strips
     them again). Stored as `Job.media_info`; sets `Job.frame_rate` while it
-    is still empty (the proxy's `Frame-Rate` header then replaces it).
+    is still empty (the proxy's `Frame-Rate` header then replaces it), and
+    `Job.display_width`/`display_height` (the picture after the rotation
+    note). The job's first report of a vertical video makes the bot quote
+    it once with `AdminSettings.vertical_video_message` (LIVESTACK-50).
     Over 512 KB → 413. Machine activity: does not bump `Job.version`."""
     not_implemented()
 
@@ -277,7 +288,9 @@ def report_render_inputs(
     """Under the process lease, after rendering and before the outbox
     upload or the studio push (LIVESTACK-43). The values the clip was
     rendered from, the overlay texts as drawn, the overlay theme version
-    (SHA-256 of the worker's tokens.css) and the clip's SHA-256. When that
+    (SHA-256 of the worker's tokens.css), the render options as used
+    (rotation, framing, crop_position, no_audio; contract 2.6.0) and the
+    clip's SHA-256. When that
     clip becomes a version it keeps these as `ClipVersion.render_inputs`
     (with the Settings' name choices from the claim). Without a report the
     version keeps the orchestrator's snapshot of the claim. 422 if

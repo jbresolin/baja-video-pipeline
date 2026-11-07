@@ -239,3 +239,41 @@ class AdminArea(StrEnum):
     ENROLLMENT = "enrollment"
     WORKERS = "workers"
     SETTINGS = "settings"
+
+
+class Framing(StrEnum):
+    """How a picture that is not 16:9 fills the 1920×1080 clip (LIVESTACK-50).
+
+    Only used when the video, after any rotation, is not 16:9 (a phone
+    filmed upright, a 4:3 camera, an ultra-wide one). A 16:9 video renders
+    exactly as before, whatever is chosen here.
+    """
+
+    # The default ("desfocado"): the whole video centred, the empty sides
+    # (or top and bottom) filled with the same video blown up, blurred and
+    # darkened, as TV news shows phone footage.
+    BLURRED = "blurred"
+    # "Barras pretas": the whole video centred on black.
+    BLACK_BARS = "black_bars"
+    # "Cortar": a 16:9 band of the video fills the frame; the reviewer
+    # chooses where the band sits (ProcessTask.crop_position).
+    CROP = "crop"
+
+
+class RenderFeature(StrEnum):
+    """A rendering ability a worker version declares and a process task may need.
+
+    Workers list the ones they have (WorkerCapabilities.render_features at
+    enrollment, HeartbeatRequest.render_features in every heartbeat); each
+    process task lists the ones it needs (ProcessTask.required_render_features),
+    and the orchestrator offers a render only to a worker that has all of them
+    (docs/api.md §5 "Render features"). A task that needs none goes to any
+    worker. On the wire these are plain strings, so a worker may declare a
+    feature an older orchestrator has never heard of.
+    """
+
+    # Rotation ("Girar") and fitting a non-16:9 picture into 1920×1080
+    # (Framing). Installer 0.4.0, LIVESTACK-50.
+    FRAMING = "framing"
+    # Dropping the sound ("Sem áudio"). Installer 0.4.0, LIVESTACK-50.
+    NO_AUDIO = "no_audio"

@@ -8,14 +8,17 @@ from pydantic import Field, model_validator
 from shared.models.common import (
     ByteCount,
     CarNumber,
+    CropPosition,
     PassNumber,
     ReadByClients,
+    Rotation,
     Seconds,
     Sha256Hex,
     utc_now,
 )
 from shared.models.enums import (
     DeliveryRoute,
+    Framing,
     HolderStatus,
     JobState,
     ReceivedAs,
@@ -213,6 +216,14 @@ class Job(ReadByClients):
     # frame rate). Reported with the proxy upload; the review UI steps one
     # frame with it and falls back to 30 while it is None.
     frame_rate: float | None = Field(default=None, gt=0)
+    # The picture as players show it, after the file's own rotation note
+    # (LIVESTACK-50), from the media-info report: 1080×1920 for a phone
+    # filmed upright. None until the report arrives.
+    display_width: int | None = Field(default=None, ge=1)
+    display_height: int | None = Field(default=None, ge=1)
+    # Taller than wide after the reviewer's "Girar" too (`rotation`); None
+    # while the size is unknown. The queue marks these, the job page says so.
+    vertical: bool | None = None
     # True while the VPS inbox still has a copy (until two holders confirm,
     # or the job is discarded).
     raw_on_vps: bool = True
@@ -235,6 +246,15 @@ class Job(ReadByClients):
     show_pass: bool = True
     cut_in_s: Seconds | None = None
     cut_out_s: Seconds | None = None
+    # --- Render options (LIVESTACK-50), saved with the review. ---
+    # "Girar": the reviewer's extra clockwise turn.
+    rotation: Rotation = 0
+    # "Enquadramento": how a picture that is not 16:9 fills the clip.
+    framing: Framing = Framing.BLURRED
+    # Framing.CROP: where the 16:9 band sits (0 top/left … 1 bottom/right).
+    crop_position: CropPosition = 0.5
+    # "Sem áudio": the clip goes out without sound.
+    no_audio: bool = False
     reviewed_by: str | None = None
     reviewed_at: datetime | None = None
 
@@ -303,6 +323,8 @@ class JobSummary(ReadByClients):
     clip_download_url: str | None = None
     # True when the newest clip no longer matches the review (Job.clip_inputs).
     clip_outdated: bool = False
+    # Taller than wide (Job.vertical); None while the size is unknown.
+    vertical: bool | None = None
 
     @classmethod
     def from_job(cls, job: Job) -> "JobSummary":
@@ -327,4 +349,5 @@ class JobSummary(ReadByClients):
             failure_message=job.failure.message if job.failure else None,
             clip_download_url=job.clip.download_url if job.clip else None,
             clip_outdated=bool(job.clip_inputs and job.clip_inputs.changed),
+            vertical=job.vertical,
         )

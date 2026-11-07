@@ -13,13 +13,16 @@ from pydantic import Field
 from shared.models.common import (
     ByteCount,
     CarNumber,
+    CropPosition,
     PassNumber,
     ReadByClients,
     ReceivedByServer,
+    RenderFeatureName,
+    Rotation,
     Seconds,
     Sha256Hex,
 )
-from shared.models.enums import DeliveryRoute, TaskKind
+from shared.models.enums import DeliveryRoute, Framing, TaskKind
 from shared.models.job import Lease
 
 
@@ -106,6 +109,22 @@ class ProcessTask(ReadByClients):
     # Fallback route if the direct push to the studio fails.
     outbox_upload_url: str
     delivery: DeliveryPlan
+    # --- Render options (LIVESTACK-50). Absent from older orchestrators:
+    # the defaults are what those meant (no turn, sound kept). ---
+    # The reviewer's extra clockwise turn, on top of the file's own
+    # rotation note ("Girar", for a phone whose note is wrong).
+    rotation: Rotation = 0
+    # How a picture that is not 16:9 after the turn fills 1920×1080
+    # ("Enquadramento"). A 16:9 picture ignores it (shared.framing).
+    framing: Framing = Framing.BLURRED
+    # Framing.CROP only: where the 16:9 band sits.
+    crop_position: CropPosition = 0.5
+    # "Sem áudio": render the clip without a sound track.
+    no_audio: bool = False
+    # The render features (RenderFeature) this task needs. The orchestrator
+    # offers it only to a worker that declared every one of them; empty =
+    # any worker. For the record: a worker does not need to check it.
+    required_render_features: list[RenderFeatureName] = Field(default_factory=list)
 
 
 class DeliverTask(ReadByClients):

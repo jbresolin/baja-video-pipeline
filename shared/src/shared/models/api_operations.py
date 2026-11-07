@@ -14,6 +14,10 @@ from shared.models.enums import (
     SecretState,
     WorkerRole,
 )
+from shared.vertical_video_message import (
+    DEFAULT_VERTICAL_VIDEO_MESSAGE,
+    MAX_VERTICAL_VIDEO_MESSAGE_LENGTH,
+)
 from shared.welcome_message import DEFAULT_WELCOME_MESSAGE, MAX_WELCOME_MESSAGE_LENGTH
 
 # --- Enrollment tokens ---
@@ -111,6 +115,11 @@ class AdminSettings(ReadByClients):
     welcome_message: str = Field(
         default=DEFAULT_WELCOME_MESSAGE, max_length=MAX_WELCOME_MESSAGE_LENGTH
     )
+    # Quoted by the bot on a video whose probe shows it was filmed upright
+    # (LIVESTACK-50), once per video. Empty = no such reply.
+    vertical_video_message: str = Field(
+        default=DEFAULT_VERTICAL_VIDEO_MESSAGE, max_length=MAX_VERTICAL_VIDEO_MESSAGE_LENGTH
+    )
 
 
 class UpdateSettingsRequest(ReceivedByServer):
@@ -135,6 +144,10 @@ class UpdateSettingsRequest(ReceivedByServer):
     # ends trimmed, then the stored text may be at most 2000 characters; a
     # browser sends each line end as two, hence the larger limit here.
     welcome_message: str | None = Field(default=None, max_length=2 * MAX_WELCOME_MESSAGE_LENGTH)
+    # "" turns the reply to vertical videos off. Stored like the welcome message.
+    vertical_video_message: str | None = Field(
+        default=None, max_length=2 * MAX_VERTICAL_VIDEO_MESSAGE_LENGTH
+    )
 
 
 class EvolutionStatus(ReadByClients):
