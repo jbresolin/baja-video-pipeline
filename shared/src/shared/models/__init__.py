@@ -68,6 +68,7 @@ from shared.models.api_operations import (
     UpdateWorkerRequest,
 )
 from shared.models.api_review import (
+    CarVideosResponse,
     OriginalDownload,
     RegenerateProxyResponse,
     ReviewQueueFilter,
@@ -109,6 +110,7 @@ from shared.models.enums import (
     NameStyle,
     OriginalState,
     ReceivedAs,
+    RecordedAtSource,
     ReviewAction,
     SecretState,
     TaskKind,
@@ -168,6 +170,7 @@ __all__ = [
     "HeldClip",
     "ClaimRequest",
     "ClaimResponse",
+    "CarVideosResponse",
     "ClipInfo",
     "Contact",
     "ContactStatus",
@@ -238,6 +241,7 @@ __all__ = [
     "Prova",
     "ProvasResponse",
     "ReceivedAs",
+    "RecordedAtSource",
     "RegenerateProxyResponse",
     "ReorderProvasRequest",
     "ReviewAction",

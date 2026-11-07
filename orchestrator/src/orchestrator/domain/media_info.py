@@ -12,8 +12,10 @@ import sqlite3
 from pydantic import ValidationError
 
 from orchestrator.context import OrchestratorContext
+from orchestrator.db.database import from_db_time
 from orchestrator.domain.job_view import require_job_row
 from orchestrator.domain.leases import require_active_lease, sweep_expired_leases
+from orchestrator.domain.recording_time import recorded_at_columns
 from orchestrator.errors import ApiError
 from orchestrator.repositories import jobs as jobs_repo
 from shared.media_details import strip_location_tags
@@ -77,5 +79,15 @@ def store_media_info(
             frame_rate = _first_video_frame_rate(cleaned)
             if frame_rate is not None:
                 changes["frame_rate"] = frame_rate
+        # When it was filmed: the raw's creation_time, when plausible (LIVESTACK-45).
+        changes.update(recorded_at_columns_for(job_row, cleaned))
         # Machine activity: no version bump (repositories.jobs.update_job).
         jobs_repo.update_job(connection, job_id, now, changes)
+
+
+def recorded_at_columns_for(job_row: sqlite3.Row, report: ProbeReport | None) -> dict[str, str]:
+    """recorded_at and its source for this job, given its probe report (or none)."""
+    received_at = from_db_time(job_row["received_at"]) or from_db_time(job_row["created_at"])
+    return recorded_at_columns(
+        received_at=received_at, sent_at=from_db_time(job_row["sent_at"]), probe=report
+    )

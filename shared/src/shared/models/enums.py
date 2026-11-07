@@ -101,6 +101,17 @@ class ReceivedAs(StrEnum):
     TEST_UPLOAD = "test_upload"
 
 
+class RecordedAtSource(StrEnum):
+    """Where Job.recorded_at (when the video was filmed) came from (LIVESTACK-45)."""
+
+    # The raw's own creation_time (ffprobe), plausible: exact.
+    METADATA = "metadata"
+    # When the filmmaker sent it on WhatsApp: only a hint (filmed before that).
+    WHATSAPP = "whatsapp"
+    # When the bot received it: the last resort, also only a hint.
+    RECEIVED = "received"
+
+
 class ReviewAction(StrEnum):
     """What a PATCH /jobs/{id}/review should do besides storing the fields."""
 

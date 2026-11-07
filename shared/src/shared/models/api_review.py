@@ -17,11 +17,30 @@ from shared.models.job import JobSummary, check_cut_order
 
 
 class ReviewQueueResponse(ReadByClients):
-    """GET /review/queue: oldest first, so nothing waits forever.
+    """GET /review/queue: in filming order, oldest recording first
+    (Job.recorded_at, ties by arrival; LIVESTACK-45).
 
     Read by clients: unknown fields are ignored.
     """
 
+    items: list[JobSummary]
+
+
+class CarVideosResponse(ReadByClients):
+    """GET /review/car-videos: every job of one car in one prova (LIVESTACK-45).
+
+    Discarded jobs are left out. In filming order (Job.recorded_at, ties by
+    arrival), so the review UI can place a video among the car's other
+    passes and suggest its passagem.
+
+    Read by clients: unknown fields are ignored.
+    """
+
+    # The prova's clip folder (Prova.slug). Jobs are matched by it, not by
+    # name, so a renamed prova still finds every video. None when the prova
+    # asked for has no letters or digits (no folder; no jobs then).
+    prova_slug: str | None
+    car_number: CarNumber
     items: list[JobSummary]
 
 

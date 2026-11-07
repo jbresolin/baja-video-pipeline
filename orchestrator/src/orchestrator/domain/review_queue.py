@@ -25,16 +25,17 @@ NO_HOLDER_ONLINE = "waiting for a holder of the raw to come back online (or be r
 def review_queue(
     context: OrchestratorContext, states: list[JobState], limit: int, *, outdated_only=False
 ):
-    """Jobs in `states`, oldest first; with `outdated_only`, only those whose
-    newest clip no longer matches the review (LIVESTACK-43, "Clipes
-    desatualizados"), filtered before the limit so none is cut off."""
+    """Jobs in `states` in filming order, oldest recording first (LIVESTACK-45);
+    with `outdated_only`, only those whose newest clip no longer matches the
+    review (LIVESTACK-43, "Clipes desatualizados"), filtered before the limit
+    so none is cut off."""
     with context.database.transaction() as connection:
         if outdated_only:
-            rows = jobs_repo.list_job_rows_in_states(connection, states)
+            rows = jobs_repo.list_review_queue_rows(connection, states)
             jobs = [job_from_row(connection, row, context.layout) for row in rows]
             jobs = [job for job in jobs if job.clip_inputs and job.clip_inputs.changed][:limit]
         else:
-            rows = jobs_repo.list_job_rows_in_states(connection, states, limit)
+            rows = jobs_repo.list_review_queue_rows(connection, states, limit)
             jobs = [job_from_row(connection, row, context.layout) for row in rows]
     return ReviewQueueResponse(items=[JobSummary.from_job(job) for job in jobs])
 

@@ -31,6 +31,7 @@ from orchestrator.domain.bot_replies import (
     send_bot_reply,
 )
 from orchestrator.domain.contacts import phone_from_jid
+from orchestrator.domain.recording_time import recorded_at_columns, sent_at_from_timestamp
 from orchestrator.errors import ApiError
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
@@ -80,6 +81,10 @@ class PendingMediaDownload:
     default_prova: str | None = None
     # The raw's readable name on workers (item 12), fixed when the bot got it.
     raw_file_name: str | None = None
+    # When the filmmaker sent it (WhatsApp timestamp) and when the webhook
+    # arrived: the fallbacks for the recording time (LIVESTACK-45).
+    sent_at: datetime | None = None
+    received_at: datetime | None = None
 
 
 @dataclass
@@ -221,6 +226,8 @@ def _accept_incoming_video(
         raw_file_name=build_raw_file_name(
             contact_row["display_name"], contact_row["phone"], now, job_id, extension
         ),
+        sent_at=sent_at_from_timestamp(webhook.data.message_timestamp),
+        received_at=now,
     )
     response = IntakeResponse(job_id=None, message_id=key.id, accepted=True, low_res=low_res)
     return WebhookOutcome(status_code=202, response=response, download=download, replies=replies)
@@ -275,6 +282,8 @@ def run_media_download(context: OrchestratorContext, pending: PendingMediaDownlo
             actor=EVOLUTION_ACTOR,
             prova=pending.default_prova,
             raw_file_name=pending.raw_file_name,
+            sent_at=pending.sent_at,
+            received_at=pending.received_at,
         )
     # Confirm only now that the file is verified and the job exists.
     if pending.confirm_when_stored:
@@ -299,6 +308,8 @@ def create_received_job(
     actor: str,
     prova: str | None = None,
     raw_file_name: str | None = None,
+    sent_at: datetime | None = None,
+    received_at: datetime | None = None,
 ) -> None:
     """Insert a job in state `received` (its raw is already in the inbox).
 
@@ -306,7 +317,14 @@ def create_received_job(
     sees it filled in and can change it. `raw_file_name` is the readable
     name workers store the raw under (item 12); None = built from
     `sender_name`, the JID's number and `now`.
+
+    `sent_at` (WhatsApp's timestamp) and `received_at` (the webhook's
+    arrival, default `now`) give the job its first recording time; the
+    raw's own creation_time replaces it when the probe report arrives
+    (domain/recording_time.py).
     """
+    if received_at is None:
+        received_at = now
     if raw_file_name is None:
         raw_file_name = build_raw_file_name(
             sender_name, phone_from_jid(sender_jid or ""), now, job_id, raw_extension
@@ -330,6 +348,9 @@ def create_received_job(
             "raw_extension": raw_extension,
             "prova": prova,
             "raw_file_name": raw_file_name,
+            "sent_at": to_db_time(sent_at),
+            "received_at": to_db_time(received_at),
+            **recorded_at_columns(received_at=received_at, sent_at=sent_at),
         },
     )
     jobs_repo.save_intake_message(connection, message_id, DONE, now, job_id=job_id)

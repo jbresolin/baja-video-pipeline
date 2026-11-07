@@ -19,6 +19,7 @@ from shared.models.enums import (
     HolderStatus,
     JobState,
     ReceivedAs,
+    RecordedAtSource,
     TaskKind,
 )
 from shared.models.render_inputs import ClipInputsComparison, RenderInputs
@@ -80,6 +81,11 @@ class IntakeSource(ReadByClients):
     # sender, when the bot received it (São Paulo time), start of the job id.
     # None for jobs from before.
     raw_file_name: str | None = None
+    # When the filmmaker sent it (WhatsApp messageTimestamp) and when the bot
+    # got the webhook (LIVESTACK-45). None for jobs from before (sent_at) and
+    # for messages without a timestamp.
+    sent_at: datetime | None = None
+    received_at: datetime | None = None
 
 
 class ClipInfo(ReadByClients):
@@ -185,6 +191,14 @@ class Job(ReadByClients):
     source: IntakeSource
     # True when the file arrived as a recompressed WhatsApp video (design §3).
     low_res: bool = False
+    # When the video was filmed (LIVESTACK-45): the raw's creation_time when
+    # plausible (not after the bot received it, not more than 7 days
+    # before), else the WhatsApp send time, else the time received. The
+    # review queue and the "other videos of this car" panel sort by it.
+    # `recorded_at_source` says which: only "metadata" is exact. None only
+    # from an orchestrator older than this.
+    recorded_at: datetime | None = None
+    recorded_at_source: RecordedAtSource | None = None
 
     # --- The raw file ---
     sha256: Sha256Hex
@@ -269,6 +283,10 @@ class JobSummary(ReadByClients):
     created_at: datetime
     low_res: bool
     sender_name: str | None
+    # When it was filmed, and how sure that is (Job.recorded_at). None only
+    # from an orchestrator older than LIVESTACK-45.
+    recorded_at: datetime | None = None
+    recorded_at_source: RecordedAtSource | None = None
     size_bytes: ByteCount
     duration_s: Seconds | None
     proxy_available: bool
@@ -295,6 +313,8 @@ class JobSummary(ReadByClients):
             created_at=job.created_at,
             low_res=job.low_res,
             sender_name=job.source.sender_name,
+            recorded_at=job.recorded_at,
+            recorded_at_source=job.recorded_at_source,
             size_bytes=job.size_bytes,
             duration_s=job.duration_s,
             proxy_available=job.proxy_available,

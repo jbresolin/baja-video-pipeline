@@ -26,7 +26,10 @@ from tools.openapi_contract import (
 # GET /review/queue?outdated=true); a reprocess is delivered under its -vN
 # name (edits after delivery, LIVESTACK-43). Answer schemas no longer say
 # additionalProperties: false: clients ignore fields they do not know.
-CONTRACT_VERSION = "2.4.0"
+# 2.5.0: Job/JobSummary.recorded_at and recorded_at_source, IntakeSource.sent_at
+# and received_at, the review queue in filming order, GET /review/car-videos
+# (help reviewers number the passagens, LIVESTACK-45).
+CONTRACT_VERSION = "2.5.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

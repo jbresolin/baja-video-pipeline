@@ -13,8 +13,17 @@ from orchestrator.api.auth import (
     require_worker,
 )
 from orchestrator.context import OrchestratorContext
-from orchestrator.domain import delivery, event_log, fleet, originals, review, review_queue
+from orchestrator.domain import (
+    car_videos,
+    delivery,
+    event_log,
+    fleet,
+    originals,
+    review,
+    review_queue,
+)
 from shared.models import (
+    CarVideosResponse,
     EventsResponse,
     FleetResponse,
     Job,
@@ -45,6 +54,21 @@ def list_review_queue(
     context: OrchestratorContext = Depends(get_context),
 ) -> ReviewQueueResponse:
     return review_queue.review_queue(context, state, limit, outdated_only=outdated)
+
+
+@router.get(
+    "/review/car-videos",
+    tags=["review"],
+    response_model=CarVideosResponse,
+    dependencies=[Depends(require_reviewer)],
+)
+def list_car_videos(
+    prova: str = Query(..., min_length=1, max_length=200),
+    car_number: int = Query(..., ge=0, le=9999),
+    context: OrchestratorContext = Depends(get_context),
+) -> CarVideosResponse:
+    """One car's videos in one prova, discarded ones left out (LIVESTACK-45)."""
+    return car_videos.car_videos(context, prova, car_number)
 
 
 @router.get(

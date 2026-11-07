@@ -20,7 +20,7 @@ UPDATABLE_JOB_COLUMNS = frozenset(
         "media_info_json", "discarded_from", "discard_grace_ends_at",
         "proxy_available", "thumbnail_available", "proxy_requested",
         "prova", "car_number", "team_name", "overlay_team_name", "overlay_school_short",
-        "school_name",
+        "school_name", "recorded_at", "recorded_at_source",
         "passagem", "show_pass",
         "cut_in_s", "cut_out_s", "reviewed_by", "reviewed_at",
         "clip_sha256", "clip_size_bytes", "clip_relative_path", "clip_route",
@@ -87,6 +87,59 @@ def list_job_rows_in_states(
         sql += " LIMIT ?"
         parameters.append(limit)
     return connection.execute(sql, parameters).fetchall()
+
+
+def list_review_queue_rows(
+    connection: sqlite3.Connection, states: Iterable[JobState], limit: int | None = None
+) -> list[sqlite3.Row]:
+    """The review queue: jobs in `states` in filming order (LIVESTACK-45).
+
+    Oldest recording first (recorded_at), ties by arrival. A job without a
+    recording time (none should have one; see migration 0011) sorts by
+    arrival among the others' recording times.
+    """
+    state_list = [str(state) for state in states]
+    if not state_list:
+        return []
+    placeholders = ", ".join("?" for _ in state_list)
+    sql = (
+        f"SELECT * FROM jobs WHERE state IN ({placeholders})"
+        " ORDER BY COALESCE(recorded_at, created_at), created_at, id"
+    )
+    parameters: list[Any] = list(state_list)
+    if limit is not None:
+        sql += " LIMIT ?"
+        parameters.append(limit)
+    return connection.execute(sql, parameters).fetchall()
+
+
+def list_car_job_rows(connection: sqlite3.Connection, car_number: int) -> list[sqlite3.Row]:
+    """Every job of one car that has a prova and is not discarded, in filming order.
+
+    The caller keeps those of one prova (by clip folder, domain/car_videos.py).
+    """
+    return connection.execute(
+        "SELECT * FROM jobs WHERE car_number = ? AND prova IS NOT NULL AND state != 'discarded'"
+        " ORDER BY COALESCE(recorded_at, created_at), created_at, id",
+        (car_number,),
+    ).fetchall()
+
+
+def list_job_rows_with_media_info(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    return connection.execute(
+        "SELECT * FROM jobs WHERE media_info_json IS NOT NULL ORDER BY created_at, id"
+    ).fetchall()
+
+
+def set_recorded_at(connection: sqlite3.Connection, job_id: str, columns: dict[str, str]) -> None:
+    """Store a recording time worked out again later (startup backfill).
+
+    Not through update_job: nobody changed the job, so updated_at stays.
+    """
+    connection.execute(
+        "UPDATE jobs SET recorded_at = ?, recorded_at_source = ? WHERE id = ?",
+        (columns["recorded_at"], columns["recorded_at_source"], job_id),
+    )
 
 
 def list_job_rows_with_raw_on_vps(connection: sqlite3.Connection) -> list[sqlite3.Row]:
