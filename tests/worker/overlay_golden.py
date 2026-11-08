@@ -125,7 +125,7 @@ RESULT_GOLDEN_CASES: dict[str, tuple[OverlayText, Path]] = {
 # largada (0,0, the tens place blank), mid-run (33,4) and frozen (66,0;
 # every frame after the freeze is this same picture). "alone": the result
 # toggle off, so the clock takes the result pill's place at the left edge.
-CLOCK_66 = RenderClock(largada_s=12.345, official_units=660, decimals=1)
+CLOCK_66 = RenderClock(largada_s=12.345, official_units=660, decimals=1, unit="s")
 CLOCK_TEXT = replace(CAR_26_TEXT, passagem=2, pass_result=RESULT_CONES, clock=CLOCK_66)
 CLOCK_GOLDEN_CASES: dict[str, tuple[OverlayText, int, Path]] = {
     "start": (CLOCK_TEXT, 0, GOLDEN_PATH.with_name("overlay-clock-start-1080p.png")),
@@ -187,3 +187,15 @@ if __name__ == "__main__":
     for text, units, path in CLOCK_GOLDEN_CASES.values():
         render_clock_frame(text, units).save(path, format="PNG")
         print(f"wrote {path}")
+    # A vertical video framed into the clip (LIVESTACK-53): needs ffmpeg.
+    # Run as a script, so the repository root is put on the import path.
+    import sys
+    import tempfile
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from tests.worker.framing_golden import FRAMING_GOLDEN_CASES, render_framing_frame
+
+    with tempfile.TemporaryDirectory() as scratch:
+        for framing, path in FRAMING_GOLDEN_CASES.values():
+            render_framing_frame(Path(scratch), framing, CLOCK_TEXT).save(path, format="PNG")
+            print(f"wrote {path}")

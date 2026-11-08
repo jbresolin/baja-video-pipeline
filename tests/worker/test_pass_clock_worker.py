@@ -24,8 +24,8 @@ from tests.worker.test_process import hold_raw, process_task
 from worker.enrollment import detect_capabilities
 from worker.tasks.process import render_inputs, render_inputs_report
 
-CLOCK = RenderClock(largada_s=2.5, official_units=660, decimals=1)
-MOVED_CLOCK = RenderClock(largada_s=2.6, official_units=660, decimals=1)
+CLOCK = RenderClock(largada_s=2.5, official_units=660, decimals=1, unit="s")
+MOVED_CLOCK = RenderClock(largada_s=2.6, official_units=660, decimals=1, unit="s")
 
 
 def test_every_heartbeat_and_enrollment_declare_the_clock(harness):
@@ -109,7 +109,12 @@ def test_the_sidecar_includes_the_clock_as_json(harness, raw_bytes):
     job = hold_raw(harness, raw_bytes)
     inputs = render_inputs(process_task(job, pass_clock=CLOCK))
     # Plain JSON values, so the sidecar file can be written and compared.
-    assert inputs["pass_clock"] == {"largada_s": 2.5, "official_units": 660, "decimals": 1}
+    assert inputs["pass_clock"] == {
+        "largada_s": 2.5,
+        "official_units": 660,
+        "decimals": 1,
+        "unit": "s",
+    }
     assert json.loads(json.dumps(inputs)) == inputs
 
 
@@ -125,6 +130,22 @@ def test_a_moved_largada_renders_again_instead_of_reusing_the_clip(harness, raw_
     leave_an_old_clip(harness, job, CLOCK)
 
     harness.claim_and_run(process_task(job, pass_clock=MOVED_CLOCK))
+
+    stored = harness.orchestrator.stored_upload("outbox", job.job_id)
+    assert stored.read_bytes().startswith(b"fake final render")
+
+
+def test_a_clip_left_by_the_previous_version_is_rendered_again(harness, raw_bytes):
+    # A 0.6.0 worker drew the small clock beside the result; its sidecar
+    # has no clock unit. After the update, the same task must not reuse
+    # that clip: the new look (top right, "66,0 s") is rendered instead.
+    job = hold_raw(harness, raw_bytes)
+    harness.storage.clip_path(job.job_id).write_bytes(b"old clip")
+    old_inputs = render_inputs(process_task(job, pass_clock=CLOCK))
+    del old_inputs["pass_clock"]["unit"]
+    harness.storage.clip_sidecar_path(job.job_id).write_text(json.dumps(old_inputs))
+
+    harness.claim_and_run(process_task(job, pass_clock=CLOCK))
 
     stored = harness.orchestrator.stored_upload("outbox", job.job_id)
     assert stored.read_bytes().startswith(b"fake final render")

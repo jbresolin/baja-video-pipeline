@@ -12,18 +12,18 @@ Bebas Neue. Bottom-left, at 1920x1080:
     ┌──────────────────────────────────────┐
     │ ENDURO · PASSAGEM 3 · UFMG           │   role pill, 40 px, school muted
     └──────────────────────────────────────┘   ← its bottom at y 940
-    ┌───────────────────────────────┐ ┌──────┐
-    │ 66 S · 4 CONES → 86 S         │ │ 12,3 │   result pill, 40 px (LIVESTACK-47)
-    └───────────────────────────────┘ └──────┘   and the running clock (LIVESTACK-48)
+    ┌───────────────────────────────┐
+    │ 66 S · 4 CONES → 86 S         │   result pill, 40 px (LIVESTACK-47)
+    └───────────────────────────────┘
 
 The result pill (worker.overlay_result) is only drawn when the task
 carries a result line. It goes *under* the role pill, so the name and role
 pills sit exactly where they always did, with or without a result.
 
-The running clock (worker.overlay_clock) is not in this PNG: it appears
-at the largada and changes every frame, so ffmpeg draws it from images of
-its own (shared.ffmpeg_clock). Here it only takes its place on the result
-pill's row, which then has that much less room for the result.
+The running clock (worker.overlay_clock, LIVESTACK-48) is not in this
+PNG: it appears at the largada and changes every frame, so ffmpeg draws
+it from images of its own (shared.ffmpeg_clock). Since LIVESTACK-53 it
+sits in the top-right corner, so the result pill has its whole row again.
 
 With a clock, the result pill is not in this PNG either (LIVESTACK-53):
 the result appears when the clock stops, so it is drawn on an image of its
@@ -53,7 +53,7 @@ from PIL import Image
 
 from shared.models import RenderClock
 from worker import overlay_tokens as theme
-from worker.overlay_clock import ClockLayout, clock_pill_width, layout_clock
+from worker.overlay_clock import ClockLayout, layout_clock_top_right
 from worker.overlay_draw import PillLayout, PlacedImage, draw_pill, draw_pill_alone
 from worker.overlay_result import layout_result_pill, result_runs
 from worker.overlay_text import TextRun, fit_runs, font, runs_width
@@ -200,7 +200,7 @@ def lay_out_lower_third(
     result_runs: list[TextRun] | None = None,
     clock: RenderClock | None = None,
 ) -> OverlayLayout:
-    """render_lower_third, plus the clock's place on the result pill's row.
+    """render_lower_third, plus the clock's place in the top-right corner.
 
     With a clock, the result pill is drawn on its own image, not on the
     still one: it appears when the clock stops (LIVESTACK-53).
@@ -227,20 +227,16 @@ def lay_out_lower_third(
         draw_pill(canvas, pill, left, top, scale)
         bottom = top - gap
     row_top = lower_third_bottom + gap
-    row_left = left
     result_image = None
     if result_runs:
         # Under the role pill, one gap below y 940: the pills above never move.
-        # With a clock, the result has the row minus the clock and a gap.
-        room = max_width - (clock_pill_width(clock, scale) + gap if clock else 0)
-        result_pill = layout_result_pill(result_runs, room, scale)
+        result_pill = layout_result_pill(result_runs, max_width, scale)
         if clock:
             frame_size = (frame_width, frame_height)
             result_image = draw_pill_alone(result_pill, left, row_top, scale, frame_size)
         else:
             draw_pill(canvas, result_pill, left, row_top, scale)
-        row_left = left + result_pill.width + gap
-    clock_layout = layout_clock(clock, row_left, row_top, scale) if clock else None
+    clock_layout = layout_clock_top_right(clock, frame_width, scale) if clock else None
     return OverlayLayout(canvas, clock_layout, result_image)
 
 
