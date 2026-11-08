@@ -29,7 +29,7 @@ types**; this page explains the behaviour around them. Design background:
 
 | Port | Where | What |
 | --- | --- | --- |
-| 443 | VPS, public | Caddy: review UI, `/proxies/*`, `/thumbs/*`, `/clip-downloads/*` (outbox clips for reviewers), `/original-downloads/*` (originals reviewers asked for), `POST /enroll`, `POST /intake/evolution-webhook` |
+| 443 | VPS, public | Caddy: review UI, `/proxies/*`, `/thumbs/*`, `/previews/*` (clip previews), `/clip-downloads/*` (outbox clips for reviewers), `/original-downloads/*` (originals reviewers asked for), `/requested-clips/*` (passed to the orchestrator: clips reviewers asked for), `POST /enroll`, `POST /intake/evolution-webhook` |
 | 8080 | VPS, Tailscale IP only, plain HTTP | Caddy: the worker/studio API and `/inbox/*`, `/outbox/*` files |
 | 8000 | VPS, compose network only | orchestrator (uvicorn) |
 | 8710 | every master/worker, tailnet | worker file server (`GET /raw/{job_id}`, `GET /clip/{job_id}`) |
@@ -70,8 +70,8 @@ types**; this page explains the behaviour around them. Design background:
 | `POST /auth/login` | none (the password is the credential; 20 per source IP per 600 s) |
 | `/admin/*`, `POST /intake/test-upload`, `GET /metrics` | sessionBearer (role admin) **or** adminBearer |
 | worker loop, `/workers`, `/auth/file`, `/outbox/{id}/ack` | workerBearer |
-| `/review/queue`, `/review/car-videos`, `GET /jobs/{job_id}/sender-messages`, `GET /jobs/{job_id}/pass-preview`, `PUT/DELETE /jobs/{job_id}/presence`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
-| `GET /auth/media` | sessionCookie |
+| `/review/queue`, `/review/car-videos`, `GET /jobs/{job_id}/sender-messages`, `GET /jobs/{job_id}/pass-preview`, `PUT/DELETE /jobs/{job_id}/presence`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `GET/POST …/clip-download`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
+| `GET /auth/media`, `GET/HEAD /requested-clips/{job_id}/{name}` | sessionCookie |
 | `GET /jobs/{job_id}`, `GET /manifest` | sessionBearer **or** workerBearer |
 | `GET /fleet`, `GET /jobs/{job_id}/events`, `GET /events`, `GET /provas` | sessionBearer **or** adminBearer |
 
@@ -316,6 +316,13 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
   of the raw that can draw the new result and clock look (a worker
   updated to 0.7.0 or later)". When several features are missing, the sentence names the
   newest one left out (the version a holder needs).
+  Contract 2.11.0 (LIVESTACK-52, installer 0.7.0) adds two names that are
+  abilities rather than render options, declared the same way and never
+  in `required_render_features`: `clip_preview` (the worker sends a
+  preview after a render when the task has `preview_upload_url`; without
+  it the job page says an older worker rendered the clip) and
+  `upload_clip` (`upload_clip` tasks are offered only to workers that
+  declared it).
 
 | Task kind | Who gets it | What to do | How it ends |
 | --- | --- | --- | --- |
@@ -324,6 +331,7 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
 | `process` | a confirmed holder that declared the task's `required_render_features` | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`; `rotation`, `framing`, `crop_position` and `no_audio` through `shared.framing.plan_frame`, below; `pass_result_text`, when set, as a third pill under the other two; `pass_clock`, when set, as the running clock beside it: its pill from the largada on, the digits by `drawtext` from the frame time, `shared.ffmpeg_clock`). Report what it was rendered from (`PUT …/render-inputs`, below). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
 | `deliver` | studio only | GET `download_url` (Caddy outbox) with your bearer, verify SHA-256, store at `clip_relative_path`, rewrite `latest.m3u` | `POST /outbox/{id}/ack` |
 | `upload_original` | a confirmed holder that is online, the master first (LIVESTACK-41 item 15) | A reviewer asked for the original: chunked upload of the held raw to `upload_url` (`POST /jobs/{id}/original-upload`, `Lease-Id`, `Upload-SHA256` = the job's sha256). Offered right after proxies. A failure report never fails the job; that holder is just not asked again for it | completing chunk of `…/original-upload` |
+| `upload_clip` | a PC that has the requested clip and declared `upload_clip` (LIVESTACK-52): the master when it archived (or keeps) that version, else the worker that rendered it (or another keeping it), else the studio, only when it holds no deliver lease and no job is `uploaded` | A reviewer asked for the clip ("Baixar clipe"): find it by `sha256` (kept clips, the archive at `archive_relative_path`, the studio folder under `studio_relative_path` or another version name of that passagem) and upload it, chunked, to `upload_url` (`POST /jobs/{id}/clip-download-upload`, `Lease-Id`, `Upload-SHA256` = `sha256`). Offered right after originals. Not found → `failed` with scope `worker`: the next PC is asked; the job never fails | completing chunk of `…/clip-download-upload` |
 | `archive_clip` | master only, lowest priority (after backfill) | Keep one clip version in the archive at `archive_relative_path`: move your own kept copy, else GET the first working `download_urls` entry (peers' `:8710/clip/{job_id}?sha256=…` without token, the Caddy outbox with it), verify SHA-256 | `POST /jobs/{id}/clip-archived` |
 
 **Failures.** `POST /jobs/{id}/failed {lease_id, message, exit_code, scope}`
@@ -571,9 +579,14 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `POST /jobs/{job_id}/delivered` | `DeliveredRequest` → `JobStateResponse` | studio; direct route |
 | `POST /jobs/{job_id}/clip-archived` | `ClipArchivedRequest` → `JobStateResponse` | master, `archive_clip` lease; 422 `hash_mismatch` if the sha256 is no version of the job; state unchanged |
 | `POST /jobs/{job_id}/original-upload` | chunk → `ChunkAccepted` | `upload_original` lease; Upload-SHA256 must be the job's (422); ends the lease; state unchanged |
+| `POST /jobs/{job_id}/clip-preview` | chunk + `Clip-SHA256` → `ChunkAccepted` | no lease; only the worker that rendered that clip version (403), only while it is the newest (409 `conflict`); the preview of a delivered clip (below, "Clip previews") |
+| `POST /jobs/{job_id}/clip-download-upload` | chunk → `ChunkAccepted` | `upload_clip` lease; Upload-SHA256 must be the requested clip's (422); ends the lease; state unchanged |
 | `PUT /jobs/{job_id}/render-inputs` | `RenderInputsReport` JSON, `Lease-Id` → 204 | process lease, before the upload or push; what the clip was rendered from (§5 "Render inputs"); state unchanged |
 | `GET /jobs/{job_id}/original` | → `OriginalDownload` | where "Baixar original" stands; no side effects |
 | `POST /jobs/{job_id}/original` | → `OriginalDownload` | "Baixar original"; see below |
+| `GET /jobs/{job_id}/clip-download` | → `ClipDownload` | where "Baixar clipe" stands; no side effects |
+| `POST /jobs/{job_id}/clip-download` | → `ClipDownload` | "Baixar clipe" (the newest clip version; 409 `conflict` without a clip); see below |
+| `GET/HEAD /requested-clips/{job_id}/{name}` | → the clip (`video/mp4`, 200 or 206) | sessionCookie; the download itself, sent by the orchestrator (below); one `Range`; 416 past the end |
 | `GET /review/queue?state=…&limit=…&outdated=…` | → `ReviewQueueResponse` | default `awaiting_review`; in filming order, oldest `recorded_at` first, ties by arrival (below, "Recording time"); `outdated=true`: only jobs whose clip no longer matches the review (§5 "Render inputs"); each item carries `received_at` and `sender_message_count`, and (LIVESTACK-51) `sender_phone` / `sender_display_name` (the contact's key and name, for "Enviado por"), `reviewing` (who has the job page open) and `duplicate_of` |
 | `GET /review/car-videos?prova=…&car_number=…` | → `CarVideosResponse` | one car's jobs in one prova, discarded left out, filming order; the job page's passagem panel (below) |
 | `GET /jobs/{job_id}` | → `Job` | |
@@ -842,6 +855,45 @@ evicted earlier, oldest request first, when `originals/` passes
 `proxy_evict_min_free_gb`. They are never holders and never a source for
 processing.
 
+**Clip previews** (contract 2.11.0, LIVESTACK-52, "Ver clipe"). While
+`AdminSettings.clip_previews_enabled` is on, `ProcessTask.preview_upload_url`
+= `…/jobs/{id}/clip-preview`. After delivering, the worker makes a preview
+of the clip with the proxy's settings (480p, 1.5 Mbit/s, 30 fps,
+faststart) and uploads it, chunked, with `Clip-SHA256` = the clip's
+SHA-256, no lease. It is stored as `previews/<job_id>.<clip sha256>.mp4`
+(the older version's file is deleted) and `Job.clip_preview` /
+`ManifestEntry.preview` (`ClipPreview`) carry `url` =
+`/previews/<job_id>.<clip sha256>.mp4` (Caddy, `forward_auth` like
+proxies). Only the newest clip version counts: until its preview
+arrives, `state` is `making` (15 minutes after the version was recorded),
+then `missing`; `switched_off` when the render was handed out with the
+switch off, `older_worker` when the renderer did not declare
+`clip_preview`, `evicted` after an eviction. Eviction: previews of
+versions that are no longer the newest at once; below
+`proxy_evict_min_free_gb` free, finished jobs' previews first, oldest
+first, after the proxies (`sweep` every 60 s).
+
+**Clips for reviewers** (contract 2.11.0, LIVESTACK-52, "Baixar clipe").
+`POST /jobs/{id}/clip-download` records the request for the job's newest
+clip version (its SHA-256 and the time; asking again starts over and
+replaces a copy of an older version). While the outbox has exactly that
+clip it is hard-linked into `requested_clips/<job_id>.mp4` and the answer
+is `ready` at once; otherwise `upload_clip` is offered (§5) and the answer
+is `preparing`, or `no_source_online`. `ready` carries `download_url` =
+`/requested-clips/<job_id>/<clip name>` (e.g. `suspensao-007-p2.mp4`,
+`…-p2-v2.mp4` after a reprocess), `file_name`, `size_bytes`, `version`,
+`downloaded_at` and `expires_at`. That URL is passed by Caddy to the
+orchestrator, which checks the `bvp_session` cookie and sends the file
+itself, `Content-Disposition: attachment` with the clip's name: it
+records the first **complete** download (the response that sends the
+file's last byte; one that breaks off earlier, or a range that stops
+before the end, does not count). The copy is deleted
+`clip_download_keep_minutes` (Settings, 30) after that, or
+`clip_download_unused_hours` (Settings, 24) after the request if nobody
+downloaded it, and earlier when free disk drops below
+`proxy_evict_min_free_gb` (downloaded copies first, then the oldest
+request). Never a source for anything else.
+
 **Media info** (contract 2.1.0). The first holder already runs ffprobe
 on the raw to make the proxy; it sends the whole answer
 (`ffprobe -show_format -show_streams`, as `ProbeReport {format, streams,
@@ -1067,6 +1119,10 @@ proxies/<job_id>.mp4      Caddy :443 /proxies/<job_id>.mp4 (forward_auth → /au
 thumbs/<job_id>.jpg       Caddy :443 /thumbs/<job_id>.jpg (forward_auth → /auth/media)
 originals/<job_id>.<ext>  raws a reviewer asked for (item 15), temporary; Caddy :443
                           /original-downloads/<job_id>/<readable name> (forward_auth → /auth/media)
+previews/<job_id>.<clip sha256>.mp4  480p preview of the newest clip (LIVESTACK-52); Caddy :443
+                          /previews/* (forward_auth → /auth/media); evicted like proxies
+requested_clips/<job_id>.mp4  clips a reviewer asked for (LIVESTACK-52), temporary; sent by the
+                          orchestrator at :443 /requested-clips/<job_id>/<clip name>
 outbox/<job_id>.mp4       fallback clips; deleted after studio ACK + master archive (or 72 h
                           after the ACK); Caddy :8080 /outbox/* (studio, archiving master)
                           and :443 /clip-downloads/* (signed-in users: the Download button;
