@@ -33,6 +33,10 @@ jobs:
       - name: OpenAPI contract is up to date
         run: uv run python tools/generate_openapi.py --check
 
-      # ffmpeg is not installed here, so the integration test is skipped.
+      # The workers' own ffmpeg build, so the real-ffmpeg tests (the
+      # frame-exact clock, the framings, HDR tone-mapping) run here too.
+      - name: Install ffmpeg
+        uses: ./.github/actions/pinned-ffmpeg
+
       - name: Tests
         run: uv run pytest

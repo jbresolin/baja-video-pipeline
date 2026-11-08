@@ -1398,3 +1398,18 @@ ignore the new answer fields, §14). Migrations 0017 and 0018.
   (`JobSummary.sender_phone`, `sender_display_name`, filled by
   `GET /review/queue`), combinable with the other filters, `?sender=` in
   the URL and the auto-refresh.
+
+## 35. CI runs the real-ffmpeg tests on the workers' ffmpeg (2026-11-08)
+
+* CI installs the same pinned ffmpeg 9.0 build the workers ship (BtbN,
+  static linux64 twin of `installer/vendor.lock`), through the shared
+  action `.github/actions/pinned-ffmpeg`, also used by the installer's
+  Linux smoke build. The frame-exact clock tests (§33), the framings
+  (§29) and HDR tone-mapping now run on every push instead of being
+  skipped.
+* Running them on 9.0 found one test-only problem: the synthetic HDR test
+  clip lost its colour labels (9.0 no longer writes `-color_trc` /
+  `-color_primaries` given only as output options), so it was not
+  recognised as HDR. The clip maker now sets them with `setparams`. The
+  workers' own renders were not affected: their outputs come out labelled
+  BT.709 as before.

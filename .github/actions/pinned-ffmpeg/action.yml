@@ -1,0 +1,38 @@
+# Puts the workers' ffmpeg build on the PATH of a Linux runner: the static
+# linux64 twin of installer/vendor.lock's [ffmpeg] (same BtbN release),
+# checked against its SHA-256 and kept in the Actions cache. Used by CI, so
+# the real-ffmpeg tests (frame-exact clock, framings, HDR) run on the
+# version the workers ship, and by the installer's Linux smoke build.
+# Not apt-get: Ubuntu's mirrors once hung that for 24 minutes, and Ubuntu's
+# ffmpeg is not the workers' version. Bump with vendor.lock
+# (installer/MAINTAINERS.md).
+name: Pinned ffmpeg
+description: Install the workers' ffmpeg build (ffmpeg and ffprobe) on a Linux runner
+runs:
+  using: composite
+  steps:
+    - name: Cache the pinned ffmpeg
+      uses: actions/cache@v4
+      with:
+        path: ~/ffmpeg-download
+        key: linux-ffmpeg-8ce0fd17fb808adf48d66c3e72d7f0acfc28d2b95a0f6bf98483be8c652083ed
+
+    - name: Install the pinned ffmpeg
+      shell: bash
+      env:
+        LINUX_FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-27-18-38/ffmpeg-n9.0.2-36-g6882969ce9-linux64-gpl-9.0.tar.xz
+        LINUX_FFMPEG_SHA256: 8ce0fd17fb808adf48d66c3e72d7f0acfc28d2b95a0f6bf98483be8c652083ed
+      run: |
+        set -euo pipefail
+        mkdir -p ~/ffmpeg-download ~/ffmpeg
+        archive=~/ffmpeg-download/ffmpeg-linux64.tar.xz
+        # Download only when the cache did not bring the right file.
+        if ! echo "$LINUX_FFMPEG_SHA256  $archive" | sha256sum --check --status; then
+          curl -fsSL --retry 3 --max-time 300 -o "$archive" "$LINUX_FFMPEG_URL"
+          echo "$LINUX_FFMPEG_SHA256  $archive" | sha256sum --check
+        fi
+        # Only the two tools we use (the archive also has ffplay).
+        tar -xJf "$archive" -C ~/ffmpeg --strip-components=1 \
+          --wildcards '*/bin/ffmpeg' '*/bin/ffprobe'
+        echo "$HOME/ffmpeg/bin" >> "$GITHUB_PATH"
+        ~/ffmpeg/bin/ffmpeg -hide_banner -version | head -1

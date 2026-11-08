@@ -255,11 +255,18 @@ def build_test_clip_command(
     are not real HDR, but ffprobe reports smpte2084, which is enough to
     exercise detection and the tone-mapping filters.
     """
+    # The labels are set on the frames with the setparams filter. The
+    # -color_trc / -color_primaries output options alone are not written to
+    # the file by ffmpeg 9.0 (the workers' build): ffprobe then said
+    # "unknown" and the HDR test failed.
     hdr_tags = (
-        ["-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc"]
+        [
+            "-vf", "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc",
+            "-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc",
+        ]
         if tag_as_hdr
         else []
-    )
+    )  # fmt: skip
     return [
         ffmpeg_binary, *COMMON_FFMPEG_ARGS,
         "-f", "lavfi", "-i", f"testsrc2=size={width}x{height}:rate={frame_rate}",
