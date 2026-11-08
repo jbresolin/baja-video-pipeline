@@ -1,11 +1,14 @@
 """Review-side reads and requests that do not edit the review: queue, job, team, proxy."""
 
+import sqlite3
+
 from orchestrator.context import OrchestratorContext
-from orchestrator.domain import sender_messages
+from orchestrator.domain import contacts, sender_messages
 from orchestrator.domain.clip_names import clip_names, name_styles
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
 from orchestrator.domain.job_view import job_from_row, load_job, require_job_row
 from orchestrator.errors import not_found
+from orchestrator.repositories import contacts as contacts_repo
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
@@ -13,6 +16,7 @@ from orchestrator.repositories import teams as teams_repo
 from shared.models import (
     HolderStatus,
     Job,
+    JobPresenceResponse,
     JobState,
     JobSummary,
     RegenerateProxyResponse,
@@ -39,7 +43,46 @@ def review_queue(
             rows = jobs_repo.list_review_queue_rows(connection, states, limit)
             jobs = [job_from_row(connection, row, context.layout) for row in rows]
         counts = sender_messages.message_counts(connection, rows)
-    return ReviewQueueResponse(items=summaries_with_message_counts(jobs, counts))
+        summaries = with_senders(connection, summaries_with_message_counts(jobs, counts), jobs)
+    # Who has each video open now (LIVESTACK-51), so people pick another.
+    reviewing = context.presence.everyone(context.clock.now())
+    summaries = [
+        summary.model_copy(update={"reviewing": reviewing.get(summary.id, [])})
+        for summary in summaries
+    ]
+    return ReviewQueueResponse(items=summaries)
+
+
+def ping_presence(context: OrchestratorContext, reviewer: str, job_id: str) -> JobPresenceResponse:
+    """PUT /jobs/{id}/presence: `reviewer` is on the job; the others on it (domain/presence.py)."""
+    with context.database.transaction() as connection:
+        require_job_row(connection, job_id)
+    others = context.presence.ping(job_id, reviewer, context.clock.now())
+    return JobPresenceResponse(others=others)
+
+
+def with_senders(
+    connection: sqlite3.Connection, summaries: list[JobSummary], jobs: list[Job]
+) -> list[JobSummary]:
+    """Each summary with its sender's number and name, for the "Enviado por" filter.
+
+    The name is the one on Admin → Contatos, else the WhatsApp profile
+    name the job arrived with (LIVESTACK-51 item 5).
+    """
+    names = contacts_repo.display_names(connection)
+    filled = []
+    for summary, job in zip(summaries, jobs, strict=True):
+        phone = contacts.sender_phone(job.source.sender_jid)
+        display_name = names.get(phone) if phone else None
+        filled.append(
+            summary.model_copy(
+                update={
+                    "sender_phone": phone,
+                    "sender_display_name": display_name or job.source.sender_name,
+                }
+            )
+        )
+    return filled
 
 
 def summaries_with_message_counts(jobs: list[Job], counts: dict[str, int]) -> list[JobSummary]:

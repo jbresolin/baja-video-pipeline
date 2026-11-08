@@ -6,13 +6,14 @@ guarded by GET /auth/file), not by the orchestrator (design §15).
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
 from shared.models import (
     CarVideosResponse,
     EventsResponse,
     FleetResponse,
     Job,
+    JobPresenceResponse,
     JobState,
     JobStateResponse,
     ManifestResponse,
@@ -126,6 +127,39 @@ def get_sender_messages(job_id: str) -> SenderMessagesResponse:
     by kind (`audio`, `image`, ...). Edited messages carry the new text and
     `edited: true`; deleted ones `deleted: true` and no text. Messages are
     kept for the Settings' `sender_messages_keep_days` (14)."""
+    not_implemented()
+
+
+@router.put(
+    "/jobs/{job_id}/presence",
+    tags=["review"],
+    summary="The job page is open: say so, and learn who else has it open",
+    response_model=JobPresenceResponse,
+    dependencies=_reviewer_only,
+    responses=error_responses(401, 404),
+)
+def ping_presence(job_id: str) -> JobPresenceResponse:
+    """Sent by the job page on opening and every ~20 s while it stays open
+    (LIVESTACK-51). Answers the *other* reviewers on this job (the caller
+    left out), first arrived first, with when each one's first ping came.
+    A reviewer with no ping for 45 s is gone: nothing is ever locked, this
+    only informs. In memory: a restart forgets it until the next pings.
+    `GET /review/queue` lists everyone on each job in `JobSummary.reviewing`."""
+    not_implemented()
+
+
+@router.delete(
+    "/jobs/{job_id}/presence",
+    tags=["review"],
+    summary="The job page closed",
+    status_code=204,
+    response_class=Response,
+    dependencies=_reviewer_only,
+    responses=error_responses(401),
+)
+def leave_presence(job_id: str) -> Response:
+    """Ends the caller's presence on this job at once (instead of after 45 s).
+    Always 204, also when there was none."""
     not_implemented()
 
 

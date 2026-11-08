@@ -1298,3 +1298,103 @@ installer 0.6.0.
   `y_align`, `%{eif}` padding and the escaping are the same there, per its
   documentation); the render-time cost on a worker PC (measured here on a
   32-thread machine).
+## 34. Review fixes from the 2026-11-07 test (LIVESTACK-51, 2026-11-07)
+
+Two reviewers reviewed real videos together on 2026-11-07 (comments
+on LIVEBAJA-18; brief "12 — Review fixes from the 2026-11-07 test").
+Contract 2.9.0; orchestrator and review UI only, no worker change (workers
+ignore the new answer fields, §14). Migrations 0017 and 0018.
+
+* **Two reviewers on one video: presence, never a lock.** The job page
+  says it is open (`PUT /jobs/{id}/presence`) when it is rendered and
+  every 20 s, and `DELETE`s it on `pagehide` (a `keepalive` request). The
+  orchestrator keeps it in memory (`domain/presence.py`; a restart forgets
+  it until the next pings) and drops a reviewer after 45 s without a ping,
+  so a closed laptop frees the video by itself. Reviewers are the signed-in
+  usernames (§21); the same user in two tabs is one entry; "desde" is the
+  first ping. Opening a job someone else is on shows "Pedro está
+  revisando este vídeo (desde 14:02)." with **Revisar mesmo assim**, and
+  the form is `inert` (fields, action buttons, Ctrl+S and the mark keys)
+  until it is chosen; playing and seeking still work. If the other
+  reviewer leaves or expires, the next answer frees the form without a
+  click. Once working, a reviewer who is joined by someone else gets a
+  quiet note, not a banner. The queue lists `JobSummary.reviewing` as
+  "👤 Pedro", leaving out the signed-in user. There is no "next
+  video" action in the queue (only ↑↓/j k and Enter), so nothing to skip.
+  The version check (§22) still stops a second save that would overwrite.
+  A tab left in the background more than a few minutes may drop off
+  (browsers slow its timers); it pings again as soon as it is shown.
+* **The default prova bug was the 9th digit** (checked on a copy of the
+  production DB): the admin typed a filmmaker's number with the mobile 9th
+  digit and gave it a default prova; WhatsApp's JID for that older number
+  has no 9th digit, so intake recorded the four videos under a second,
+  `unknown` contact with no default prova. The default had been set before the
+  videos and the prova was active. A second contact had been typed without
+  the country code. **One form per phone** (`domain/phones.py`): a
+  Brazilian mobile is 55 + DDD + 9 + 8 digits (a 12-digit 55 number whose
+  8-digit part starts with 6–9 gets the 9; landlines, 2–5, are left
+  alone); a number *typed* as DDD + 8 or 9 digits (DDD without 0; 11
+  digits starting with 9 after the DDD, or 10 digits starting with 2–9)
+  gets 55. Used by intake (`record_sender`), the admin's create/edit/
+  welcome (a `{phone}` in the path may be written any way), the queue's
+  sender and the duplicates' names. Jobs and messages keep their JID as it
+  came and are matched through the same rule. Migration 0018 rewrites
+  every contact in that form and merges the rows that are one phone: the
+  admin-edited fields (status, name, default prova, notes) come from the
+  row with a status other than `unknown`, then the most recently changed,
+  each empty field filled from the other row; push name from the row that
+  wrote last; first seen earliest, last seen and the reply times latest.
+  Each merge is an admin event `contact_merged` (Contatos, "Últimas
+  alterações"). The number shown is that one form, which is how the admin
+  types it today. The welcome message is still sent to the contact's
+  number in that form (as before); whether Evolution delivers to an older
+  number written with the 9 was not tested.
+* **A default set later** can be applied to the sender's videos still
+  waiting for review (received, proxy_ready, awaiting_review) with no prova
+  (`UpdateContactRequest.apply_default_prova_to_waiting`, `domain/
+  waiting_prova.py`); each contact says how many (`Contact.
+  waiting_without_prova`). A prova a reviewer chose, and reviewed videos,
+  are never touched. Saving a row whose sender has such videos and a
+  default prova chosen asks "Aplicar Enduro aos 3 vídeos deste contato que
+  ainda não têm prova?" (every save while there are any, not only when the
+  prova changed, so a default set before this fix can be applied too);
+  without JavaScript nothing is applied. It is not a reviewer change: the
+  job's version stays, and each job logs `default_prova_applied`. The hint
+  under the field says a contact without a default prova (a "coringa")
+  leaves the prova empty.
+* **Duplicate videos, by content** (`domain/duplicates.py`). A new job
+  whose raw SHA-256 matches an earlier job that is not discarded is a
+  duplicate. For WhatsApp that SHA-256 is the message's `fileSha256`, which
+  the download already verifies (§15), so the check runs once, at job
+  creation, in the same transaction (two copies arriving together make one
+  original); test uploads compare the SHA-256 computed while storing. The
+  VPS still downloads the copy (restore needs the raw); it is created and
+  at once moved `received → discarded` by `system` with
+  "duplicate of job <id>", `duplicate_of` set, `discarded_from: received`
+  and the usual grace period, so **Restaurar** works like any discard (back
+  to `received`, then workers download it; the link stays). The state
+  machine gained `received ↔ discarded` for this; reviewers still discard
+  only from `DISCARDABLE_STATES`. Workers are never offered a discarded
+  job. The bot puts ⚠️ on the copy (never ✅) and quotes it once with
+  `AdminSettings.duplicate_video_message` (Configurações; default "⚠️ Este
+  vídeo já tinha sido recebido (às {hora}). Não precisa reenviar.";
+  `{hora}` = when the first copy arrived, São Paulo, with "dd/mm" when not
+  the same day; empty = no text, the ⚠️ stays). The first job lists its
+  copies (`Job.duplicates`: "Também recebido de: Maria, 14:40"); the copy
+  links back; the queue marks "duplicado". A copy of a discarded video is
+  a new video. **Not detected:** a copy with different bytes (re-encoded,
+  e.g. recompressed by WhatsApp or trimmed); comparing pictures is out of
+  scope. Old jobs are not checked after the fact.
+* **Turning the video keeps the controls usable.** The job page has its own
+  control bar under the picture, outside the stage that "Girar" turns:
+  play/pause, one frame back/forward, the time, the cut bar as a drag
+  scrubber, the total time. The browser's own controls show only unturned
+  (as before). The turn and the "cortar" band are pure functions
+  (`playerLayout`, `cropBandBox` in `js/render_options.js`), tested in Node
+  for 0°, 90°, 180° and 270°; the band is drawn in the stage, so it is
+  never turned either.
+* **Queue filter "Enviado por"**: the senders with videos in the current
+  view, by the contact's name, else the WhatsApp name, else the number
+  (`JobSummary.sender_phone`, `sender_display_name`, filled by
+  `GET /review/queue`), combinable with the other filters, `?sender=` in
+  the URL and the auto-refresh.

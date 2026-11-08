@@ -9,7 +9,7 @@ TEXT: dict[str, str] = {
     "render.rotation": "Girar",
     "render.rotation.hint": (
         "Para um celular que gravou deitado mas marcou o vídeo como em pé (ou o contrário). "
-        "O player gira junto; enquanto girado, use o teclado e a barra do corte para controlar."
+        "Só a imagem do player gira; os controles embaixo dela ficam no lugar."
     ),
     "render.rotation.0": "Não girar",
     "render.rotation.90": "90° para a direita",
@@ -38,6 +38,12 @@ TEXT: dict[str, str] = {
     "script.orientation.unknown": (
         "O formato aparece depois que um worker com o original analisar o arquivo."
     ),
+    # --- The page's own player controls, under the picture (LIVESTACK-51 item 4) ---
+    "player.controls": "Controles do player",
+    "player.frame_back": "Um quadro para trás (←)",
+    "player.frame_forward": "Um quadro para a frente (→)",
+    "script.player.play": "Tocar (espaço)",
+    "script.player.pause": "Pausar (espaço)",
     # --- A clip that no longer matches (clip_inputs_view.py) ---
     "outdated.rotation": "O clipe no ar usa “{clip}” em Girar; a revisão agora diz “{now}”.",
     "outdated.framing": (

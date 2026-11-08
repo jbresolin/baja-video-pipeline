@@ -5,9 +5,13 @@ import { setupOverlayPreview } from "./overlay_preview.js";
 import { setupPlayer } from "./player.js";
 import { parseFragment, startPolling } from "./poll.js";
 import { setupPassagemHelp } from "./passagem_help.js";
+import { setupPresence } from "./presence.js";
 import { setupRenderOptions } from "./render_options.js";
 import { setupReviewForm } from "./review_form.js";
 import { t } from "./text.js";
+
+// Player keys that change the form (cut marks and their nudges).
+const MARK_KEYS = new Set(["i", "o", "-", "_", "=", "+"]);
 
 const jobElement = document.getElementById("job");
 const form = document.getElementById("review-form");
@@ -17,6 +21,8 @@ const passagemHelp = setupPassagemHelp({ form });
 setupRenderOptions({ form, video });
 // "Pré-visualizar overlay" (LIVESTACK-48): the overlay and its clock over the proxy.
 setupOverlayPreview({ video, form, player });
+// Who else is on this video (LIVESTACK-51); may hold the form until chosen.
+setupPresence({ form, jobElement });
 const review = setupReviewForm({
   form,
   jobElement,
@@ -45,6 +51,9 @@ document.addEventListener("keydown", (event) => {
     shortcuts.open = !shortcuts.open;
     return;
   }
+  // While the form waits for "Revisar mesmo assim", the keys that change it
+  // (marks, nudges) do nothing; playing and seeking still work.
+  if (form.inert && MARK_KEYS.has(event.key)) return;
   if (player.handleKey(event)) event.preventDefault();
 });
 

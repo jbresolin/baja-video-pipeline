@@ -70,7 +70,7 @@ types**; this page explains the behaviour around them. Design background:
 | `POST /auth/login` | none (the password is the credential; 20 per source IP per 600 s) |
 | `/admin/*`, `POST /intake/test-upload`, `GET /metrics` | sessionBearer (role admin) **or** adminBearer |
 | worker loop, `/workers`, `/auth/file`, `/outbox/{id}/ack` | workerBearer |
-| `/review/queue`, `/review/car-videos`, `GET /jobs/{job_id}/sender-messages`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
+| `/review/queue`, `/review/car-videos`, `GET /jobs/{job_id}/sender-messages`, `PUT/DELETE /jobs/{job_id}/presence`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
 | `GET /auth/media` | sessionCookie |
 | `GET /jobs/{job_id}`, `GET /manifest` | sessionBearer **or** workerBearer |
 | `GET /fleet`, `GET /jobs/{job_id}/events`, `GET /events`, `GET /provas` | sessionBearer **or** adminBearer |
@@ -184,6 +184,7 @@ direct push: the studio ACK moves claimed → uploaded → delivered in one call
 | claimed / uploaded / delivered / done → ready | review `action: reprocess` |
 | awaiting_review / ready → discarded | review `action: discard` (records `discarded_from`) |
 | discarded → `discarded_from` | review `action: restore` |
+| received → discarded | intake, at job creation, for a duplicate video (same raw SHA-256 as a job not discarded; records `discarded_from: received` and `duplicate_of`; LIVESTACK-51) |
 | received / proxy_ready / claimed → failed | `POST /jobs/{id}/failed` (records `failed_from`) |
 | failed → received / proxy_ready / ready | review `action: retry` (back to `failed_from`; claimed → ready) |
 | failed → discarded | review `action: discard` |
@@ -561,9 +562,11 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `PUT /jobs/{job_id}/render-inputs` | `RenderInputsReport` JSON, `Lease-Id` → 204 | process lease, before the upload or push; what the clip was rendered from (§5 "Render inputs"); state unchanged |
 | `GET /jobs/{job_id}/original` | → `OriginalDownload` | where "Baixar original" stands; no side effects |
 | `POST /jobs/{job_id}/original` | → `OriginalDownload` | "Baixar original"; see below |
-| `GET /review/queue?state=…&limit=…&outdated=…` | → `ReviewQueueResponse` | default `awaiting_review`; in filming order, oldest `recorded_at` first, ties by arrival (below, "Recording time"); `outdated=true`: only jobs whose clip no longer matches the review (§5 "Render inputs"); each item carries `received_at` and `sender_message_count` |
+| `GET /review/queue?state=…&limit=…&outdated=…` | → `ReviewQueueResponse` | default `awaiting_review`; in filming order, oldest `recorded_at` first, ties by arrival (below, "Recording time"); `outdated=true`: only jobs whose clip no longer matches the review (§5 "Render inputs"); each item carries `received_at` and `sender_message_count`, and (LIVESTACK-51) `sender_phone` / `sender_display_name` (the contact's key and name, for "Enviado por"), `reviewing` (who has the job page open) and `duplicate_of` |
 | `GET /review/car-videos?prova=…&car_number=…` | → `CarVideosResponse` | one car's jobs in one prova, discarded left out, filming order; the job page's passagem panel (below) |
 | `GET /jobs/{job_id}` | → `Job` | |
+| `PUT /jobs/{job_id}/presence` | → `JobPresenceResponse` | reviewer session; "this job page is open", on opening and every ~20 s; answers the *other* reviewers on the job (`others`, first arrived first, `since` = their first ping). In memory; 45 s without a ping = gone. Never a lock (LIVESTACK-51); 404 unknown job |
+| `DELETE /jobs/{job_id}/presence` | → 204 | the page closed; always 204 |
 | `GET /jobs/{job_id}/sender-messages` | → `SenderMessagesResponse` | reviewer session only; the job page's "Mensagens de <remetente>" (below, "Sender messages"); 404 unknown job |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
 | `POST /jobs/{job_id}/regenerate-proxy` | → 202 `RegenerateProxyResponse` | no state change |
@@ -623,6 +626,19 @@ revoked worker. The PCs learn it from the heartbeat (§5 "Role").
 ignored, no reply; in intake mode `allowlist`, not `allowed` → 200 ignored
 and `SENDER_NOT_AUTHORIZED` at most once per 24 h; otherwise the job is
 created with the contact's default prova filled in.
+
+**One contact per phone** (LIVESTACK-51, `domain/phones.py`). A
+Brazilian mobile is kept as 55 + DDD + 9 + 8 digits, whether the JID or
+the admin wrote it with or without the 9th digit (a 12-digit 55 number
+whose 8-digit part starts with 6–9 gets the 9; landlines are left alone),
+and a number typed as DDD + 8 or 9 digits gets 55. `Contact.phone` is that
+form; a `{phone}` in the path may be written any way. Migration 0017 merged
+existing twins (admin event `contact_merged`). `Contact.waiting_without_prova`
+counts the sender's videos still waiting for review (received, proxy_ready,
+awaiting_review) with no prova; `PATCH /admin/contacts/{phone}` with
+`apply_default_prova_to_waiting: true` fills the contact's default prova
+(after the change) into them, logging `default_prova_applied` on each job,
+without bumping their version. A prova already chosen is never replaced.
 
 **Welcome message** (LIVESTACK-44). `AdminSettings.welcome_message` (pt-BR
 default shipped, edited on Settings; empty turns it off) is sent with
@@ -736,7 +752,12 @@ are accepted too). `mediaUrl` is not used. The answer comes fast: 202
 in the background (§6.3), and the job is created in `received` only after
 every check passed. If that fails, no job exists and the bot asks the
 sender to resend. A repeated `data.key.id` (in progress or done) → 200
-`duplicate: true` with the existing `job_id` if any. Inbox above
+`duplicate: true` with the existing `job_id` if any. The same *video* in a
+new message (resent, forwarded by someone else) becomes a job discarded at
+once as a duplicate: its raw SHA-256 (= `fileSha256`, already verified by
+the download) matches a job that is not discarded. `Job.duplicate_of`
+names the first job, `Job.duplicates` lists the copies on it; restore works
+as for any discard (back to `received`). A re-encoded copy is not detected. Inbox above
 `BVP_INBOX_CAP_GB` → 413 `inbox_full`; above `BVP_INBOX_HOLD_GB` the media
 is accepted but the bot asks the sender to hold further videos.
 
@@ -746,6 +767,7 @@ video they are about, because volunteers send several files in a row:
 | Situation | Reaction on the video | Text (quoted reply to the video) |
 | --- | --- | --- |
 | verified, job created | ✅ | none |
+| verified, but the same video as a job not discarded (duplicate, discarded at once) | ⚠️ | `AdminSettings.duplicate_video_message`, `{hora}` = when the first copy arrived (none when empty) |
 | arrived as a WhatsApp video (`low_res`) | ⚠️ | `LOW_RES_RESEND_AS_DOCUMENT` |
 | inbox above the soft cap | ⚠️ | `INBOX_NEARLY_FULL_PLEASE_HOLD` |
 | inbox above the hard cap (413) | ❌ | `INBOX_FULL_RESEND_LATER` |

@@ -63,7 +63,17 @@ from tools.openapi_contract import (
 # first: an older orchestrator refuses every render-inputs report of a 0.6.0
 # worker (it always carries the pass_clock key); the worker logs it and
 # delivers anyway, and the version keeps the claim snapshot.
-CONTRACT_VERSION = "2.8.0"
+# 2.9.0: review fixes from the 2026-11-07 test (LIVESTACK-51): JobSummary.
+# sender_phone and sender_display_name (the queue's "Enviado por" filter);
+# duplicate videos: Job.duplicate_of and duplicates (DuplicateCopy),
+# JobSummary.duplicate_of, AdminSettings.duplicate_video_message.
+# Who has a job page open: PUT/DELETE /jobs/{id}/presence (JobPresenceResponse,
+# PresentReviewer) and JobSummary.reviewing.
+# One contact per phone: Contact.waiting_without_prova and
+# UpdateContactRequest.apply_default_prova_to_waiting; a {phone} in the path
+# may be written in any form (9th digit, +55).
+# Only reviewer-facing answers changed; workers ignore them (§14).
+CONTRACT_VERSION = "2.9.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

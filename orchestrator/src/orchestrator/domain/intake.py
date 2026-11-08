@@ -9,8 +9,10 @@ so are its edits and deletions (events messages.edited / messages.delete).
 The webhook answers within milliseconds (Evolution retries slow or failed
 deliveries). The actual work happens in run_media_download(), started in
 the background, and the job only exists once the media is downloaded,
-decrypted and every hash checked. Bot replies are sent outside any DB
-transaction, so a slow Evolution never holds the DB lock.
+decrypted and every hash checked. A video already received in another
+job that is not discarded (same SHA-256) still becomes a job, discarded at
+once as a duplicate (domain/duplicates.py, LIVESTACK-51). Bot replies are
+sent outside any DB transaction, so a slow Evolution never holds the DB lock.
 """
 
 import logging
@@ -23,7 +25,7 @@ from pydantic import ValidationError
 
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import to_db_time
-from orchestrator.domain import bot_messages, contacts, intake_notes
+from orchestrator.domain import bot_messages, contacts, duplicates, intake_notes
 from orchestrator.domain.bot_replies import (
     REACTION_FAILED,
     REACTION_STORED,
@@ -281,9 +283,10 @@ def run_media_download(context: OrchestratorContext, pending: PendingMediaDownlo
         return None
 
     with context.database.transaction() as connection:
+        now = context.clock.now()
         create_received_job(
             connection,
-            context.clock.now(),
+            now,
             job_id=pending.job_id,
             message_id=pending.message_id,
             sender_jid=pending.sender_jid,
@@ -301,8 +304,18 @@ def run_media_download(context: OrchestratorContext, pending: PendingMediaDownlo
             received_at=pending.received_at,
             caption=pending.caption,
         )
-    # Confirm only now that the file is verified and the job exists.
-    if pending.confirm_when_stored:
+        # The same video as an earlier job: discarded at once (LIVESTACK-51).
+        duplicate = duplicates.discard_if_duplicate(
+            connection, pending.job_id, now, context.admin_settings.discard_grace
+        )
+    if duplicate is not None:
+        # ⚠️ and "já tinha sido recebido (às 14:32)" instead of ✅, once:
+        # a webhook retry of this message never gets here again.
+        template = context.admin_settings.current.duplicate_video_message
+        reply = duplicates.duplicate_reply(pending.target, duplicate, template, now)
+        send_bot_reply(context.evolution, reply)
+    elif pending.confirm_when_stored:
+        # Confirm only now that the file is verified and the job exists.
         send_bot_reply(context.evolution, BotReply(pending.target, REACTION_STORED))
     return pending.job_id
 

@@ -5,8 +5,11 @@
 //   * the orientation line and whether "Enquadramento" applies at all
 //     (a picture that is 16:9 after the turn renders as before);
 //   * the player turns with "Girar" (CSS), so the reviewer sees the clip's
-//     way up; the browser's own controls are hidden while it is turned
-//     (they would turn too), the keyboard and the cut bar still work;
+//     way up. Only the picture turns: the page's own control bar under it
+//     (play, frame step, time, the cut bar as scrubber; js/player.js) is
+//     outside the stage and stays upright. The browser's own controls are
+//     shown only unturned, since they would turn with the picture
+//     (LIVESTACK-51 item 4);
 //   * with "Cortar", a band over the player shows what goes into the clip;
 //   * with "Sem áudio", the player is muted: the reviewer hears what goes out.
 // The rules mirror shared/framing.py; test_render_options_page.py runs the
@@ -46,6 +49,46 @@ export function cropBandFractions(width, height, position) {
   return { left: (1 - bandWidth) * position, top: 0, width: bandWidth, height: 1 };
 }
 
+// Where the turned picture sits in the stage, in CSS pixels of the stage.
+// The video element keeps the stage's 16:9 box and draws the proxy
+// contained in it; the element is turned around its centre and scaled so
+// the turned picture fits the box again. Returns the CSS transform, the
+// turned picture's size and its top-left corner in the stage; null while
+// a size is unknown (metadata not loaded, element not laid out).
+export function playerLayout(stageWidth, stageHeight, proxyWidth, proxyHeight, rotation) {
+  if (!stageWidth || !stageHeight || !proxyWidth || !proxyHeight) return null;
+  // The proxy as the browser draws it unturned (contained in the box)...
+  const contain = Math.min(stageWidth / proxyWidth, stageHeight / proxyHeight);
+  const drawnWidth = proxyWidth * contain;
+  const drawnHeight = proxyHeight * contain;
+  // ...then turned, and scaled so the turned picture fits the box again.
+  const quarter = rotation % 180 === 90;
+  const scale = quarter ? Math.min(stageWidth / drawnHeight, stageHeight / drawnWidth) : 1;
+  const pictureWidth = (quarter ? drawnHeight : drawnWidth) * scale;
+  const pictureHeight = (quarter ? drawnWidth : drawnHeight) * scale;
+  return {
+    transform: rotation ? `rotate(${rotation}deg) scale(${scale})` : "",
+    pictureWidth,
+    pictureHeight,
+    left: (stageWidth - pictureWidth) / 2,
+    top: (stageHeight - pictureHeight) / 2,
+  };
+}
+
+// The "Cortar" band in CSS pixels of the stage, over the turned picture
+// placed by playerLayout. The band is not inside the turned element, so it
+// is always drawn upright.
+export function cropBandBox(layout, proxyWidth, proxyHeight, rotation, position) {
+  const [turnedWidth, turnedHeight] = turnedSize(proxyWidth, proxyHeight, rotation);
+  const fractions = cropBandFractions(turnedWidth, turnedHeight, position);
+  return {
+    left: layout.left + fractions.left * layout.pictureWidth,
+    top: layout.top + fractions.top * layout.pictureHeight,
+    width: fractions.width * layout.pictureWidth,
+    height: fractions.height * layout.pictureHeight,
+  };
+}
+
 export function setupRenderOptions({ form, video }) {
   const box = document.getElementById("render-options");
   if (!box) return;
@@ -74,43 +117,33 @@ export function setupRenderOptions({ form, video }) {
     };
   }
 
-  // Turn the player and place the crop band. Sizes are in CSS pixels of the
-  // stage; the video element keeps its 16:9 box and shows the proxy inside it.
+  // Turn the player and place the crop band.
   function layoutPlayer({ rotation, framing, position }, applies) {
     if (!video || !stage) return;
-    const stageWidth = video.clientWidth;
-    const stageHeight = video.clientHeight;
-    const proxyWidth = video.videoWidth;
-    const proxyHeight = video.videoHeight;
-    if (!stageWidth || !stageHeight || !proxyWidth || !proxyHeight) {
+    // The browser's controls only while unturned; the page's own bar is
+    // always there (js/player.js).
+    video.controls = rotation === 0;
+    const layout = playerLayout(
+      video.clientWidth,
+      video.clientHeight,
+      video.videoWidth,
+      video.videoHeight,
+      rotation,
+    );
+    if (!layout) {
       if (band) band.hidden = true;
       return;
     }
-    // The proxy as the browser draws it unturned (contained in the box)...
-    const contain = Math.min(stageWidth / proxyWidth, stageHeight / proxyHeight);
-    const drawnWidth = proxyWidth * contain;
-    const drawnHeight = proxyHeight * contain;
-    // ...then turned, and scaled so the turned picture fits the box again.
-    const quarter = rotation % 180 === 90;
-    const scale = quarter
-      ? Math.min(stageWidth / drawnHeight, stageHeight / drawnWidth)
-      : 1;
-    video.style.transform = rotation ? `rotate(${rotation}deg) scale(${scale})` : "";
-    video.controls = rotation === 0;
+    video.style.transform = layout.transform;
     if (!band) return;
     const showBand = applies && framing === "crop";
     band.hidden = !showBand;
     if (!showBand) return;
-    const pictureWidth = (quarter ? drawnHeight : drawnWidth) * scale;
-    const pictureHeight = (quarter ? drawnWidth : drawnHeight) * scale;
-    const [turnedWidth, turnedHeight] = turnedSize(proxyWidth, proxyHeight, rotation);
-    const fractions = cropBandFractions(turnedWidth, turnedHeight, position);
-    const left = (stageWidth - pictureWidth) / 2 + fractions.left * pictureWidth;
-    const top = (stageHeight - pictureHeight) / 2 + fractions.top * pictureHeight;
-    band.style.left = `${left}px`;
-    band.style.top = `${top}px`;
-    band.style.width = `${fractions.width * pictureWidth}px`;
-    band.style.height = `${fractions.height * pictureHeight}px`;
+    const box = cropBandBox(layout, video.videoWidth, video.videoHeight, rotation, position);
+    band.style.left = `${box.left}px`;
+    band.style.top = `${box.top}px`;
+    band.style.width = `${box.width}px`;
+    band.style.height = `${box.height}px`;
   }
 
   function update() {

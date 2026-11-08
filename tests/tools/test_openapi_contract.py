@@ -47,6 +47,9 @@ REQUIRED_ENDPOINTS = {
     ("get", "/review/car-videos"),
     ("get", "/jobs/{job_id}"),
     ("get", "/jobs/{job_id}/sender-messages"),
+    # Who has a job page open (LIVESTACK-51).
+    ("put", "/jobs/{job_id}/presence"),
+    ("delete", "/jobs/{job_id}/presence"),
     ("patch", "/jobs/{job_id}/review"),
     ("post", "/jobs/{job_id}/regenerate-proxy"),
     ("get", "/teams/{car_number}"),

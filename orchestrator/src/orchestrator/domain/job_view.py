@@ -6,6 +6,7 @@ from pathlib import PurePosixPath
 
 from orchestrator.db.database import from_db_time
 from orchestrator.domain.clip_names import clip_names_for_job, name_styles
+from orchestrator.domain.duplicates import duplicates_of
 from orchestrator.domain.pass_clock import pass_clock_for_job
 from orchestrator.domain.pass_results import pass_result_for_job
 from orchestrator.domain.render_inputs import compare_newest_clip
@@ -193,6 +194,9 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
         failed_from=JobState(row["failed_from"]) if row["failed_from"] else None,
         discarded_from=JobState(row["discarded_from"]) if row["discarded_from"] else None,
         discard_grace_ends_at=from_db_time(row["discard_grace_ends_at"]),
+        # Duplicate videos (LIVESTACK-51 item 3).
+        duplicate_of=row["duplicate_of"],
+        duplicates=duplicates_of(connection, row["id"]),
         waiting_reason=row["waiting_reason"],
     )
 

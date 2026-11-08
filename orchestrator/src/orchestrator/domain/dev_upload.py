@@ -4,6 +4,7 @@ import hashlib
 from typing import BinaryIO
 
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain import duplicates
 from orchestrator.domain.intake import create_received_job
 from orchestrator.errors import ApiError
 from orchestrator.security import new_id
@@ -55,6 +56,10 @@ def ingest_test_upload(
             size_bytes=size_bytes,
             raw_extension=raw_extension,
             actor="admin",
+        )
+        # No fileSha256 here: the SHA-256 just computed is compared (LIVESTACK-51).
+        duplicates.discard_if_duplicate(
+            connection, job_id, context.clock.now(), context.admin_settings.discard_grace
         )
     return IntakeResponse(
         job_id=job_id,

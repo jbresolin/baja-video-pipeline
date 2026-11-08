@@ -1,8 +1,8 @@
 """Filters for the queue page (GET /review/).
 
 The orchestrator filters by state and by "clip out of date" (LIVESTACK-43).
-Prova and the "flagged" (low_res) filter are applied here, on the list it
-returned.
+Prova, the sender ("Enviado por", LIVESTACK-51) and the "flagged" (low_res)
+filter are applied here, on the list it returned.
 """
 
 from dataclasses import dataclass, field
@@ -44,6 +44,8 @@ class QueueFilter:
     states: list[JobState] = field(default_factory=lambda: list(DEFAULT_QUEUE_STATES))
     # Empty string = any prova.
     prova: str = ""
+    # The sender's number (JobSummary.sender_phone); empty string = anyone.
+    sender: str = ""
     # Only jobs flagged low_res (arrived as a recompressed WhatsApp video).
     flagged_only: bool = False
     # Only jobs whose clip no longer matches the review ("Clipes desatualizados").
@@ -54,6 +56,8 @@ class QueueFilter:
         params: list[tuple[str, str]] = [("state", state.value) for state in self.states]
         if self.prova:
             params.append(("prova", self.prova))
+        if self.sender:
+            params.append(("sender", self.sender))
         if self.flagged_only:
             params.append(("flagged", "1"))
         if self.outdated_only:
@@ -65,7 +69,11 @@ TRUE_VALUES = {"1", "true", "on"}
 
 
 def parse_queue_filter(
-    states: list[str], prova: str | None, flagged: str | None, outdated: str | None = None
+    states: list[str],
+    prova: str | None,
+    flagged: str | None,
+    outdated: str | None = None,
+    sender: str | None = None,
 ) -> QueueFilter:
     """Build a QueueFilter from query parameters, ignoring unknown state names.
 
@@ -81,6 +89,7 @@ def parse_queue_filter(
     return QueueFilter(
         states=ordered or list(default_states),
         prova=(prova or "").strip(),
+        sender=(sender or "").strip(),
         flagged_only=flagged in TRUE_VALUES,
         outdated_only=outdated_only,
     )
@@ -99,9 +108,28 @@ def apply_local_filters(items: list[JobSummary], queue_filter: QueueFilter) -> l
     kept = items
     if queue_filter.prova:
         kept = [item for item in kept if item.prova and same_prova(item.prova, queue_filter.prova)]
+    if queue_filter.sender:
+        kept = [item for item in kept if item.sender_phone == queue_filter.sender]
     if queue_filter.flagged_only:
         kept = [item for item in kept if item.low_res]
     return kept
+
+
+@dataclass(frozen=True)
+class SenderOption:
+    phone: str
+    # The contact's name, else the number.
+    label: str
+
+
+def sender_options(items: list[JobSummary]) -> list[SenderOption]:
+    """The senders who have videos in this list, one each, by name (case-insensitive)."""
+    labels: dict[str, str] = {}
+    for item in items:
+        if item.sender_phone and item.sender_phone not in labels:
+            labels[item.sender_phone] = item.sender_display_name or item.sender_phone
+    options = [SenderOption(phone, label) for phone, label in labels.items()]
+    return sorted(options, key=lambda option: (option.label.casefold(), option.phone))
 
 
 def distinct_provas(provas: list[str | None]) -> list[str]:

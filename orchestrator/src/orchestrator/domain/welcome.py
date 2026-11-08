@@ -24,6 +24,7 @@ message of theirs to answer.
 from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import to_db_time
 from orchestrator.domain.audit import AdminActor, record_admin_change
+from orchestrator.domain.contacts import normalize_phone
 from orchestrator.errors import ApiError, not_found
 from orchestrator.repositories import contacts as contacts_repo
 from shared.models import (
@@ -87,6 +88,8 @@ def send_welcome_again(
 
 
 def _contact(context: OrchestratorContext, phone: str) -> Contact:
+    # The path's phone may be written any way (domain/phones.py).
+    phone = normalize_phone(phone) or phone
     with context.database.transaction() as connection:
         row = contacts_repo.get_contact_row(connection, phone)
     if row is None:

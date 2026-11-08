@@ -19,6 +19,7 @@ from orchestrator.config import Settings
 from orchestrator.counters import TaskCounters
 from orchestrator.db.database import Database
 from orchestrator.domain.app_settings import AdminSettingsStore
+from orchestrator.domain.presence import PresenceBoard
 from orchestrator.security import SlidingWindowRateLimiter
 from orchestrator.storage import VpsLayout
 
@@ -55,3 +56,5 @@ class OrchestratorContext:
     upload_locks: KeyedLocks = field(default_factory=KeyedLocks)
     # Offers, claims and failures since start, for GET /metrics.
     task_counters: TaskCounters = field(default_factory=TaskCounters)
+    # Who has which job page open (LIVESTACK-51), in memory only.
+    presence: PresenceBoard = field(default_factory=PresenceBoard)

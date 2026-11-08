@@ -22,7 +22,7 @@ from shared.models.enums import (
     SenderMessageKind,
     SenderMessageRole,
 )
-from shared.models.job import JobSummary, check_cut_order
+from shared.models.job import JobSummary, PresentReviewer, check_cut_order
 
 
 class ReviewQueueResponse(ReadByClients):
@@ -33,6 +33,16 @@ class ReviewQueueResponse(ReadByClients):
     """
 
     items: list[JobSummary]
+
+
+class JobPresenceResponse(ReadByClients):
+    """PUT /jobs/{id}/presence: the *other* reviewers on this job (LIVESTACK-51).
+
+    The caller is left out; empty when nobody else has the page open.
+    Read by clients: unknown fields are ignored.
+    """
+
+    others: list[PresentReviewer]
 
 
 class CarVideosResponse(ReadByClients):

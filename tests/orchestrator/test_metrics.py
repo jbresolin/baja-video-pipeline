@@ -62,7 +62,7 @@ def test_metrics_follow_a_job_through_offer_claim_and_failure(harness):
     # Set up: a master and a volunteer worker are online, one video arrives.
     master = harness.enroll(WorkerRole.MASTER, "master")
     harness.enroll(WorkerRole.WORKER, "volunteer")
-    job_id = receive_job(harness)
+    job_id = receive_job(harness, SAMPLE_VIDEO_BYTES)
 
     # The master asks for work (one offer), claims it (one claim), then
     # reports that its disk is full (one failure, scope "worker").

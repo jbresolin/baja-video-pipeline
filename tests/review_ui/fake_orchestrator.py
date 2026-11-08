@@ -35,7 +35,7 @@ from datetime import datetime, timedelta
 
 import httpx
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
 from shared.layout import slugify_prova
@@ -46,6 +46,7 @@ from shared.models import (
     JobState,
     JobSummary,
     ManifestResponse,
+    PresentReviewer,
     Prova,
     ReviewAction,
     ReviewUpdate,
@@ -113,6 +114,9 @@ class FakeOrchestrator:
     # Job id → its "Mensagens de <remetente>" items, already in display
     # order (the orchestrator decides roles and order; the fake just keeps them).
     sender_messages: dict[str, list[SenderMessage]] = field(default_factory=dict)
+    # Job id → the *other* reviewers on it (LIVESTACK-51): what PUT
+    # …/presence answers and what the queue lists in `reviewing`.
+    presence: dict[str, list[PresentReviewer]] = field(default_factory=dict)
     requests: list[RecordedRequest] = field(default_factory=list)
     # Switches that make an endpoint fail, to test the UI's error handling.
     fleet_fails: bool = False
@@ -121,6 +125,7 @@ class FakeOrchestrator:
     # Makes both event endpoints answer 500.
     events_fail: bool = False
     sender_messages_fail: bool = False
+    presence_fails: bool = False
 
     def add_job(self, job: Job) -> None:
         self.jobs[job.id] = job
@@ -129,7 +134,18 @@ class FakeOrchestrator:
         """JobSummary as the lists send it, with the message count (LIVESTACK-49)."""
         summary = JobSummary.from_job(job)
         count = len(self.sender_messages.get(job.id, []))
-        return summary.model_copy(update={"sender_message_count": count}).model_dump(mode="json")
+        # The sender for the "Enviado por" filter (LIVESTACK-51): the JID's
+        # digits and, with no contacts here, the WhatsApp name.
+        jid = job.source.sender_jid
+        update = {
+            "sender_message_count": count,
+            "reviewing": [
+                reviewer.model_dump(mode="json") for reviewer in self.presence.get(job.id, [])
+            ],
+            "sender_phone": jid.split("@", 1)[0] if jid else None,
+            "sender_display_name": job.source.sender_name,
+        }
+        return summary.model_copy(update=update).model_dump(mode="json")
 
     def http_client(self) -> httpx.Client:
         """An httpx.Client whose requests are answered by this fake, in memory."""
@@ -301,6 +317,19 @@ def build_app(fake: FakeOrchestrator) -> FastAPI:
         if job_id not in fake.jobs:
             return _error(404, "not_found", f"no job {job_id}")
         return fake.jobs[job_id].model_dump(mode="json")
+
+    @app.put("/jobs/{job_id}/presence")
+    def ping_presence(job_id: str):
+        if fake.presence_fails:
+            return _error(500, "internal_error", "presence is down for this test")
+        if job_id not in fake.jobs:
+            return _error(404, "not_found", f"no job {job_id}")
+        others = fake.presence.get(job_id, [])
+        return {"others": [reviewer.model_dump(mode="json") for reviewer in others]}
+
+    @app.delete("/jobs/{job_id}/presence", status_code=204)
+    def leave_presence(job_id: str):
+        return Response(status_code=204)
 
     @app.get("/jobs/{job_id}/sender-messages")
     def sender_messages(job_id: str):

@@ -51,6 +51,22 @@ function enhanceConfirmForms(root) {
 
 enhanceConfirmForms(document);
 
+// "Prova padrão" (LIVESTACK-51): saving a contact row whose sender has
+// videos waiting for review without a prova asks whether to fill them too.
+// Delegated, so rows swapped in by the Permitir/Bloquear buttons work too.
+document.addEventListener("submit", (event) => {
+  const form = event.target;
+  if (!form.matches?.("form[data-waiting-without-prova]")) return;
+  const flag = form.elements.apply_default_prova_to_waiting;
+  flag.value = "";
+  const count = Number(form.dataset.waitingWithoutProva);
+  const select = form.elements.default_prova_id;
+  if (!count || !select?.value) return;
+  const prova = select.selectedOptions[0].textContent.trim();
+  const key = count === 1 ? "script.contacts.apply_default.one" : "script.contacts.apply_default.other";
+  if (window.confirm(t(key, { prova, count }))) flag.value = "1";
+});
+
 // The element a data-inline form's answer replaces.
 function inlineTarget(form) {
   const selector = form.dataset.inlineTarget;

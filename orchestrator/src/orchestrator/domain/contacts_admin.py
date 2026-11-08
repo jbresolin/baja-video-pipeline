@@ -1,6 +1,10 @@
 """Admin Contacts page: list senders, allow/block them, name them, set a default prova.
 
 Adding a contact may also send them the welcome message (domain/welcome.py).
+A phone in the path may be written any way (with or without the 9th
+digit or +55): it is read with the same rule as everywhere (domain/phones.py).
+Setting a default prova may also fill it into the sender's videos still
+waiting for review without one (domain/waiting_prova.py, LIVESTACK-51).
 """
 
 import sqlite3
@@ -9,6 +13,7 @@ from typing import Any
 from orchestrator.context import OrchestratorContext
 from orchestrator.domain.audit import AdminActor, record_admin_change
 from orchestrator.domain.contacts import normalize_phone
+from orchestrator.domain.waiting_prova import apply_to_waiting, waiting_without_prova_counts
 from orchestrator.domain.welcome import welcome_after_create
 from orchestrator.errors import ApiError, not_found, validation_error
 from orchestrator.repositories import catalog as catalog_repo
@@ -39,11 +44,26 @@ def _clean_text(value: str | None) -> str | None:
     return (value or "").strip() or None
 
 
+def contact_key(phone: str) -> str:
+    """The stored key for a phone from a URL, written any way ("+55 54 9…", JID digits)."""
+    return normalize_phone(phone) or phone
+
+
+def _with_waiting_count(connection: sqlite3.Connection, contact: Contact) -> Contact:
+    count = waiting_without_prova_counts(connection)[contact.phone]
+    return contact.model_copy(update={"waiting_without_prova": count})
+
+
 def list_contacts(context: OrchestratorContext, status: ContactStatus | None) -> ContactsResponse:
     with context.database.transaction() as connection:
         rows = contacts_repo.list_contact_rows(connection, status)
+        waiting = waiting_without_prova_counts(connection)
+    contacts = [contacts_repo.contact_from_row(row) for row in rows]
     return ContactsResponse(
-        contacts=[contacts_repo.contact_from_row(row) for row in rows],
+        contacts=[
+            contact.model_copy(update={"waiting_without_prova": waiting[contact.phone]})
+            for contact in contacts
+        ],
         welcome_message_set=bool(context.admin_settings.current.welcome_message),
     )
 
@@ -92,6 +112,7 @@ def update_contact(
 ) -> Contact:
     # Only fields present in the request change; null clears a clearable one.
     sent = request.model_fields_set
+    phone = contact_key(phone)
     now = context.clock.now()
     with context.database.transaction() as connection:
         row = contacts_repo.get_contact_row(connection, phone)
@@ -113,6 +134,12 @@ def update_contact(
             contacts_repo.update_contact(connection, phone, now, changes)
         after = contacts_repo.contact_from_row(contacts_repo.get_contact_row(connection, phone))
         changed = [name for name in changes if getattr(before, name) != getattr(after, name)]
+        filled = []
+        if request.apply_default_prova_to_waiting and after.default_prova:
+            filled = apply_to_waiting(
+                connection, phone, after.default_prova, now, actor.event_actor
+            )
+            changed.append(f"default prova applied to {len(filled)} waiting video(s)")
         record_admin_change(
             connection,
             now,
@@ -120,6 +147,7 @@ def update_contact(
             "contact_updated",
             f"{phone}: " + (", ".join(changed) or "no change"),
             before=_contact_json(before),
-            after=_contact_json(after),
+            after={**_contact_json(after), "default_prova_applied_to": filled},
         )
+        after = _with_waiting_count(connection, after)
     return after

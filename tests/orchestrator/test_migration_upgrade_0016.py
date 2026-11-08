@@ -4,8 +4,8 @@ Main (with LIVESTACK-47's 0015) leaves a database at version 15. 0016 adds
 `jobs.largada_s` and `jobs.show_clock`.
 
 The test builds a database as main leaves it, with one job, opens it with
-this code (as the orchestrator does at startup) and checks that only 0016
-runs, and that the old job has no largada (so no clock) and a toggle never
+this code (as the orchestrator does at startup) and checks that 0016 and
+the later migrations run, and that the old job has no largada (so no clock) and a toggle never
 set (NULL: the prova's default applies).
 """
 
@@ -36,13 +36,14 @@ def database_at_schema_15(data_dir):
     connection.close()
 
 
-def test_only_0016_runs_and_old_jobs_have_no_clock(tmp_path):
+def test_0016_runs_and_old_jobs_have_no_clock(tmp_path):
     database_at_schema_15(tmp_path)
 
     database = Database(tmp_path / "db" / "bvp.sqlite3")
     applied = database.apply_migrations()
 
-    assert applied == ["0016_pass_clock.sql"]
+    assert applied == [name for number, name, _ in list_migrations() if number > SCHEMA_ON_MAIN]
+    assert applied[0] == "0016_pass_clock.sql"
     with database.transaction() as connection:
         job = connection.execute("SELECT * FROM jobs").fetchone()
     # Untouched, with no largada and the clock toggle never set.

@@ -8,7 +8,12 @@
 // mark like the cuts: "Marcar" or the l key at the current frame, -/=
 // nudge it by one frame once it is the active mark, a line on the cut bar.
 // It is only on the page for a prova with a clock (_pass_clock.html).
+//
+// The page has its own control bar under the picture (play, frame step,
+// time, the cut bar as scrubber), outside the stage that "Girar" turns, so
+// it works at every rotation (LIVESTACK-51 item 4).
 import { formatTimecode } from "./format.js";
+import { t } from "./text.js";
 
 // Used when the page carries no frame rate; phone footage is ~30 fps.
 // The server already falls back to 30 (job_view.frame_rate_for_stepping),
@@ -136,6 +141,43 @@ export function setupPlayer({ video, form, jobElement }) {
     video.play();
   }
 
+  // Play, frame step and the total time under the picture, and dragging
+  // along the cut bar to scrub (a click alone still seeks, below).
+  function setupControlBar() {
+    if (!video) return;
+    const playButton = document.getElementById("play-button");
+    const totalTime = document.getElementById("total-time");
+    const showPlayState = () => {
+      const label = t(video.paused ? "script.player.play" : "script.player.pause");
+      playButton.textContent = video.paused ? "▶" : "⏸";
+      playButton.title = label;
+      playButton.setAttribute("aria-label", label);
+    };
+    playButton.addEventListener("click", togglePlay);
+    for (const name of ["play", "pause", "ended"]) video.addEventListener(name, showPlayState);
+    showPlayState();
+    document
+      .querySelector('[data-player="frame-back"]')
+      .addEventListener("click", () => stepFrames(-1));
+    document
+      .querySelector('[data-player="frame-forward"]')
+      .addEventListener("click", () => stepFrames(1));
+    video.addEventListener("loadedmetadata", () => {
+      totalTime.textContent = formatTimecode(duration());
+    });
+    const seekToPointer = (event) => {
+      const box = cutBar.getBoundingClientRect();
+      seek(clamp((event.clientX - box.left) / box.width, 0, 1) * duration());
+    };
+    cutBar.addEventListener("pointerdown", (event) => {
+      cutBar.setPointerCapture(event.pointerId);
+      seekToPointer(event);
+    });
+    cutBar.addEventListener("pointermove", (event) => {
+      if (cutBar.hasPointerCapture(event.pointerId)) seekToPointer(event);
+    });
+  }
+
   // Returns true when the key was a player shortcut (caller prevents default).
   function handleKey(event) {
     const key = event.key;
@@ -174,6 +216,7 @@ export function setupPlayer({ video, form, jobElement }) {
     const box = cutBar.getBoundingClientRect();
     seek(((event.clientX - box.left) / box.width) * duration());
   });
+  setupControlBar();
   if (video) {
     for (const name of ["timeupdate", "seeked", "loadedmetadata"]) video.addEventListener(name, render);
     video.addEventListener("timeupdate", () => {

@@ -5,6 +5,7 @@ Caddy would), so a test built from them exercises the real service.
 """
 
 import hashlib
+import itertools
 from collections.abc import Callable
 from urllib.parse import urlsplit
 
@@ -23,6 +24,8 @@ from shared.testing.whatsapp_media_encrypt import encrypt_bytes
 
 # A few KB standing in for a video: the orchestrator never decodes raws.
 SAMPLE_VIDEO_BYTES = bytes(range(256)) * 40
+# Numbers the videos receive_job makes up, so each is a different file.
+_NEW_VIDEO_NUMBERS = itertools.count(1)
 # Any bytes starting with the JPEG magic number pass the thumbnail check.
 SAMPLE_JPEG = b"\xff\xd8\xff\xe0" + b"thumbnail" * 10
 SAMPLE_PROXY = b"proxy-bytes-" * 500
@@ -39,6 +42,7 @@ def send_video(
     sender_phone: str = "5511999999999",
     reshape: Callable[[dict], dict] | None = None,
     caption: str | None = None,
+    sender_name: str = "Voluntário Teste",
 ) -> tuple[httpx.Response, dict]:
     """Encrypt `data` like WhatsApp, put it on the fake CDN and post the webhook.
 
@@ -52,7 +56,12 @@ def send_video(
     url = harness.cdn.add_blob(path, blob)
     if as_video_message:
         payload = video_message_payload(
-            encrypted, url, path, sender_phone=sender_phone, message_id=message_id
+            encrypted,
+            url,
+            path,
+            sender_phone=sender_phone,
+            sender_name=sender_name,
+            message_id=message_id,
         )
     else:
         payload = document_message_payload(
@@ -61,6 +70,7 @@ def send_video(
             path,
             file_name=file_name,
             sender_phone=sender_phone,
+            sender_name=sender_name,
             message_id=message_id,
             caption=caption,
         )
@@ -81,9 +91,19 @@ def job_id_for_message(harness: OrchestratorHarness, message_id: str) -> str | N
     return row["job_id"] if row else None
 
 
-def receive_job(harness: OrchestratorHarness, data: bytes = SAMPLE_VIDEO_BYTES, **kwargs) -> str:
-    """Send a video and return the id of the job it created."""
-    response, payload = send_video(harness, data, **kwargs)
+def new_video_bytes() -> bytes:
+    """A video no test sent before: the same bytes twice would be a duplicate,
+    discarded at intake (LIVESTACK-51)."""
+    return SAMPLE_VIDEO_BYTES + f"video {next(_NEW_VIDEO_NUMBERS)}".encode()
+
+
+def receive_job(harness: OrchestratorHarness, data: bytes | None = None, **kwargs) -> str:
+    """Send a video and return the id of the job it created.
+
+    Without `data` it is a new video each time (new_video_bytes); pass
+    SAMPLE_VIDEO_BYTES when a test reads the bytes back.
+    """
+    response, payload = send_video(harness, data or new_video_bytes(), **kwargs)
     assert response.status_code == 202, response.text
     job_id = job_id_for_message(harness, payload["data"]["key"]["id"])
     assert job_id is not None, "the background download did not create a job"

@@ -60,6 +60,10 @@ LEGAL_TRANSITIONS = [
     (JobState.DISCARDED, JobState.AWAITING_REVIEW),
     (JobState.DISCARDED, JobState.READY),
     (JobState.DISCARDED, JobState.FAILED),
+    # Intake discards a duplicate video as soon as its job exists, and a
+    # reviewer can restore it like any discard (LIVESTACK-51 item 3).
+    (JobState.RECEIVED, JobState.DISCARDED),
+    (JobState.DISCARDED, JobState.RECEIVED),
 ]
 
 
@@ -110,11 +114,11 @@ ILLEGAL_TRANSITIONS = [
     # A restored job goes back to where it was; never past it.
     (JobState.DISCARDED, JobState.CLAIMED),
     (JobState.DISCARDED, JobState.DONE),
-    (JobState.DISCARDED, JobState.RECEIVED),
     # Discard is only for jobs a reviewer can see (awaiting_review, ready,
-    # failed); a job still without a proxy, or already processing or
-    # delivered, cannot be discarded.
-    (JobState.RECEIVED, JobState.DISCARDED),
+    # failed); a job waiting for its proxy, or already processing or
+    # delivered, cannot be discarded. (A *received* job can: intake
+    # discards duplicates as soon as they exist, see LEGAL_TRANSITIONS and
+    # tests/orchestrator/test_duplicate_videos.py.)
     (JobState.PROXY_READY, JobState.DISCARDED),
     (JobState.CLAIMED, JobState.DISCARDED),
     (JobState.DONE, JobState.DISCARDED),
@@ -173,9 +177,12 @@ def test_reprocessable_states_can_all_go_back_to_ready():
 def test_discardable_and_retryable_states_match_the_table():
     # Same idea for the "discard" and "retry" review actions: the review
     # endpoint checks these sets first, so every state in them must have
-    # the matching legal move, and no other state may have it.
+    # the matching legal move, and no other state may have it, except
+    # "received": only intake discards from there (duplicates, LIVESTACK-51);
+    # a reviewer never sees a job before its proxy.
     discard_sources = {s for s in JobState if is_transition_allowed(s, JobState.DISCARDED)}
-    assert discard_sources == DISCARDABLE_STATES
+    assert discard_sources == DISCARDABLE_STATES | {JobState.RECEIVED}
+    assert JobState.RECEIVED not in DISCARDABLE_STATES
     assert {JobState.FAILED} == RETRYABLE_STATES
     assert is_transition_allowed(JobState.FAILED, JobState.READY)
 
@@ -188,7 +195,7 @@ def test_discarded_can_only_go_back_to_where_a_discard_comes_from():
     # Anything else is refused, and the error lists the legal targets.
     with pytest.raises(IllegalTransitionError) as caught:
         validate_transition(JobState.DISCARDED, JobState.DONE)
-    assert "awaiting_review, failed, ready" in str(caught.value)
+    assert "awaiting_review, failed, ready, received" in str(caught.value)
     assert {JobState.DISCARDED} == RESTORABLE_STATES
 
 

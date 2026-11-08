@@ -17,6 +17,15 @@ def get_contact_row(connection: sqlite3.Connection, phone: str) -> sqlite3.Row |
     return connection.execute(f"{_SELECT_WITH_PROVA} WHERE contacts.phone = ?", (phone,)).fetchone()
 
 
+def display_names(connection: sqlite3.Connection) -> dict[str, str]:
+    """phone → the name on Admin → Contatos, for every contact that has one."""
+    rows = connection.execute(
+        "SELECT phone, display_name FROM contacts WHERE display_name IS NOT NULL"
+        " AND display_name != ''"
+    ).fetchall()
+    return {row["phone"]: row["display_name"] for row in rows}
+
+
 def list_contact_rows(
     connection: sqlite3.Connection, status: ContactStatus | None = None
 ) -> list[sqlite3.Row]:

@@ -47,7 +47,7 @@ def job_held_by_two(harness):
     """A job whose raw the master and a volunteer hold; the VPS copy is gone."""
     master = harness.enroll(WorkerRole.MASTER, "master")
     volunteer = harness.enroll(WorkerRole.WORKER, "volunteer")
-    job_id = receive_job(harness)
+    job_id = receive_job(harness, SAMPLE_VIDEO_BYTES)
     hold_raw(harness, master, job_id)
     harness.clock.advance(31)
     harness.heartbeat(master, held_job_ids=[job_id])
@@ -64,7 +64,7 @@ def upload_the_original(harness, worker, job_id, data=SAMPLE_VIDEO_BYTES):
 
 
 def test_while_the_inbox_has_the_raw_the_link_works_at_once(harness):
-    job_id = receive_job(harness)
+    job_id = receive_job(harness, SAMPLE_VIDEO_BYTES)
 
     answer = ask_for_original(harness, job_id)
 
@@ -159,7 +159,7 @@ def test_the_original_is_never_a_holder(harness):
 
 
 def test_originals_go_24_hours_after_the_last_request(harness):
-    job_id = receive_job(harness)
+    job_id = receive_job(harness, SAMPLE_VIDEO_BYTES)
     ask_for_original(harness, job_id)
     original = harness.context.layout.original_path(job_id, ".mp4")
 
@@ -179,7 +179,7 @@ def test_over_the_size_cap_the_oldest_request_goes_first(harness):
     harness.client.patch(
         "/admin/settings", json={"originals_cap_gb": 0.000015}, auth=harness.admin_auth
     ).raise_for_status()  # 15 kB: room for one 10 KiB original, not two
-    first = receive_job(harness)
+    first = receive_job(harness, SAMPLE_VIDEO_BYTES)
     ask_for_original(harness, first)
     harness.clock.advance(60)
     second = receive_job(harness, data=SAMPLE_VIDEO_BYTES + b"x")
@@ -190,7 +190,7 @@ def test_over_the_size_cap_the_oldest_request_goes_first(harness):
 
 
 def test_a_tight_disk_also_evicts_originals(harness):
-    job_id = receive_job(harness)
+    job_id = receive_job(harness, SAMPLE_VIDEO_BYTES)
     ask_for_original(harness, job_id)
     # Below the proxy eviction threshold (Settings, 10 GB by default).
     harness.context.layout._free_bytes_reader = lambda path: 1_000_000
@@ -199,7 +199,7 @@ def test_a_tight_disk_also_evicts_originals(harness):
 
 
 def test_without_a_session_nothing_is_given(harness):
-    job_id = receive_job(harness)
+    job_id = receive_job(harness, SAMPLE_VIDEO_BYTES)
     assert harness.client.post(f"/jobs/{job_id}/original").status_code == 401
     assert harness.client.get(f"/jobs/{job_id}/original").status_code == 401
     assert not harness.context.layout.original_path(job_id, ".mp4").exists()

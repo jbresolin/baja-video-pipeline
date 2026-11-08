@@ -21,6 +21,10 @@ from orchestrator.db.database import Database
 from orchestrator.domain.audit import AdminActor, record_admin_change
 from orchestrator.errors import validation_error
 from orchestrator.repositories import app_settings as settings_repo
+from shared.duplicate_video_message import (
+    MAX_DUPLICATE_VIDEO_MESSAGE_LENGTH,
+    normalize_duplicate_video_message,
+)
 from shared.models import AdminSettings, UpdateSettingsRequest
 from shared.vertical_video_message import (
     MAX_VERTICAL_VIDEO_MESSAGE_LENGTH,
@@ -121,6 +125,17 @@ class AdminSettingsStore:
                     max_length=MAX_VERTICAL_VIDEO_MESSAGE_LENGTH,
                 )
             changes["vertical_video_message"] = vertical_message
+        if "duplicate_video_message" in changes:
+            duplicate_message = normalize_duplicate_video_message(
+                changes["duplicate_video_message"]
+            )
+            if len(duplicate_message) > MAX_DUPLICATE_VIDEO_MESSAGE_LENGTH:
+                raise validation_error(
+                    "duplicate_video_message must be at most"
+                    f" {MAX_DUPLICATE_VIDEO_MESSAGE_LENGTH} characters",
+                    max_length=MAX_DUPLICATE_VIDEO_MESSAGE_LENGTH,
+                )
+            changes["duplicate_video_message"] = duplicate_message
         with self._lock:
             before = self._current
             after = AdminSettings.model_validate(before.model_dump(mode="json") | changes)

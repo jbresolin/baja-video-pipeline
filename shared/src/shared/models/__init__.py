@@ -74,6 +74,7 @@ from shared.models.api_operations import (
 )
 from shared.models.api_review import (
     CarVideosResponse,
+    JobPresenceResponse,
     OriginalDownload,
     RegenerateProxyResponse,
     ReviewQueueFilter,
@@ -134,12 +135,14 @@ from shared.models.evolution import EvolutionWebhook, IncomingMedia, find_incomi
 from shared.models.job import (
     ClipInfo,
     ClipVersion,
+    DuplicateCopy,
     Holder,
     IntakeSource,
     Job,
     JobFailure,
     JobSummary,
     Lease,
+    PresentReviewer,
     ProbeReport,
 )
 from shared.models.pass_clock import PassClock, RenderClock, ReportedClock
@@ -195,6 +198,7 @@ __all__ = [
     "ClaimRequest",
     "ClaimResponse",
     "CarVideosResponse",
+    "JobPresenceResponse",
     "ClipInfo",
     "Contact",
     "ContactCreated",
@@ -242,10 +246,12 @@ __all__ = [
     "IntakeResponse",
     "IntakeSource",
     "Job",
+    "DuplicateCopy",
     "JobFailure",
     "JobState",
     "JobStateResponse",
     "JobSummary",
+    "PresentReviewer",
     "Lease",
     "LeaseHeartbeatStatus",
     "LeaseRenewRequest",
