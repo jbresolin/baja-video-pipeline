@@ -18,13 +18,16 @@ import subprocess
 
 import pytest
 
+from orchestrator.domain.render_features import NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT
 from review_ui.clip_inputs_view import difference_sentence
+from review_ui.clips_and_fleet_view import render_features_text
+from review_ui.job_view import NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT_REASON, describe_waiting_reason
 from review_ui.pass_clock_view import pass_clock_box
 from review_ui.pass_results_settings_view import trial_clock
 from review_ui.templating import STATIC_DIR
 from shared.models import PassResultTestResponse, RenderClock, RenderInputField, RenderInputs
 from shared.pass_clock import with_unit
-from tests.review_ui.sample_data import T0, pass_clock
+from tests.review_ui.sample_data import T0, make_fleet, pass_clock
 
 
 def status_for(**changes) -> str:
@@ -108,3 +111,28 @@ def test_js_writes_the_unit_in_capitals_and_nothing_without_one():
     assert finished.returncode == 0, finished.stderr
     # As the clip: capitals; an empty unit or a clock recorded without one: nothing.
     assert json.loads(finished.stdout) == ["S", "SEG", "", "", ""]
+
+
+# --- Workers too old for the new look (render feature "clock_top_right") ---
+
+
+def test_the_waiting_reason_for_the_new_clock_matches_the_orchestrator_and_is_pt_br():
+    assert NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT_REASON == NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT
+    described = describe_waiting_reason(NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT)
+    assert described.text == (
+        "Esperando um PC com o original que saiba desenhar o novo cronômetro "
+        "(Baja Worker 0.7.0 ou mais novo)."
+    )
+    assert described.detail is None
+
+
+def test_frota_names_the_new_clock_feature():
+    worker = make_fleet().workers[0].worker
+    features = ["framing", "no_audio", "pass_result", "clock", "clock_top_right"]
+    capabilities = worker.capabilities.model_copy(update={"render_features": features})
+    updated = worker.model_copy(update={"capabilities": capabilities})
+
+    assert render_features_text(updated) == (
+        "Sabe fazer: vertical e girar, sem áudio, resultado da passagem, cronômetro, "
+        "cronômetro no canto"
+    )

@@ -78,8 +78,10 @@ from tools.openapi_contract import (
 # The clock's unit ("66,0 s", the configuration's clock.unit, default "s"):
 # RenderClock.unit and ReportedClock.unit (null = recorded before 2.10.0,
 # never compared), PassClock.unit, PassResultTestResponse.clock_unit.
-# Deploy the VPS first: an older orchestrator refuses a report whose
-# pass_clock carries `unit`; the worker logs it and delivers anyway.
+# Render feature "clock_top_right" (installer 0.7.0): a render with a clock
+# needs it, so a 0.6.0 worker never draws the old look. Deploy the VPS
+# first: an older orchestrator refuses a report whose pass_clock carries
+# `unit`; the worker logs it and delivers anyway.
 CONTRACT_VERSION = "2.10.0"
 
 DESCRIPTION = """\

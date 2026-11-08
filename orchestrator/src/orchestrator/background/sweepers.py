@@ -17,9 +17,8 @@ from orchestrator.domain.fleet_snapshot import FleetSnapshot
 from orchestrator.domain.leases import sweep_expired_leases
 from orchestrator.domain.raw_copies import drop_inbox_copy, inbox_copy_is_redundant
 from orchestrator.domain.render_features import (
+    NEWER_FEATURE_REASONS,
     NO_HOLDER_CAN_RENDER,
-    NO_HOLDER_CAN_RENDER_CLOCK,
-    NO_HOLDER_CAN_RENDER_PASS_RESULT,
     process_waiting_reason,
 )
 from orchestrator.domain.review_queue import NO_HOLDER_ONLINE
@@ -70,14 +69,14 @@ def _refresh_waiting_reasons(connection, now) -> None:
         _set_own_waiting_reason(connection, row, now, None if holder_online else NO_HOLDER_ONLINE)
 
 
-# The sentences the sweeper writes itself (and so may replace or clear).
+# The sentences the sweeper writes itself (and so may replace or clear),
+# including one per render feature newer than LIVESTACK-50's.
 OWN_WAITING_REASONS = frozenset(
     {
         None,
         NO_HOLDER_ONLINE,
         NO_HOLDER_CAN_RENDER,
-        NO_HOLDER_CAN_RENDER_PASS_RESULT,
-        NO_HOLDER_CAN_RENDER_CLOCK,
+        *(reason for _, reason in NEWER_FEATURE_REASONS),
     }
 )
 

@@ -8,7 +8,9 @@ prova's `clock.column`). The orchestrator:
 * tells the job page whether the prova has a clock, the official time
   ("66,0"), the "Mostrar cronômetro" toggle and what a render would draw;
 * hands the clock to the worker in the process task, but only to a worker
-  that declared it can draw it (render feature "clock", installer 0.6.0);
+  that declared it can draw it (render feature "clock", installer 0.6.0;
+  and since LIVESTACK-53 its new look, "clock_top_right", installer 0.7.0:
+  tests/orchestrator/test_clock_top_right_feature.py);
 * treats the largada and the official time as render inputs: moving the
   largada, or the official time arriving or changing, flags a delivered
   clip as no longer matching. Reprocessing stays the reviewer's decision.
@@ -23,7 +25,7 @@ import json
 
 from orchestrator.background.sweepers import expire_leases_once
 from orchestrator.domain.pass_results_fetch import poll_due_tables
-from orchestrator.domain.render_features import NO_HOLDER_CAN_RENDER_CLOCK
+from orchestrator.domain.render_features import NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT
 from orchestrator.testing.scenarios import SAMPLE_CLIP, ask_next, claim, claim_ok
 from shared.models import TaskKind, WorkerRole
 from tests.orchestrator.pass_results_data import (
@@ -37,6 +39,7 @@ from tests.orchestrator.test_render_inputs import edit_review, report_inputs
 
 FEATURES_0_5_0 = ["framing", "no_audio", "pass_result"]
 FEATURES_0_6_0 = ["framing", "no_audio", "pass_result", "clock"]
+FEATURES_0_7_0 = [*FEATURES_0_6_0, "clock_top_right"]
 LARGADA_S = 1.5
 CLOCK_66 = {"largada_s": LARGADA_S, "official_units": 660, "decimals": 1, "unit": "s"}
 
@@ -52,7 +55,7 @@ def ready_job_with_largada(harness, master, car=26, passagem=2, **fields) -> str
 
 
 def deliver(harness, master, studio, job_id, *, report=True) -> dict:
-    """The master claims, reports what it drew (as 0.6.0 does), and the studio ACKs."""
+    """The master claims, reports what it drew (as 0.6.0 and later do), and the studio ACKs."""
     lease_id, task = claim_ok(harness, master, job_id, TaskKind.PROCESS)
     sha256 = hashlib.sha256(SAMPLE_CLIP).hexdigest()
     if report:
@@ -196,16 +199,16 @@ def test_a_prova_with_only_a_clock_has_a_clock_and_no_result_line(harness):
 # --- The render task and which workers get it ---
 
 
-def test_a_0_6_0_worker_gets_the_clock_in_the_process_task(harness):
+def test_a_0_7_0_worker_gets_the_clock_in_the_process_task(harness):
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_6_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     job_id = ready_job_with_largada(harness, master)
 
     task = ask_next(harness, master, [TaskKind.PROCESS])
 
     assert task["job_id"] == job_id
     assert task["pass_clock"] == CLOCK_66
-    assert task["required_render_features"] == ["pass_result", "clock"]
+    assert task["required_render_features"] == ["pass_result", "clock", "clock_top_right"]
 
 
 def test_a_0_5_0_worker_is_not_offered_a_render_with_a_clock(harness):
@@ -220,15 +223,16 @@ def test_a_0_5_0_worker_is_not_offered_a_render_with_a_clock(harness):
     assert refused.status_code == 409
     assert "clock" in refused.json()["error"]["message"]
 
-    # The job says what it waits for: a worker updated to 0.6.0.
+    # The job says what it waits for: a worker updated to 0.7.0 (0.6.0
+    # draws a clock, but not its LIVESTACK-53 look).
     expire_leases_once(harness.context)
-    assert harness.job(job_id)["waiting_reason"] == NO_HOLDER_CAN_RENDER_CLOCK
+    assert harness.job(job_id)["waiting_reason"] == NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT
 
-    # Updated (its next heartbeat declares "clock"), it gets the render.
+    # Updated (its next heartbeat declares both), it gets the render.
     harness.heartbeat(
         master,
         tailnet_address="100.70.0.1",
-        render_features=FEATURES_0_6_0,
+        render_features=FEATURES_0_7_0,
         held_job_ids=[job_id],
     )
     expire_leases_once(harness.context)
@@ -253,7 +257,7 @@ def test_the_official_time_arriving_after_delivery_flags_the_clip(harness):
     # Car 5's second run had no result when its clip was rendered (no pill,
     # no clock, though the largada was marked); then the judges enter it.
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_6_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job_with_largada(harness, master, car=5, passagem=2)
     deliver(harness, master, studio, job_id)
@@ -269,7 +273,7 @@ def test_the_official_time_arriving_after_delivery_flags_the_clip(harness):
 
 def test_moving_the_largada_after_delivery_flags_the_clip(harness):
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_6_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job_with_largada(harness, master)
     deliver(harness, master, studio, job_id)
@@ -286,7 +290,7 @@ def test_moving_the_largada_after_delivery_flags_the_clip(harness):
 
 def test_a_corrected_run_time_flags_the_clip(harness):
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_6_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job_with_largada(harness, master)
     deliver(harness, master, studio, job_id)
@@ -301,7 +305,7 @@ def test_a_corrected_run_time_flags_the_clip(harness):
 
 def test_turning_the_clock_off_after_delivery_flags_the_clip(harness):
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_6_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job_with_largada(harness, master)
     deliver(harness, master, studio, job_id)
@@ -314,7 +318,7 @@ def test_turning_the_clock_off_after_delivery_flags_the_clip(harness):
 
 def test_without_a_worker_report_the_claim_snapshot_keeps_the_clock(harness):
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_6_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job_with_largada(harness, master)
     deliver(harness, master, studio, job_id, report=False)

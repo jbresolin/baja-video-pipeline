@@ -24,7 +24,7 @@ from tests.orchestrator.pass_results_data import (
     save_config,
     set_up_manobrabilidade,
 )
-from tests.orchestrator.test_pass_clock import FEATURES_0_6_0, ready_job_with_largada
+from tests.orchestrator.test_pass_clock import FEATURES_0_7_0, ready_job_with_largada
 from tests.orchestrator.test_pass_results_render import enroll_master
 from tests.orchestrator.test_render_inputs import report_inputs
 
@@ -61,7 +61,7 @@ def deliver_reporting(harness, master, studio, job_id, reported_clock) -> dict:
 def test_the_unit_defaults_to_seconds_on_the_job_and_in_the_task(harness):
     # The test configuration's clock block has no "unit": the default "s".
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_6_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     job_id = ready_job_with_largada(harness, master)
 
     assert harness.job(job_id)["pass_clock"]["unit"] == "s"
@@ -71,7 +71,7 @@ def test_the_unit_defaults_to_seconds_on_the_job_and_in_the_task(harness):
 
 def test_a_configured_unit_reaches_the_job_page_and_the_worker(harness):
     set_up_manobrabilidade(harness, config_text=config_with_clock_unit("seg"))
-    master = enroll_master(harness, FEATURES_0_6_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     job_id = ready_job_with_largada(harness, master)
 
     clock = harness.job(job_id)["pass_clock"]
@@ -84,7 +84,7 @@ def test_a_clip_rendered_before_the_unit_existed_is_not_out_of_date(harness):
     # Setup: a clip delivered by a worker that reported its clock without a
     # unit, as every clip rendered before 2.10.0 is recorded.
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_6_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job_with_largada(harness, master)
     old_report = {"largada_s": 1.5, "official_units": 660, "decimals": 1}
@@ -102,7 +102,7 @@ def test_a_clip_rendered_before_the_unit_existed_is_not_out_of_date(harness):
 def test_changing_the_unit_after_delivery_flags_the_clip(harness):
     # Setup: a clip delivered with "66,0 s" on record.
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_6_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job_with_largada(harness, master)
     drawn = {"largada_s": 1.5, "official_units": 660, "decimals": 1, "unit": "s"}
