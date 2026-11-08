@@ -31,6 +31,7 @@ def test_asks_for_every_kind_when_idle(harness):
         TaskKind.MAKE_PROXY,
         TaskKind.PROCESS,
         TaskKind.UPLOAD_ORIGINAL,
+        TaskKind.UPLOAD_CLIP,
     ]
 
 
@@ -49,6 +50,7 @@ def test_claimed_task_goes_to_its_stage_and_busy_kinds_are_left_out(harness):
         TaskKind.MAKE_PROXY,
         TaskKind.PROCESS,
         TaskKind.UPLOAD_ORIGINAL,
+        TaskKind.UPLOAD_CLIP,
     ]
 
 

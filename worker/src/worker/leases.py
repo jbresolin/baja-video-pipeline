@@ -99,3 +99,11 @@ class CancelToken:
     @property
     def shutting_down(self) -> bool:
         return self._shutdown.is_set()
+
+    def shutdown_only(self) -> "CancelToken":
+        """A token that stops only for a shutdown, not for the lease.
+
+        For work after a task's lease ended on purpose (the clip preview
+        after a delivery, LIVESTACK-52): a lost lease then means "done".
+        """
+        return CancelToken(None, self._shutdown)

@@ -12,7 +12,9 @@ Which kinds a role asks for:
           the master holds every raw (design §4); only real disk space
           stops it. archive_clip: it keeps every finished clip (§11).
   worker  the same three; download_raw only while accepting_new_raws.
-  studio  deliver only (it never holds raws, design §13).
+  studio  deliver (it never holds raws, design §13), and upload_clip
+          ("Baixar clipe", LIVESTACK-52) only while it is not delivering:
+          the orchestrator offers it the upload only as a last resort.
 
 While the volunteer has paused the worker (worker.pause), nothing is asked
 for at all: the running tasks finish, no new one starts.
@@ -41,21 +43,24 @@ STAGE_KINDS_BY_ROLE = {
         TaskKind.PROCESS,
         TaskKind.ARCHIVE_CLIP,
         TaskKind.UPLOAD_ORIGINAL,
+        TaskKind.UPLOAD_CLIP,
     ],
     WorkerRole.WORKER: [
         TaskKind.DOWNLOAD_RAW,
         TaskKind.MAKE_PROXY,
         TaskKind.PROCESS,
         TaskKind.UPLOAD_ORIGINAL,
+        TaskKind.UPLOAD_CLIP,
     ],
-    WorkerRole.STUDIO: [TaskKind.DELIVER],
+    WorkerRole.STUDIO: [TaskKind.DELIVER, TaskKind.UPLOAD_CLIP],
 }
 UNREACHABLE_RETRY_SECONDS = 10.0
 # Kinds newer than some orchestrators: one that does not know a kind answers
 # 400 validation_error to the whole /next request, so such a kind is left
 # out from then on (until the worker restarts) instead of blocking all work.
-# upload_original: LIVESTACK-41 item 15 (installer 0.3.0).
-NEWER_TASK_KINDS = (TaskKind.UPLOAD_ORIGINAL,)
+# upload_original: LIVESTACK-41 item 15 (installer 0.3.0); upload_clip:
+# LIVESTACK-52 (installer 0.7.0).
+NEWER_TASK_KINDS = (TaskKind.UPLOAD_ORIGINAL, TaskKind.UPLOAD_CLIP)
 # ...but only for a while: the VPS is often updated after the workers, and a
 # worker that stopped asking for good would never pick the kind up again
 # until someone restarted it ("Baixar original" stuck on "Preparando").
@@ -105,6 +110,8 @@ class Dispatcher:
                 continue
             if kind == TaskKind.DOWNLOAD_RAW and not self._may_take_new_raws():
                 continue
+            if kind == TaskKind.UPLOAD_CLIP and self._studio_is_delivering():
+                continue
             kinds.append(kind)
         return kinds
 
@@ -115,6 +122,12 @@ class Dispatcher:
             return False
         seconds_since_refusal = self._seconds_since_start() - refused_at
         return seconds_since_refusal < ASK_AGAIN_FOR_REFUSED_KIND_SECONDS
+
+    def _studio_is_delivering(self) -> bool:
+        """The studio pulls clips first; a reviewer's download can wait."""
+        if self._role != WorkerRole.STUDIO:
+            return False
+        return not self._stages[TaskKind.DELIVER].is_idle
 
     def _may_take_new_raws(self) -> bool:
         if self._role == WorkerRole.MASTER:

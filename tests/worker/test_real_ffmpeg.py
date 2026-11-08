@@ -8,6 +8,7 @@ of the right shape. Run only these with:  uv run pytest -m integration
 
 import shutil
 import subprocess
+import threading
 
 import pytest
 
@@ -16,6 +17,7 @@ from shared.media_probe import MediaInfo
 from shared.models import MakeProxyTask, ProcessTask
 from tests.worker.conftest import OUTBOX_DELIVERY
 from tests.worker.fake_orchestrator import BASE_URL
+from worker.leases import CancelToken
 from worker.media_tools import MediaTools
 
 ffmpeg_missing = shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None
@@ -94,3 +96,80 @@ def test_real_final_render_is_trimmed_1080p_with_audio(harness, held_clip_job):
     assert clip.height == 1080
     assert clip.duration_s == pytest.approx(1.5, abs=0.2)
     assert clip.has_audio
+
+
+def test_real_render_then_its_480p_preview(harness, held_clip_job):
+    # "Ver clipe" (LIVESTACK-52): after the real render and delivery, the
+    # worker makes the preview with the real ffmpeg and uploads it. CI runs
+    # this on the workers' ffmpeg 9.0 (design §35).
+    job = held_clip_job
+    harness.claim_and_run(
+        ProcessTask(
+            job_id=job.job_id,
+            raw_sha256=job.sha256,
+            has_audio=True,
+            low_res=False,
+            cut_in_s=0.5,
+            cut_out_s=2.5,
+            prova="Enduro",
+            car_number=42,
+            team_name="Equipe",
+            passagem=3,
+            show_pass=True,
+            clip_relative_path="enduro/42/3.mp4",
+            outbox_upload_url=f"{BASE_URL}/jobs/{job.job_id}/clip",
+            delivery=OUTBOX_DELIVERY,
+            preview_upload_url=f"{BASE_URL}/jobs/{job.job_id}/clip-preview",
+        )
+    )
+
+    assert harness.orchestrator.failures == []
+    preview = probe(harness.orchestrator.stored_upload("previews", job.job_id))
+    # The review proxy's shape: 480 lines (854 wide for the 16:9 clip),
+    # constant 30 fps, the clip's length and its sound.
+    assert (preview.width, preview.height) == (854, 480)
+    assert preview.frame_rate == pytest.approx(30.0)
+    assert preview.duration_s == pytest.approx(2.0, abs=0.2)
+    assert preview.has_audio
+
+
+def test_real_preview_of_a_silent_clip(tmp_path):
+    # A clip rendered with "Sem áudio" has no sound track; its preview is
+    # made all the same, silent.
+    silent = tmp_path / "silent.mp4"
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-nostdin", "-y", "-f", "lavfi",
+         "-i", "testsrc2=size=1920x1080:rate=30", "-t", "1.5",
+         "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(silent)],
+        check=True,
+        capture_output=True,
+    )  # fmt: skip
+    preview = tmp_path / "preview.mp4"
+
+    REAL_MEDIA.make_clip_preview(silent, preview, CancelToken(None, threading.Event()))
+
+    info = probe(preview)
+    assert info.height == 480 and not info.has_audio
+
+
+def test_a_preview_costs_at_most_about_12_mb_per_minute(tmp_path):
+    # The storage number in the LIVESTACK-52 PR and design §37: a preview is
+    # capped by the proxy's bitrate (1.5 Mbit/s video + 96 kbit/s sound),
+    # about 12 MB per minute of clip whatever is filmed. A very busy picture
+    # (heavy noise, the worst case for an encoder) must stay under the cap.
+    busy = tmp_path / "busy.mp4"
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-nostdin", "-y",
+         "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30,noise=alls=60:allf=t+u",
+         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+         "-t", "6", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+         "-c:a", "aac", str(busy)],
+        check=True,
+        capture_output=True,
+    )  # fmt: skip
+    preview = tmp_path / "preview.mp4"
+
+    REAL_MEDIA.make_clip_preview(busy, preview, CancelToken(None, threading.Event()))
+
+    megabytes_per_minute = preview.stat().st_size / 1e6 * (60 / 6)
+    assert megabytes_per_minute < 13.0

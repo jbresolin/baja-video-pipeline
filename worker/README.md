@@ -205,7 +205,10 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   0.5.0; `clock`, LIVESTACK-48, installer 0.6.0; `clock_top_right`,
   LIVESTACK-53, installer 0.7.0, the new result and clock look, needed by
   every render with a result or a clock; the orchestrator gives renders
-  that need one only to workers that declared it). An orchestrator older than contract 2.6.0
+  that need one only to workers that declared it; `clip_preview` and
+  `upload_clip`, LIVESTACK-52, installer 0.7.0, abilities rather than
+  render options, declared the same way: a preview after each render, and
+  "Baixar clipe" uploads). An orchestrator older than contract 2.6.0
   refuses that field with 400: the beat is resent without it, and it is
   left out for 5 minutes. Acts on `lost` leases, `accepting_new_raws`,
   `deletable_job_ids` and `role`.
@@ -275,6 +278,22 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   `delivery.studio_url`, then wait up to 60 s for the studio's ACK to end
   the lease. If the push failed, or no ACK came and the job is not already
   delivered with this clip, upload to the outbox.
+  After the delivery, when the task carries `preview_upload_url` (the
+  Settings switch "Gerar prévia dos clipes", LIVESTACK-52), it makes a
+  480p preview of the clip with the review proxy's settings
+  (`tasks/clip_preview.py`, `shared.ffmpeg.build_clip_preview_command`)
+  and uploads it, chunked, with the `Clip-SHA256` header naming the clip.
+  This runs after the lease ended (a direct push's ACK ends it), so only
+  a shutdown stops it; any failure is logged and never fails the task.
+  The process stage stays busy those few seconds.
+* **upload_clip** (LIVESTACK-52, "Baixar clipe"; every role, the studio
+  only while its deliver stage is idle): a reviewer asked for a clip;
+  find it by its SHA-256 among the kept clips, then in the master's
+  archive (`archive_relative_path`), then in the studio's folder under
+  any version name of the passagem, and upload it, chunked, to the task's
+  `upload_url`. Not found → failure with scope `worker`, so the next PC is
+  asked. An orchestrator that does not know the kind (400 on `/next`) is
+  not asked for it for 5 minutes.
 * **upload_original** (LIVESTACK-41 item 15): a reviewer asked for the
   original; upload the held raw, chunked, to the task's `upload_url`.
   A worker meeting an orchestrator that does not know this kind (400 on
