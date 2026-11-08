@@ -48,10 +48,11 @@ NO_HOLDER_CAN_RENDER_CLOCK = (
     "waiting for a holder of the raw that can draw the running clock"
     " (a worker updated to 0.6.0 or later)"
 )
-# The same when a 0.6.0 worker has the old clock only (LIVESTACK-53): 0.7.0
-# draws it top right with its unit, and the result from the freeze.
+# The same when holders draw only the old result and clock (LIVESTACK-53):
+# 0.7.0 draws the clock top right with its unit, the result from the
+# freeze, and the units small.
 NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT = (
-    "waiting for a holder of the raw that can draw the new running clock"
+    "waiting for a holder of the raw that can draw the new result and clock look"
     " (a worker updated to 0.7.0 or later)"
 )
 # The features newer than LIVESTACK-50's, newest first, with the sentence
@@ -77,10 +78,12 @@ def required_render_features(
                  would ignore it and render the clip without the pill.
     clock:       the render carries a running clock (ProcessTask.pass_clock;
                  pass it here). A worker before 0.6.0 would leave it out.
-    clock_top_right: also for a running clock (LIVESTACK-53): a 0.6.0
-                 worker would draw the old look (beside the result, no
-                 unit, the result from the start). Renders without a clock
-                 still go to any worker.
+    clock_top_right: the render carries a result line or a running clock
+                 (LIVESTACK-53): a worker before 0.7.0 would draw the old
+                 look (the clock beside the result, no unit, the result
+                 from the start, a full-size "S"). João's call: every
+                 clip with a result gets the new look, not only those
+                 with a clock. Renders with neither go to any worker.
     """
     needed = []
     if needs_framing(job_row["display_width"], job_row["display_height"], job_row["rotation"]):
@@ -91,6 +94,7 @@ def required_render_features(
         needed.append(RenderFeature.PASS_RESULT.value)
     if pass_clock is not None:
         needed.append(RenderFeature.CLOCK.value)
+    if pass_result_text is not None or pass_clock is not None:
         needed.append(RenderFeature.CLOCK_TOP_RIGHT.value)
     return needed
 
@@ -130,8 +134,8 @@ def process_waiting_reason(connection: sqlite3.Connection, job_row, now: datetim
     No confirmed holder online (and not paused) → NO_HOLDER_ONLINE; holders
     online but none declared the features the job needs → NO_HOLDER_CAN_RENDER,
     or the sentence of the newest feature a holder is missing when that is
-    all that stops it (NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT for the clock's
-    new look, 0.7.0; NO_HOLDER_CAN_RENDER_CLOCK for the clock, 0.6.0;
+    all that stops it (NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT for the new
+    result and clock look, 0.7.0; NO_HOLDER_CAN_RENDER_CLOCK for the clock, 0.6.0;
     NO_HOLDER_CAN_RENDER_PASS_RESULT for the result pill, 0.5.0).
     """
     snapshot = FleetSnapshot.take(connection, now)

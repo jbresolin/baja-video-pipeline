@@ -240,14 +240,17 @@ def test_a_0_5_0_worker_is_not_offered_a_render_with_a_clock(harness):
     assert ask_next(harness, master, [TaskKind.PROCESS])["job_id"] == job_id
 
 
-def test_with_the_clock_off_a_0_5_0_worker_renders(harness):
+def test_with_the_clock_off_the_render_needs_no_clock(harness):
+    # The clock off: no clock in the task and no "clock" feature. The
+    # result line still needs its look since LIVESTACK-53 (0.7.0).
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_5_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     job_id = ready_job_with_largada(harness, master, show_clock=False)
 
     task = ask_next(harness, master, [TaskKind.PROCESS])
     assert task["job_id"] == job_id
-    assert (task["pass_clock"], task["required_render_features"]) == (None, ["pass_result"])
+    assert task["pass_clock"] is None
+    assert task["required_render_features"] == ["pass_result", "clock_top_right"]
 
 
 # --- Changes after the clip was made ---

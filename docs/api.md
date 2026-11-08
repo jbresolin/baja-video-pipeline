@@ -309,11 +309,12 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
   holder of the raw that can draw the running clock (a worker updated to
   0.6.0 or later)".
   Contract 2.10.0 (LIVESTACK-53, installer 0.7.0) adds `clock_top_right`:
-  a task with `pass_clock` needs it too (the clock top right, with its
-  unit, and the result pill from the freeze; a 0.6.0 worker would draw
-  the old look). Without it, `waiting_reason` is "waiting for a holder of
-  the raw that can draw the new running clock (a worker updated to 0.7.0
-  or later)". When several features are missing, the sentence names the
+  a task with `pass_clock` or `pass_result_text` needs it too (the clock
+  top right with its unit, the result pill from the freeze, the time's
+  unit small; an older worker would draw the old look). A task with
+  neither does not. Without it, `waiting_reason` is "waiting for a holder
+  of the raw that can draw the new result and clock look (a worker
+  updated to 0.7.0 or later)". When several features are missing, the sentence names the
   newest one left out (the version a holder needs).
 
 | Task kind | Who gets it | What to do | How it ends |

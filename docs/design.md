@@ -1501,8 +1501,16 @@ installer 0.7.0.
   upright picture (golden frames made by ffmpeg straight to PNG through
   the render's own picture filters, so they do not depend on an encoder).
 * **Render feature `clock_top_right`** (installer 0.7.0). A render with a
-  clock needs `clock` and `clock_top_right`; a 0.6.0 worker is not
-  offered it; renders without a clock go to any worker as before. Two
+  clock needs `clock` and `clock_top_right`. A render with a result line
+  needs `pass_result` and `clock_top_right` too, clock or not (João's
+  call after review): otherwise a 0.5.0 or 0.6.0 worker would draw that
+  result in the old look (a full-size "S"), and which look a clip got
+  would depend on which PC happened to hold the raw. So a worker before
+  0.7.0 is offered only renders with neither a result nor a clock, which
+  still go to any worker. The name stays `clock_top_right` (it is on the
+  wire and in the 0.7.0 worker's list); its waiting sentence and Frota
+  label speak of the new result and clock look ("novo visual do
+  resultado e do cronômetro"). Two
   fixes on the way: the waiting reason names the newest feature left out
   (a 0.5.0 holder of a clock job was told 0.6.0, which would still not
   do), and the sweeper's own sentences are built from the feature list.

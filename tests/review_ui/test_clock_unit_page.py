@@ -125,8 +125,8 @@ def test_the_waiting_reason_for_the_new_clock_matches_the_orchestrator_and_is_pt
     assert NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT_REASON == NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT
     described = describe_waiting_reason(NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT)
     assert described.text == (
-        "Esperando um PC com o original que saiba desenhar o novo cronômetro "
-        "(Baja Worker 0.7.0 ou mais novo)."
+        "Esperando um PC com o original que saiba desenhar o novo visual do resultado "
+        "e do cronômetro (Baja Worker 0.7.0 ou mais novo)."
     )
     assert described.detail is None
 
@@ -139,5 +139,5 @@ def test_frota_names_the_new_clock_feature():
 
     assert render_features_text(updated) == (
         "Sabe fazer: vertical e girar, sem áudio, resultado da passagem, cronômetro, "
-        "cronômetro no canto"
+        "novo visual do resultado e do cronômetro"
     )

@@ -50,12 +50,13 @@ TEXT: dict[str, str] = {
         "(Baja Worker 0.6.0 ou mais novo)."
     ),
     "render_feature.clock": "cronômetro",
-    # LIVESTACK-53: the clock top right with its unit, the result when it stops.
+    # LIVESTACK-53: the clock top right with its unit, the result when it
+    # stops, the units small; needed by every clip with a result or a clock.
     "waiting.no_holder_can_render_clock_top_right": (
-        "Esperando um PC com o original que saiba desenhar o novo cronômetro "
-        "(Baja Worker 0.7.0 ou mais novo)."
+        "Esperando um PC com o original que saiba desenhar o novo visual do resultado "
+        "e do cronômetro (Baja Worker 0.7.0 ou mais novo)."
     ),
-    "render_feature.clock_top_right": "cronômetro no canto",
+    "render_feature.clock_top_right": "novo visual do resultado e do cronômetro",
     # --- Configurações, "Testar" ---
     "pass_results.test.clock": "Cronômetro para em <strong>{text}</strong>.",
     "pass_results.test.clock_problem": "Cronômetro: {reason}",

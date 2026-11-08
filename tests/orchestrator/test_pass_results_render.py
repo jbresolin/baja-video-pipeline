@@ -9,7 +9,9 @@ clip. The orchestrator builds the line from the latest results it fetched
   none yet;
 * hands it to the worker in the process task, but only to a worker that
   declared it can draw it (render feature "pass_result", installer
-  0.5.0); an older worker would ignore it and render without the pill;
+  0.5.0); an older worker would ignore it and render without the pill.
+  Since LIVESTACK-53 a result also needs the new look ("clock_top_right",
+  installer 0.7.0: the small "s", the result after a clock's stop);
 * treats it as a render input: a clip rendered without a result, or with
   an older one, is flagged as no longer matching. It is never
   reprocessed automatically: that stays the reviewer's decision.
@@ -24,7 +26,7 @@ from orchestrator.background.sweepers import expire_leases_once
 from orchestrator.domain.pass_results_fetch import poll_due_tables
 from orchestrator.domain.render_features import (
     NO_HOLDER_CAN_RENDER,
-    NO_HOLDER_CAN_RENDER_PASS_RESULT,
+    NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT,
 )
 from orchestrator.testing.scenarios import (
     SAMPLE_CLIP,
@@ -50,6 +52,7 @@ from tests.orchestrator.test_render_inputs import edit_review, report_inputs
 # What each installer version declares (worker/render_features.py).
 FEATURES_0_4_0 = ["framing", "no_audio"]
 FEATURES_0_5_0 = ["framing", "no_audio", "pass_result"]
+FEATURES_0_7_0 = [*FEATURES_0_5_0, "clock", "clock_top_right"]
 
 
 def enroll_master(harness, features):
@@ -191,17 +194,18 @@ def test_show_by_default_false_starts_the_toggle_off(harness):
 # --- The render task and which workers get it ---
 
 
-def test_a_0_5_0_worker_gets_the_text_in_the_process_task(harness):
+def test_a_0_7_0_worker_gets_the_text_in_the_process_task(harness):
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_5_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     job_id = ready_job(harness, master)
 
     task = ask_next(harness, master, [TaskKind.PROCESS])
 
-    # The resolved text, and the feature it needs, travel with the task.
+    # The resolved text, and the features it needs, travel with the task:
+    # the pill, and its look since LIVESTACK-53 (no clock here).
     assert task["job_id"] == job_id
     assert task["pass_result_text"] == "66 s · 4 cones → 86 s"
-    assert task["required_render_features"] == ["pass_result"]
+    assert task["required_render_features"] == ["pass_result", "clock_top_right"]
 
 
 def test_a_0_4_0_worker_is_not_offered_a_render_with_a_result(harness):
@@ -216,16 +220,17 @@ def test_a_0_4_0_worker_is_not_offered_a_render_with_a_result(harness):
     assert refused.status_code == 409
     assert "pass_result" in refused.json()["error"]["message"]
 
-    # The job says what it waits for: a worker updated to 0.5.0.
+    # The job says what it waits for: a worker updated to 0.7.0 (0.5.0
+    # draws a pill, but not in the look every result now needs).
     expire_leases_once(harness.context)
-    assert harness.job(job_id)["waiting_reason"] == NO_HOLDER_CAN_RENDER_PASS_RESULT
+    assert harness.job(job_id)["waiting_reason"] == NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT
 
-    # Once that PC is updated (its next heartbeat declares pass_result), it
-    # gets the render, and the waiting reason goes away.
+    # Once that PC is updated (its next heartbeat declares both), it gets
+    # the render, and the waiting reason goes away.
     harness.heartbeat(
         master,
         tailnet_address="100.70.0.1",
-        render_features=FEATURES_0_5_0,
+        render_features=FEATURES_0_7_0,
         held_job_ids=[job_id],  # it still has the raw
     )
     expire_leases_once(harness.context)
@@ -259,7 +264,7 @@ def test_a_job_whose_toggle_is_off_needs_no_new_worker(harness):
 
 def test_a_holder_that_cannot_do_the_other_features_either_gets_the_older_reason(harness):
     # A 0.3.0 worker (no features at all) holding an upright video with a
-    # result: the general "update the worker" reason, not the 0.5.0 one,
+    # result: the general "update the worker" reason, not the 0.7.0 one,
     # since even the result aside it could not render it.
     set_up_manobrabilidade(harness)
     master = enroll_master(harness, None)
@@ -277,7 +282,7 @@ def test_a_result_published_after_delivery_flags_the_clip(harness):
     # Setup: car 5's second run has no result yet; its clip is rendered
     # without the pill and delivered.
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_5_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job(harness, master, car=5, passagem=2)
     deliver(harness, master, studio, job_id)
@@ -303,7 +308,7 @@ def test_a_result_published_after_delivery_flags_the_clip(harness):
 
 def test_a_result_corrected_after_delivery_flags_the_clip(harness):
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_5_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job(harness, master, car=26, passagem=2)
     deliver(harness, master, studio, job_id)
@@ -323,7 +328,7 @@ def test_a_correction_the_next_morning_still_flags_the_clip(harness):
     # Delivered in the afternoon; the event goes on (answers cached 5 s),
     # so the table is still fetched however long ago the clip went out.
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_5_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job(harness, master, car=26, passagem=2)
     deliver(harness, master, studio, job_id)
@@ -337,7 +342,7 @@ def test_a_correction_the_next_morning_still_flags_the_clip(harness):
 
 def test_turning_the_line_off_after_delivery_flags_the_clip_and_back_on_clears_it(harness):
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_5_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job(harness, master)
     deliver(harness, master, studio, job_id)
@@ -352,7 +357,7 @@ def test_without_a_worker_report_the_claim_snapshot_keeps_the_text(harness):
     # A worker that reports nothing (or whose report was refused): the
     # version keeps what the orchestrator handed out at the claim.
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_5_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job(harness, master)
     deliver(harness, master, studio, job_id, report=False)
@@ -366,7 +371,7 @@ def test_a_failed_fetch_never_makes_a_clip_look_out_of_date(harness):
     # The API going down keeps the last good text, so the comparison does
     # not change: nothing on air is flagged (or blanked) by a failure.
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_5_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job(harness, master)
     deliver(harness, master, studio, job_id)
@@ -384,7 +389,7 @@ def test_removing_the_configuration_flags_clips_that_show_a_result(harness):
     # Taking a prova out of the configuration means new renders have no
     # pill: a clip that has one is flagged (the reviewer decides).
     set_up_manobrabilidade(harness)
-    master = enroll_master(harness, FEATURES_0_5_0)
+    master = enroll_master(harness, FEATURES_0_7_0)
     studio = harness.enroll(WorkerRole.STUDIO, "studio", tailnet_address="100.70.0.3")
     job_id = ready_job(harness, master)
     deliver(harness, master, studio, job_id)

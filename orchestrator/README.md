@@ -146,7 +146,9 @@ Every state change goes through `domain/transitions.move_job`, which asks
   included) and the event is not finished, then once more and no more; a
   failure keeps the last good answer. The result
   line goes to the worker as `ProcessTask.pass_result_text`, only to
-  workers that declare `pass_result` (installer 0.5.0).
+  workers that declare `pass_result` (installer 0.5.0) and, since
+  LIVESTACK-53 (design §36), `clock_top_right` (installer 0.7.0: the
+  result in its new look).
 * **Running clock** (LIVESTACK-48, design §33): from the reviewer's
   largada and the run's official time (same tables), as
   `ProcessTask.pass_clock`, only to workers that declare `clock` and,

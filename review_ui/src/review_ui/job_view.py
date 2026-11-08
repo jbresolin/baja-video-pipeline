@@ -69,7 +69,7 @@ NO_HOLDER_CAN_RENDER_CLOCK_REASON = (
 )
 # The same, when the job needs the clock's new look (LIVESTACK-53).
 NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT_REASON = (
-    "waiting for a holder of the raw that can draw the new running clock"
+    "waiting for a holder of the raw that can draw the new result and clock look"
     " (a worker updated to 0.7.0 or later)"
 )
 _TASK_FAILED_ON = re.compile(

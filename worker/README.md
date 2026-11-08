@@ -203,8 +203,9 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   this version can do (`render_features.py`: `framing`, `no_audio`,
   LIVESTACK-50, installer 0.4.0; `pass_result`, LIVESTACK-47, installer
   0.5.0; `clock`, LIVESTACK-48, installer 0.6.0; `clock_top_right`,
-  LIVESTACK-53, installer 0.7.0; the orchestrator gives renders that need one only to workers
-  that declared it). An orchestrator older than contract 2.6.0
+  LIVESTACK-53, installer 0.7.0, the new result and clock look, needed by
+  every render with a result or a clock; the orchestrator gives renders
+  that need one only to workers that declared it). An orchestrator older than contract 2.6.0
   refuses that field with 400: the beat is resent without it, and it is
   left out for 5 minutes. Acts on `lost` leases, `accepting_new_raws`,
   `deletable_job_ids` and `role`.
