@@ -69,6 +69,31 @@ ${PIPELINE_DOMAIN} {
 		import bvp_pipeline_files
 	}
 
+	# Clip previews ("Ver clipe", LIVESTACK-52), worker-made 480p copies of
+	# rendered clips: /previews/<job_id>.<clip sha256>.mp4. One name per clip
+	# version, so a cached copy is never the wrong version.
+	handle /previews/* {
+		header Cache-Control "private, max-age=3600"
+		import bvp_pipeline_files
+	}
+
+	# Clips a reviewer asked for ("Baixar clipe", LIVESTACK-52):
+	# /requested-clips/<job_id>/<readable clip name>. Not served from disk
+	# here: the orchestrator sends the bytes itself, because it deletes the
+	# copy 30 minutes after the first *complete* download and only the
+	# sender can tell a download finished. It checks the bvp_session cookie
+	# itself (as /auth/media does) and names the download. GET/HEAD only;
+	# flush_interval -1 passes each piece on as it comes.
+	@bvp_requested_clip {
+		path /requested-clips/*
+		method GET HEAD
+	}
+	handle @bvp_requested_clip {
+		reverse_proxy bvp-orchestrator:8000 {
+			flush_interval -1
+		}
+	}
+
 	# Finished clips still in the outbox (studio offline, or not yet archived
 	# by the master), for the review UI's Download button (LIVESTACK-38):
 	# /clip-downloads/<job_id>.mp4 -> outbox/<job_id>.mp4. The same sign-in
