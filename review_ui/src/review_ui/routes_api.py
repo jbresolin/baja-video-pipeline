@@ -20,12 +20,17 @@ from pydantic import ValidationError
 from review_ui.catalog import text
 from review_ui.errors import UiRequestError
 from review_ui.job_view import describe_waiting_reason, save_message
-from review_ui.pass_clock_view import overlay_preview_data
+from review_ui.pass_clock_view import (
+    overlay_preview_data,
+    overlay_preview_pass_data,
+    pass_clock_box,
+)
+from review_ui.pass_result_view import pass_result_box
 from review_ui.presence_view import presence_sentence
 from review_ui.request_context import orchestrator_for, render_fragment
 from review_ui.routes_job import build_passagem_help
 from review_ui.templating import media_url
-from shared.models import ReviewAction, ReviewUpdate
+from shared.models import ReviewAction, ReviewUpdate, utc_now
 
 router = APIRouter(prefix="/review/api")
 
@@ -155,6 +160,42 @@ def passagem_help(
             "html": render_fragment(request, "_passagem_help.html", {"help": panel}),
             "warnings": panel.warnings if panel else [],
             "suggestion": panel.suggestion if panel else None,
+        }
+    )
+
+
+@router.get("/jobs/{job_id}/pass-blocks")
+def pass_blocks(
+    request: Request,
+    job_id: str,
+    prova: str = Query("", max_length=64),
+    car_number: int | None = Query(None, ge=0, le=9999),
+    passagem: int | None = Query(None, ge=1, le=999),
+) -> JSONResponse:
+    """The blocks "Resultado da passagem" and "Cronômetro" for what the form says now,
+    saved or not (LIVESTACK-53). `result_html` / `clock_html` are the blocks
+    as the page draws them, or null when the prova has none; `preview` is
+    the overlay preview's result line and official time. The page keeps
+    the fields the reviewer already set (js/pass_blocks.js)."""
+    answer = orchestrator_for(request).pass_preview(
+        job_id, prova.strip() or None, car_number, passagem
+    )
+    now = utc_now()
+    result_box = pass_result_box(answer.pass_result, now)
+    clock_box = pass_clock_box(answer.pass_clock, now, result_box_shown=result_box is not None)
+    return JSONResponse(
+        {
+            "result_html": (
+                render_fragment(request, "_pass_result.html", {"pass_box": result_box})
+                if result_box
+                else None
+            ),
+            "clock_html": (
+                render_fragment(request, "_pass_clock.html", {"clock_box": clock_box})
+                if clock_box
+                else None
+            ),
+            "preview": overlay_preview_pass_data(answer.pass_result, answer.pass_clock),
         }
     )
 

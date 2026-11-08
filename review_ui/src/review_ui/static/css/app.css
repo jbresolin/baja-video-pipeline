@@ -207,6 +207,8 @@ video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: var(
 .largada-mark { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1px; background: var(--warn-ink); border-radius: 1px; }
 .preview-toggle { margin-top: 0.5rem; }
 .pass-clock { margin: 0.75rem 0; }
+/* Where js/pass_blocks.js puts the result and clock blocks: no box of its own. */
+.slot { display: contents; }
 .shortcuts { margin-top: 0.75rem; font-size: 0.85rem; color: var(--muted); }
 .shortcuts summary { cursor: pointer; }
 .shortcuts dl { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; margin: 0.5rem 0 0; }

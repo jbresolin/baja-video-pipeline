@@ -128,6 +128,15 @@ export function setupOverlayPreview({ video, form, player }) {
     fillNameAndResult();
   });
 
+  // Prova, car or passagem changed (js/pass_blocks.js, LIVESTACK-53): the
+  // result line and the official time for what the form says now.
+  form.addEventListener("pass-blocks-changed", (event) => {
+    data = { ...data, result_text: event.detail.result_text, clock: event.detail.clock };
+    clockWidthSet = false;
+    clockDigits.style.width = "";
+    fillNameAndResult();
+  });
+
   const clockPill = element("div", "ovl-pill ovl-clock-pill");
   const clockDigits = element("span", "ovl-clock-digits");
   clockPill.append(clockDigits);

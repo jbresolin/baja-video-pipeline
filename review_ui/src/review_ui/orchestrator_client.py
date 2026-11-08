@@ -28,6 +28,7 @@ from shared.models import (
     LoginResponse,
     ManifestResponse,
     OriginalDownload,
+    PassPreview,
     PresentReviewer,
     Prova,
     ProvasResponse,
@@ -148,6 +149,18 @@ class OrchestratorClient:
     def get_job(self, job_id: str) -> Job:
         response = self._request("GET", f"/jobs/{_path_segment(job_id)}")
         return self._parse(Job, response)
+
+    def pass_preview(
+        self, job_id: str, prova: str | None, car_number: int | None, passagem: int | None
+    ) -> PassPreview:
+        """Job.pass_result and Job.pass_clock as they would be after saving these
+        values (LIVESTACK-53); None = the saved value. Nothing is stored."""
+        asked = {"prova": prova, "car_number": car_number, "passagem": passagem}
+        params = {name: value for name, value in asked.items() if value is not None}
+        response = self._request(
+            "GET", f"/jobs/{_path_segment(job_id)}/pass-preview", params=params
+        )
+        return self._parse(PassPreview, response)
 
     def sender_messages(self, job_id: str) -> SenderMessagesResponse:
         """The sender's messages around this video (LIVESTACK-49), in display order."""

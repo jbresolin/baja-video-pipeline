@@ -163,10 +163,16 @@
 
       <label class="check"><input type="checkbox" name="show_pass" {% if job.show_pass %}checked{% endif %}>
         {{ t("job.show_pass") }}</label>
-      {# The official result of the passagem (LIVESTACK-47), for a configured prova. #}
-      {% if pass_box %}{% include "_pass_result.html" %}{% endif %}
-      {# The running clock (LIVESTACK-48), for a prova with a clock. #}
-      {% if clock_box %}{% include "_pass_clock.html" %}{% endif %}
+      {# The official result of the passagem (LIVESTACK-47), for a configured
+         prova, and the running clock (LIVESTACK-48), for a prova with a clock.
+         js/pass_blocks.js puts them in, swaps and takes them out of these
+         slots while prova, car or passagem change, saved or not (LIVESTACK-53). #}
+      <div class="slot" id="pass-result-slot" data-url="/review/api/jobs/{{ job.id }}/pass-blocks">
+        {%- if pass_box %}{% include "_pass_result.html" %}{% endif -%}
+      </div>
+      <div class="slot" id="pass-clock-slot">
+        {%- if clock_box %}{% include "_pass_clock.html" %}{% endif -%}
+      </div>
 
       {% include "_render_options.html" %}
 
