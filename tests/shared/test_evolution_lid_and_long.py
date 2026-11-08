@@ -57,7 +57,7 @@ def test_a_number_field_with_garbage_is_still_a_validation_error():
 def test_the_real_2_3_7_shape_is_accepted():
     # The exact shape that came back as HTTP 400 in production: LID sender,
     # phone in remoteJidAlt, empty participant, Long fileLength.
-    payload = as_evolution_2_3_7_lid_payload(document_message_payload(sender_phone="555499982643"))
+    payload = as_evolution_2_3_7_lid_payload(document_message_payload(sender_phone="551900000042"))
     webhook = EvolutionWebhook.model_validate(payload)
     document = webhook.data.message.document_message
     # The Long object became a normal integer...
@@ -68,12 +68,12 @@ def test_the_real_2_3_7_shape_is_accepted():
 
 
 def test_a_lid_sender_is_answered_on_their_phone_number():
-    payload = as_evolution_2_3_7_lid_payload(document_message_payload(sender_phone="555499982643"))
+    payload = as_evolution_2_3_7_lid_payload(document_message_payload(sender_phone="551900000042"))
     key = EvolutionWebhook.model_validate(payload).data.key
     # The raw id is the anonymous LID...
     assert key.remote_jid == "53880532508775@lid"
     # ...but sender_jid, which replies and contacts use, is the phone.
-    assert key.sender_jid == "555499982643@s.whatsapp.net"
+    assert key.sender_jid == "551900000042@s.whatsapp.net"
 
 
 def test_a_classic_sender_is_unchanged():
