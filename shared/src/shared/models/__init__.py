@@ -145,7 +145,7 @@ from shared.models.job import (
     PresentReviewer,
     ProbeReport,
 )
-from shared.models.pass_clock import PassClock, RenderClock, ReportedClock
+from shared.models.pass_clock import PassClock, PassPreview, RenderClock, ReportedClock
 from shared.models.pass_results import (
     MAX_PASS_RESULTS_CONFIG_LENGTH,
     PassResult,
@@ -278,6 +278,7 @@ __all__ = [
     "RenderFeature",
     "MAX_PASS_RESULTS_CONFIG_LENGTH",
     "PassClock",
+    "PassPreview",
     "RenderClock",
     "ReportedClock",
     "PassResult",

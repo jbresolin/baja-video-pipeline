@@ -70,7 +70,7 @@ types**; this page explains the behaviour around them. Design background:
 | `POST /auth/login` | none (the password is the credential; 20 per source IP per 600 s) |
 | `/admin/*`, `POST /intake/test-upload`, `GET /metrics` | sessionBearer (role admin) **or** adminBearer |
 | worker loop, `/workers`, `/auth/file`, `/outbox/{id}/ack` | workerBearer |
-| `/review/queue`, `/review/car-videos`, `GET /jobs/{job_id}/sender-messages`, `PUT/DELETE /jobs/{job_id}/presence`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
+| `/review/queue`, `/review/car-videos`, `GET /jobs/{job_id}/sender-messages`, `GET /jobs/{job_id}/pass-preview`, `PUT/DELETE /jobs/{job_id}/presence`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
 | `GET /auth/media` | sessionCookie |
 | `GET /jobs/{job_id}`, `GET /manifest` | sessionBearer **or** workerBearer |
 | `GET /fleet`, `GET /jobs/{job_id}/events`, `GET /events`, `GET /provas` | sessionBearer **or** adminBearer |
@@ -568,6 +568,7 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `PUT /jobs/{job_id}/presence` | → `JobPresenceResponse` | reviewer session; "this job page is open", on opening and every ~20 s; answers the *other* reviewers on the job (`others`, first arrived first, `since` = their first ping). In memory; 45 s without a ping = gone. Never a lock (LIVESTACK-51); 404 unknown job |
 | `DELETE /jobs/{job_id}/presence` | → 204 | the page closed; always 204 |
 | `GET /jobs/{job_id}/sender-messages` | → `SenderMessagesResponse` | reviewer session only; the job page's "Mensagens de <remetente>" (below, "Sender messages"); 404 unknown job |
+| `GET /jobs/{job_id}/pass-preview?prova=…&car_number=…&passagem=…` | → `PassPreview` | reviewer session only; the result line and the clock for values not saved yet (below, "Running clock"); nothing is stored; 404 unknown job |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
 | `POST /jobs/{job_id}/regenerate-proxy` | → 202 `RegenerateProxyResponse` | no state change |
 | `GET /teams/{car_number}` | → `Team` | the teams table (results API sync + admin corrections); 404 unknown car |
@@ -716,6 +717,19 @@ comma. `Job.clip_team_name` and `clip_school_name` are the names a render
 would draw now (for the job page's overlay preview).
 `PassResultTestResponse` ("Testar") adds `clock_configured`, `clock_text`
 and `clock_problem`.
+
+**Before a save** (contract 2.10.0, LIVESTACK-53). `GET
+/jobs/{id}/pass-preview?prova=…&car_number=…&passagem=…` (reviewer
+session) answers `PassPreview {pass_result, pass_clock}`: exactly what
+`Job.pass_result` and `Job.pass_clock` would be after saving those values
+(the same functions, run on the saved job with the asked values put in).
+Nothing is stored. A value left out is the saved one, as in `PATCH
+…/review`; the toggles and the largada are always the saved ones (the
+page reads its own fields for those). Only tables already fetched are
+used: the first video of a prova sees `not_fetched` until the background
+loop fetches the table, which it does once a job of that prova is saved.
+The job page asks while prova, car or passagem change, so "Resultado da
+passagem" and "Cronômetro" appear, change and go without a reload.
 
 **Names on the clips** (LIVESTACK-42). Two independent Settings,
 `clip_team_name_style` and `clip_school_name_style` (`full` | `short`,

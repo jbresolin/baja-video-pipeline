@@ -13,7 +13,7 @@ from pydantic import Field
 
 from shared.models.common import ReadByClients, ReceivedByServer, Seconds
 from shared.models.enums import PassResultProblem
-from shared.models.pass_results import PassResultFetch
+from shared.models.pass_results import PassResult, PassResultFetch
 
 # 0 to 3 decimals, as the configuration allows.
 ClockDecimals = Annotated[int, Field(ge=0, le=3)]
@@ -76,3 +76,18 @@ class PassClock(ReadByClients):
     # What a render would draw now: set when configured, shown, the largada
     # is marked and the official time is known; None = no clock in the clip.
     render: RenderClock | None = None
+
+
+class PassPreview(ReadByClients):
+    """GET /jobs/{id}/pass-preview: the result line and the clock for values not saved yet.
+
+    The job page asks while the reviewer types prova, car or passagem
+    (LIVESTACK-53), so "Resultado da passagem" and "Cronômetro" appear,
+    change and go without a save. Each is exactly what Job.pass_result and
+    Job.pass_clock would be after saving those values; nothing is stored.
+
+    Read by clients: unknown fields are ignored.
+    """
+
+    pass_result: PassResult
+    pass_clock: PassClock

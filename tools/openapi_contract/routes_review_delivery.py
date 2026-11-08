@@ -19,6 +19,7 @@ from shared.models import (
     ManifestResponse,
     OriginalDownload,
     OutboxAckRequest,
+    PassPreview,
     RegenerateProxyResponse,
     ReviewQueueResponse,
     ReviewUpdate,
@@ -127,6 +128,36 @@ def get_sender_messages(job_id: str) -> SenderMessagesResponse:
     by kind (`audio`, `image`, ...). Edited messages carry the new text and
     `edited: true`; deleted ones `deleted: true` and no text. Messages are
     kept for the Settings' `sender_messages_keep_days` (14)."""
+    not_implemented()
+
+
+@router.get(
+    "/jobs/{job_id}/pass-preview",
+    tags=["review"],
+    summary="The result line and the clock for prova, car and passagem not saved yet",
+    response_model=PassPreview,
+    dependencies=_reviewer_only,
+    responses=error_responses(400, 401, 404),
+)
+def get_pass_preview(
+    job_id: str,
+    prova: str | None = Query(
+        None, min_length=1, max_length=64, description="Left out = the job's saved prova."
+    ),
+    car_number: int | None = Query(
+        None, ge=0, le=9999, description="Left out = the job's saved car number."
+    ),
+    passagem: int | None = Query(
+        None, ge=1, le=999, description="Left out = the job's saved passagem."
+    ),
+) -> PassPreview:
+    """For the job page while the reviewer types (LIVESTACK-53): exactly
+    what `Job.pass_result` and `Job.pass_clock` would be after saving these
+    values (the same functions, on the saved job with these values put in),
+    so "Resultado da passagem" and "Cronômetro" appear, change and go
+    without a save. A value left out keeps the saved one, as in PATCH
+    …/review. Nothing is stored; the toggles and the largada are the saved
+    ones (the page reads its own fields for those)."""
     not_implemented()
 
 
