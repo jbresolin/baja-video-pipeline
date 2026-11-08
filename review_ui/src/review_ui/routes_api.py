@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from review_ui.catalog import text
 from review_ui.errors import UiRequestError
 from review_ui.job_view import describe_waiting_reason, save_message
+from review_ui.presence_view import presence_sentence
 from review_ui.request_context import orchestrator_for, render_fragment
 from review_ui.routes_job import build_passagem_help
 from review_ui.templating import media_url
@@ -71,6 +72,30 @@ async def update_review(request: Request, job_id: str) -> JSONResponse:
             "refresh_page": update.action == ReviewAction.SAVE and job.clip_inputs is not None,
         }
     )
+
+
+@router.put("/jobs/{job_id}/presence")
+async def ping_presence(request: Request, job_id: str) -> JSONResponse:
+    """The job page is still open (every ~20 s, js/presence.js; LIVESTACK-51).
+    Answers who else is on the video, as the sentence the page shows (null
+    when nobody is)."""
+    await read_json_body(request)
+    orchestrator = orchestrator_for(request)
+    others = await run_in_threadpool(orchestrator.ping_presence, job_id)
+    return JSONResponse(
+        {
+            "others": [reviewer.model_dump(mode="json") for reviewer in others],
+            "sentence": presence_sentence(others),
+        }
+    )
+
+
+@router.post("/jobs/{job_id}/presence/leave")
+async def leave_presence(request: Request, job_id: str) -> JSONResponse:
+    """The job page is closing (a keepalive request on pagehide)."""
+    await read_json_body(request)
+    await run_in_threadpool(orchestrator_for(request).leave_presence, job_id)
+    return JSONResponse({"left": True})
 
 
 @router.post("/jobs/{job_id}/regenerate-proxy")

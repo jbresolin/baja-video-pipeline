@@ -339,6 +339,18 @@ class Job(ReadByClients):
         return self
 
 
+class PresentReviewer(ReadByClients):
+    """A reviewer with a job page open now (LIVESTACK-51 item 1).
+
+    Read by clients: unknown fields are ignored.
+    """
+
+    # The signed-in user's name (Admin → Usuários).
+    username: str
+    # When their first ping for this job arrived.
+    since: datetime
+
+
 class JobSummary(ReadByClients):
     """The slice of a Job shown in lists (review queue, fleet view).
 
@@ -388,6 +400,10 @@ class JobSummary(ReadByClients):
     # A copy of this job's video (Job.duplicate_of, LIVESTACK-51): the queue
     # marks it "duplicado".
     duplicate_of: str | None = None
+    # Who has this job's page open now, first arrived first (LIVESTACK-51):
+    # the queue shows "👤 Alessander" so people pick another video. Filled
+    # in by GET /review/queue only; nothing is locked.
+    reviewing: list[PresentReviewer] = Field(default_factory=list)
 
     @classmethod
     def from_job(cls, job: Job) -> "JobSummary":

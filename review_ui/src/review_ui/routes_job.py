@@ -20,6 +20,7 @@ from review_ui.orchestrator_client import (
 from review_ui.pass_clock_view import overlay_preview_data, pass_clock_box
 from review_ui.pass_result_view import pass_result_box
 from review_ui.passagem_help_view import PassagemHelp, passagem_help
+from review_ui.presence_view import presence_sentence
 from review_ui.render_options_view import render_options_box
 from review_ui.request_context import orchestrator_for, render_page
 from review_ui.sender_messages_view import SenderMessagesSection, sender_messages_section
@@ -116,7 +117,23 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
     )
     # "Mensagens de <remetente>" (LIVESTACK-49).
     context["messages"], context["messages_failed"] = sender_messages_or_none(orchestrator, job)
+    # Someone else already on this video (LIVESTACK-51): the banner, and the
+    # form waits for "Revisar mesmo assim".
+    context["presence"] = presence_or_none(orchestrator, job)
     return render_page(request, "job.html", context)
+
+
+def presence_or_none(orchestrator: OrchestratorClient, job: Job) -> str | None:
+    """Opening the page is this reviewer's first ping; the sentence naming the
+    others on the video, or None.
+
+    Presence only informs: if the call fails, the page opens as if nobody
+    else were on it (the script tries again in 20 s).
+    """
+    try:
+        return presence_sentence(orchestrator.ping_presence(job.id))
+    except (OrchestratorError, OrchestratorUnavailableError):
+        return None
 
 
 def sender_messages_or_none(

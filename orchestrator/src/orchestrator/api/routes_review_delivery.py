@@ -3,7 +3,7 @@
 import sqlite3
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
 from orchestrator.api.auth import (
     get_context,
@@ -28,6 +28,7 @@ from shared.models import (
     EventsResponse,
     FleetResponse,
     Job,
+    JobPresenceResponse,
     JobState,
     JobStateResponse,
     ManifestResponse,
@@ -95,6 +96,27 @@ def get_sender_messages(
     """The job page's "Mensagens de <remetente>" (LIVESTACK-49). Reviewers
     only: workers read GET /jobs/{id} and never need people's messages."""
     return sender_messages.sender_messages_for_job(context, job_id)
+
+
+@router.put("/jobs/{job_id}/presence", tags=["review"], response_model=JobPresenceResponse)
+def ping_presence(
+    job_id: str,
+    reviewer: str = Depends(require_reviewer),
+    context: OrchestratorContext = Depends(get_context),
+) -> JobPresenceResponse:
+    """The job page says its reviewer is on this job (LIVESTACK-51); answers who else is."""
+    return review_queue.ping_presence(context, reviewer, job_id)
+
+
+@router.delete("/jobs/{job_id}/presence", tags=["review"], status_code=204)
+def leave_presence(
+    job_id: str,
+    reviewer: str = Depends(require_reviewer),
+    context: OrchestratorContext = Depends(get_context),
+) -> Response:
+    """The job page closed: the reviewer is no longer on this job."""
+    context.presence.leave(job_id, reviewer)
+    return Response(status_code=204)
 
 
 @router.patch("/jobs/{job_id}/review", tags=["review"], response_model=Job)

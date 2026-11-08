@@ -28,6 +28,7 @@
       </span>
       <span class="row-badges">
         {{ m.state_badge(item.state) }}
+        {% if presence_markers is defined and item.id in presence_markers %}<span class="badge presence" title="{{ t('presence.queue_marker.title') }}">{{ presence_markers[item.id] }}</span>{% endif %}
         {{ m.message_count(item) }}
         {% if item.low_res %}<span class="badge flag" title="{{ t('badge.low_res.title') }}">{{ t("badge.low_res") }}</span>{% endif %}
         {% if item.vertical %}<span class="badge" title="{{ t('badge.vertical.title') }}">{{ t("badge.vertical") }}</span>{% endif %}

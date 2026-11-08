@@ -31,6 +31,14 @@
   <button type="button" data-reload>{{ t("job.reload") }}</button>
 </div>
 
+{# Someone else is on this video (LIVESTACK-51): the form waits for
+   "Revisar mesmo assim"; js/presence.js keeps it current. #}
+<div id="presence-banner" class="banner warning with-action"{% if not presence %} hidden{% endif %}>
+  <p><strong id="presence-banner-text">{{ presence or "" }}</strong> {{ t("presence.banner_hint") }}</p>
+  <button type="button" data-review-anyway>{{ t("presence.review_anyway") }}</button>
+</div>
+<p id="presence-note" class="note info" aria-live="polite" hidden></p>
+
 {# data-frame-rate: the proxy's fps (30 when unknown); ←/→ and -/= step by one frame of it. #}
 <div class="job-layout" id="job" data-job-id="{{ job.id }}" data-version="{{ job.version }}"
      data-duration="{{ job.duration_s if job.duration_s is not none else '' }}"
@@ -102,7 +110,7 @@
     {# "Mensagens de <remetente>" (LIVESTACK-49): what the filmmaker wrote around this video. #}
     {% include "_sender_messages.html" %}
 
-    <form id="review-form" class="review-form" autocomplete="off">
+    <form id="review-form" class="review-form" autocomplete="off"{% if presence %} inert{% endif %}>
       <div class="cuts">
         <div class="cut" data-mark-box="in">
           <label for="cut_in_s">{{ t("job.cut_in") }} <span class="unit">{{ t("job.seconds_unit") }}</span></label>

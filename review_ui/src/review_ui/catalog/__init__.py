@@ -31,6 +31,7 @@ from review_ui.catalog import (
     pass_clock,
     pass_results,
     passagens,
+    presence,
     render_options,
     scripts,
     senders,
@@ -62,6 +63,7 @@ CATALOG: dict[str, str] = _merge(
     welcome.TEXT,
     senders.TEXT,
     duplicates.TEXT,
+    presence.TEXT,
     scripts.TEXT,
 )
 

@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from review_ui.presence_view import queue_marker
 from review_ui.queue_view import (
     STATES_IN_PIPELINE_ORDER,
     QueueFilter,
@@ -11,7 +12,7 @@ from review_ui.queue_view import (
     parse_queue_filter,
     sender_options,
 )
-from review_ui.request_context import orchestrator_for, render_page
+from review_ui.request_context import current_user, orchestrator_for, render_page
 from review_ui.settings import QUEUE_POLL_SECONDS
 
 router = APIRouter()
@@ -21,8 +22,17 @@ def _queue_context(request: Request, queue_filter: QueueFilter) -> dict:
     all_items = orchestrator_for(request).review_queue(
         queue_filter.states, outdated=queue_filter.outdated_only
     )
+    user = current_user(request)
+    me = user.username if user else None
+    items = apply_local_filters(all_items, queue_filter)
     return {
-        "items": apply_local_filters(all_items, queue_filter),
+        "items": items,
+        # "👤 Alessander" on rows someone else has open (LIVESTACK-51).
+        "presence_markers": {
+            item.id: marker
+            for item in items
+            if (marker := queue_marker(item.reviewing, me)) is not None
+        },
         # Prova choices come from the unfiltered list, so picking one prova
         # does not make the others disappear from the menu.
         "prova_options": distinct_provas([item.prova for item in all_items]),

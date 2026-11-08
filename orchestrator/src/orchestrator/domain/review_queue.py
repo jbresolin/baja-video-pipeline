@@ -16,6 +16,7 @@ from orchestrator.repositories import teams as teams_repo
 from shared.models import (
     HolderStatus,
     Job,
+    JobPresenceResponse,
     JobState,
     JobSummary,
     RegenerateProxyResponse,
@@ -43,7 +44,21 @@ def review_queue(
             jobs = [job_from_row(connection, row, context.layout) for row in rows]
         counts = sender_messages.message_counts(connection, rows)
         summaries = with_senders(connection, summaries_with_message_counts(jobs, counts), jobs)
+    # Who has each video open now (LIVESTACK-51), so people pick another.
+    reviewing = context.presence.everyone(context.clock.now())
+    summaries = [
+        summary.model_copy(update={"reviewing": reviewing.get(summary.id, [])})
+        for summary in summaries
+    ]
     return ReviewQueueResponse(items=summaries)
+
+
+def ping_presence(context: OrchestratorContext, reviewer: str, job_id: str) -> JobPresenceResponse:
+    """PUT /jobs/{id}/presence: `reviewer` is on the job; the others on it (domain/presence.py)."""
+    with context.database.transaction() as connection:
+        require_job_row(connection, job_id)
+    others = context.presence.ping(job_id, reviewer, context.clock.now())
+    return JobPresenceResponse(others=others)
 
 
 def with_senders(

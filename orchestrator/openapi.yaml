@@ -1713,6 +1713,89 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /jobs/{job_id}/presence:
+    put:
+      tags:
+      - review
+      summary: 'The job page is open: say so, and learn who else has it open'
+      description: 'Sent by the job page on opening and every ~20 s while it stays open
+
+        (LIVESTACK-51). Answers the *other* reviewers on this job (the caller
+
+        left out), first arrived first, with when each one''s first ping came.
+
+        A reviewer with no ping for 45 s is gone: nothing is ever locked, this
+
+        only informs. In memory: a restart forgets it until the next pings.
+
+        `GET /review/queue` lists everyone on each job in `JobSummary.reviewing`.'
+      operationId: ping_presence_jobs__job_id__presence_put
+      security:
+      - sessionBearer: []
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobPresenceResponse'
+        '401':
+          description: Missing or wrong credentials (unauthenticated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No such job / worker / team / user / ... (not_found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - review
+      summary: The job page closed
+      description: 'Ends the caller''s presence on this job at once (instead of after 45 s).
+
+        Always 204, also when there was none.'
+      operationId: leave_presence_jobs__job_id__presence_delete
+      security:
+      - sessionBearer: []
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          description: Missing or wrong credentials (unauthenticated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /jobs/{job_id}/review:
     patch:
       tags:
@@ -5878,6 +5961,23 @@ components:
 
 
         Read by clients: unknown fields are ignored.'
+    JobPresenceResponse:
+      properties:
+        others:
+          items:
+            $ref: '#/components/schemas/PresentReviewer'
+          type: array
+          title: Others
+      type: object
+      required:
+      - others
+      title: JobPresenceResponse
+      description: 'PUT /jobs/{id}/presence: the *other* reviewers on this job (LIVESTACK-51).
+
+
+        The caller is left out; empty when nobody else has the page open.
+
+        Read by clients: unknown fields are ignored.'
     JobState:
       type: string
       enum:
@@ -6041,6 +6141,11 @@ components:
           - type: string
           - type: 'null'
           title: Duplicate Of
+        reviewing:
+          items:
+            $ref: '#/components/schemas/PresentReviewer'
+          type: array
+          title: Reviewing
       type: object
       required:
       - id
@@ -6850,6 +6955,24 @@ components:
       - workers
       title: PeersResponse
       description: 'Read by clients: unknown fields are ignored.'
+    PresentReviewer:
+      properties:
+        username:
+          type: string
+          title: Username
+        since:
+          type: string
+          format: date-time
+          title: Since
+      type: object
+      required:
+      - username
+      - since
+      title: PresentReviewer
+      description: 'A reviewer with a job page open now (LIVESTACK-51 item 1).
+
+
+        Read by clients: unknown fields are ignored.'
     ProbeReport:
       properties:
         format:

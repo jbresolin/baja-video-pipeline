@@ -21,12 +21,14 @@ from shared.models import (
     EventsResponse,
     FleetResponse,
     Job,
+    JobPresenceResponse,
     JobState,
     JobSummary,
     LoginRequest,
     LoginResponse,
     ManifestResponse,
     OriginalDownload,
+    PresentReviewer,
     Prova,
     ProvasResponse,
     RegenerateProxyResponse,
@@ -151,6 +153,15 @@ class OrchestratorClient:
         """The sender's messages around this video (LIVESTACK-49), in display order."""
         response = self._request("GET", f"/jobs/{_path_segment(job_id)}/sender-messages")
         return self._parse(SenderMessagesResponse, response)
+
+    def ping_presence(self, job_id: str) -> list[PresentReviewer]:
+        """This reviewer is on the job now; the *other* reviewers on it (LIVESTACK-51)."""
+        response = self._request("PUT", f"/jobs/{_path_segment(job_id)}/presence")
+        return self._parse(JobPresenceResponse, response).others
+
+    def leave_presence(self, job_id: str) -> None:
+        """The job page closed."""
+        self._request("DELETE", f"/jobs/{_path_segment(job_id)}/presence")
 
     def update_review(self, job_id: str, update: ReviewUpdate) -> Job:
         # Fields left as None mean "keep the current value", so they are not sent.

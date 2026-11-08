@@ -95,7 +95,9 @@ export function setupReviewForm({ form, jobElement, confirmForward = () => true 
   }
 
   async function run(action) {
-    if (busy || !form.querySelector(`[data-action="${action}"]`)) return;
+    // form.inert: someone else is on the video and this reviewer has not
+    // chosen "Revisar mesmo assim" yet (js/presence.js); Ctrl+S waits too.
+    if (busy || form.inert || !form.querySelector(`[data-action="${action}"]`)) return;
     if (action === "discard" && !window.confirm(t("script.confirm_discard"))) return;
     if (RENDERING_ACTIONS.includes(action) && !confirmForward()) return;
     // Discard and restore need no fields; sending none keeps them from failing on a half-typed one.

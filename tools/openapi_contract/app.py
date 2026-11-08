@@ -67,6 +67,8 @@ from tools.openapi_contract import (
 # sender_phone and sender_display_name (the queue's "Enviado por" filter);
 # duplicate videos: Job.duplicate_of and duplicates (DuplicateCopy),
 # JobSummary.duplicate_of, AdminSettings.duplicate_video_message.
+# Who has a job page open: PUT/DELETE /jobs/{id}/presence (JobPresenceResponse,
+# PresentReviewer) and JobSummary.reviewing.
 # Only reviewer-facing answers changed; workers ignore them (§14).
 CONTRACT_VERSION = "2.9.0"
 
