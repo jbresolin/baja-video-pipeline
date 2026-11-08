@@ -4,6 +4,10 @@ from datetime import datetime
 
 from pydantic import Field
 
+from shared.duplicate_video_message import (
+    DEFAULT_DUPLICATE_VIDEO_MESSAGE,
+    MAX_DUPLICATE_VIDEO_MESSAGE_LENGTH,
+)
 from shared.models.api_admin import ServerDisk
 from shared.models.api_catalog import ResultsSyncReport
 from shared.models.common import ReadByClients, ReceivedByServer
@@ -123,6 +127,11 @@ class AdminSettings(ReadByClients):
     # Filmmakers' messages other than videos (texts, captions, "(áudio)"),
     # shown on the job page (LIVESTACK-49), are deleted after this many days.
     sender_messages_keep_days: int = Field(default=14, ge=1, le=365)
+    # Quoted by the bot on a video it already had (LIVESTACK-51), once per
+    # copy; {hora} = when the first copy arrived. Empty = no such reply.
+    duplicate_video_message: str = Field(
+        default=DEFAULT_DUPLICATE_VIDEO_MESSAGE, max_length=MAX_DUPLICATE_VIDEO_MESSAGE_LENGTH
+    )
 
 
 class UpdateSettingsRequest(ReceivedByServer):
@@ -152,6 +161,10 @@ class UpdateSettingsRequest(ReceivedByServer):
         default=None, max_length=2 * MAX_VERTICAL_VIDEO_MESSAGE_LENGTH
     )
     sender_messages_keep_days: int | None = Field(default=None, ge=1, le=365)
+    # "" turns the reply to duplicate videos off. Stored like the welcome message.
+    duplicate_video_message: str | None = Field(
+        default=None, max_length=2 * MAX_DUPLICATE_VIDEO_MESSAGE_LENGTH
+    )
 
 
 class EvolutionStatus(ReadByClients):

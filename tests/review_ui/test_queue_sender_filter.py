@@ -40,8 +40,12 @@ def two_senders(fake_orchestrator):
     # Replace the default jobs with four videos: Maria filmed Enduro and
     # Suspensão, Alessander filmed Enduro twice ("coringa", no fixed prova).
     fake_orchestrator.jobs.clear()
-    fake_orchestrator.add_job(from_sender("maria-enduro", MARIA, "Maria (filmagem)", prova="Enduro"))
-    fake_orchestrator.add_job(from_sender("maria-susp", MARIA, "Maria (filmagem)", prova="Suspensão"))
+    fake_orchestrator.add_job(
+        from_sender("maria-enduro", MARIA, "Maria (filmagem)", prova="Enduro")
+    )
+    fake_orchestrator.add_job(
+        from_sender("maria-susp", MARIA, "Maria (filmagem)", prova="Suspensão")
+    )
     fake_orchestrator.add_job(from_sender("ale-1", ALESSANDER, "Alessander", prova="Enduro"))
     fake_orchestrator.add_job(from_sender("ale-2", ALESSANDER, "Alessander", prova="Enduro"))
     return fake_orchestrator

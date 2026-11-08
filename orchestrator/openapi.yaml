@@ -3805,6 +3805,11 @@ components:
           minimum: 1.0
           title: Sender Messages Keep Days
           default: 14
+        duplicate_video_message:
+          type: string
+          maxLength: 500
+          title: Duplicate Video Message
+          default: ⚠️ Este vídeo já tinha sido recebido (às {hora}). Não precisa reenviar.
       type: object
       required:
       - intake_mode
@@ -4558,6 +4563,33 @@ components:
         "http://<vps tailscale ip>:8080/inbox/<name>" (Caddy, send your bearer
 
         token); a peer is "http://<peer tailscale ip>:8710/raw/<job_id>".
+
+
+        Read by clients: unknown fields are ignored.'
+    DuplicateCopy:
+      properties:
+        job_id:
+          type: string
+          title: Job Id
+        state:
+          $ref: '#/components/schemas/JobState'
+        sender_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sender Name
+        received_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Received At
+      type: object
+      required:
+      - job_id
+      - state
+      title: DuplicateCopy
+      description: 'Another job with the same video, listed on the first job (LIVESTACK-51 item 3).
 
 
         Read by clients: unknown fields are ignored.'
@@ -5789,6 +5821,16 @@ components:
             format: date-time
           - type: 'null'
           title: Discard Grace Ends At
+        duplicate_of:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Duplicate Of
+        duplicates:
+          items:
+            $ref: '#/components/schemas/DuplicateCopy'
+          type: array
+          title: Duplicates
         waiting_reason:
           anyOf:
           - type: string
@@ -5994,6 +6036,11 @@ components:
           - type: string
           - type: 'null'
           title: Sender Display Name
+        duplicate_of:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Duplicate Of
       type: object
       required:
       - id
@@ -8079,6 +8126,12 @@ components:
             minimum: 1.0
           - type: 'null'
           title: Sender Messages Keep Days
+        duplicate_video_message:
+          anyOf:
+          - type: string
+            maxLength: 1000
+          - type: 'null'
+          title: Duplicate Video Message
       additionalProperties: false
       type: object
       title: UpdateSettingsRequest

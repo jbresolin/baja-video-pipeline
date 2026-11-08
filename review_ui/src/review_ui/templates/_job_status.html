@@ -14,4 +14,17 @@
   {% for note in notes %}
   <p class="note {{ note.level }}">{{ note.text }}{% if note.detail %} {{ m.english(note.detail) }}{% endif %}{% if note.at %} {{ m.time(note.at) }}.{% endif %}</p>
   {% endfor %}
+  {# Duplicate videos (LIVESTACK-51 item 3): a copy points at the first job,
+     the first job lists its copies. #}
+  {% if job.duplicate_of %}
+  <p class="note {{ 'warning' if job.state == 'discarded' else 'info' }}" id="duplicate-of">
+    {{ t("duplicates.discarded_copy_of" if job.state == "discarded" else "duplicates.copy_of") }}
+    <a href="/review/jobs/{{ job.duplicate_of }}"><code>{{ job.duplicate_of|short_id }}</code></a></p>
+  {% endif %}
+  {% if job.duplicates %}
+  <p class="note info" id="duplicates">{{ t("duplicates.also_received_from") }}
+    {% for copy in job.duplicates -%}
+    <a href="/review/jobs/{{ copy.job_id }}">{{ copy.sender_name or t("queue.unknown_sender") }}, {{ recorded_time(copy.received_at, job.source.received_at or job.created_at) }}</a>{% if not loop.last %}; {% endif %}
+    {%- endfor %}</p>
+  {% endif %}
 </div>

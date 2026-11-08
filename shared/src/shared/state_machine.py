@@ -16,6 +16,9 @@ ALLOWED_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
             # A holder reported the raw unusable (corrupt file, ffprobe or
             # ffmpeg error) under download_raw or make_proxy.
             JobState.FAILED,
+            # Intake found the same video in an earlier job: a duplicate is
+            # discarded as soon as it exists (LIVESTACK-51 item 3).
+            JobState.DISCARDED,
         }
     ),
     JobState.PROXY_READY: frozenset(
@@ -65,8 +68,11 @@ ALLOWED_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
         }
     ),
     # A reviewer chose "restore": back to where it was discarded from
-    # (Job.discarded_from). Only these three states can be discarded.
-    JobState.DISCARDED: frozenset({JobState.AWAITING_REVIEW, JobState.READY, JobState.FAILED}),
+    # (Job.discarded_from). Reviewers discard from the first three states;
+    # intake discards duplicates while they are still "received".
+    JobState.DISCARDED: frozenset(
+        {JobState.AWAITING_REVIEW, JobState.READY, JobState.FAILED, JobState.RECEIVED}
+    ),
     JobState.UPLOADED: frozenset(
         {
             # The studio acknowledged a verified copy.

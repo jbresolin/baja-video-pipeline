@@ -44,7 +44,7 @@ def test_the_worker_with_the_download_lease_gets_the_raw(dev_harness):
     # Set up: a video arrives and the master claims its download_raw task.
     # The task's download_url points at /inbox/<job>.<ext>.
     master = dev_harness.enroll(WorkerRole.MASTER, "master")
-    job_id = receive_job(dev_harness)
+    job_id = receive_job(dev_harness, SAMPLE_VIDEO_BYTES)
     _, task = claim_ok(dev_harness, master, job_id, TaskKind.DOWNLOAD_RAW)
 
     # Act: fetch that URL from the orchestrator itself (no Caddy in between).
@@ -60,7 +60,7 @@ def test_the_worker_with_the_download_lease_gets_the_raw(dev_harness):
 def test_a_range_request_resumes_a_download_in_the_middle(dev_harness):
     # Same setup as above.
     master = dev_harness.enroll(WorkerRole.MASTER, "master")
-    job_id = receive_job(dev_harness)
+    job_id = receive_job(dev_harness, SAMPLE_VIDEO_BYTES)
     _, task = claim_ok(dev_harness, master, job_id, TaskKind.DOWNLOAD_RAW)
 
     # Act: ask only for byte 1000 to the end, as a worker does after a crash.
@@ -79,7 +79,7 @@ def test_a_range_request_resumes_a_download_in_the_middle(dev_harness):
 
 def test_head_reports_the_size_without_the_body(dev_harness):
     master = dev_harness.enroll(WorkerRole.MASTER, "master")
-    job_id = receive_job(dev_harness)
+    job_id = receive_job(dev_harness, SAMPLE_VIDEO_BYTES)
     _, task = claim_ok(dev_harness, master, job_id, TaskKind.DOWNLOAD_RAW)
 
     response = dev_harness.client.head(path_of(task["download_url"]), headers=master.headers)
@@ -94,7 +94,7 @@ def test_a_worker_without_the_lease_is_refused_like_auth_file_refuses_it(dev_har
     # Set up: the master claims the download; a second worker has no lease.
     master = dev_harness.enroll(WorkerRole.MASTER, "master")
     other = dev_harness.enroll(WorkerRole.WORKER, "other")
-    job_id = receive_job(dev_harness)
+    job_id = receive_job(dev_harness, SAMPLE_VIDEO_BYTES)
     _, task = claim_ok(dev_harness, master, job_id, TaskKind.DOWNLOAD_RAW)
     path = path_of(task["download_url"])
 
@@ -149,7 +149,7 @@ def test_half_written_and_hidden_files_are_never_served(dev_harness):
     # Writers create "<name>.part" and dot-files first and rename them when
     # complete (design §15). Caddy hides those names; dev mode must too.
     master = dev_harness.enroll(WorkerRole.MASTER, "master")
-    job_id = receive_job(dev_harness)
+    job_id = receive_job(dev_harness, SAMPLE_VIDEO_BYTES)
     dev_harness.context.layout.proxies_dir.joinpath(f".{job_id}.mp4.part").write_bytes(b"x")
 
     # A reviewer asks for the hidden proxy, the master for a hidden inbox file.
@@ -166,7 +166,7 @@ def test_reviewers_get_proxies_and_thumbnails_with_basic_auth(dev_harness):
     # Set up: a job goes all the way to awaiting_review, which uploads a
     # proxy and a thumbnail to the "VPS".
     master = dev_harness.enroll(WorkerRole.MASTER, "master")
-    job_id = receive_job(dev_harness)
+    job_id = receive_job(dev_harness, SAMPLE_VIDEO_BYTES)
     hold_raw(dev_harness, master, job_id)
     make_proxy(dev_harness, master, job_id)
 
@@ -193,7 +193,7 @@ def test_without_dev_mode_the_file_routes_do_not_exist(harness):
     # worker holding the download lease gets a plain 404: the bytes only
     # ever come from Caddy there.
     master = harness.enroll(WorkerRole.MASTER, "master")
-    job_id = receive_job(harness)
+    job_id = receive_job(harness, SAMPLE_VIDEO_BYTES)
     _, task = claim_ok(harness, master, job_id, TaskKind.DOWNLOAD_RAW)
 
     response = harness.client.get(path_of(task["download_url"]), headers=master.headers)

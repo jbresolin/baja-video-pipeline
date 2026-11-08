@@ -25,6 +25,7 @@ from review_ui.catalog import (
     admin_settings,
     clips_and_fleet,
     common,
+    duplicates,
     job,
     messages,
     pass_clock,
@@ -60,6 +61,7 @@ CATALOG: dict[str, str] = _merge(
     admin_settings.TEXT,
     welcome.TEXT,
     senders.TEXT,
+    duplicates.TEXT,
     scripts.TEXT,
 )
 

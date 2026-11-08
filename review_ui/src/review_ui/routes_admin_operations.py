@@ -21,6 +21,7 @@ from review_ui.forms import read_form
 from review_ui.orchestrator_client import OrchestratorError, OrchestratorUnavailableError
 from review_ui.pass_results_settings_view import PassResultsForm, pass_results_block
 from review_ui.request_context import admin_client_for, render_page
+from shared.duplicate_video_message import MAX_DUPLICATE_VIDEO_MESSAGE_LENGTH
 from shared.models import (
     MAX_PASS_RESULTS_CONFIG_LENGTH,
     AdminArea,
@@ -209,6 +210,7 @@ def settings_page_response(
         welcome_preview=fill_welcome_message(page.settings.welcome_message, EXAMPLE_VALUES),
         welcome_max_length=MAX_WELCOME_MESSAGE_LENGTH,
         vertical_message_max_length=MAX_VERTICAL_VIDEO_MESSAGE_LENGTH,
+        duplicate_message_max_length=MAX_DUPLICATE_VIDEO_MESSAGE_LENGTH,
         audit=audit_lines(admin.audit(AdminArea.SETTINGS)),
         # "Resultados das passagens" (LIVESTACK-47), its own form on the page.
         config_max_length=MAX_PASS_RESULTS_CONFIG_LENGTH,
@@ -279,6 +281,8 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
             welcome_message=form.get("welcome_message"),
             # The bot's reply to a vertical video (LIVESTACK-50); same rules.
             vertical_video_message=form.get("vertical_video_message"),
+            # The bot's reply to a duplicate video (LIVESTACK-51); same rules.
+            duplicate_video_message=form.get("duplicate_video_message"),
             sender_messages_keep_days=_optional_whole_number(form, "sender_messages_keep_days"),
         )
     except ValueError:

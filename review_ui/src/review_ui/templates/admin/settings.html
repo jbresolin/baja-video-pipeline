@@ -35,6 +35,11 @@
   <textarea id="vertical_video_message" name="vertical_video_message" rows="3"
             maxlength="{{ vertical_message_max_length }}">{{ values.vertical_video_message }}</textarea>
   <p class="hint">{{ t("settings.vertical_video_message.hint") }}</p>
+  {# Quoted by the bot on a video it already had, once per copy (LIVESTACK-51). #}
+  <label for="duplicate_video_message">{{ t("settings.duplicate_video_message") }}</label>
+  <textarea id="duplicate_video_message" name="duplicate_video_message" rows="3"
+            maxlength="{{ duplicate_message_max_length }}">{{ values.duplicate_video_message }}</textarea>
+  <p class="hint">{{ t("settings.duplicate_video_message.hint", placeholder="{hora}") }}</p>
   {# Which names the clips show (the overlay, the clips page, the job page). #}
   <fieldset class="choices">
     <legend>{{ t("settings.clip_team_name") }}</legend>

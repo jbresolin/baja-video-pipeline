@@ -134,6 +134,7 @@ from shared.models.evolution import EvolutionWebhook, IncomingMedia, find_incomi
 from shared.models.job import (
     ClipInfo,
     ClipVersion,
+    DuplicateCopy,
     Holder,
     IntakeSource,
     Job,
@@ -242,6 +243,7 @@ __all__ = [
     "IntakeResponse",
     "IntakeSource",
     "Job",
+    "DuplicateCopy",
     "JobFailure",
     "JobState",
     "JobStateResponse",

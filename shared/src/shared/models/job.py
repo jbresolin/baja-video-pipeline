@@ -167,6 +167,20 @@ class ProbeReport(ReadByClients):
     location_present: bool = False
 
 
+class DuplicateCopy(ReadByClients):
+    """Another job with the same video, listed on the first job (LIVESTACK-51 item 3).
+
+    Read by clients: unknown fields are ignored.
+    """
+
+    job_id: str
+    state: JobState
+    # Who sent this copy: the name on Admin → Contatos, else the WhatsApp
+    # profile name; None for a test upload.
+    sender_name: str | None = None
+    received_at: datetime | None = None
+
+
 class JobFailure(ReadByClients):
     """The last unrecoverable error a worker reported (POST /jobs/{id}/failed).
 
@@ -308,6 +322,13 @@ class Job(ReadByClients):
     # VPS its inbox copy). Restore always works before this; after it, only
     # while a holder still has the raw (RAW_UNAVAILABLE otherwise).
     discard_grace_ends_at: datetime | None = None
+    # Duplicate videos (LIVESTACK-51 item 3). A raw with the same SHA-256
+    # as an earlier job that is not discarded is a copy: intake discards it
+    # at once (it can be restored like any discard). `duplicate_of` is that
+    # first job's id (kept after a restore); `duplicates` lists, on the
+    # first job, every copy received since, oldest first.
+    duplicate_of: str | None = None
+    duplicates: list[DuplicateCopy] = Field(default_factory=list)
     # Human-readable reason the job is stuck, shown in the review UI,
     # e.g. "waiting for a holder to come back online". None when not stuck.
     waiting_reason: str | None = None
@@ -364,6 +385,9 @@ class JobSummary(ReadByClients):
     # GET /review/queue only; None for test uploads.
     sender_phone: str | None = None
     sender_display_name: str | None = None
+    # A copy of this job's video (Job.duplicate_of, LIVESTACK-51): the queue
+    # marks it "duplicado".
+    duplicate_of: str | None = None
 
     @classmethod
     def from_job(cls, job: Job) -> "JobSummary":
@@ -390,4 +414,5 @@ class JobSummary(ReadByClients):
             clip_download_url=job.clip.download_url if job.clip else None,
             clip_outdated=bool(job.clip_inputs and job.clip_inputs.changed),
             vertical=job.vertical,
+            duplicate_of=job.duplicate_of,
         )

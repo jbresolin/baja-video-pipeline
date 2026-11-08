@@ -121,10 +121,9 @@ def test_the_turned_picture_fits_the_stage_centred_and_keeps_its_shape(results, 
     # off) and it touches two opposite sides (as large as it can be).
     assert layout["pictureWidth"] <= stage[0] + 1e-6
     assert layout["pictureHeight"] <= stage[1] + 1e-6
-    assert (
-        layout["pictureWidth"] == pytest.approx(stage[0])
-        or layout["pictureHeight"] == pytest.approx(stage[1])
-    )
+    assert layout["pictureWidth"] == pytest.approx(stage[0]) or layout[
+        "pictureHeight"
+    ] == pytest.approx(stage[1])
     # It has the turned proxy's shape (an upright phone turned 90° is wide).
     turned_width, turned_height = turned(proxy, angle)
     assert layout["pictureWidth"] / layout["pictureHeight"] == pytest.approx(

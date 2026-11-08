@@ -64,7 +64,9 @@ from tools.openapi_contract import (
 # worker (it always carries the pass_clock key); the worker logs it and
 # delivers anyway, and the version keeps the claim snapshot.
 # 2.9.0: review fixes from the 2026-11-07 test (LIVESTACK-51): JobSummary.
-# sender_phone and sender_display_name (the queue's "Enviado por" filter).
+# sender_phone and sender_display_name (the queue's "Enviado por" filter);
+# duplicate videos: Job.duplicate_of and duplicates (DuplicateCopy),
+# JobSummary.duplicate_of, AdminSettings.duplicate_video_message.
 # Only reviewer-facing answers changed; workers ignore them (§14).
 CONTRACT_VERSION = "2.9.0"
 
