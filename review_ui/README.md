@@ -23,7 +23,7 @@ public. So the page scripts call the UI's own JSON endpoints under
 
 | Path | What |
 | --- | --- |
-| `/review/` | Queue: awaiting review + failed by default, in filming order (`recorded_at`, LIVESTACK-45; each row says when it was filmed, marked "envio"/"chegada" when that is only the send or arrival time, and "recebido 14:05"; a "💬 n" badge when the sender wrote about the video, LIVESTACK-49); filters by state, prova, low-res, "Clipes desatualizados" (`?outdated=1`: clips that no longer match their review, badge "desatualizado"); auto-refresh every 5 s; `↑↓`/`j k` + `Enter` |
+| `/review/` | Queue: awaiting review + failed by default, in filming order (`recorded_at`, LIVESTACK-45; each row says when it was filmed, marked "envio"/"chegada" when that is only the send or arrival time, and "recebido 14:05"; a "💬 n" badge when the sender wrote about the video, LIVESTACK-49); filters by state, prova, "Enviado por" (`?sender=`, LIVESTACK-51), low-res, "Clipes desatualizados" (`?outdated=1`: clips that no longer match their review, badge "desatualizado"); "👤 Pedro" on a row someone else has open, "duplicado" on a copy; auto-refresh every 5 s; `↑↓`/`j k` + `Enter` |
 | `/review/jobs/{id}` | Proxy player, cut in/out marks, fields, actions, status strip, event log from `GET /jobs/{id}/events` (refreshes every 5 s; if the log cannot be read the page still works and says so) |
 | `/review/clips` | Delivery manifest, newest first, prova filter, copyable studio path; a clip that no longer matches its review is marked "desatualizado" with the differences on expand |
 | `/review/fleet` | Workers (role, online, heartbeat age, held raws, storage vs cap, stats, leases, last 5 events from `GET /events?worker_id=…&limit=5`), VPS disk, jobs per state; refreshes every 10 s |
@@ -146,6 +146,21 @@ Bloqueado) and each row a "Boas-vindas" column: when it was last sent and
 "Enviar boas-vindas" (asks first). An empty message disables both. When
 the orchestrator could not send it, the page answers the POST directly with
 a yellow banner and Evolution's reason (`warning` in `admin_context`).
+
+**Review fixes from the 2026-11-07 test** (LIVESTACK-51, design §34).
+*Two reviewers*: the page says it is open (`static/js/presence.js`, through
+`PUT /review/api/jobs/{id}/presence` every 20 s, `…/presence/leave` on
+`pagehide`); opening a video someone else is on shows "Pedro está
+revisando este vídeo (desde 14:02)." with "Revisar mesmo assim" and the
+form is `inert` until then (it frees itself when the other's presence
+ends); words in `presence_view.py`. *Duplicates*: a copy says "Descartado
+automaticamente: duplicado de <first job>", the first job "Também recebido
+de: Maria, 14:40" (status strip); Configurações holds the bot's reply.
+*Girar*: the page's own control bar under the picture (play, frame step,
+time, the cut bar as scrubber) never turns; the geometry is
+`playerLayout`/`cropBandBox` in `js/render_options.js`. *Contatos*: a row
+says how many of the sender's videos wait without a prova, and saving asks
+whether to apply the default prova to them (`js/admin.js`).
 
 Every action sends the version of the job the page was loaded with
 (`expected_version`). If someone else changed the job first, the
