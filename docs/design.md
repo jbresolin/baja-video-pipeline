@@ -1052,6 +1052,13 @@ context: received time and the sender's messages"). Part of contract
 * **Installer CI ffmpeg.** The Linux job downloads a pinned static ffmpeg
   build checked against its SHA-256 and cached, instead of `apt-get
   install ffmpeg`, which once hung for 24 minutes on Ubuntu's mirrors.
+* **Backups use the orchestrator's SQLite** (2026-11-07). The first manual
+  run of the nightly backup failed its integrity check: Ubuntu 24.04's
+  SQLite 3.45.1 reported "NULL value in jobs.crop_position" on a DB that
+  the orchestrator's 3.46.1 calls intact (`PRAGMA integrity_check` = ok).
+  `backup.sh` and the restore steps now run `sqlite_backup.py` through
+  `infra/vps/sqlite_in_orchestrator.sh`, in a throwaway container from the
+  orchestrator container's exact image, as uid 10001, with no network.
 
 ## 32. Official pass results in the overlay (LIVESTACK-47, 2026-11-07)
 
@@ -1193,10 +1200,3 @@ installer 0.5.0.
   fetch is not seen (the event is over by then); how the API writes a
   "---" run in `raw` was not seen (the 24SE snapshots are of the old pages;
   `"---"`, `"-"` and null all mean no result).
-* **Backups use the orchestrator's SQLite** (2026-11-07). The first manual
-  run of the nightly backup failed its integrity check: Ubuntu 24.04's
-  SQLite 3.45.1 reported "NULL value in jobs.crop_position" on a DB that
-  the orchestrator's 3.46.1 calls intact (`PRAGMA integrity_check` = ok).
-  `backup.sh` and the restore steps now run `sqlite_backup.py` through
-  `infra/vps/sqlite_in_orchestrator.sh`, in a throwaway container from the
-  orchestrator container's exact image, as uid 10001, with no network.
