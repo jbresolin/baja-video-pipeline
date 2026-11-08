@@ -24,8 +24,13 @@
 # the script exits 1 (the systemd unit shows "failed"). The newest
 # $BAJA_BACKUP_KEEP folders are kept.
 #
+# The DB is copied and checked by sqlite_in_orchestrator.sh, with the
+# orchestrator's own SQLite, not the VPS's (see that script for why).
+#
 # Overrides (tests; normally none): BAJA_BACKUP_ROOT, BAJA_BACKUP_KEEP,
-# BAJA_DATA_DIR, BAJA_BACKUP_UID, BAJA_BACKUP_PYTHON.
+# BAJA_DATA_DIR, BAJA_BACKUP_UID, BAJA_BACKUP_PYTHON (run sqlite_backup.py
+# with this local Python as the orchestrator's user instead of in the
+# orchestrator image; the tests have no Docker).
 
 set -uo pipefail
 
@@ -35,7 +40,7 @@ KEEP="${BAJA_BACKUP_KEEP:-14}"
 DATA_DIR="${BAJA_DATA_DIR:-/srv/pipeline}"
 # The orchestrator's user (design §17); SQLite is opened as this user.
 DATA_UID="${BAJA_BACKUP_UID:-10001}"
-PYTHON="${BAJA_BACKUP_PYTHON:-python3}"
+LOCAL_PYTHON="${BAJA_BACKUP_PYTHON:-}"
 # docker-compose.yml's project name.
 COMPOSE_PROJECT=baja-pipeline
 
@@ -63,9 +68,14 @@ backup_sqlite() {
     local staging
     staging="$(mktemp -d)" || return 1
     chown "$DATA_UID:$DATA_UID" "$staging" || return 1
-    setpriv --reuid "$DATA_UID" --regid "$DATA_UID" --clear-groups -- \
-        "$PYTHON" "$SCRIPT_DIR/sqlite_backup.py" backup \
-        "$DATA_DIR/db/bvp.sqlite3" "$staging/bvp.sqlite3" &&
+    if [[ -n "$LOCAL_PYTHON" ]]; then
+        setpriv --reuid "$DATA_UID" --regid "$DATA_UID" --clear-groups -- \
+            "$LOCAL_PYTHON" "$SCRIPT_DIR/sqlite_backup.py" backup \
+            "$DATA_DIR/db/bvp.sqlite3" "$staging/bvp.sqlite3"
+    else
+        "$SCRIPT_DIR/sqlite_in_orchestrator.sh" backup \
+            "$DATA_DIR/db/bvp.sqlite3" "$staging/bvp.sqlite3"
+    fi &&
         mv "$staging/bvp.sqlite3" "$WORK/bvp.sqlite3"
     local status=$?
     rm -rf "$staging"

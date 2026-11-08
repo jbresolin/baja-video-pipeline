@@ -43,8 +43,7 @@ re-ingested; workers stay enrolled only if they enrolled before it).
 
 ```bash
 sudo docker compose stop review-ui orchestrator
-sudo setpriv --reuid 10001 --regid 10001 --clear-groups -- \
-  python3 /opt/baja/infra/vps/sqlite_backup.py restore "$B/bvp.sqlite3" /srv/pipeline/db/bvp.sqlite3
+sudo /opt/baja/infra/vps/sqlite_in_orchestrator.sh restore "$B/bvp.sqlite3" /srv/pipeline/db/bvp.sqlite3
 sudo ./up.sh
 ```
 
@@ -55,8 +54,11 @@ starts the two containers again and runs the smoke test.
 `sqlite_backup.py restore` refuses to run while the orchestrator still
 has the DB open (a `bvp.sqlite3-wal` file exists), checks the backup's
 integrity before touching anything, and keeps the replaced DB as
-`bvp.sqlite3.before-restore`. Running it as uid 10001 keeps the file owned
-by the orchestrator's user.
+`bvp.sqlite3.before-restore`. `sqlite_in_orchestrator.sh` runs it in a
+throwaway container from the orchestrator's image, as uid 10001, so the
+file stays owned by the orchestrator's user and is checked by the same
+SQLite that wrote it (the VPS's own SQLite 3.45.1 reported false damage on
+2026-11-07).
 
 After the restore, workers reconcile on their own: a heartbeat whose
 `held_job_ids` lists a job the DB does not know is ignored, and holders the
@@ -113,7 +115,8 @@ Do drill A once before each event (EVENT_DAY.md, T-7) on a copy, without
 stopping anything:
 
 ```bash
-python3 /opt/baja/infra/vps/sqlite_backup.py restore "$B/bvp.sqlite3" /tmp/drill/bvp.sqlite3   # mkdir -p /tmp/drill first
+sudo mkdir -p /tmp/drill && sudo chown 10001:10001 /tmp/drill
+sudo /opt/baja/infra/vps/sqlite_in_orchestrator.sh restore "$B/bvp.sqlite3" /tmp/drill/bvp.sqlite3
 rm -rf /tmp/drill
 ```
 

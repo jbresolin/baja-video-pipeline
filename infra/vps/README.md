@@ -25,6 +25,7 @@ Files in this directory:
 | `.env.example` | Every variable, with comments. Copy to `.env` |
 | `compose-smoke.sh` (+ `smoke_checks.py`) | Smoke test, PASS/FAIL table; `up.sh` runs it last (§11) |
 | `backup.sh`, `systemd/baja-backup.{service,timer}`, `restore.md` | Nightly backups of the pipeline's state while it is up (§12) |
+| `sqlite_backup.py`, `sqlite_in_orchestrator.sh` | Copy, check and restore the jobs DB, run with the orchestrator image's own SQLite (§12) |
 | `MONITORING.md` | Pointing an external Prometheus/Grafana at `GET /metrics` |
 | `EVENT_DAY.md` | Event-day runbook: T-7, T-1, during, after |
 
@@ -511,6 +512,10 @@ The decisions live in `smoke_checks.py` (stdlib only, plus the repo's
 with fake `docker`/`curl`/`findmnt`.
 
 ## 12. Backups and restore
+
+The DB is copied and checked inside a throwaway container from the
+orchestrator's image (`sqlite_in_orchestrator.sh`): the VPS's own SQLite
+3.45.1 reported false damage on the orchestrator's DB (2026-11-07).
 
 `backup.sh` runs nightly from a systemd timer and writes one dated folder
 to `/var/backups/baja/`, keeping the last 14: the orchestrator DB (SQLite

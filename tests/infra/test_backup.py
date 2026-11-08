@@ -295,3 +295,70 @@ def test_only_the_newest_backups_are_kept(tmp_path):
     assert len(kept) == 3
     assert kept[:2] == ["2020-01-04T043000Z", "2020-01-05T043000Z"]
     assert not kept[2].startswith("2020")
+
+
+# --- backup.sh on the real VPS path: the orchestrator's own SQLite ---------------
+
+# Fake `docker` for the default path (no BAJA_BACKUP_PYTHON), where
+# sqlite_in_orchestrator.sh runs sqlite_backup.py in a throwaway container
+# from the orchestrator's image. It answers `ps` and `inspect`, records the
+# `run` command line, and then does what the container would do: runs the
+# script with this test's Python (the mounted /opt/sqlite_backup.py is the
+# file in infra/vps).
+FAKE_DOCKER_WITH_RUN = """#!{python}
+import os, subprocess, sys
+args = sys.argv[1:]
+log = open(os.environ["FAKE_DOCKER_LOG"], "a")
+log.write(" ".join(args) + "\\n")
+log.close()
+if args[:2] == ["ps", "-aq"]:
+    sys.stdout.write("3f2a1b9c0d4e\\n")
+elif args[0] == "inspect":
+    sys.stdout.write("sha256:0rch35tr4t0r1m4g3\\n")
+elif args[0] == "run":
+    image_index = args.index("sha256:0rch35tr4t0r1m4g3")
+    script_and_arguments = args[image_index + 1:]
+    script_and_arguments[0] = os.environ["REAL_SQLITE_BACKUP"]
+    sys.exit(subprocess.call([sys.executable, *script_and_arguments]))
+else:
+    sys.exit("fake docker: unexpected call " + " ".join(args))
+"""
+
+
+@linux_only
+def test_the_nightly_backup_checks_the_db_with_the_orchestrators_sqlite(tmp_path):
+    # Arrange: the VPS as the timer sees it: no BAJA_BACKUP_PYTHON, so the
+    # backup must go through the orchestrator's image. (On 2026-11-07 the
+    # VPS's own SQLite 3.45.1 called the healthy DB damaged: "NULL value in
+    # jobs.crop_position"; the orchestrator's 3.46.1 said "ok".)
+    environment = prepare_vps(tmp_path)
+    del environment["BAJA_BACKUP_PYTHON"]
+    fake_docker = Path(environment["PATH"].split(os.pathsep)[0]) / "docker"
+    fake_docker.write_text(FAKE_DOCKER_WITH_RUN.replace("{python}", sys.executable))
+    environment["REAL_SQLITE_BACKUP"] = str(VPS_FOLDER / "sqlite_backup.py")
+
+    # Act: run the nightly backup.
+    completed = run_backup(environment)
+
+    # Assert: it worked and wrote the DB copy...
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    [folder] = backup_folders(environment)
+    assert (folder / "bvp.sqlite3").exists(), "the DB copy must be in the backup"
+    # ...through a container from the orchestrator container's exact image,
+    # as the orchestrator's user, with no network.
+    docker_calls = Path(environment["FAKE_DOCKER_LOG"]).read_text().splitlines()
+    [run_call] = [call for call in docker_calls if call.startswith("run ")]
+    assert (
+        "--entrypoint python sha256:0rch35tr4t0r1m4g3 /opt/sqlite_backup.py backup" in run_call
+    ), "the copy and its check must run with the orchestrator image's Python and SQLite"
+    assert f"--user {os.getuid()}:{os.getuid()}" in run_call, "as the orchestrator's user"
+    assert "--network none" in run_call, "the throwaway container needs no network"
+
+
+def test_restore_instructions_use_the_orchestrators_sqlite_too():
+    # A backup is restored, and drilled, with the same SQLite that checked it.
+    instructions = (VPS_FOLDER / "restore.md").read_text()
+    assert "sqlite_in_orchestrator.sh restore" in instructions
+    assert "python3 /opt/baja/infra/vps/sqlite_backup.py" not in instructions, (
+        "the VPS's own python3 (SQLite 3.45.1) must not judge a backup"
+    )
