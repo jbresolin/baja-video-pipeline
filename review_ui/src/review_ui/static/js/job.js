@@ -1,6 +1,7 @@
 // Job page: wires the player, the review form, keyboard shortcuts and the
 // auto-refreshing status strip / event log together.
 import { errorMessage, isTyping, localizeTimes, sendJson, showFlash } from "./common.js";
+import { setupClipDownloads } from "./clip_review.js";
 import { setupClockLate } from "./clock_late.js";
 import { setupOverlayPreview } from "./overlay_preview.js";
 import { setupPassBlocks } from "./pass_blocks.js";
@@ -120,6 +121,8 @@ for (const button of document.querySelectorAll("[data-original]")) {
     if (!showOriginal(result.data)) setTimeout(() => followOriginal(url), ORIGINAL_POLL_MILLISECONDS);
   });
 }
+
+setupClipDownloads(document);
 
 for (const button of document.querySelectorAll("[data-reload]")) {
   button.addEventListener("click", () => window.location.reload());

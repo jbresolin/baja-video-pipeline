@@ -1,4 +1,6 @@
-// Clips page: copy buttons for studio paths, and the prova filter.
+// Clips page: copy buttons for studio paths, the prova filter, and
+// "Ver clipe" / "Baixar clipe" (LIVESTACK-52, clip_review.js).
+import { setupClipDownloads, setupPreviewDialog } from "./clip_review.js";
 import { autoSubmit, copyText } from "./common.js";
 import { t } from "./text.js";
 
@@ -17,3 +19,6 @@ for (const button of document.querySelectorAll("[data-copy]")) {
 }
 
 autoSubmit(document.getElementById("clips-filters"));
+
+setupClipDownloads(document);
+setupPreviewDialog(document.getElementById("clip-preview-dialog"));

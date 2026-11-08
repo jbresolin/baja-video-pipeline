@@ -12,7 +12,8 @@ workers, settings. The whole UI is in pt-BR (see "Language" below).
 
 ```
 browser ──443──▶ Caddy ──/review*──▶ review-ui:8001 ──HTTP API──▶ orchestrator:8000
-                   └──/proxies/*, /thumbs/* served by Caddy itself after forward_auth to /auth/media
+                   ├──/proxies/*, /thumbs/*, /previews/* served by Caddy itself after forward_auth to /auth/media
+                   └──/requested-clips/* passed to the orchestrator, which checks the cookie and sends the clip
 ```
 
 Caddy routes only `/review*` to this service; the orchestrator's API is not
@@ -25,7 +26,7 @@ public. So the page scripts call the UI's own JSON endpoints under
 | --- | --- |
 | `/review/` | Queue: awaiting review + failed by default, in filming order (`recorded_at`, LIVESTACK-45; each row says when it was filmed, marked "envio"/"chegada" when that is only the send or arrival time, and "recebido 14:05"; a "💬 n" badge when the sender wrote about the video, LIVESTACK-49); filters by state, prova, "Enviado por" (`?sender=`, LIVESTACK-51), low-res, "Clipes desatualizados" (`?outdated=1`: clips that no longer match their review, badge "desatualizado"); "👤 Pedro" on a row someone else has open, "duplicado" on a copy; auto-refresh every 5 s; `↑↓`/`j k` + `Enter` |
 | `/review/jobs/{id}` | Proxy player, cut in/out marks, fields, actions, status strip, event log from `GET /jobs/{id}/events` (refreshes every 5 s; if the log cannot be read the page still works and says so) |
-| `/review/clips` | Delivery manifest, newest first, prova filter, copyable studio path; a clip that no longer matches its review is marked "desatualizado" with the differences on expand |
+| `/review/clips` | Delivery manifest, newest first, prova filter, copyable studio path; a clip that no longer matches its review is marked "desatualizado" with the differences on expand; "Ver clipe" plays the clip's 480p preview in a dialog (or "sem prévia", the reason on hover) and "Baixar clipe" on every row (LIVESTACK-52) |
 | `/review/fleet` | Workers (role, online, heartbeat age, held raws, storage vs cap, stats, leases, last 5 events from `GET /events?worker_id=…&limit=5`), VPS disk, jobs per state; refreshes every 10 s |
 | `/healthz` | Container health check (not routed by Caddy) |
 
@@ -49,6 +50,21 @@ order broken) show under the field and above the buttons; "Pronto" and
 `static/js/passagem_help.js` refreshes the panel in place through
 `GET /review/api/jobs/{id}/passagem-help` (debounced, no reload); the
 rules are in `passagem_help_view.py`.
+
+**Watch and download the clip** (LIVESTACK-52). Once a job has a clip,
+the job page has a closed "Ver clipe" block (`_clip_preview.html`): a
+player for the newest clip's 480p preview (`Job.clip_preview.url`, served
+by Caddy under `/previews/` like proxies, `preload="none"`), or the reason
+there is none (`clip_preview.state.*`: being made, switched off, a worker
+before 0.7.0, evicted, missing) and a pointer to "Baixar clipe". "Baixar
+clipe" (job page and every clips-page row, `static/js/clip_review.js`)
+works like "Baixar original": `POST /review/api/jobs/{id}/clip-download`,
+then "Preparando o clipe…" polled every 5 s until it is a link to
+`/requested-clips/<job>/<clip name>`. It replaces the old direct link to
+an outbox clip (`/clip-downloads/`, still served by Caddy): an outbox clip
+is ready at once anyway. Configurações has "Gerar prévia dos clipes" (a
+hidden `clip_previews_enabled_shown` field tells an unticked box from an
+older form) and the two times the VPS keeps a requested clip.
 
 **Sender's messages** (LIVESTACK-49). The header shows "Gravado …",
 "Recebido …" and "Enviado por …" side by side. Under the status strip,

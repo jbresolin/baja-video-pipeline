@@ -1,0 +1,16 @@
+{# "Ver clipe" (LIVESTACK-52): the newest clip's 480p preview, or why there is none.
+   Closed by default; the video loads only when played (preload="none"). #}
+{% if job.clip_preview %}
+{% set preview = job.clip_preview %}
+<details class="clip-preview" id="clip-preview">
+  <summary title="{{ t('clip_preview.summary.title') }}">
+    {%- if preview.version and preview.version > 1 %}{{ t("clip_preview.title.version", version=preview.version) }}{% else %}{{ t("clip_preview.title") }}{% endif -%}
+  </summary>
+  {% if preview.url %}
+  <video controls preload="none" playsinline src="{{ media_url(preview.url) }}"></video>
+  <p class="hint">{{ t("clip_preview.small") }}</p>
+  {% else %}
+  <p class="hint" data-preview-state="{{ preview.state }}">{{ t("clip_preview.state." ~ preview.state) }} {{ t("clip_preview.use_download") }}</p>
+  {% endif %}
+</details>
+{% endif %}

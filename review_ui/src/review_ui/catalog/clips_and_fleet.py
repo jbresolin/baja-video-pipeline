@@ -16,14 +16,12 @@ TEXT: dict[str, str] = {
     "clips.col.team": "Equipe",
     "clips.col.pass": "Passagem",
     "clips.col.studio_path": "Caminho no estúdio",
-    "clips.col.download": "Baixar",
-    "clips.download": "Baixar",
+    "clips.col.clip": "Clipe",
+    # Hover shows why (clip_preview.state.*).
+    "clips.no_preview": "sem prévia",
     "clips.copy": "Copiar",
     "clips.open_job": "vídeo",
     "clips.open_job.title": "Abrir o vídeo",
-    "clips.only_outbox_downloads": (
-        "Só clipes ainda na caixa de saída do servidor podem ser baixados aqui"
-    ),
     "clips.empty": "Nenhum clipe entregue ainda.",
     "clips.empty_for_prova": "Nenhum clipe entregue para {prova} ainda.",
     # --- Where a clip is (delivery_view.py; status strip and clips page) ---

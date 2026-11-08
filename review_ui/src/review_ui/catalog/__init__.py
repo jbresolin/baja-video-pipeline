@@ -23,6 +23,7 @@ from markupsafe import Markup
 from review_ui.catalog import (
     admin_pages,
     admin_settings,
+    clip_review,
     clips_and_fleet,
     common,
     duplicates,
@@ -58,6 +59,7 @@ CATALOG: dict[str, str] = _merge(
     pass_clock.TEXT,
     messages.TEXT,
     clips_and_fleet.TEXT,
+    clip_review.TEXT,
     admin_pages.TEXT,
     admin_settings.TEXT,
     welcome.TEXT,

@@ -10,6 +10,8 @@ from datetime import UTC, datetime, timedelta
 from shared.models import (
     ClipInfo,
     ClipInputsComparison,
+    ClipPreview,
+    ClipPreviewState,
     DeliveryRoute,
     FleetResponse,
     FleetWorker,
@@ -144,6 +146,20 @@ def delivered_job(job_id: str = "job-done-1") -> Job:
     )
 
 
+def previewed_job(job_id: str = "job-previewed-1", **preview) -> Job:
+    """A delivered clip with its preview ("Ver clipe", LIVESTACK-52); ready by default."""
+    fields = {
+        "state": ClipPreviewState.READY,
+        "url": f"/previews/{job_id}.{'b' * 64}.mp4",
+        "version": 1,
+        "size_bytes": 6_000_000,
+        **preview,
+    }
+    if fields["state"] != ClipPreviewState.READY:
+        fields["url"] = None
+    return delivered_job(job_id).model_copy(update={"clip_preview": ClipPreview(**fields)})
+
+
 def on_event_day(hour: int, minute: int) -> datetime:
     """14:02 on the track on 2026-03-26 (São Paulo, UTC-3) as a UTC datetime."""
     return datetime(2026, 3, 26, hour + 3, minute, tzinfo=UTC)
@@ -240,6 +256,10 @@ def make_manifest() -> ManifestResponse:
         sha256="c" * 64,
         size_bytes=90_000_000,
         delivered_at=T0 + timedelta(minutes=40),
+        # "Ver clipe" (LIVESTACK-52): a preview to play.
+        preview=ClipPreview(
+            state=ClipPreviewState.READY, url=f"/previews/job-done-2.{'c' * 64}.mp4", version=1
+        ),
     )
     older = ManifestEntry(
         job_id="job-done-1",
@@ -257,6 +277,8 @@ def make_manifest() -> ManifestResponse:
             rendered_inputs(passagem=2, overlay_theme_version=None),
             RenderInputField.PASSAGEM,
         ),
+        # Its preview was deleted to free the VPS disk.
+        preview=ClipPreview(state=ClipPreviewState.EVICTED, version=1),
     )
     return ManifestResponse(clips=[newer, older], generated_at=T0 + timedelta(hours=1))
 

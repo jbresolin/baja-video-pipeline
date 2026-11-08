@@ -208,3 +208,49 @@ def test_a_clip_left_in_the_outbox_is_pulled_and_confirmed_by_the_studio(system)
         "the studio's ACK must have been accepted (it was refused with 403 before)"
     )
     assert master.config.worker_id == job_of(system, job_id)["clip"]["rendered_by_worker_id"]
+
+
+def test_a_reviewer_watches_and_downloads_the_clip_on_air(system):
+    # LIVESTACK-52: after a clip went straight to the studio, the reviewer
+    # watches its preview and downloads it, with nothing but the real
+    # services talking to each other.
+
+    # Arrange: studio first (so the render is pushed straight to it), then
+    # the master and a volunteer. A video is reviewed and rendered.
+    studio = system.start_worker(WorkerRole.STUDIO, "studio.test")
+    system.start_worker(WorkerRole.MASTER, "master.test")
+    system.start_worker(WorkerRole.WORKER, "volunteer.test")
+    job_id = receive_job(system.harness, SAMPLE_VIDEO_BYTES)
+    wait_until(lambda: job_of(system, job_id)["state"] == "awaiting_review", what="review queue")
+    review_to_ready(system.harness, job_id, prova="Enduro", car_number=42, passagem=3)
+    wait_until(lambda: job_of(system, job_id)["state"] == "done", what="job done")
+    clip_on_air = (studio.library.root / "enduro/42/enduro-042-p3.mp4").read_bytes()
+
+    # "Ver clipe": the worker that rendered it sent its preview after the
+    # delivery, and the job page plays it.
+    wait_until(
+        lambda: job_of(system, job_id)["clip_preview"]["state"] == "ready", what="clip preview"
+    )
+    preview = job_of(system, job_id)["clip_preview"]
+    page = system.review_ui.get(f"/review/jobs/{job_id}").text
+    assert f'src="{preview["url"]}"' in page
+
+    # "Baixar clipe" through the review UI: the clip is not in the outbox,
+    # so a PC that has it is asked to upload it; the page polls until ready.
+    asked = system.review_ui.post(f"/review/api/jobs/{job_id}/clip-download", json={})
+    assert asked.status_code == 200, asked.text
+    url = f"/review/api/jobs/{job_id}/clip-download"
+    ready = wait_until(
+        lambda: (answer := system.review_ui.get(url).json())["state"] == "ready" and answer,
+        what="clip uploaded for download",
+    )
+    assert ready["file_name"] == "enduro-042-p3.mp4"
+
+    # The browser follows the link (Caddy passes it to the orchestrator)
+    # with its session cookie, and gets exactly the clip that is on air.
+    cookie = f"bvp_session={system.review_ui.cookies['bvp_session']}"
+    download = system.harness.client.get(ready["download_url"], headers={"Cookie": cookie})
+    assert download.status_code == 200
+    assert download.content == clip_on_air
+    downloaded = system.review_ui.get(url).json()
+    assert downloaded["downloaded_at"] is not None
