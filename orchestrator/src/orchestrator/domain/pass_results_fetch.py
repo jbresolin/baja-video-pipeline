@@ -15,7 +15,13 @@ table is no longer fetched. An answer saying the event runs again (only
 "Testar" could still see one) starts fetching again.
 
 Also on demand, from "Testar" on the Settings page (reusing an answer
-from the last 5 seconds, which the API would serve from its cache anyway).
+from the last 5 seconds, which the API would serve from its cache anyway),
+and from the job page's pass preview (LIVESTACK-53) when the prova's table
+was never fetched: the first video of a prova would otherwise show "ainda
+não buscado" until it was saved. That fetch waits at most 3 s, and is not
+tried again within 30 s of the table's last try (by anyone), so a reviewer
+typing never hammers the API; when it fails the preview says "ainda não
+buscado", as before.
 
 A failure never removes the last good answer: texts keep coming from it,
 marked stale, so nothing on air is blanked because the API had a bad
@@ -35,6 +41,7 @@ from orchestrator.domain.pass_results import (
     event_finished,
     fetching_stopped,
     resultado_id_for,
+    stored_table,
 )
 from orchestrator.domain.results_table import BadTableError, parse_table
 from orchestrator.repositories import pass_results as pass_results_repo
@@ -44,6 +51,10 @@ logger = logging.getLogger(__name__)
 POLL_INTERVAL = timedelta(seconds=30)
 # "Testar" reuses an answer at most this old.
 TEST_REUSE = timedelta(seconds=5)
+# The pass preview's fetch of a table never fetched: how long it may wait
+# for the API, and how soon after the table's last try it may try again.
+PREVIEW_FETCH_TIMEOUT_S = 3.0
+PREVIEW_FETCH_INTERVAL = POLL_INTERVAL
 
 
 def tables_needing_results(context: OrchestratorContext, now: datetime) -> list[str]:
@@ -82,15 +93,18 @@ def is_due(row, now: datetime) -> bool:
     return now - from_db_time(row["attempt_at"]) >= wait
 
 
-def fetch_table(context: OrchestratorContext, resultado_id: str) -> bool:
+def fetch_table(
+    context: OrchestratorContext, resultado_id: str, timeout_s: float | None = None
+) -> bool:
     """Ask the API for one table now and record the outcome; True when it worked.
 
-    The request runs outside any transaction (it may take seconds).
+    The request runs outside any transaction (it may take seconds; at most
+    `timeout_s` per wait when given).
     """
     settings = context.admin_settings.current
     try:
         answer = context.results_api.results_table(
-            settings.results_api_base_url, settings.event_id, resultado_id
+            settings.results_api_base_url, settings.event_id, resultado_id, timeout_s
         )
         parse_table(answer.body)  # refuse an answer we could not read later
     except (ResultsApiError, BadTableError) as error:
@@ -119,6 +133,27 @@ def fetch_if_older_than(context: OrchestratorContext, resultado_id: str, age: ti
     now = context.clock.now()
     if row is None or row["attempt_at"] is None or now - from_db_time(row["attempt_at"]) >= age:
         fetch_table(context, resultado_id)
+
+
+def fetch_if_never_fetched(context: OrchestratorContext, resultado_id: str) -> None:
+    """For the pass preview: fetch a table that has no answer yet, at most once per 30 s.
+
+    One preview at a time per table: a second one waits for the first's
+    fetch and then finds the answer, or the failed try it must not repeat.
+    """
+    with context.table_fetch_locks.lock_for(resultado_id):
+        with context.database.transaction() as connection:
+            row = pass_results_repo.get_table_row(connection, resultado_id)
+        if stored_table(row) is not None or _tried_lately(context, row):
+            return
+        fetch_table(context, resultado_id, PREVIEW_FETCH_TIMEOUT_S)
+
+
+def _tried_lately(context: OrchestratorContext, row) -> bool:
+    """The table's last try (by anyone) was less than 30 s ago."""
+    if row is None or row["attempt_at"] is None:
+        return False
+    return context.clock.now() - from_db_time(row["attempt_at"]) < PREVIEW_FETCH_INTERVAL
 
 
 def poll_due_tables(context: OrchestratorContext) -> list[str]:

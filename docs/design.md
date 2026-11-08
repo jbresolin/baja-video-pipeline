@@ -1433,10 +1433,16 @@ installer 0.7.0.
   prova, car and passagem put in; nothing is stored. A value left out is
   the saved one, as in `PATCH …/review` (so "choose a prova" keeps the
   saved prova, as a save would). The toggles and the largada are the saved
-  ones: the page reads its own fields for those. Only tables already
-  fetched are used (a GET does not fetch): the first video of a prova that
-  has no other job yet sees "ainda não buscado" until it is saved and the
-  background loop fetches the table. The review UI relays it as
+  ones: the page reads its own fields for those. The first video of a
+  prova that has no other job finds its table never fetched (the
+  background loop only fetches tables of provas with saved jobs), so the
+  preview fetches it then, as "Testar" does
+  (`pass_results_fetch.fetch_if_never_fetched`): with a 3 s timeout, not
+  again within 30 s of the table's last try by anyone (the row's
+  `attempt_at`), one preview at a time per table (a lock: a second one
+  waits and finds the answer, or the failed try). A failure leaves
+  "ainda não buscado", as before. A table with an answer is never fetched
+  by a preview; the loop keeps it fresh. The review UI relays it as
   `GET /review/api/jobs/{id}/pass-blocks`, rendering the same templates;
   `js/pass_blocks.js` asks 300 ms after prova, car or passagem change and
   after a save, and swaps the blocks in two fixed slots. Fields the

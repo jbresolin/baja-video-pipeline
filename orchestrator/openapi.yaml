@@ -1728,9 +1728,15 @@ paths:
 
         without a save. A value left out keeps the saved one, as in PATCH
 
-        …/review. Nothing is stored; the toggles and the largada are the saved
+        …/review. Nothing is stored on the job; the toggles and the largada are
 
-        ones (the page reads its own fields for those).'
+        the saved ones (the page reads its own fields for those). A prova whose
+
+        results table was never fetched (its first video) gets it fetched now,
+
+        as "Testar" does: at most 3 s, not again within 30 s of the table''s
+
+        last try; on failure the answer says `not_fetched`.'
       operationId: get_pass_preview_jobs__job_id__pass_preview_get
       security:
       - sessionBearer: []

@@ -156,8 +156,11 @@ def get_pass_preview(
     values (the same functions, on the saved job with these values put in),
     so "Resultado da passagem" and "Cronômetro" appear, change and go
     without a save. A value left out keeps the saved one, as in PATCH
-    …/review. Nothing is stored; the toggles and the largada are the saved
-    ones (the page reads its own fields for those)."""
+    …/review. Nothing is stored on the job; the toggles and the largada are
+    the saved ones (the page reads its own fields for those). A prova whose
+    results table was never fetched (its first video) gets it fetched now,
+    as "Testar" does: at most 3 s, not again within 30 s of the table's
+    last try; on failure the answer says `not_fetched`."""
     not_implemented()
 
 

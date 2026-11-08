@@ -13,10 +13,18 @@ harness), with the real results of the 2026 Manobrabilidade: car 26's
 second run took 66 s with 4 cones (86 s corrected), its first 59 s clean.
 """
 
-from orchestrator.domain.pass_results_fetch import poll_due_tables
+from orchestrator.domain.pass_results_fetch import (
+    PREVIEW_FETCH_INTERVAL,
+    PREVIEW_FETCH_TIMEOUT_S,
+    poll_due_tables,
+)
 from orchestrator.testing.scenarios import hold_raw, make_proxy, receive_job, save_review_fields
 from shared.models import WorkerRole
-from tests.orchestrator.pass_results_data import job_in_review, set_up_manobrabilidade
+from tests.orchestrator.pass_results_data import (
+    RESULTADO_ID,
+    job_in_review,
+    set_up_manobrabilidade,
+)
 
 
 def ask_preview(harness, job_id: str, **values):
@@ -172,3 +180,74 @@ def test_only_reviewers_may_ask(harness):
     )
 
     assert response.status_code in (401, 403)
+
+
+# --- The first video of a prova: its table was never fetched ---
+#
+# The background loop fetches only tables of provas with saved jobs, so
+# the first Manobrabilidade video of the day finds no table. The preview
+# fetches it then, as "Testar" does: waiting at most 3 s, never again
+# within 30 s of the last try, and "ainda não buscado" when it fails.
+
+
+def table_requests(harness) -> int:
+    """How many times the fake results API was asked for the Manobrabilidade table."""
+    return sum(
+        1
+        for path, query in harness.results_api.requests
+        if path == "/resultados/resultado.php" and f"id={RESULTADO_ID}" in query
+    )
+
+
+def test_the_first_video_of_a_prova_fetches_its_table_once(harness):
+    # Setup: Manobrabilidade configured, no video of it yet, nothing fetched.
+    set_up_manobrabilidade(harness)
+    job_id = new_video(harness)
+    assert table_requests(harness) == 0
+
+    # The form says Manobrabilidade, car 26, passagem 2.
+    preview = ask_preview(harness, job_id, prova="Manobrabilidade", car_number=26, passagem=2)
+
+    # The table was fetched right then, with the 3 s cap, and the answer has
+    # the result line and the clock, not "ainda não buscado".
+    assert preview.status_code == 200, preview.text
+    assert table_requests(harness) == 1
+    assert harness.results_api.read_timeouts[-1] == PREVIEW_FETCH_TIMEOUT_S == 3.0
+    answer = preview.json()
+    assert answer["pass_result"]["text"] == "66 s · 4 cones → 86 s"
+    assert answer["pass_result"]["problem"] is None
+    assert answer["pass_clock"]["official_text"] == "66,0"
+
+    # The reviewer goes on typing: the table is there now, no new fetch.
+    ask_preview(harness, job_id, prova="Manobrabilidade", car_number=26, passagem=1)
+    assert table_requests(harness) == 1
+
+
+def test_a_failed_fetch_answers_not_fetched_and_is_not_retried_within_30_s(harness):
+    # Setup: as above, but the results API hangs: the 3 s timeout fires.
+    set_up_manobrabilidade(harness)
+    job_id = new_video(harness)
+    harness.results_api.times_out = True
+    values = {"prova": "Manobrabilidade", "car_number": 26, "passagem": 2}
+
+    preview = ask_preview(harness, job_id, **values)
+
+    # One try; the answer falls back to "ainda não buscado", as before.
+    assert preview.status_code == 200, preview.text
+    assert table_requests(harness) == 1
+    assert preview.json()["pass_result"]["problem"] == "not_fetched"
+    assert preview.json()["pass_clock"]["problem"] == "not_fetched"
+
+    # The API is back, but within 30 s of the failed try nothing is asked:
+    # the reviewer's typing must not hammer the API.
+    harness.results_api.times_out = False
+    harness.clock.advance(PREVIEW_FETCH_INTERVAL.total_seconds() - 1)
+    again = ask_preview(harness, job_id, **values).json()
+    assert table_requests(harness) == 1
+    assert again["pass_result"]["problem"] == "not_fetched"
+
+    # 30 s after the try, the next preview fetches again, and gets it.
+    harness.clock.advance(1)
+    later = ask_preview(harness, job_id, **values).json()
+    assert table_requests(harness) == 2
+    assert later["pass_result"]["text"] == "66 s · 4 cones → 86 s"

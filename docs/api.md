@@ -579,7 +579,7 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `PUT /jobs/{job_id}/presence` | → `JobPresenceResponse` | reviewer session; "this job page is open", on opening and every ~20 s; answers the *other* reviewers on the job (`others`, first arrived first, `since` = their first ping). In memory; 45 s without a ping = gone. Never a lock (LIVESTACK-51); 404 unknown job |
 | `DELETE /jobs/{job_id}/presence` | → 204 | the page closed; always 204 |
 | `GET /jobs/{job_id}/sender-messages` | → `SenderMessagesResponse` | reviewer session only; the job page's "Mensagens de <remetente>" (below, "Sender messages"); 404 unknown job |
-| `GET /jobs/{job_id}/pass-preview?prova=…&car_number=…&passagem=…` | → `PassPreview` | reviewer session only; the result line and the clock for values not saved yet (below, "Running clock"); nothing is stored; 404 unknown job |
+| `GET /jobs/{job_id}/pass-preview?prova=…&car_number=…&passagem=…` | → `PassPreview` | reviewer session only; the result line and the clock for values not saved yet (below, "Running clock"); nothing is stored on the job; a prova whose results table was never fetched gets it fetched once (3 s timeout, not again within 30 s; on failure `problem: not_fetched`); 404 unknown job |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
 | `POST /jobs/{job_id}/regenerate-proxy` | → 202 `RegenerateProxyResponse` | no state change |
 | `GET /teams/{car_number}` | → `Team` | the teams table (results API sync + admin corrections); 404 unknown car |
@@ -745,9 +745,12 @@ session) answers `PassPreview {pass_result, pass_clock}`: exactly what
 (the same functions, run on the saved job with the asked values put in).
 Nothing is stored. A value left out is the saved one, as in `PATCH
 …/review`; the toggles and the largada are always the saved ones (the
-page reads its own fields for those). Only tables already fetched are
-used: the first video of a prova sees `not_fetched` until the background
-loop fetches the table, which it does once a job of that prova is saved.
+page reads its own fields for those). The first video of a prova finds
+its results table never fetched (the background loop fetches only tables
+of provas with saved jobs): the preview then fetches it, as "Testar"
+does, waiting at most 3 s, and not again within 30 s of that table's last
+try; when the fetch fails the answer says `not_fetched`, as before. A
+table already fetched is never fetched by a preview.
 The job page asks while prova, car or passagem change, so "Resultado da
 passagem" and "Cronômetro" appear, change and go without a reload.
 

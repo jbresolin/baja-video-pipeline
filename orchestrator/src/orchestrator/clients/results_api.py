@@ -90,16 +90,28 @@ class ResultsApiClient:
         return self._get_answer(base_url, script, event_id).json()
 
     def _get_answer(
-        self, base_url: str, script: str, event_id: str, extra: dict[str, str] | None = None
+        self,
+        base_url: str,
+        script: str,
+        event_id: str,
+        extra: dict[str, str] | None = None,
+        timeout_s: float | None = None,
     ) -> httpx.Response:
-        """The successful answer (its JSON already checked), or ResultsApiError."""
+        """The successful answer (its JSON already checked), or ResultsApiError.
+
+        `timeout_s` replaces the client's timeouts for this request (a
+        timeout counts as unreachable).
+        """
         if not EVENT_ID.match(event_id):
             raise ResultsApiError(
                 f"{event_id!r} is not an event id (4 letters or digits)", "invalid_parameter"
             )
         url = f"{base_url.rstrip('/')}/resultados/{script}"
         try:
-            response = self._http.get(url, params={"evt": event_id, **(extra or {})})
+            timeout = httpx.USE_CLIENT_DEFAULT if timeout_s is None else httpx.Timeout(timeout_s)
+            response = self._http.get(
+                url, params={"evt": event_id, **(extra or {})}, timeout=timeout
+            )
         except httpx.HTTPError as error:
             raise ResultsApiError(f"results API unreachable: {error}", "unreachable") from error
         if response.status_code == 429:
@@ -129,7 +141,9 @@ class ResultsApiClient:
             ) from error
         return response
 
-    def results_table(self, base_url: str, event_id: str, resultado_id: str) -> ResultsTableAnswer:
+    def results_table(
+        self, base_url: str, event_id: str, resultado_id: str, timeout_s: float | None = None
+    ) -> ResultsTableAnswer:
         """One results table with its display HTML (the penalties are only there)."""
         if not RESULTADO_ID.match(resultado_id):
             raise ResultsApiError(
@@ -137,7 +151,7 @@ class ResultsApiClient:
                 "invalid_parameter",
             )
         response = self._get_answer(
-            base_url, "resultado.php", event_id, {"id": resultado_id, "display": "1"}
+            base_url, "resultado.php", event_id, {"id": resultado_id, "display": "1"}, timeout_s
         )
         body = response.json()
         if not isinstance(body, dict):
