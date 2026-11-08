@@ -73,8 +73,8 @@ RESULT_CONES_GATES = "58 s · 8 cones, 2 saídas de pista → 118 s"  # car 2, p
 # drawn a step smaller (95 %) but still whole. Cutting with an ellipsis,
 # past 75 %, is checked on a longer line (test_overlay_result.py).
 RESULT_LONG = (
-    "109 s · 17 cones, 1 saída de pista, 2 toques na barreira de pneus, "
-    "1 queima de largada, 3 advertências do fiscal → 204 s"
+    "109 s · 17 cones, 2 saídas de pista, 2 toques na barreira de pneus, "
+    "2 queimas de largada, 3 advertências do fiscal → 204 s"
 )
 CAR_26_TEXT = OverlayText(
     prova="Manobrabilidade",
@@ -125,7 +125,7 @@ RESULT_GOLDEN_CASES: dict[str, tuple[OverlayText, Path]] = {
 # largada (0,0, the tens place blank), mid-run (33,4) and frozen (66,0;
 # every frame after the freeze is this same picture). "alone": the result
 # toggle off, so the clock takes the result pill's place at the left edge.
-CLOCK_66 = RenderClock(largada_s=12.345, official_units=660, decimals=1)
+CLOCK_66 = RenderClock(largada_s=12.345, official_units=660, decimals=1, unit="s")
 CLOCK_TEXT = replace(CAR_26_TEXT, passagem=2, pass_result=RESULT_CONES, clock=CLOCK_66)
 CLOCK_GOLDEN_CASES: dict[str, tuple[OverlayText, int, Path]] = {
     "start": (CLOCK_TEXT, 0, GOLDEN_PATH.with_name("overlay-clock-start-1080p.png")),
@@ -140,11 +140,18 @@ CLOCK_GOLDEN_CASES: dict[str, tuple[OverlayText, int, Path]] = {
 
 
 def render_clock_frame(text: OverlayText, units: int) -> Image.Image:
-    """The still overlay with the clock at `units`, as one transparent 1920x1080 frame."""
-    canvas, layout = lay_out_overlay(text, frame_width=1920, frame_height=1080)
+    """The still overlay with the clock at `units`, as one transparent 1920x1080 frame.
+
+    The result pill is drawn only once the clock shows the official time:
+    with a clock, the result appears when it stops (LIVESTACK-53).
+    """
+    layout = lay_out_overlay(text, frame_width=1920, frame_height=1080)
+    canvas = layout.still.copy()
     canvas.alpha_composite(
-        compose_clock(layout, units, text.clock.decimals), dest=layout.region[:2]
+        compose_clock(layout.clock, units, text.clock.decimals), dest=layout.clock.region[:2]
     )
+    if layout.result is not None and units == text.clock.official_units:
+        canvas.alpha_composite(layout.result.image, dest=layout.result.position)
     return canvas
 
 
@@ -180,3 +187,15 @@ if __name__ == "__main__":
     for text, units, path in CLOCK_GOLDEN_CASES.values():
         render_clock_frame(text, units).save(path, format="PNG")
         print(f"wrote {path}")
+    # A vertical video framed into the clip (LIVESTACK-53): needs ffmpeg.
+    # Run as a script, so the repository root is put on the import path.
+    import sys
+    import tempfile
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from tests.worker.framing_golden import FRAMING_GOLDEN_CASES, render_framing_frame
+
+    with tempfile.TemporaryDirectory() as scratch:
+        for framing, path in FRAMING_GOLDEN_CASES.values():
+            render_framing_frame(Path(scratch), framing, CLOCK_TEXT).save(path, format="PNG")
+            print(f"wrote {path}")

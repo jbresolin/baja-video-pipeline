@@ -12,18 +12,23 @@ Bebas Neue. Bottom-left, at 1920x1080:
     ┌──────────────────────────────────────┐
     │ ENDURO · PASSAGEM 3 · UFMG           │   role pill, 40 px, school muted
     └──────────────────────────────────────┘   ← its bottom at y 940
-    ┌───────────────────────────────┐ ┌──────┐
-    │ 66 S · 4 CONES → 86 S         │ │ 12,3 │   result pill, 40 px (LIVESTACK-47)
-    └───────────────────────────────┘ └──────┘   and the running clock (LIVESTACK-48)
+    ┌───────────────────────────────┐
+    │ 66 S · 4 CONES → 86 S         │   result pill, 40 px (LIVESTACK-47)
+    └───────────────────────────────┘
 
 The result pill (worker.overlay_result) is only drawn when the task
 carries a result line. It goes *under* the role pill, so the name and role
 pills sit exactly where they always did, with or without a result.
 
-The running clock (worker.overlay_clock) is not in this PNG: it appears
-at the largada and changes every frame, so ffmpeg draws it from images of
-its own (shared.ffmpeg_clock). Here it only takes its place on the result
-pill's row, which then has that much less room for the result.
+The running clock (worker.overlay_clock, LIVESTACK-48) is not in this
+PNG: it appears at the largada and changes every frame, so ffmpeg draws
+it from images of its own (shared.ffmpeg_clock). Since LIVESTACK-53 it
+sits in the top-right corner, so the result pill has its whole row again.
+
+With a clock, the result pill is not in this PNG either (LIVESTACK-53):
+the result appears when the clock stops, so it is drawn on an image of its
+own (OverlayLayout.result) that ffmpeg lays on from the freeze frame.
+Without a clock it stays in the PNG, on for the whole clip, as before.
 
 Unknown parts are left out (no team → the chip alone in the name pill;
 no school → no school part; show_pass off → no passagem). Bebas Neue has
@@ -48,8 +53,8 @@ from PIL import Image
 
 from shared.models import RenderClock
 from worker import overlay_tokens as theme
-from worker.overlay_clock import ClockLayout, clock_pill_width, layout_clock
-from worker.overlay_draw import PillLayout, draw_pill
+from worker.overlay_clock import ClockLayout, layout_clock_top_right
+from worker.overlay_draw import PillLayout, PlacedImage, draw_pill, draw_pill_alone
 from worker.overlay_result import layout_result_pill, result_runs
 from worker.overlay_text import TextRun, fit_runs, font, runs_width
 
@@ -97,6 +102,19 @@ class OverlayText:
         return None
 
 
+@dataclass(frozen=True)
+class OverlayLayout:
+    """The overlay of one clip: the still image, and the parts drawn over it later."""
+
+    # On for the whole clip: name, role and (without a clock) result pills.
+    still: Image.Image
+    # Where the running clock goes; None = no clock.
+    clock: ClockLayout | None = None
+    # With a clock, the result pill on its own image, shown from the
+    # clock's freeze (LIVESTACK-53); None = no result, or it is in `still`.
+    result: PlacedImage | None = None
+
+
 def render_overlay_png(
     destination: Path, text: OverlayText, frame_width: int, frame_height: int = FINAL_FRAME_HEIGHT
 ) -> Path:
@@ -107,18 +125,18 @@ def render_overlay_png(
 
 def render_overlay(
     destination: Path, text: OverlayText, frame_width: int, frame_height: int = FINAL_FRAME_HEIGHT
-) -> ClockLayout | None:
-    """Save the still overlay PNG; return where the clock goes (None: no clock)."""
-    canvas, clock_layout = lay_out_overlay(text, frame_width, frame_height)
+) -> OverlayLayout:
+    """Save the still overlay PNG; return it with the clock's place and the result's image."""
+    layout = lay_out_overlay(text, frame_width, frame_height)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(destination, format="PNG")
-    return clock_layout
+    layout.still.save(destination, format="PNG")
+    return layout
 
 
 def lay_out_overlay(
     text: OverlayText, frame_width: int, frame_height: int = FINAL_FRAME_HEIGHT
-) -> tuple[Image.Image, ClockLayout | None]:
-    """The still overlay for `text`, and the clock's place when it has one."""
+) -> OverlayLayout:
+    """The still overlay for `text`, the clock's place and the result's own image."""
     name = text.name()
     name_runs = [TextRun(name, tracking_em=theme.NAME_TRACKING_EM)] if name else []
     result = text.result_line()
@@ -162,15 +180,14 @@ def render_lower_third(
     render_overlay_png builds the runs from a job; tests also call this with
     BajaOvrLay's own preview data to compare against its screenshots.
     """
-    canvas, _ = lay_out_lower_third(
+    return lay_out_lower_third(
         frame_width,
         frame_height,
         chip_text=chip_text,
         name_runs=name_runs,
         role_runs=role_runs,
         result_runs=result_runs,
-    )
-    return canvas
+    ).still
 
 
 def lay_out_lower_third(
@@ -182,8 +199,12 @@ def lay_out_lower_third(
     role_runs: list[TextRun],
     result_runs: list[TextRun] | None = None,
     clock: RenderClock | None = None,
-) -> tuple[Image.Image, ClockLayout | None]:
-    """render_lower_third, plus the clock's place on the result pill's row."""
+) -> OverlayLayout:
+    """render_lower_third, plus the clock's place in the top-right corner.
+
+    With a clock, the result pill is drawn on its own image, not on the
+    still one: it appears when the clock stops (LIVESTACK-53).
+    """
     scale = frame_height / FINAL_FRAME_HEIGHT
     left = theme.LEFT_PX * scale
     # The widest a pill may be: the theme's maximum, and never past the
@@ -206,16 +227,17 @@ def lay_out_lower_third(
         draw_pill(canvas, pill, left, top, scale)
         bottom = top - gap
     row_top = lower_third_bottom + gap
-    row_left = left
+    result_image = None
     if result_runs:
         # Under the role pill, one gap below y 940: the pills above never move.
-        # With a clock, the result has the row minus the clock and a gap.
-        room = max_width - (clock_pill_width(clock, scale) + gap if clock else 0)
-        result_pill = layout_result_pill(result_runs, room, scale)
-        draw_pill(canvas, result_pill, left, row_top, scale)
-        row_left = left + result_pill.width + gap
-    clock_layout = layout_clock(clock, row_left, row_top, scale) if clock else None
-    return canvas, clock_layout
+        result_pill = layout_result_pill(result_runs, max_width, scale)
+        if clock:
+            frame_size = (frame_width, frame_height)
+            result_image = draw_pill_alone(result_pill, left, row_top, scale, frame_size)
+        else:
+            draw_pill(canvas, result_pill, left, row_top, scale)
+    clock_layout = layout_clock_top_right(clock, frame_width, scale) if clock else None
+    return OverlayLayout(canvas, clock_layout, result_image)
 
 
 def layout_name_pill(

@@ -47,6 +47,8 @@ REQUIRED_ENDPOINTS = {
     ("get", "/review/car-videos"),
     ("get", "/jobs/{job_id}"),
     ("get", "/jobs/{job_id}/sender-messages"),
+    # The result line and the clock for values not saved yet (LIVESTACK-53).
+    ("get", "/jobs/{job_id}/pass-preview"),
     # Who has a job page open (LIVESTACK-51).
     ("put", "/jobs/{job_id}/presence"),
     ("delete", "/jobs/{job_id}/presence"),
@@ -200,6 +202,8 @@ def test_review_routes_take_a_session_and_ready_can_fail_with_unknown_prova():
     # The sender's messages (LIVESTACK-49): people's own words, so reviewers
     # only; workers, which may read the job, never get them.
     assert paths["/jobs/{job_id}/sender-messages"]["get"]["security"] == [{"sessionBearer": []}]
+    # A reviewer's unsaved typing (LIVESTACK-53): reviewers only, too.
+    assert paths["/jobs/{job_id}/pass-preview"]["get"]["security"] == [{"sessionBearer": []}]
     assert paths["/jobs/{job_id}/review"]["patch"]["security"] == [{"sessionBearer": []}]
     assert (
         "unknown_prova" in load_committed_contract()["components"]["schemas"]["ErrorCode"]["enum"]

@@ -1,7 +1,9 @@
 // Job page: wires the player, the review form, keyboard shortcuts and the
 // auto-refreshing status strip / event log together.
 import { errorMessage, isTyping, localizeTimes, sendJson, showFlash } from "./common.js";
+import { setupClockLate } from "./clock_late.js";
 import { setupOverlayPreview } from "./overlay_preview.js";
+import { setupPassBlocks } from "./pass_blocks.js";
 import { setupPlayer } from "./player.js";
 import { parseFragment, startPolling } from "./poll.js";
 import { setupPassagemHelp } from "./passagem_help.js";
@@ -19,6 +21,10 @@ const video = document.getElementById("player");
 const player = setupPlayer({ video, form, jobElement });
 const passagemHelp = setupPassagemHelp({ form });
 setupRenderOptions({ form, video });
+// "Resultado da passagem" and "Cronômetro" follow prova, car and passagem (LIVESTACK-53).
+setupPassBlocks({ form });
+// With a clock the result appears when it stops: warn when the cut ends first (LIVESTACK-53).
+setupClockLate({ form });
 // "Pré-visualizar overlay" (LIVESTACK-48): the overlay and its clock over the proxy.
 setupOverlayPreview({ video, form, player });
 // Who else is on this video (LIVESTACK-51); may hold the form until chosen.

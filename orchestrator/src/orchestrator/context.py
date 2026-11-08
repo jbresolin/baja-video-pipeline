@@ -54,6 +54,8 @@ class OrchestratorContext:
     enroll_rate_limiter: SlidingWindowRateLimiter
     login_rate_limiter: SlidingWindowRateLimiter
     upload_locks: KeyedLocks = field(default_factory=KeyedLocks)
+    # One pass-preview fetch at a time per results table (LIVESTACK-53).
+    table_fetch_locks: KeyedLocks = field(default_factory=KeyedLocks)
     # Offers, claims and failures since start, for GET /metrics.
     task_counters: TaskCounters = field(default_factory=TaskCounters)
     # Who has which job page open (LIVESTACK-51), in memory only.

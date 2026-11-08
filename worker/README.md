@@ -202,8 +202,10 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   ids, new measurements, the role it runs as and the render features
   this version can do (`render_features.py`: `framing`, `no_audio`,
   LIVESTACK-50, installer 0.4.0; `pass_result`, LIVESTACK-47, installer
-  0.5.0; `clock`, LIVESTACK-48, installer 0.6.0; the orchestrator gives renders that need one only to workers
-  that declared it). An orchestrator older than contract 2.6.0
+  0.5.0; `clock`, LIVESTACK-48, installer 0.6.0; `clock_top_right`,
+  LIVESTACK-53, installer 0.7.0, the new result and clock look, needed by
+  every render with a result or a clock; the orchestrator gives renders
+  that need one only to workers that declared it). An orchestrator older than contract 2.6.0
   refuses that field with 400: the beat is resent without it, and it is
   left out for 5 minutes. Acts on `lost` leases, `accepting_new_raws`,
   `deletable_job_ids` and `role`.
@@ -238,16 +240,25 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   never fetches results), the overlay gets a third pill *under* the role
   pill (`overlay_result.py`): sized like the theme's scoreboard rows
   (`--board-row-height`, `--size-board`), in capitals, shrunk then cut with
-  "…" like the other pills. The name and role pills do not move. Bebas
+  "…" like the other pills; the times' unit is a smaller capital, 65 %
+  (LIVESTACK-53). The name and role pills do not move. Bebas
   Neue has no "→", so the arrow is drawn as a shape (`overlay_arrow.py`).
   The text is in the clip's sidecar (a corrected result renders again)
   and in the render-inputs report. When the task carries `pass_clock`
-  (LIVESTACK-48), a running clock goes on the result pill's row, right of
-  it (or alone at the left edge): Pillow draws its pill, sized for the
-  official time (`overlay_clock.py`), and ffmpeg's `drawtext` writes the
-  digits on every frame from the frame's time, with the same font file
-  and colour (`shared/ffmpeg_clock.py`), from the largada on, frozen on the
-  official time. The clock is in the sidecar and the report too. Then it tells the orchestrator what the clip was rendered
+  (LIVESTACK-48; its look since LIVESTACK-53, installer 0.7.0), a running
+  clock goes in the frame's top-right corner (right margin = the lower
+  third's left, top at `--stage-safe-top`), bigger than the pills
+  (80 px digits in the on-air clock's `--strip-height` pill grown in
+  proportion) and with its unit after a thin space ("66,0 s": a capital
+  at 65 %, muted, so it reads like a lowercase "s"): Pillow draws its pill
+  and unit, sized for the official time (`overlay_clock.py`), and ffmpeg's
+  `drawtext` writes the digits on every frame from the frame's time, with
+  the same font file and colour (`shared/ffmpeg_clock.py`), from the
+  largada on, frozen on the official time. With a clock the result pill is
+  its own small PNG, laid on from the freeze frame to the end
+  (`OverlayLayout.result`); without one it stays in the still PNG. The
+  clock is in the sidecar and the report too (a 0.6.0 sidecar, without
+  the unit, is rendered again). Then it tells the orchestrator what the clip was rendered
   from (LIVESTACK-43, `PUT /jobs/{id}/render-inputs` under the lease:
   cuts, review fields, the render options, the overlay texts as drawn,
   the SHA-256 of the vendored `overlay_theme/tokens.css` and of the

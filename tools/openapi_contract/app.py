@@ -73,7 +73,16 @@ from tools.openapi_contract import (
 # UpdateContactRequest.apply_default_prova_to_waiting; a {phone} in the path
 # may be written in any form (9th digit, +55).
 # Only reviewer-facing answers changed; workers ignore them (§14).
-CONTRACT_VERSION = "2.9.0"
+# 2.10.0: clock polish (LIVESTACK-53): GET /jobs/{id}/pass-preview
+# (PassPreview), the result line and the clock for values not saved yet.
+# The clock's unit ("66,0 s", the configuration's clock.unit, default "s"):
+# RenderClock.unit and ReportedClock.unit (null = recorded before 2.10.0,
+# never compared), PassClock.unit, PassResultTestResponse.clock_unit.
+# Render feature "clock_top_right" (installer 0.7.0): a render with a clock
+# or a result line needs it, so an older worker never draws the old look. Deploy the VPS
+# first: an older orchestrator refuses a report whose pass_clock carries
+# `unit`; the worker logs it and delivers anyway.
+CONTRACT_VERSION = "2.10.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

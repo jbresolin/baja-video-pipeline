@@ -69,6 +69,15 @@ def test_defaults_for_the_optional_keys():
     assert sus.result.extra == ()
 
 
+def test_the_clock_unit_defaults_to_seconds_and_may_be_changed_or_left_empty():
+    # LIVESTACK-53: the clock reads "66,0 s". The brief's example has no
+    # unit in its clock block, so it gets the default "s".
+    assert parse_config(json.dumps(MANOBRABILIDADE_CONFIG)).provas["MAN"].clock.unit == "s"
+    # Another unit, or none at all (an empty text).
+    assert parse_config(json.dumps(changed(clock__unit="seg"))).provas["MAN"].clock.unit == "seg"
+    assert parse_config(json.dumps(changed(clock__unit=""))).provas["MAN"].clock.unit == ""
+
+
 def test_extra_columns_are_read_in_order_with_their_own_unit_and_decimals():
     config = parse_config(
         json.dumps(
@@ -126,6 +135,10 @@ def test_text_that_is_not_json_says_where():
         ({"resultado": "M-N"}, "provas.MAN.resultado", "bad_id"),
         ({"show_by_default": "true"}, "provas.MAN.show_by_default", "wrong_type"),
         ({"clock__decimals": -1}, "provas.MAN.clock.decimals", "out_of_range"),
+        # The clock's unit (LIVESTACK-53) is checked like the result's.
+        ({"clock__unit": "segundos!!!!!"}, "provas.MAN.clock.unit", "too_long"),
+        ({"clock__unit": 1}, "provas.MAN.clock.unit", "wrong_type"),
+        ({"clock__units": "s"}, "provas.MAN.clock.units", "unknown_key"),
         ({"result": None, "clock": None}, "provas.MAN", "nothing_to_show"),
         ({"result": []}, "provas.MAN.result", "wrong_type"),
         # Extra columns: a list of objects; the item's place is in brackets.

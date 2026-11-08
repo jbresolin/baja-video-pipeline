@@ -1420,3 +1420,116 @@ ignore the new answer fields, §14). Migrations 0017 and 0018.
   from `review_form.js`), and after a save without a reload the page
   fetches the preview's server texts again
   (`GET /review/api/jobs/{id}/overlay-preview`).
+
+## 36. Clock polish (LIVESTACK-53, 2026-11-08)
+
+From João's first use of the clock (brief "14 — Clock polish: live
+blocks, result after the stop, bigger clock top right"). Contract 2.10.0,
+installer 0.7.0.
+
+* **The blocks follow the form.** `GET /jobs/{id}/pass-preview` (reviewer
+  session; `domain/pass_preview.py`) runs the very functions behind
+  `Job.pass_result` and `Job.pass_clock` on the saved job with the asked
+  prova, car and passagem put in; nothing is stored. A value left out is
+  the saved one, as in `PATCH …/review` (so "choose a prova" keeps the
+  saved prova, as a save would). The toggles and the largada are the saved
+  ones: the page reads its own fields for those. The first video of a
+  prova that has no other job finds its table never fetched (the
+  background loop only fetches tables of provas with saved jobs), so the
+  preview fetches it then, as "Testar" does
+  (`pass_results_fetch.fetch_if_never_fetched`): with a 3 s timeout, not
+  again within 30 s of the table's last try by anyone (the row's
+  `attempt_at`), one preview at a time per table (a lock: a second one
+  waits and finds the answer, or the failed try). A failure leaves
+  "ainda não buscado", as before. A table with an answer is never fetched
+  by a preview; the loop keeps it fresh. The review UI relays it as
+  `GET /review/api/jobs/{id}/pass-blocks`, rendering the same templates;
+  `js/pass_blocks.js` asks 300 ms after prova, car or passagem change and
+  after a save, and swaps the blocks in two fixed slots. Fields the
+  reviewer changed on the page (a box, a largada typed or marked) keep
+  their values; the others take the server's (a new prova's default). A
+  block that goes away is detached and kept: its fields are no longer in
+  the form, so not sent (as for any prova without a clock), and they come
+  back with the next prova that has one. `js/player.js` now looks the
+  largada field up when used and listens on the form, so "Marcar", `l`,
+  the nudges and the cut-bar line work as soon as the block arrives. On a
+  failed request the blocks stay as they were.
+* **With a clock, the result appears when it stops.** The freeze is a
+  whole number of microseconds after the largada (`official_units ×
+  10^(6 − decimals)`), so "is the result shown" is elapsed µs ≥ that,
+  true exactly from the frame whose clock shows the official time
+  (`shared.pass_clock.result_shown`, `js resultShownAt`; vectors gain
+  `result_shown` on every case plus `late_cases`). In the render the
+  result pill, only when the clip has a clock, is its own small PNG with
+  even edges, laid on by an `overlay` enabled with that comparison; the
+  still PNG then has only the name and role pills. Without a clock nothing
+  changed (same command, same golden images). **The late warning** shows
+  when both a clock and a result line are going into the clip and the cut
+  ends at or before the freeze (the clip has no frame at its cut-out); it
+  is decided live in the page (`js/clock_late.js`) and never blocks.
+* **The clock's size**: 80 px digits (João's choice after the proposals
+  of 56 and 48 px; 2.67 × the pills' 30 px). The pill is the theme's
+  on-air clock (`--size-time` 56 px in a `--strip-height` 72 px pill,
+  padded `--space-5`, corners `--radius`) grown by 80/56, to whole
+  pixels: 103 px tall, padded 29, corners 11, so the digits keep the
+  same air above and below. Changing it is `clock_size(…)` in
+  `worker/overlay_clock.py` and `--clock-size` in the preview's CSS.
+* **The unit**: `clock.unit` in the configuration (default `"s"`, `""` =
+  none, ≤ 12 characters, validated like the other keys). Bebas Neue has
+  only capitals and a second font is not wanted, so the unit is a capital
+  at 65 % of the digits (`UNIT_SIZE_RATIO`, 52 px), which reads like a
+  lowercase "s", in `--text-muted`, after a thin space. The result pill
+  uses the same trick for its times' unit ("66 s" and, after the arrow,
+  "86 s", in the text colour); the penalty and extra words ("4 CONES")
+  stay full size: the worker knows the line's shape (the time first, the
+  corrected time after "→") but not which other words are units. The
+  vendored Bebas Neue has no U+2009, and Pillow draws the unit into the
+  pill image once (it never changes), so the thin space is a
+  gap of 1/6 em of the digits' size. drawtext still writes only the
+  digits, right-aligned before it; the width stays fixed for the official
+  time. The page's sentences say "66,0 s" with an ordinary space, like
+  the result line's "66 s".
+* **Top right.** Right edge as far from the frame's right as the lower
+  third is from the left (`--bug-left`, 96 px), so the corners mirror;
+  top at the theme's title-safe top, `--stage-safe-top` 54 px (5 %): less
+  than the lower third's 140 px from the bottom and well inside
+  action-safe (3.5 % = 38 px). A tighter 40 px would also be action-safe;
+  54 keeps the clock on the theme's own top line (the on-air bug and
+  tower start there). The result pill keeps its place under the role pill
+  and has its whole row again. The overlay is always the 16:9 frame, so
+  on a vertical video the clock sits over the blur or the bar, not on the
+  upright picture (golden frames made by ffmpeg straight to PNG through
+  the render's own picture filters, so they do not depend on an encoder).
+* **Render feature `clock_top_right`** (installer 0.7.0). A render with a
+  clock needs `clock` and `clock_top_right`. A render with a result line
+  needs `pass_result` and `clock_top_right` too, clock or not (João's
+  call after review): otherwise a 0.5.0 or 0.6.0 worker would draw that
+  result in the old look (a full-size "S"), and which look a clip got
+  would depend on which PC happened to hold the raw. So a worker before
+  0.7.0 is offered only renders with neither a result nor a clock, which
+  still go to any worker. The name stays `clock_top_right` (it is on the
+  wire and in the 0.7.0 worker's list); its waiting sentence and Frota
+  label speak of the new result and clock look ("novo visual do
+  resultado e do cronômetro"). Two
+  fixes on the way: the waiting reason names the newest feature left out
+  (a 0.5.0 holder of a clock job was told 0.6.0, which would still not
+  do), and the sweeper's own sentences are built from the feature list.
+* **Render inputs.** The layout is not a render input (like the theme
+  version). `RenderClock.unit` is: a clock recorded before 2.10.0 has none
+  (null) and is not compared on it, so the new look never flags a
+  delivered clip; a unit changed in the configuration after delivery does.
+  On a worker, a clip left by 0.6.0 (its sidecar's clock has no unit) is
+  rendered again rather than reused.
+* **Deployment order: the VPS first, then the workers.** An orchestrator
+  before 2.10.0 refuses a 0.7.0 worker's render-inputs report (its clock
+  carries `unit`); the worker logs it and delivers, and the version keeps
+  the claim snapshot. The review UI goes with the orchestrator.
+  LIVESTACK-52 (clip preview and download) also bumps the installer and
+  touches the worker: whichever merges second takes the next minor
+  (0.8.0) and rebases.
+* **Not checked without real PCs**: the render cost of the extra result
+  overlay on a worker PC (one small overlay with `enable`; measured here
+  only on the CI-sized test clips); drawtext at 80 px on the workers'
+  ffmpeg 9.0 on Windows (CI runs 9.0 on Linux); the page's block swapping
+  in a real browser (the decisions are tested in Node on stand-ins, the
+  endpoint end to end; there is no browser test setup).

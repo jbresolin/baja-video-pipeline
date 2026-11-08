@@ -12,7 +12,8 @@ from datetime import datetime
 
 from review_ui.catalog import text
 from review_ui.pass_result_view import fetch_warning, problem_sentence
-from shared.models import Job, PassClock
+from shared.models import Job, PassClock, PassResult
+from shared.pass_clock import with_unit
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,10 @@ class PassClockBox:
     # (which says it otherwise) is not on the page.
     fetch_warning: str | None
     fetch_error: str | None
+    # Where the clock stops, in clock units, for the page's live warning
+    # that the cut ends before it (LIVESTACK-53); None while unknown.
+    official_units: int | None = None
+    decimals: int = 0
 
 
 def clock_status(clock: PassClock) -> tuple[str, str | None]:
@@ -38,11 +43,12 @@ def clock_status(clock: PassClock) -> tuple[str, str | None]:
     if clock.official_text is None:
         reason = problem_sentence(clock.problem)
         return f"{text('pass_clock.no_official')} {reason}", clock.problem_detail
+    official = with_unit(clock.official_text, clock.unit)
     if clock.render is not None:
-        return text("pass_clock.on_air", official=clock.official_text), None
+        return text("pass_clock.on_air", official=official), None
     if not clock.show:
-        return text("pass_clock.not_burned", official=clock.official_text), None
-    return text("pass_clock.no_largada", official=clock.official_text), None
+        return text("pass_clock.not_burned", official=official), None
+    return text("pass_clock.no_largada", official=official), None
 
 
 def pass_clock_box(
@@ -60,6 +66,8 @@ def pass_clock_box(
         detail=detail,
         fetch_warning=warning,
         fetch_error=clock.fetch.last_error if warning and clock.fetch is not None else None,
+        official_units=clock.official_units,
+        decimals=clock.decimals,
     )
 
 
@@ -71,16 +79,26 @@ def overlay_preview_data(job: Job) -> dict:
     time in clock units); the page's own fields (passagem, toggles, largada,
     cuts) are read live from the form, so the preview follows unsaved edits.
     """
-    result = job.pass_result
-    clock = job.pass_clock
     return {
         "car_number": job.car_number,
         "team_name": job.clip_team_name,
         "school_name": job.clip_school_name,
         "prova": job.prova,
+        **overlay_preview_pass_data(job.pass_result, job.pass_clock),
+    }
+
+
+def overlay_preview_pass_data(result: PassResult | None, clock: PassClock | None) -> dict:
+    """The preview's result line and official time; also sent while the reviewer
+    types prova, car or passagem (LIVESTACK-53, GET …/pass-blocks)."""
+    return {
         "result_text": result.text if result is not None and result.configured else None,
         "clock": (
-            {"official_units": clock.official_units, "decimals": clock.decimals}
+            {
+                "official_units": clock.official_units,
+                "decimals": clock.decimals,
+                "unit": clock.unit,
+            }
             if clock is not None and clock.configured and clock.official_units is not None
             else None
         ),

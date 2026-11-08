@@ -20,4 +20,7 @@ DECLARED_RENDER_FEATURES = [
     # Installer 0.6.0, LIVESTACK-48: the running clock, from the largada to
     # the official time (worker.overlay_clock, shared.ffmpeg_clock).
     RenderFeature.CLOCK.value,
+    # Installer 0.7.0, LIVESTACK-53: the clock top right, bigger, with its
+    # unit, and the result pill from the clock's freeze on.
+    RenderFeature.CLOCK_TOP_RIGHT.value,
 ]

@@ -8,8 +8,8 @@ declared all of them. A job that needs nothing new goes to any worker, as
 before. Without this, a 0.3.0 worker would take a vertical video and render
 the old narrow clip with its sound, ignoring task fields it does not know.
 
-To add a feature (LIVESTACK-47 did, for pass results in the overlay, and
-LIVESTACK-48 for the running clock):
+To add a feature (LIVESTACK-47 did, for pass results in the overlay,
+LIVESTACK-48 for the running clock, LIVESTACK-53 for its new look):
 
 1. add it to RenderFeature and to the list the worker declares
    (worker/render_features.py);
@@ -48,9 +48,17 @@ NO_HOLDER_CAN_RENDER_CLOCK = (
     "waiting for a holder of the raw that can draw the running clock"
     " (a worker updated to 0.6.0 or later)"
 )
+# The same when holders draw only the old result and clock (LIVESTACK-53):
+# 0.7.0 draws the clock top right with its unit, the result from the
+# freeze, and the units small.
+NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT = (
+    "waiting for a holder of the raw that can draw the new result and clock look"
+    " (a worker updated to 0.7.0 or later)"
+)
 # The features newer than LIVESTACK-50's, newest first, with the sentence
 # that says a worker is missing exactly that one (process_waiting_reason).
 NEWER_FEATURE_REASONS = [
+    (RenderFeature.CLOCK_TOP_RIGHT, NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT),
     (RenderFeature.CLOCK, NO_HOLDER_CAN_RENDER_CLOCK),
     (RenderFeature.PASS_RESULT, NO_HOLDER_CAN_RENDER_PASS_RESULT),
 ]
@@ -70,6 +78,12 @@ def required_render_features(
                  would ignore it and render the clip without the pill.
     clock:       the render carries a running clock (ProcessTask.pass_clock;
                  pass it here). A worker before 0.6.0 would leave it out.
+    clock_top_right: the render carries a result line or a running clock
+                 (LIVESTACK-53): a worker before 0.7.0 would draw the old
+                 look (the clock beside the result, no unit, the result
+                 from the start, a full-size "S"). João's call: every
+                 clip with a result gets the new look, not only those
+                 with a clock. Renders with neither go to any worker.
     """
     needed = []
     if needs_framing(job_row["display_width"], job_row["display_height"], job_row["rotation"]):
@@ -80,6 +94,8 @@ def required_render_features(
         needed.append(RenderFeature.PASS_RESULT.value)
     if pass_clock is not None:
         needed.append(RenderFeature.CLOCK.value)
+    if pass_result_text is not None or pass_clock is not None:
+        needed.append(RenderFeature.CLOCK_TOP_RIGHT.value)
     return needed
 
 
@@ -118,7 +134,8 @@ def process_waiting_reason(connection: sqlite3.Connection, job_row, now: datetim
     No confirmed holder online (and not paused) → NO_HOLDER_ONLINE; holders
     online but none declared the features the job needs → NO_HOLDER_CAN_RENDER,
     or the sentence of the newest feature a holder is missing when that is
-    all that stops it (NO_HOLDER_CAN_RENDER_CLOCK for the clock, 0.6.0;
+    all that stops it (NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT for the new
+    result and clock look, 0.7.0; NO_HOLDER_CAN_RENDER_CLOCK for the clock, 0.6.0;
     NO_HOLDER_CAN_RENDER_PASS_RESULT for the result pill, 0.5.0).
     """
     snapshot = FleetSnapshot.take(connection, now)
@@ -135,13 +152,16 @@ def process_waiting_reason(connection: sqlite3.Connection, job_row, now: datetim
     )
     if any(can_render(worker_row, required) for worker_row in available):
         return None
-    # Leave out the newest features one at a time: the first that lets a
-    # holder render is the one to update the workers for.
+    # Leave out the newest features one at a time until a holder could
+    # render; the newest one left out says which version to update to (a
+    # 0.5.0 holder of a clock job needs 0.7.0, not 0.6.0).
     remaining = list(required)
+    newest_missing = None
     for feature, reason in NEWER_FEATURE_REASONS:
         if feature not in remaining:
             continue
         remaining.remove(feature)
+        newest_missing = newest_missing or reason
         if any(can_render(worker_row, remaining) for worker_row in available):
-            return reason
+            return newest_missing
     return NO_HOLDER_CAN_RENDER

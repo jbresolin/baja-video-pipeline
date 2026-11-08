@@ -11,6 +11,9 @@
 // 660), so no float rounding can make the preview differ from the clip.
 // tests/fixtures/pass_clock/vectors.json holds cases that this file and
 // the Python rule must both get right (test_pass_clock_rule.py runs both).
+//
+// With a clock, the result pill appears when the clock freezes, never
+// while it runs (LIVESTACK-53): resultShownAt, also from the vectors.
 
 const MICROSECONDS_PER_SECOND = 1_000_000;
 
@@ -50,4 +53,23 @@ export function clockTextAt(rawTimeSeconds, largadaSeconds, officialUnits, decim
     decimals,
   );
   return units === null ? null : clockText(units, decimals);
+}
+
+// Microseconds after the largada at which the clock reaches the official
+// time: a unit is 10^(6 - decimals) µs, a whole number for 0 to 3 decimals.
+export function freezeElapsedMicroseconds(officialUnits, decimals) {
+  return officialUnits * (MICROSECONDS_PER_SECOND / 10 ** decimals);
+}
+
+// With a clock, the result is shown from the freeze on, to the end of the clip.
+export function resultShownAt(rawTimeSeconds, largadaSeconds, officialUnits, decimals) {
+  const elapsed = elapsedMicroseconds(rawTimeSeconds, largadaSeconds);
+  return elapsed >= freezeElapsedMicroseconds(officialUnits, decimals);
+}
+
+// True when the clip ends before the clock stops, so its result never
+// appears. The clip has frames before its cut-out only.
+export function clipEndsBeforeFreeze(cutOutSeconds, largadaSeconds, officialUnits, decimals) {
+  const lastElapsed = elapsedMicroseconds(cutOutSeconds, largadaSeconds) - 1;
+  return lastElapsed < freezeElapsedMicroseconds(officialUnits, decimals);
 }

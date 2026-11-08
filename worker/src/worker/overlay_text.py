@@ -19,6 +19,10 @@ from worker.overlay_arrow import arrow_width
 ELLIPSIS = "…"
 # Font sizes tried, as fractions of the theme's size, before cutting the text.
 SHRINK_STEPS = (1.0, 0.95, 0.9, 0.85, 0.8, 0.75)
+# A unit after a number ("66 s") is drawn this much smaller than the
+# number (LIVESTACK-53). Bebas Neue has only capitals, and a small "S"
+# reads like a lowercase one without a second font.
+UNIT_SIZE_RATIO = 0.65
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,9 @@ class TextRun:
     # Drawn as the arrow shape (worker.overlay_arrow), not as glyphs; its
     # text is "→" only so the runs still read as the line they stand for.
     arrow: bool = False
+    # The run's size as a fraction of the pill's font size, on the same
+    # baseline (UNIT_SIZE_RATIO for a unit).
+    size_ratio: float = 1.0
 
 
 @lru_cache(maxsize=64)
@@ -46,7 +53,8 @@ def run_width(run: TextRun, font_px: float, scale: float) -> float:
     if run.arrow:
         width = arrow_width(font_px)
     else:
-        width = font(font_px).getlength(run.text) + len(run.text) * run.tracking_em * font_px
+        run_px = font_px * run.size_ratio
+        width = font(run_px).getlength(run.text) + len(run.text) * run.tracking_em * run_px
     gap = theme.ROLE_PART_GAP_PX * scale
     return width + gap * (int(run.gap_before) + int(run.gap_after))
 

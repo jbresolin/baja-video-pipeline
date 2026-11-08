@@ -70,7 +70,7 @@ types**; this page explains the behaviour around them. Design background:
 | `POST /auth/login` | none (the password is the credential; 20 per source IP per 600 s) |
 | `/admin/*`, `POST /intake/test-upload`, `GET /metrics` | sessionBearer (role admin) **or** adminBearer |
 | worker loop, `/workers`, `/auth/file`, `/outbox/{id}/ack` | workerBearer |
-| `/review/queue`, `/review/car-videos`, `GET /jobs/{job_id}/sender-messages`, `PUT/DELETE /jobs/{job_id}/presence`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
+| `/review/queue`, `/review/car-videos`, `GET /jobs/{job_id}/sender-messages`, `GET /jobs/{job_id}/pass-preview`, `PUT/DELETE /jobs/{job_id}/presence`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
 | `GET /auth/media` | sessionCookie |
 | `GET /jobs/{job_id}`, `GET /manifest` | sessionBearer **or** workerBearer |
 | `GET /fleet`, `GET /jobs/{job_id}/events`, `GET /events`, `GET /provas` | sessionBearer **or** adminBearer |
@@ -308,6 +308,14 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
   online but none declared `clock`, `waiting_reason` is "waiting for a
   holder of the raw that can draw the running clock (a worker updated to
   0.6.0 or later)".
+  Contract 2.10.0 (LIVESTACK-53, installer 0.7.0) adds `clock_top_right`:
+  a task with `pass_clock` or `pass_result_text` needs it too (the clock
+  top right with its unit, the result pill from the freeze, the time's
+  unit small; an older worker would draw the old look). A task with
+  neither does not. Without it, `waiting_reason` is "waiting for a holder
+  of the raw that can draw the new result and clock look (a worker
+  updated to 0.7.0 or later)". When several features are missing, the sentence names the
+  newest one left out (the version a holder needs).
 
 | Task kind | Who gets it | What to do | How it ends |
 | --- | --- | --- | --- |
@@ -410,6 +418,10 @@ null = no clock, also what inputs recorded before 2.8.0 mean). In `now`
 it is the clock a render would draw with the latest results fetched, so
 the official time arriving or being corrected, the largada moved (0.5 ms
 tolerance) or the clock turned on or off lists `clock` in `changed`.
+Since 2.10.0 the clock also has its `unit` (`ReportedClock.unit` in the
+worker's report); a clock recorded without one (null: rendered before
+2.10.0) is not compared on it, so the new look alone never flags a clip,
+while a unit changed in the configuration after delivery does.
 
 `Job.clip_inputs` (`ClipInputsComparison`) puts the **newest** version's
 inputs (`clip`) next to what a render would use now (`now`: the review as
@@ -568,6 +580,7 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `PUT /jobs/{job_id}/presence` | → `JobPresenceResponse` | reviewer session; "this job page is open", on opening and every ~20 s; answers the *other* reviewers on the job (`others`, first arrived first, `since` = their first ping). In memory; 45 s without a ping = gone. Never a lock (LIVESTACK-51); 404 unknown job |
 | `DELETE /jobs/{job_id}/presence` | → 204 | the page closed; always 204 |
 | `GET /jobs/{job_id}/sender-messages` | → `SenderMessagesResponse` | reviewer session only; the job page's "Mensagens de <remetente>" (below, "Sender messages"); 404 unknown job |
+| `GET /jobs/{job_id}/pass-preview?prova=…&car_number=…&passagem=…` | → `PassPreview` | reviewer session only; the result line and the clock for values not saved yet (below, "Running clock"); nothing is stored on the job; a prova whose results table was never fetched gets it fetched once (3 s timeout, not again within 30 s; on failure `problem: not_fetched`); 404 unknown job |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
 | `POST /jobs/{job_id}/regenerate-proxy` | → 202 `RegenerateProxyResponse` | no state change |
 | `GET /teams/{car_number}` | → `Team` | the teams table (results API sync + admin corrections); 404 unknown car |
@@ -709,13 +722,38 @@ removes it; 422 past the end of the video); `Job.show_clock` the toggle
 `render`, the `RenderClock` a render would draw now (null without a
 largada, an official time, or with the toggle off).
 `ProcessTask.pass_clock` carries it, only to workers that declared
-`clock`. What the clock shows at raw time *t*: `min(⌊(µs(t) − µs(largada))
+`clock` (and, since 2.10.0, `clock_top_right`). What the clock shows at raw time *t*: `min(⌊(µs(t) − µs(largada))
 · 10^decimals / 10⁶⌋, official_units)` units, each time rounded half up
 to whole microseconds, nothing before the largada; written with a decimal
 comma. `Job.clip_team_name` and `clip_school_name` are the names a render
 would draw now (for the job page's overlay preview).
 `PassResultTestResponse` ("Testar") adds `clock_configured`, `clock_text`
 and `clock_problem`.
+
+**The clock's look** (contract 2.10.0, LIVESTACK-53; design §36). The
+clock is drawn top right, bigger than the pills, with its unit after the
+digits: `clock.unit` in the configuration (default `"s"`, `""` = none, up
+to 12 characters), sent as `RenderClock.unit` (and `PassClock.unit`,
+`PassResultTestResponse.clock_unit`). With a clock, the result pill is
+shown from the **freeze** on: elapsed µs ≥ `official_units` ×
+10^(6 − decimals), the first frame whose clock shows the official time;
+without a clock, the whole clip as before.
+
+**Before a save** (contract 2.10.0, LIVESTACK-53). `GET
+/jobs/{id}/pass-preview?prova=…&car_number=…&passagem=…` (reviewer
+session) answers `PassPreview {pass_result, pass_clock}`: exactly what
+`Job.pass_result` and `Job.pass_clock` would be after saving those values
+(the same functions, run on the saved job with the asked values put in).
+Nothing is stored. A value left out is the saved one, as in `PATCH
+…/review`; the toggles and the largada are always the saved ones (the
+page reads its own fields for those). The first video of a prova finds
+its results table never fetched (the background loop fetches only tables
+of provas with saved jobs): the preview then fetches it, as "Testar"
+does, waiting at most 3 s, and not again within 30 s of that table's last
+try; when the fetch fails the answer says `not_fetched`, as before. A
+table already fetched is never fetched by a preview.
+The job page asks while prova, car or passagem change, so "Resultado da
+passagem" and "Cronômetro" appear, change and go without a reload.
 
 **Names on the clips** (LIVESTACK-42). Two independent Settings,
 `clip_team_name_style` and `clip_school_name_style` (`full` | `short`,

@@ -140,6 +140,7 @@ def test_pass_result(
             # The running clock's stop (LIVESTACK-48), when the prova has a clock.
             "clock_configured": prova_config.clock is not None,
             "clock_text": clock.text,
+            "clock_unit": None if prova_config.clock is None else prova_config.clock.unit,
             "clock_problem": None if prova_config.clock is None else clock.problem,
             "clock_problem_detail": None if prova_config.clock is None else clock.detail,
         }

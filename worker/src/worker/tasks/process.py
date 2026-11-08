@@ -194,15 +194,17 @@ def _reuse_or_render(
         info = probe_input(env.media, raw_path)
         plan = frame_plan_for(task, info)
         overlay = overlay_text_for(task)
-        clock_layout = render_overlay(overlay_path, overlay, OUTPUT_WIDTH)
+        layout = render_overlay(overlay_path, overlay, OUTPUT_WIDTH)
         clock = None
-        if clock_layout is not None and task.pass_clock is not None:
+        if layout.clock is not None and task.pass_clock is not None:
+            # With a clock, the result pill appears when it stops (LIVESTACK-53).
             clock = write_clock_pill(
-                clock_layout,
+                layout.clock,
                 task.pass_clock,
                 task.cut_in_s,
                 overlay_path.parent,
                 stem=task.job_id,
+                result=layout.result,
             )
         env.media.render_final(
             raw_path,
@@ -225,6 +227,7 @@ def _reuse_or_render(
         render_path.unlink(missing_ok=True)
         overlay_path.unlink(missing_ok=True)
         env.storage.tmp_path(f"{task.job_id}.clock.png").unlink(missing_ok=True)
+        env.storage.tmp_path(f"{task.job_id}.result.png").unlink(missing_ok=True)
 
     env.measurements.record(MeasurementKind.PROCESS, raw_path.stat().st_size, started_at)
     logger.info("clip rendered: %d bytes", clip_path.stat().st_size)

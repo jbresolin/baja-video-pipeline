@@ -32,6 +32,38 @@ class PillLayout:
     chip_width: float = 0.0
 
 
+@dataclass(frozen=True)
+class PlacedImage:
+    """A part of the overlay drawn on an image of its own, and where its top-left
+    corner goes in the frame (the result pill when the clip has a clock)."""
+
+    image: Image.Image
+    position: tuple[int, int]
+
+
+def even_region(left: float, top: float, width: float, height: float) -> tuple[int, int, int, int]:
+    """The smallest box with even edges around a shape: (x, y, width, height).
+
+    4:2:0 video keeps colour per 2×2 pixels, so an image laid on with even
+    edges lands on whole colour samples, and tests can cut it out exactly.
+    """
+    x0 = math.floor(left) // 2 * 2
+    y0 = math.floor(top) // 2 * 2
+    x1 = math.ceil(left + width)
+    y1 = math.ceil(top + height)
+    return x0, y0, x1 - x0 + (x1 - x0) % 2, y1 - y0 + (y1 - y0) % 2
+
+
+def draw_pill_alone(
+    pill: PillLayout, left: float, top: float, scale: float, frame_size: tuple[int, int]
+) -> PlacedImage:
+    """The pill drawn on a small transparent image of its own (even edges), with its place."""
+    x, y, width, height = even_region(left, top, pill.width, pill.height)
+    canvas = Image.new("RGBA", frame_size, (0, 0, 0, 0))
+    draw_pill(canvas, pill, left, top, scale)
+    return PlacedImage(canvas.crop((x, y, x + width, y + height)), (x, y))
+
+
 def draw_pill(canvas: Image.Image, pill: PillLayout, left: float, top: float, scale: float) -> None:
     radius = theme.PILL_RADIUS_PX * scale
     paste_rounded_box(canvas, left, top, pill.width, pill.height, radius, theme.PANEL_COLOUR)
@@ -91,15 +123,18 @@ def _draw_runs(
             draw_arrow(layer, x, baseline, text_font, font_px, colour)
             x += arrow_width(font_px)
         else:
-            spacing = run.tracking_em * font_px
+            # A smaller run (a unit) sits on the same baseline.
+            run_px = font_px * run.size_ratio
+            run_font = text_font if run.size_ratio == 1.0 else font(run_px)
+            spacing = run.tracking_em * run_px
             for index, character in enumerate(run.text):
                 # Measuring the prefix keeps the font's kerning; letter-spacing
                 # is added after every character, as browsers do.
-                offset = text_font.getlength(run.text[:index]) + index * spacing
+                offset = run_font.getlength(run.text[:index]) + index * spacing
                 draw.text(
-                    (x + offset, baseline), character, font=text_font, fill=colour, anchor="ls"
+                    (x + offset, baseline), character, font=run_font, fill=colour, anchor="ls"
                 )
-            x += text_font.getlength(run.text) + len(run.text) * spacing
+            x += run_font.getlength(run.text) + len(run.text) * spacing
         if run.gap_after:
             x += gap
     canvas.alpha_composite(layer)

@@ -29,6 +29,7 @@ from PIL import Image, ImageChops
 
 from shared.ffmpeg import X264_ENCODER, build_final_render_command
 from shared.ffmpeg_clock import ClockOverlay, drawtext_filter
+from shared.framing import FramePlan
 from shared.models import RenderClock
 from shared.pass_clock import clock_text, clock_units, elapsed_microseconds
 from worker.overlay import OverlayText, render_overlay
@@ -54,12 +55,12 @@ OVERLAY = OverlayText(
 )
 
 
-def make_flat_raw(path: Path, duration_s: float) -> None:
+def make_flat_raw(path: Path, duration_s: float, size: str = "640x360") -> None:
     """A silent 30 fps clip of one colour: frame k starts at exactly k/30 s."""
     subprocess.run(
         [
             "ffmpeg", "-hide_banner", "-nostdin", "-y",
-            "-f", "lavfi", "-i", f"color=c={RAW_COLOUR}:size=640x360:rate={FRAME_RATE}",
+            "-f", "lavfi", "-i", f"color=c={RAW_COLOUR}:size={size}:rate={FRAME_RATE}",
             "-t", f"{duration_s}", "-c:v", X264_ENCODER, "-preset", "ultrafast",
             "-pix_fmt", "yuv420p", str(path),
         ],
@@ -71,21 +72,38 @@ def make_flat_raw(path: Path, duration_s: float) -> None:
 class Render:
     """A rendered clip and what it was drawn with."""
 
-    def __init__(self, clip: Path, layout: ClockLayout, overlay_png: Path, clock: ClockOverlay):
+    def __init__(
+        self,
+        clip: Path,
+        layout: ClockLayout,
+        overlay_png: Path,
+        clock: ClockOverlay,
+        background: str = RAW_COLOUR,
+    ):
         self.clip, self.layout, self.overlay_png, self.clock = clip, layout, overlay_png, clock
+        # The colour behind the clock in the clip: the raw's, or the black
+        # bars of a framed vertical video.
+        self.background = background
         # Reference pictures already drawn, by text (None = no clock).
         self.references: dict[str | None, Image.Image] = {}
 
 
 def render_with_clock(
-    tmp_path: Path, raw: Path, clock: RenderClock, cut_in_s: float, cut_out_s: float
+    tmp_path: Path,
+    raw: Path,
+    clock: RenderClock,
+    cut_in_s: float,
+    cut_out_s: float,
+    frame_plan: FramePlan | None = None,
+    background: str = RAW_COLOUR,
 ) -> Render:
     """The worker's render of `raw` with the overlay and the clock, as process.py does it."""
     text = OverlayText(**{**OVERLAY.__dict__, "clock": clock})
     overlay_png = tmp_path / "overlay.png"
-    layout = render_overlay(overlay_png, text, frame_width=1920)
-    assert layout is not None
-    images = write_clock_pill(layout, clock, cut_in_s, tmp_path, stem="job")
+    overlay = render_overlay(overlay_png, text, frame_width=1920)
+    assert overlay.clock is not None
+    layout = overlay.clock
+    images = write_clock_pill(layout, clock, cut_in_s, tmp_path, stem="job", result=overlay.result)
     clip = tmp_path / "clip.mp4"
     command = build_final_render_command(
         raw,
@@ -95,11 +113,12 @@ def render_with_clock(
         X264_ENCODER,
         overlay_image=overlay_png,
         has_audio=False,
+        frame_plan=frame_plan,
         clock=images,
     )
     finished = subprocess.run(command, capture_output=True, text=True, check=False)
     assert finished.returncode == 0, finished.stderr[-2000:]
-    return Render(clip, layout, overlay_png, images)
+    return Render(clip, layout, overlay_png, images, background)
 
 
 def frame_times(clip: Path) -> list[float]:
@@ -116,7 +135,12 @@ def frame_times(clip: Path) -> list[float]:
 
 def clock_regions(clip: Path, layout: ClockLayout) -> list[Image.Image]:
     """The clock's region of every frame, as RGB pictures."""
-    x, y, width, height = layout.region
+    return frame_regions(clip, layout.region)
+
+
+def frame_regions(clip: Path, region: tuple[int, int, int, int]) -> list[Image.Image]:
+    """One region (x, y, width, height) of every frame, as RGB pictures."""
+    x, y, width, height = region
     decoded = subprocess.run(
         [
             "ffmpeg", "-hide_banner", "-nostdin", "-v", "error", "-i", str(clip),
@@ -154,7 +178,7 @@ def reference(render: Render, text: str | None) -> Image.Image:
         drawn = subprocess.run(
             [
                 "ffmpeg", "-hide_banner", "-nostdin", "-v", "error",
-                "-f", "lavfi", "-i", f"color=c={RAW_COLOUR}:size=1920x1080:rate=1",
+                "-f", "lavfi", "-i", f"color=c={render.background}:size=1920x1080:rate=1",
                 "-i", str(render.overlay_png), "-i", str(render.clock.pill_png),
                 "-filter_complex", f"{steps},format=yuv420p", "-frames:v", "1",
                 "-f", "rawvideo", "-pix_fmt", "rgb24", "-",
@@ -204,7 +228,7 @@ def test_the_clock_starts_runs_and_freezes_frame_by_frame(tmp_path, flat_raw):
     # The largada falls between two frames (0.51 s: frames start at 0.5 and
     # 0.5333…), and the official time is 1.5 s with one decimal (15 units),
     # so the run ends at raw 2.01 s, also between frames.
-    clock = RenderClock(largada_s=0.51, official_units=15, decimals=1)
+    clock = RenderClock(largada_s=0.51, official_units=15, decimals=1, unit="s")
     render = render_with_clock(tmp_path, flat_raw, clock, cut_in_s=0.0, cut_out_s=3.0)
 
     rows = shown_texts(render, clock, cut_in_s=0.0)

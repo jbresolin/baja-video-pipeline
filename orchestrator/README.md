@@ -146,11 +146,17 @@ Every state change goes through `domain/transitions.move_job`, which asks
   included) and the event is not finished, then once more and no more; a
   failure keeps the last good answer. The result
   line goes to the worker as `ProcessTask.pass_result_text`, only to
-  workers that declare `pass_result` (installer 0.5.0).
+  workers that declare `pass_result` (installer 0.5.0) and, since
+  LIVESTACK-53 (design §36), `clock_top_right` (installer 0.7.0: the
+  result in its new look).
 * **Running clock** (LIVESTACK-48, design §33): from the reviewer's
   largada and the run's official time (same tables), as
-  `ProcessTask.pass_clock`, only to workers that declare `clock`
-  (installer 0.6.0). The largada, the official time and the toggle are
-  render inputs.
+  `ProcessTask.pass_clock`, only to workers that declare `clock` and,
+  since LIVESTACK-53 (design §36), `clock_top_right` (installer 0.7.0).
+  The largada, the official time, the toggle and the unit (the
+  configuration's `clock.unit`, default "s"; not compared for clips
+  recorded without one) are render inputs.
+  `GET /jobs/{id}/pass-preview` (`domain/pass_preview.py`) answers the
+  result line and the clock for prova, car and passagem not saved yet.
 * **Users** sign in with `POST /auth/login` (`domain/sessions.py`); review
   routes take any session, `/admin/*` an admin session or the admin token.

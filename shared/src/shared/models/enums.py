@@ -312,6 +312,11 @@ class RenderFeature(StrEnum):
     # The running clock: extra images moved frame by frame from the largada
     # to the official time (ProcessTask.pass_clock). Installer 0.6.0, LIVESTACK-48.
     CLOCK = "clock"
+    # The new result and clock look (LIVESTACK-53): the clock top right,
+    # bigger, with its unit; the result pill shown from the clock's freeze;
+    # the time's unit small. A clip with a clock or a result line needs it,
+    # so an older worker never draws the old look. Installer 0.7.0.
+    CLOCK_TOP_RIGHT = "clock_top_right"
 
 
 class PassResultProblem(StrEnum):

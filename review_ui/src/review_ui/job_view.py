@@ -67,6 +67,11 @@ NO_HOLDER_CAN_RENDER_CLOCK_REASON = (
     "waiting for a holder of the raw that can draw the running clock"
     " (a worker updated to 0.6.0 or later)"
 )
+# The same, when the job needs the clock's new look (LIVESTACK-53).
+NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT_REASON = (
+    "waiting for a holder of the raw that can draw the new result and clock look"
+    " (a worker updated to 0.7.0 or later)"
+)
 _TASK_FAILED_ON = re.compile(
     r"^(?P<kind>[a-z_]+) failed on (?P<worker>.+?): (?P<message>.*)$", re.DOTALL
 )
@@ -102,6 +107,8 @@ def describe_waiting_reason(reason: str) -> WaitingReason:
         return WaitingReason(text("waiting.no_holder_can_render_pass_result"), None)
     if reason == NO_HOLDER_CAN_RENDER_CLOCK_REASON:
         return WaitingReason(text("waiting.no_holder_can_render_clock"), None)
+    if reason == NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT_REASON:
+        return WaitingReason(text("waiting.no_holder_can_render_clock_top_right"), None)
     match = _TASK_FAILED_ON.match(reason)
     if match and match["kind"] in {kind.value for kind in TaskKind}:
         task = TASK_VERBS[TaskKind(match["kind"])]

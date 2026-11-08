@@ -7,6 +7,7 @@ docs/api.md describes:
     GET   /review/car-videos?prova=…&car_number=…
     GET   /jobs/{job_id}
     GET   /jobs/{job_id}/sender-messages   (LIVESTACK-49)
+    GET   /jobs/{job_id}/pass-preview?prova=…&car_number=…&passagem=…   (LIVESTACK-53)
     PATCH /jobs/{job_id}/review          (expected_version, actions, 409/422;
                                           show_pass_result updates pass_result.show)
     POST  /jobs/{job_id}/regenerate-proxy
@@ -46,6 +47,9 @@ from shared.models import (
     JobState,
     JobSummary,
     ManifestResponse,
+    PassClock,
+    PassPreview,
+    PassResult,
     PresentReviewer,
     Prova,
     ReviewAction,
@@ -117,6 +121,10 @@ class FakeOrchestrator:
     # Job id → the *other* reviewers on it (LIVESTACK-51): what PUT
     # …/presence answers and what the queue lists in `reviewing`.
     presence: dict[str, list[PresentReviewer]] = field(default_factory=dict)
+    # Prova name → what GET …/pass-preview answers for it (LIVESTACK-53);
+    # a prova not listed has neither a result line nor a clock. The fake
+    # does not look at car and passagem: a test sets the answer it wants.
+    pass_previews: dict[str, PassPreview] = field(default_factory=dict)
     requests: list[RecordedRequest] = field(default_factory=list)
     # Switches that make an endpoint fail, to test the UI's error handling.
     fleet_fails: bool = False
@@ -343,6 +351,20 @@ def build_app(fake: FakeOrchestrator) -> FastAPI:
             "sender_name": fake.jobs[job_id].source.sender_name,
             "items": [item.model_dump(mode="json") for item in items],
         }
+
+    @app.get("/jobs/{job_id}/pass-preview")
+    def pass_preview(
+        job_id: str,
+        prova: str | None = Query(None, min_length=1, max_length=64),
+        car_number: int | None = Query(None, ge=0, le=9999),
+        passagem: int | None = Query(None, ge=1, le=999),
+    ):
+        if job_id not in fake.jobs:
+            return _error(404, "not_found", f"no job {job_id}")
+        # Like the orchestrator: a value left out is the saved one.
+        prova = prova or fake.jobs[job_id].prova
+        nothing = PassPreview(pass_result=PassResult(), pass_clock=PassClock())
+        return fake.pass_previews.get(prova or "", nothing).model_dump(mode="json")
 
     @app.patch("/jobs/{job_id}/review")
     async def update_review(job_id: str, request: Request):

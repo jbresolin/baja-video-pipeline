@@ -117,7 +117,7 @@ def test_the_preview_data_is_what_a_render_gets():
         "school_name": "UNIFEI",
         "prova": "Manobrabilidade",
         "result_text": "66 s · 4 cones → 86 s",
-        "clock": {"official_units": 660, "decimals": 1},
+        "clock": {"official_units": 660, "decimals": 1, "unit": "s"},
     }
     # A job without a clock or a result: just the names.
     plain = overlay_preview_data(make_job())
@@ -162,7 +162,7 @@ def test_the_preview_toggle_and_its_data_are_on_the_page(ui, fake_orchestrator):
     start = html.index('<script type="application/json" id="overlay-preview-data">')
     end = html.index("</script>", start)
     data = json.loads(html[html.index(">", start) + 1 : end])
-    assert data["clock"] == {"official_units": 660, "decimals": 1}
+    assert data["clock"] == {"official_units": 660, "decimals": 1, "unit": "s"}
     # The overlay's look: the scoped tokens and the preview's stylesheet.
     assert "/review/overlay-theme/tokens.css" in html
     assert "css/overlay_preview.css" in html
@@ -380,12 +380,13 @@ def test_the_largada_field_is_rounded_down_to_the_millisecond(js):
 
 
 def test_the_preview_splits_the_result_like_the_worker(js):
+    # Each time carries its unit apart, drawn smaller (LIVESTACK-53).
     assert js["result"] == [
-        {"text": "58 S", "kind": "words"},
+        {"text": "58", "kind": "words", "unit": "S"},
         {"text": "·", "kind": "separator"},
         {"text": "8 CONES, 2 SAÍDAS DE PISTA", "kind": "words"},
         {"text": "→", "kind": "arrow"},
-        {"text": "118 S", "kind": "words"},
+        {"text": "118", "kind": "words", "unit": "S"},
     ]
 
 

@@ -17,6 +17,12 @@ microseconds (each time rounded half up on its own), counted in clock
 units, rounded down, never past the official time. ffmpeg's `t` is the
 time since the cut-in (the render seeks there), so raw time = cut-in + t.
 
+The result pill (LIVESTACK-53) is a third step when the clip has one: its
+own small PNG, laid on from the freeze, i.e. from the first frame whose
+clock shows the official time (shared.pass_clock.result_shown: elapsed
+microseconds ≥ the official time in microseconds, one comparison of whole
+numbers), to the end of the clip.
+
 Why drawtext and not images moved per frame: an earlier version showed
 each digit from a Pillow-drawn strip, which needs the frame region cut
 out, five overlays and the region put back; with ffmpeg 6.1 that made a
@@ -31,7 +37,12 @@ expects. A font path with a single quote cannot be written and is refused.
 from dataclasses import dataclass
 from pathlib import Path
 
-from shared.pass_clock import MICROSECONDS_PER_SECOND, microseconds, units_per_second
+from shared.pass_clock import (
+    MICROSECONDS_PER_SECOND,
+    freeze_elapsed_microseconds,
+    microseconds,
+    units_per_second,
+)
 
 
 class ClockFilterError(ValueError):
@@ -64,6 +75,10 @@ class ClockOverlay:
     largada_s: float
     official_units: int
     decimals: int
+    # The result pill on its own image and where its top-left corner goes,
+    # shown from the freeze; None = the clip has no result line.
+    result_png: Path | None = None
+    result_position: tuple[int, int] | None = None
 
     def elapsed_us_expression(self) -> str:
         """Microseconds since the largada at the frame's time `t`, as an ffmpeg expression."""
@@ -79,6 +94,11 @@ class ClockOverlay:
     def shown_expression(self) -> str:
         """True (1) from the largada on."""
         return f"gte({self.elapsed_us_expression()},0)"
+
+    def frozen_expression(self) -> str:
+        """True (1) from the freeze on: the result pill's `enable` (LIVESTACK-53)."""
+        freeze = freeze_elapsed_microseconds(self.official_units, self.decimals)
+        return f"gte({self.elapsed_us_expression()},{freeze})"
 
     def text_expansion(self) -> str:
         """drawtext's text: the whole seconds, then "," and the decimals zero-padded.
@@ -111,13 +131,24 @@ def drawtext_filter(clock: ClockOverlay, text: str, enable: str | None) -> str:
     return "drawtext=" + ":".join(options)
 
 
-def clock_filter(clock: ClockOverlay, *, source: str, pill_input: int) -> str:
-    """The filter_complex entry drawing the clock onto `[source]`.
+def clock_filter(
+    clock: ClockOverlay, *, source: str, pill_input: int, result_input: int | None = None
+) -> str:
+    """The filter_complex entries drawing the clock (and the result) onto `[source]`.
 
-    `pill_input` is the input index of clock.pill_png. The entry has no
-    output label, so the caller can chain the pixel format onto it.
+    `pill_input` is the input index of clock.pill_png, `result_input` that
+    of clock.result_png (needed when the clock has one). The last entry has
+    no output label, so the caller can chain the pixel format onto it.
     """
     shown = clock.shown_expression()
     x, y = clock.pill_position
     pill = f"[{source}][{pill_input}:v]overlay=x={x}:y={y}:enable={quoted_option(shown)}"
-    return f"{pill},{drawtext_filter(clock, clock.text_expansion(), shown)}"
+    running = f"{pill},{drawtext_filter(clock, clock.text_expansion(), shown)}"
+    if clock.result_png is None:
+        return running
+    if result_input is None or clock.result_position is None:
+        raise ClockFilterError("the clock has a result image: pass its input index")
+    result_x, result_y = clock.result_position
+    frozen = quoted_option(clock.frozen_expression())
+    result = f"[clock][{result_input}:v]overlay=x={result_x}:y={result_y}:enable={frozen}"
+    return f"{running}[clock];{result}"

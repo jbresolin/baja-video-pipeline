@@ -17,9 +17,15 @@ TEXT: dict[str, str] = {
     "pass_clock.clear_largada": "Limpar",
     "pass_clock.clear_largada.title": "Tira a marca da largada: o clipe fica sem cronômetro",
     "pass_clock.show": "Mostrar cronômetro",
-    "pass_clock.on_air": "Na tarja: da largada até {official} s, e para.",
-    "pass_clock.not_burned": "Não será gravado (pararia em {official} s).",
-    "pass_clock.no_largada": "Marque a largada para gravar o cronômetro (para em {official} s).",
+    "pass_clock.on_air": "Na tarja: da largada até {official}, e para.",
+    "pass_clock.not_burned": "Não será gravado (pararia em {official}).",
+    "pass_clock.no_largada": "Marque a largada para gravar o cronômetro (para em {official}).",
+    # The cut ends before the clock stops, so the result never appears
+    # (LIVESTACK-53; js/clock_late.js shows it, it never blocks).
+    "pass_clock.ends_before_freeze": (
+        "O clipe termina antes do cronômetro parar; o resultado não vai aparecer. "
+        "Estenda o fim do corte."
+    ),
     # Why there is no official time: the result line's sentences
     # (pass_result.problem.*), after this.
     "pass_clock.no_official": "Sem tempo oficial ainda:",
@@ -37,15 +43,22 @@ TEXT: dict[str, str] = {
     "outdated.clock.removed": (
         "O clipe no ar tem cronômetro ({clip}); a revisão agora diz para não mostrar."
     ),
-    "outdated.clock.describe": "largada em {largada}, parando em {official} s",
+    "outdated.clock.describe": "largada em {largada}, parando em {official}",
     # --- Waiting reason, Frota ---
     "waiting.no_holder_can_render_clock": (
         "Esperando um PC com o original que saiba desenhar o cronômetro "
         "(Baja Worker 0.6.0 ou mais novo)."
     ),
     "render_feature.clock": "cronômetro",
+    # LIVESTACK-53: the clock top right with its unit, the result when it
+    # stops, the units small; needed by every clip with a result or a clock.
+    "waiting.no_holder_can_render_clock_top_right": (
+        "Esperando um PC com o original que saiba desenhar o novo visual do resultado "
+        "e do cronômetro (Baja Worker 0.7.0 ou mais novo)."
+    ),
+    "render_feature.clock_top_right": "novo visual do resultado e do cronômetro",
     # --- Configurações, "Testar" ---
-    "pass_results.test.clock": "Cronômetro para em <strong>{text} s</strong>.",
+    "pass_results.test.clock": "Cronômetro para em <strong>{text}</strong>.",
     "pass_results.test.clock_problem": "Cronômetro: {reason}",
     # --- Page scripts ---
     "script.clock.official": "para em {official} s",

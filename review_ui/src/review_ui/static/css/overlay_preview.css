@@ -7,7 +7,9 @@
    the worker draws the clip with. The stage is 1920×1080 like the clip and
    is scaled to the player by js/overlay_preview.js; the pills are placed as
    worker/overlay.py places them: the role pill's bottom at y 940, the name
-   pill above it, the result pill and the clock one gap below. */
+   pill above it, the result pill one gap below; the clock in the top-right
+   corner (LIVESTACK-53), as far from the right as the lower third is from
+   the left, at the theme's title-safe top. */
 
 .overlay-preview { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .overlay-preview .ovl-stage {
@@ -54,10 +56,28 @@
   height: var(--role-height); padding: 0 var(--space-4);
   font-size: var(--size-role); letter-spacing: var(--tracking-caption);
 }
-.overlay-preview .ovl-result-pill,
-.overlay-preview .ovl-clock-pill {
+.overlay-preview .ovl-result-pill {
   height: var(--board-row-height); padding: 0 var(--space-4);
   font-size: var(--size-board); letter-spacing: var(--tracking-row);
+}
+/* A time's unit in the result pill: a capital at 65 % of the text, so it
+   reads like a lowercase "s" (worker.overlay_text.UNIT_SIZE_RATIO). */
+.overlay-preview .ovl-unit { font-size: 0.65em; }
+/* The clock: João's 80 px digits in the on-air clock pill (--size-time 56
+   in --strip-height) grown in proportion, as the worker draws it; its unit
+   after a thin space (1/6 em), at 65 % of the digits and muted. */
+.overlay-preview .ovl-clock-pill {
+  --clock-size: 80px;
+  --clock-growth: calc(80 / 56);
+  position: absolute; right: var(--bug-left); top: var(--stage-safe-top);
+  height: calc(var(--strip-height) * var(--clock-growth));
+  padding: 0 calc(var(--space-5) * var(--clock-growth));
+  border-radius: calc(var(--radius) * var(--clock-growth));
+  font-size: var(--clock-size); letter-spacing: var(--tracking-row);
+}
+.overlay-preview .ovl-clock-unit {
+  margin-left: calc(var(--clock-size) / 6);
+  font-size: calc(var(--clock-size) * 0.65); color: var(--text-muted); letter-spacing: 0;
 }
 .overlay-preview .ovl-separator,
 .overlay-preview .ovl-muted { color: var(--text-muted); letter-spacing: 0; }

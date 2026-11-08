@@ -24,7 +24,7 @@ from shared.models import (
     RenderInputField,
     RenderInputs,
 )
-from shared.pass_clock import clock_text
+from shared.pass_clock import clock_text, with_unit
 
 # While the job waits for (or is in) its new rendering, the version on air
 # stays until the new one arrives: the banner says a new one is coming
@@ -97,7 +97,7 @@ def _clock_text(clock: RenderClock) -> str:
     return text(
         "outdated.clock.describe",
         largada=format_timecode(clock.largada_s),
-        official=clock_text(clock.official_units, clock.decimals),
+        official=with_unit(clock_text(clock.official_units, clock.decimals), clock.unit),
     )
 
 

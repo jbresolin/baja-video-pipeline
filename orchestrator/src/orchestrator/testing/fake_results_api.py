@@ -12,7 +12,9 @@ the way the doc says the real API does:
 * an unknown event or resultado (ids are case-sensitive: "26br" is not
   "26BR"): 404 `not_found`;
 * `rate_limited_for_s` set: 429 with `Retry-After` and the doc's body;
-* `unreachable` set: the connection fails, as when the API is down.
+* `unreachable` set: the connection fails, as when the API is down;
+* `times_out` set: the answer never comes, as when the API hangs (the
+  client's timeout fires at once, so tests don't wait for it).
 
 Results tables (`tables`, resultado id → the answer with display=1) are
 empty by default; tests put the real answers of
@@ -116,14 +118,21 @@ class FakeResultsApi:
     rate_limited_for_s: int | None = None
     # Set to fail every request at the connection, like an API that is down.
     unreachable: bool = False
+    # Set to never answer: the request times out, like an API that hangs.
+    times_out: bool = False
     # Every (path, query string) received, for assertions.
     requests: list[tuple[str, str]] = field(default_factory=list)
+    # The read timeout (s) each request was sent with, in the same order.
+    read_timeouts: list[float | None] = field(default_factory=list)
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         query = request.url.query.decode()
         self.requests.append((request.url.path, query))
+        self.read_timeouts.append(request.extensions.get("timeout", {}).get("read"))
         if self.unreachable:
             raise httpx.ConnectError("connection refused (fake results API is down)")
+        if self.times_out:
+            raise httpx.ReadTimeout("no answer (fake results API hangs)", request=request)
         if self.rate_limited_for_s is not None:
             seconds = self.rate_limited_for_s
             return httpx.Response(429, json=RATE_LIMIT_BODY, headers={"Retry-After": str(seconds)})

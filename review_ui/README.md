@@ -114,6 +114,21 @@ para.", or what is missing (`pass_clock_view.py`). `js/review_form.js`
 sends `largada_s` (an empty field as `clear_largada`) and `show_clock`
 only when the block is on the page.
 
+**The blocks follow the form** (LIVESTACK-53). The result and clock
+blocks sit in two slots (`#pass-result-slot`, `#pass-clock-slot`);
+`js/pass_blocks.js` asks `GET /review/api/jobs/{id}/pass-blocks` (which
+relays the orchestrator's `GET /jobs/{id}/pass-preview` and renders the
+same templates) 300 ms after prova, car or passagem change, and after a
+save, and swaps them in place: fields the reviewer set keep their values,
+a block that goes away is kept aside (not sent) and comes back with them.
+`js/player.js` looks the largada field up when used and listens on the
+form, so "Marcar", the <kbd>l</kbd> key and the line on the cut bar work
+as soon as the block arrives. With a clock, the clip shows the result
+from the clock's freeze on; `js/clock_late.js` shows "O clipe termina
+antes do cronômetro parar…" while the cut ends before that (from
+`data-official-units` on the clock block and `data-has-text` on the
+result block; it never blocks).
+
 **"Pré-visualizar overlay"** (under the player, any job with a proxy):
 `js/overlay_preview.js` draws the clip's lower third over the proxy in
 HTML/CSS, with the worker's own `tokens.css` and Bebas Neue
@@ -125,8 +140,9 @@ the official time in clock units); the form's own fields are read live
 (prova, passagem and its toggle, both result/clock toggles, largada,
 cuts). The clock runs from the video's `currentTime` on every animation
 frame with `js/pass_clock.js`, the same rule as the render (both checked
-against `tests/fixtures/pass_clock/vectors.json`). Outside the cut nothing
-is drawn. A quick check, not a pixel copy: names are the saved ones.
+against `tests/fixtures/pass_clock/vectors.json`), top right with its
+unit like the clip, and the result pill waits for its freeze. Outside the
+cut nothing is drawn. A quick check, not a pixel copy: names are the saved ones.
 **Configurações → "Resultados das passagens"** (`templates/admin/_pass_results.html`,
 its own form, `routes_admin_pass_results.py`, `pass_results_settings_view.py`):
 the JSON configuration (format in `docs/design.md` §32) with "Salvar" (a
@@ -245,7 +261,7 @@ base Caddy as `bvp-review-ui:8001` on `baja-edge`.
 | `sender_messages_view.py` | The job page's "Mensagens de <remetente>": title, open/folded lines (LIVESTACK-49) |
 | `clip_inputs_view.py` | A clip that no longer matches its review, in sentences (job page banner, clips page detail) |
 | `pass_result_view.py`, `pass_results_settings_view.py` | The official result of the passagem: the job page's line, the Settings block (status, refusals, "Testar") (LIVESTACK-47) |
-| `pass_clock_view.py`, `overlay_preview.py` | The running clock's block and the overlay preview's data; the scoped overlay theme (LIVESTACK-48) |
+| `pass_clock_view.py`, `overlay_preview.py` | The running clock's block and the overlay preview's data; the scoped overlay theme (LIVESTACK-48); `GET …/pass-blocks` for unsaved values is in `routes_api.py` (LIVESTACK-53) |
 | `render_options_view.py` | The job page's "Imagem e som" box: orientation sentence, whether "Enquadramento" applies, the choices (LIVESTACK-50) |
 | `event_log_view.py` | Orchestrator events (`Event`) in words: actor names, state changes, reasons; used by the job and fleet pages |
 | `catalog/` | Every pt-BR text the UI shows, by English key (see "Language") |

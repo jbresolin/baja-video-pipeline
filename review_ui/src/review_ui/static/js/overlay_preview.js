@@ -15,9 +15,10 @@
 //     it ("team-looked-up" from js/review_form.js);
 //   * the clock follows the same rule as the clip (js/pass_clock.js),
 //     from the video's currentTime, frame by frame (requestAnimationFrame);
+//     with a clock, the result pill appears when it stops (LIVESTACK-53);
 //   * outside the cut there is no clip, so nothing is drawn.
 // Laid out on a 1920×1080 stage like the clip, scaled to the player.
-import { clockText, clockTextAt } from "./pass_clock.js";
+import { clockText, clockTextAt, resultShownAt } from "./pass_clock.js";
 
 const STAGE_WIDTH = 1920;
 const STAGE_HEIGHT = 1080;
@@ -30,14 +31,29 @@ function element(tag, className, text) {
   return node;
 }
 
+// The clock's unit as the clip draws it: in capitals; "" for none. A clock
+// from before the unit existed has none on record (null).
+export function clockUnitText(unit) {
+  return (unit ?? "").trim().toUpperCase();
+}
+
+// A time with its unit, "66 S" or "66,5 SEG": the number, the unit.
+const TIME_WITH_UNIT = /^(\d[\d.,]*)\s+(\S.*)$/;
+
 // The result line as the worker splits it: words, a muted "·", the "→".
+// The time (first, and after the "→") carries its unit apart, drawn
+// smaller like the clip's, so the capital reads like a lowercase "s".
 export function resultParts(line) {
   const parts = [];
   const pieces = line.trim().toUpperCase().split(SEPARATOR_OR_ARROW);
   pieces.forEach((piece, index) => {
     const isSeparator = index % 2 === 1;
     if (!isSeparator) {
-      if (piece.trim()) parts.push({ text: piece.trim(), kind: "words" });
+      if (!piece.trim()) return;
+      const isTime = !parts.length || parts[parts.length - 1].kind === "arrow";
+      const time = isTime ? piece.trim().match(TIME_WITH_UNIT) : null;
+      if (time) parts.push({ text: time[1], kind: "words", unit: time[2] });
+      else parts.push({ text: piece.trim(), kind: "words" });
       return;
     }
     if (!parts.length || parts[parts.length - 1].kind !== "words") return;
@@ -101,7 +117,10 @@ export function setupOverlayPreview({ video, form, player }) {
     namePill.hidden = namePill.childElementCount === 0;
     resultPill.replaceChildren();
     for (const part of data.result_text ? resultParts(data.result_text) : []) {
-      resultPill.append(element("span", `ovl-${part.kind}`, part.text));
+      const span = element("span", `ovl-${part.kind}`, part.text);
+      // Inside the words' span, so it keeps the space and sits on their baseline.
+      if (part.unit) span.append(" ", element("span", "ovl-unit", part.unit));
+      resultPill.append(span);
     }
   }
   fillNameAndResult();
@@ -128,17 +147,32 @@ export function setupOverlayPreview({ video, form, player }) {
     fillNameAndResult();
   });
 
+  // Prova, car or passagem changed (js/pass_blocks.js, LIVESTACK-53): the
+  // result line and the official time for what the form says now.
+  form.addEventListener("pass-blocks-changed", (event) => {
+    data = { ...data, result_text: event.detail.result_text, clock: event.detail.clock };
+    clockWidthSet = false;
+    clockDigits.style.width = "";
+    fillNameAndResult();
+  });
+
+  // The clock, top right (LIVESTACK-53): digits, then its small unit ("66,0 s").
   const clockPill = element("div", "ovl-pill ovl-clock-pill");
+  const clockLine = element("span", "ovl-clock-text");
   const clockDigits = element("span", "ovl-clock-digits");
-  clockPill.append(clockDigits);
-  resultRow.append(resultPill, clockPill);
-  stage.append(lowerThird, resultRow);
+  const clockUnit = element("span", "ovl-clock-unit");
+  clockLine.append(clockDigits, clockUnit);
+  clockPill.append(clockLine);
+  resultRow.append(resultPill);
+  stage.append(lowerThird, resultRow, clockPill);
   box.append(stage);
 
   // The clock pill keeps the official time's width while it runs, like the clip's.
   let clockWidthSet = false;
   function fixClockWidth() {
     if (clockWidthSet || !data.clock) return;
+    clockUnit.textContent = clockUnitText(data.clock.unit);
+    clockUnit.hidden = clockUnit.textContent === "";
     clockDigits.textContent = clockText(data.clock.official_units, data.clock.decimals);
     const width = clockDigits.offsetWidth;
     if (width) {
@@ -190,13 +224,17 @@ export function setupOverlayPreview({ video, form, player }) {
     const cutOut = player.readMark("out") ?? Number.POSITIVE_INFINITY;
     stage.hidden = now < cutIn || now > cutOut;
     updateRole();
-    resultPill.hidden = !(data.result_text && checked("show_pass_result", false));
     const largada = fieldNumber("largada_s");
+    const clockOn = data.clock && largada !== null && checked("show_clock", false);
     let clock = null;
-    if (data.clock && largada !== null && checked("show_clock", false)) {
+    if (clockOn) {
       fixClockWidth();
       clock = clockTextAt(now, largada, data.clock.official_units, data.clock.decimals);
     }
+    // With a clock, the result only from its freeze on, as in the clip.
+    const resultNow =
+      !clockOn || resultShownAt(now, largada, data.clock.official_units, data.clock.decimals);
+    resultPill.hidden = !(data.result_text && checked("show_pass_result", false) && resultNow);
     clockPill.hidden = clock === null;
     if (clock !== null) clockDigits.textContent = clock;
   }
