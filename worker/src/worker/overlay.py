@@ -12,13 +12,18 @@ Bebas Neue. Bottom-left, at 1920x1080:
     ┌──────────────────────────────────────┐
     │ ENDURO · PASSAGEM 3 · UFMG           │   role pill, 40 px, school muted
     └──────────────────────────────────────┘   ← its bottom at y 940
-    ┌───────────────────────────────┐
-    │ 66 S · 4 CONES → 86 S         │   result pill, 40 px (LIVESTACK-47)
-    └───────────────────────────────┘
+    ┌───────────────────────────────┐ ┌──────┐
+    │ 66 S · 4 CONES → 86 S         │ │ 12,3 │   result pill, 40 px (LIVESTACK-47)
+    └───────────────────────────────┘ └──────┘   and the running clock (LIVESTACK-48)
 
 The result pill (worker.overlay_result) is only drawn when the task
 carries a result line. It goes *under* the role pill, so the name and role
 pills sit exactly where they always did, with or without a result.
+
+The running clock (worker.overlay_clock) is not in this PNG: it appears
+at the largada and changes every frame, so ffmpeg draws it from images of
+its own (shared.ffmpeg_clock). Here it only takes its place on the result
+pill's row, which then has that much less room for the result.
 
 Unknown parts are left out (no team → the chip alone in the name pill;
 no school → no school part; show_pass off → no passagem). Bebas Neue has
@@ -41,7 +46,9 @@ from pathlib import Path
 
 from PIL import Image
 
+from shared.models import RenderClock
 from worker import overlay_tokens as theme
+from worker.overlay_clock import ClockLayout, clock_pill_width, layout_clock
 from worker.overlay_draw import PillLayout, draw_pill
 from worker.overlay_result import layout_result_pill, result_runs
 from worker.overlay_text import TextRun, fit_runs, font, runs_width
@@ -63,6 +70,8 @@ class OverlayText:
     # The passagem's official result, ready to draw (LIVESTACK-47); None or
     # blank = no result pill.
     pass_result: str | None = None
+    # The running clock (LIVESTACK-48); None = no clock.
+    clock: RenderClock | None = None
 
     def name(self) -> str | None:
         """The team as shown in the name pill, or None when unknown."""
@@ -92,20 +101,36 @@ def render_overlay_png(
     destination: Path, text: OverlayText, frame_width: int, frame_height: int = FINAL_FRAME_HEIGHT
 ) -> Path:
     """Draw the overlay for `text` on a transparent frame-sized canvas and save it as PNG."""
+    render_overlay(destination, text, frame_width, frame_height)
+    return destination
+
+
+def render_overlay(
+    destination: Path, text: OverlayText, frame_width: int, frame_height: int = FINAL_FRAME_HEIGHT
+) -> ClockLayout | None:
+    """Save the still overlay PNG; return where the clock goes (None: no clock)."""
+    canvas, clock_layout = lay_out_overlay(text, frame_width, frame_height)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(destination, format="PNG")
+    return clock_layout
+
+
+def lay_out_overlay(
+    text: OverlayText, frame_width: int, frame_height: int = FINAL_FRAME_HEIGHT
+) -> tuple[Image.Image, ClockLayout | None]:
+    """The still overlay for `text`, and the clock's place when it has one."""
     name = text.name()
     name_runs = [TextRun(name, tracking_em=theme.NAME_TRACKING_EM)] if name else []
     result = text.result_line()
-    canvas = render_lower_third(
+    return lay_out_lower_third(
         frame_width,
         frame_height,
         chip_text=str(text.car_number) if text.car_number is not None else None,
         name_runs=name_runs,
         role_runs=role_runs(text.role_parts()),
         result_runs=result_runs(result) if result else [],
+        clock=text.clock,
     )
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(destination, format="PNG")
-    return destination
 
 
 def role_runs(parts: list[tuple[str, bool]]) -> list[TextRun]:
@@ -137,6 +162,28 @@ def render_lower_third(
     render_overlay_png builds the runs from a job; tests also call this with
     BajaOvrLay's own preview data to compare against its screenshots.
     """
+    canvas, _ = lay_out_lower_third(
+        frame_width,
+        frame_height,
+        chip_text=chip_text,
+        name_runs=name_runs,
+        role_runs=role_runs,
+        result_runs=result_runs,
+    )
+    return canvas
+
+
+def lay_out_lower_third(
+    frame_width: int,
+    frame_height: int,
+    *,
+    chip_text: str | None,
+    name_runs: list[TextRun],
+    role_runs: list[TextRun],
+    result_runs: list[TextRun] | None = None,
+    clock: RenderClock | None = None,
+) -> tuple[Image.Image, ClockLayout | None]:
+    """render_lower_third, plus the clock's place on the result pill's row."""
     scale = frame_height / FINAL_FRAME_HEIGHT
     left = theme.LEFT_PX * scale
     # The widest a pill may be: the theme's maximum, and never past the
@@ -158,11 +205,17 @@ def render_lower_third(
         top = bottom - pill.height
         draw_pill(canvas, pill, left, top, scale)
         bottom = top - gap
+    row_top = lower_third_bottom + gap
+    row_left = left
     if result_runs:
         # Under the role pill, one gap below y 940: the pills above never move.
-        result_pill = layout_result_pill(result_runs, max_width, scale)
-        draw_pill(canvas, result_pill, left, lower_third_bottom + gap, scale)
-    return canvas
+        # With a clock, the result has the row minus the clock and a gap.
+        room = max_width - (clock_pill_width(clock, scale) + gap if clock else 0)
+        result_pill = layout_result_pill(result_runs, room, scale)
+        draw_pill(canvas, result_pill, left, row_top, scale)
+        row_left = left + result_pill.width + gap
+    clock_layout = layout_clock(clock, row_left, row_top, scale) if clock else None
+    return canvas, clock_layout
 
 
 def layout_name_pill(

@@ -3,7 +3,8 @@
 Render (docs/api.md §5, contract §30): trim to the reviewer's cuts, turn
 and fit the picture into 1920×1080 (LIVESTACK-50: "Girar", and the
 framing for a picture that is not 16:9, shared.framing), draw the overlay
-PNG bottom-left, loudnorm (or no sound at all: "Sem áudio"), tone-map
+PNG bottom-left and the running clock over it (LIVESTACK-48, its pill
+and drawtext: shared.ffmpeg_clock), loudnorm (or no sound at all: "Sem áudio"), tone-map
 HDR. Delivery is in worker.tasks.clip_delivery (direct push to the
 studio, else the outbox).
 
@@ -31,12 +32,13 @@ from pathlib import Path, PurePosixPath
 from shared.framing import OUTPUT_HEIGHT, OUTPUT_WIDTH, FramePlan, plan_frame
 from shared.hashing import sha256_of_file
 from shared.media_probe import MediaInfo
-from shared.models import MeasurementKind, ProcessTask, RenderInputsReport
+from shared.models import MeasurementKind, ProcessTask, RenderInputsReport, ReportedClock
 from worker import overlay_tokens
 from worker.api_client import ApiError, OrchestratorUnreachableError
 from worker.failures import TaskFailedError, probe_input
 from worker.leases import ActiveLease, CancelToken, TaskCancelledError
-from worker.overlay import OverlayText, render_overlay_png
+from worker.overlay import OverlayText, render_overlay
+from worker.overlay_clock import write_clock_pill
 from worker.tasks.clip_delivery import deliver_clip
 from worker.tasks.environment import TaskEnvironment
 
@@ -78,8 +80,11 @@ def render_inputs(task: ProcessTask) -> dict:
         # The result line (LIVESTACK-47): a published or corrected result
         # renders again instead of reusing the clip without it.
         "pass_result_text",
+        # The running clock (LIVESTACK-48), likewise.
+        "pass_clock",
     )  # fmt: skip
-    return {name: getattr(task, name) for name in fields}
+    # As JSON values: the sidecar is a JSON file (the clock is an object).
+    return task.model_dump(mode="json", include=set(fields))
 
 
 def render_inputs_report(task: ProcessTask, clip_sha256: str) -> RenderInputsReport:
@@ -108,6 +113,9 @@ def render_inputs_report(task: ProcessTask, clip_sha256: str) -> RenderInputsRep
         no_audio=task.no_audio,
         # The result line as drawn: None when the clip has no result pill.
         pass_result_text=overlay.result_line(),
+        pass_clock=(
+            None if task.pass_clock is None else ReportedClock(**task.pass_clock.model_dump())
+        ),
     )
 
 
@@ -137,6 +145,7 @@ def overlay_text_for(task: ProcessTask) -> OverlayText:
         show_pass=task.show_pass,
         school_short=task.school_short,
         pass_result=task.pass_result_text,
+        clock=task.pass_clock,
     )
 
 
@@ -185,7 +194,16 @@ def _reuse_or_render(
         info = probe_input(env.media, raw_path)
         plan = frame_plan_for(task, info)
         overlay = overlay_text_for(task)
-        render_overlay_png(overlay_path, overlay, OUTPUT_WIDTH)
+        clock_layout = render_overlay(overlay_path, overlay, OUTPUT_WIDTH)
+        clock = None
+        if clock_layout is not None and task.pass_clock is not None:
+            clock = write_clock_pill(
+                clock_layout,
+                task.pass_clock,
+                task.cut_in_s,
+                overlay_path.parent,
+                stem=task.job_id,
+            )
         env.media.render_final(
             raw_path,
             render_path,
@@ -196,6 +214,7 @@ def _reuse_or_render(
             cancel=cancel,
             frame_plan=plan,
             keep_audio=not task.no_audio,
+            clock=clock,
         )
         # Order matters for crash safety: the old sidecar is already gone,
         # so a crash between these two lines leaves a clip without a
@@ -205,6 +224,7 @@ def _reuse_or_render(
     finally:
         render_path.unlink(missing_ok=True)
         overlay_path.unlink(missing_ok=True)
+        env.storage.tmp_path(f"{task.job_id}.clock.png").unlink(missing_ok=True)
 
     env.measurements.record(MeasurementKind.PROCESS, raw_path.stat().st_size, started_at)
     logger.info("clip rendered: %d bytes", clip_path.stat().st_size)

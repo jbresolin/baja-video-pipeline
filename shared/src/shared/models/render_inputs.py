@@ -36,6 +36,7 @@ from shared.models.common import (
     Sha256Hex,
 )
 from shared.models.enums import Framing, NameStyle
+from shared.models.pass_clock import RenderClock, ReportedClock
 
 
 class RenderInputField(StrEnum):
@@ -64,6 +65,9 @@ class RenderInputField(StrEnum):
     # The official result line (LIVESTACK-47): published, corrected by the
     # judges, or turned on or off by the reviewer since the clip was made.
     PASS_RESULT = "pass_result"
+    # The running clock (LIVESTACK-48): the largada moved, the official time
+    # published or corrected, or the clock turned on or off.
+    CLOCK = "clock"
 
 
 class RenderInputs(ReadByClients):
@@ -107,6 +111,9 @@ class RenderInputs(ReadByClients):
     # LIVESTACK-47 mean. In "now": the text from the latest results the
     # orchestrator fetched, when the reviewer's toggle shows it.
     pass_result_text: PassResultText | None = None
+    # The running clock (ProcessTask.pass_clock, LIVESTACK-48). None = no
+    # clock, which is also what inputs recorded before LIVESTACK-48 mean.
+    pass_clock: RenderClock | None = None
     # True when the rendering worker reported these itself; False for the
     # orchestrator's snapshot of the task it handed out (older workers).
     reported_by_worker: bool = False
@@ -147,6 +154,9 @@ class RenderInputsReport(ReceivedByServer):
     # The result line as drawn (ProcessTask.pass_result_text; LIVESTACK-47).
     # Left out by workers before 0.5.0, which never get a task carrying one.
     pass_result_text: PassResultText | None = None
+    # The clock as drawn (ProcessTask.pass_clock; LIVESTACK-48). Left out by
+    # workers before 0.6.0, which never get a task carrying one.
+    pass_clock: ReportedClock | None = None
 
 
 class ClipInputsComparison(ReadByClients):

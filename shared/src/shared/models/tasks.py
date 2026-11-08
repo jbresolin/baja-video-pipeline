@@ -25,6 +25,7 @@ from shared.models.common import (
 )
 from shared.models.enums import DeliveryRoute, Framing, TaskKind
 from shared.models.job import Lease
+from shared.models.pass_clock import RenderClock
 
 
 class DownloadRawTask(ReadByClients):
@@ -129,6 +130,12 @@ class ProcessTask(ReadByClients):
     # configured, or the reviewer turned it off). Only sent to workers that
     # declared RenderFeature.PASS_RESULT.
     pass_result_text: PassResultText | None = None
+    # The running clock (LIVESTACK-48): from the largada the reviewer marked,
+    # counting up to the official time of the passagem and frozen there.
+    # None = no clock (not configured for the prova, no largada, no
+    # official time yet, or turned off). Only sent to workers that declared
+    # RenderFeature.CLOCK.
+    pass_clock: RenderClock | None = None
     # The render features (RenderFeature) this task needs. The orchestrator
     # offers it only to a worker that declared every one of them; empty =
     # any worker. For the record: a worker does not need to check it.

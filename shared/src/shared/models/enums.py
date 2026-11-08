@@ -309,6 +309,9 @@ class RenderFeature(StrEnum):
     # The official result of the passagem, drawn as a third pill under the
     # other two (ProcessTask.pass_result_text). Installer 0.5.0, LIVESTACK-47.
     PASS_RESULT = "pass_result"
+    # The running clock: extra images moved frame by frame from the largada
+    # to the official time (ProcessTask.pass_clock). Installer 0.6.0, LIVESTACK-48.
+    CLOCK = "clock"
 
 
 class PassResultProblem(StrEnum):
