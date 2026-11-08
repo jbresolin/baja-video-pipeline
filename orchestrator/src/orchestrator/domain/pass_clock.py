@@ -79,7 +79,9 @@ def pass_clock_for_job(connection: sqlite3.Connection, job_row: Any) -> PassCloc
     chosen = job_row["show_clock"]
     show = prova_config.show_by_default if chosen is None else bool(chosen)
     largada = job_row["largada_s"]
-    base = PassClock(configured=True, show=show, largada_s=largada, decimals=spec.decimals)
+    base = PassClock(
+        configured=True, show=show, largada_s=largada, decimals=spec.decimals, unit=spec.unit
+    )
 
     event = event_id(connection)
     if not event:
@@ -102,7 +104,10 @@ def pass_clock_for_job(connection: sqlite3.Connection, job_row: Any) -> PassCloc
     render = None
     if show and largada is not None:
         render = RenderClock(
-            largada_s=largada, official_units=official.units, decimals=spec.decimals
+            largada_s=largada,
+            official_units=official.units,
+            decimals=spec.decimals,
+            unit=spec.unit,
         )
     return base.model_copy(
         update={"official_units": official.units, "official_text": official.text, "render": render}

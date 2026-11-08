@@ -17,9 +17,9 @@ TEXT: dict[str, str] = {
     "pass_clock.clear_largada": "Limpar",
     "pass_clock.clear_largada.title": "Tira a marca da largada: o clipe fica sem cronômetro",
     "pass_clock.show": "Mostrar cronômetro",
-    "pass_clock.on_air": "Na tarja: da largada até {official} s, e para.",
-    "pass_clock.not_burned": "Não será gravado (pararia em {official} s).",
-    "pass_clock.no_largada": "Marque a largada para gravar o cronômetro (para em {official} s).",
+    "pass_clock.on_air": "Na tarja: da largada até {official}, e para.",
+    "pass_clock.not_burned": "Não será gravado (pararia em {official}).",
+    "pass_clock.no_largada": "Marque a largada para gravar o cronômetro (para em {official}).",
     # The cut ends before the clock stops, so the result never appears
     # (LIVESTACK-53; js/clock_late.js shows it, it never blocks).
     "pass_clock.ends_before_freeze": (
@@ -43,7 +43,7 @@ TEXT: dict[str, str] = {
     "outdated.clock.removed": (
         "O clipe no ar tem cronômetro ({clip}); a revisão agora diz para não mostrar."
     ),
-    "outdated.clock.describe": "largada em {largada}, parando em {official} s",
+    "outdated.clock.describe": "largada em {largada}, parando em {official}",
     # --- Waiting reason, Frota ---
     "waiting.no_holder_can_render_clock": (
         "Esperando um PC com o original que saiba desenhar o cronômetro "
@@ -51,7 +51,7 @@ TEXT: dict[str, str] = {
     ),
     "render_feature.clock": "cronômetro",
     # --- Configurações, "Testar" ---
-    "pass_results.test.clock": "Cronômetro para em <strong>{text} s</strong>.",
+    "pass_results.test.clock": "Cronômetro para em <strong>{text}</strong>.",
     "pass_results.test.clock_problem": "Cronômetro: {reason}",
     # --- Page scripts ---
     "script.clock.official": "para em {official} s",

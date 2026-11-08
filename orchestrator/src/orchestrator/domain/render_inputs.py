@@ -262,12 +262,19 @@ def changed_inputs(clip: RenderInputs, now: RenderInputs) -> list[RenderInputFie
 
 
 def _same_clock(clip: RenderClock | None, now: RenderClock | None) -> bool:
-    """Same official time and decimals, and the largada at (nearly) the same moment."""
+    """Same official time, decimals and unit, and the largada at (nearly) the same moment.
+
+    A clip recorded before the unit existed (2.10.0, LIVESTACK-53) has none
+    (None): the bigger clock with its unit is a new look, like a theme
+    change, not a change of the review, so it never flags those clips.
+    """
     if clip is None or now is None:
         return clip is now
+    same_unit = clip.unit is None or clip.unit == now.unit
     return (
         clip.official_units == now.official_units
         and clip.decimals == now.decimals
+        and same_unit
         and _same_cut(clip.largada_s, now.largada_s)
     )
 

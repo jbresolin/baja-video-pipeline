@@ -13,6 +13,7 @@ from datetime import datetime
 from review_ui.catalog import text
 from review_ui.pass_result_view import fetch_warning, problem_sentence
 from shared.models import Job, PassClock, PassResult
+from shared.pass_clock import with_unit
 
 
 @dataclass(frozen=True)
@@ -42,11 +43,12 @@ def clock_status(clock: PassClock) -> tuple[str, str | None]:
     if clock.official_text is None:
         reason = problem_sentence(clock.problem)
         return f"{text('pass_clock.no_official')} {reason}", clock.problem_detail
+    official = with_unit(clock.official_text, clock.unit)
     if clock.render is not None:
-        return text("pass_clock.on_air", official=clock.official_text), None
+        return text("pass_clock.on_air", official=official), None
     if not clock.show:
-        return text("pass_clock.not_burned", official=clock.official_text), None
-    return text("pass_clock.no_largada", official=clock.official_text), None
+        return text("pass_clock.not_burned", official=official), None
+    return text("pass_clock.no_largada", official=official), None
 
 
 def pass_clock_box(

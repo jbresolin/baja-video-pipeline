@@ -434,6 +434,7 @@ def pass_clock(**changes) -> PassClock:
         "show": True,
         "largada_s": 12.345,
         "decimals": 1,
+        "unit": "s",
         "official_units": 660,
         "official_text": "66,0",
         "fetch": PassResultFetch(
@@ -442,7 +443,7 @@ def pass_clock(**changes) -> PassClock:
             last_attempt_ok=True,
             last_success_at=T0,
         ),
-        "render": RenderClock(largada_s=12.345, official_units=660, decimals=1),
+        "render": RenderClock(largada_s=12.345, official_units=660, decimals=1, unit="s"),
     }
     fields.update(changes)
     return PassClock(**fields)

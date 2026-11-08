@@ -19,7 +19,8 @@ one stays in force. Shape (docs/design.md §32 has a commented example):
                      "penalties": true, "corrected_column": "Tempo Corrigido",
                      "extra": [{"column": "Obstáculos",
                                 "unit": {"one": "obstáculo", "other": "obstáculos"}}]},
-          "clock": {"column": "Tempo", "decimals": 1}   # read by LIVESTACK-48
+          "clock": {"column": "Tempo", "decimals": 1,   # read by LIVESTACK-48
+                    "unit": "s"}          # after the digits, default "s" (LIVESTACK-53)
         }
       }
     }
@@ -104,6 +105,8 @@ class ClockSpec:
 
     column: str
     decimals: int = 0
+    # Written after the digits, "66,0 s" (LIVESTACK-53); "" = none.
+    unit: str = "s"
 
 
 @dataclass(frozen=True)
@@ -242,10 +245,11 @@ def _extra(value: Any, path: list[str]) -> ExtraSpec:
 
 
 def _clock(value: Any, path: list[str]) -> ClockSpec:
-    entry = _object(value, path, allowed={"column", "decimals"}, required={"column"})
+    entry = _object(value, path, allowed={"column", "decimals", "unit"}, required={"column"})
     return ClockSpec(
         column=_text(entry["column"], [*path, "column"], MAX_COLUMN_LENGTH),
         decimals=_decimals(entry.get("decimals", 0), [*path, "decimals"]),
+        unit=_text(entry.get("unit", "s"), [*path, "unit"], MAX_UNIT_LENGTH, allow_empty=True),
     )
 
 

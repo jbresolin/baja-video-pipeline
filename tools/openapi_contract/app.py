@@ -75,6 +75,11 @@ from tools.openapi_contract import (
 # Only reviewer-facing answers changed; workers ignore them (§14).
 # 2.10.0: clock polish (LIVESTACK-53): GET /jobs/{id}/pass-preview
 # (PassPreview), the result line and the clock for values not saved yet.
+# The clock's unit ("66,0 s", the configuration's clock.unit, default "s"):
+# RenderClock.unit and ReportedClock.unit (null = recorded before 2.10.0,
+# never compared), PassClock.unit, PassResultTestResponse.clock_unit.
+# Deploy the VPS first: an older orchestrator refuses a report whose
+# pass_clock carries `unit`; the worker logs it and delivers anyway.
 CONTRACT_VERSION = "2.10.0"
 
 DESCRIPTION = """\

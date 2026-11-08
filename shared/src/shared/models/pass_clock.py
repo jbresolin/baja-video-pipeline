@@ -20,6 +20,8 @@ ClockDecimals = Annotated[int, Field(ge=0, le=3)]
 # The official time in clock units (66 s with 1 decimal = 660). A day in
 # thousandths is far below this; it only keeps a broken value out.
 ClockUnits = Annotated[int, Field(ge=0, le=100_000_000)]
+# The unit after the digits ("s"), as the configuration allows.
+ClockUnit = Annotated[str, Field(max_length=12)]
 
 
 class RenderClock(ReadByClients):
@@ -34,6 +36,10 @@ class RenderClock(ReadByClients):
     official_units: ClockUnits
     # Digits after the comma (the configuration's `clock.decimals`).
     decimals: ClockDecimals
+    # Written after the digits ("66,0 s"; the configuration's `clock.unit`,
+    # LIVESTACK-53); "" = none. None = recorded before 2.10.0, when a clip's
+    # clock had no unit: never compared, so those clips are not out of date.
+    unit: ClockUnit | None = None
 
 
 class ReportedClock(ReceivedByServer):
@@ -45,6 +51,7 @@ class ReportedClock(ReceivedByServer):
     largada_s: Seconds
     official_units: ClockUnits
     decimals: ClockDecimals
+    unit: ClockUnit | None = None
 
 
 class PassClock(ReadByClients):
@@ -63,6 +70,8 @@ class PassClock(ReadByClients):
     largada_s: Seconds | None = None
     # The configuration's decimals (0 when not configured).
     decimals: ClockDecimals = 0
+    # The configuration's unit, written after the digits (LIVESTACK-53).
+    unit: ClockUnit = ""
     # The official time from the latest results fetched, in clock units and
     # as the clock writes it ("66,0"); None while there is none, and
     # `problem` says why (the same reasons as the result line).

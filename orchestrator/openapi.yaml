@@ -6690,6 +6690,11 @@ components:
           minimum: 0.0
           title: Decimals
           default: 0
+        unit:
+          type: string
+          maxLength: 12
+          title: Unit
+          default: ''
         official_units:
           anyOf:
           - type: integer
@@ -6959,6 +6964,11 @@ components:
           - type: string
           - type: 'null'
           title: Clock Text
+        clock_unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Clock Unit
         clock_problem:
           anyOf:
           - $ref: '#/components/schemas/PassResultProblem'
@@ -7357,6 +7367,12 @@ components:
           maximum: 3.0
           minimum: 0.0
           title: Decimals
+        unit:
+          anyOf:
+          - type: string
+            maxLength: 12
+          - type: 'null'
+          title: Unit
       type: object
       required:
       - largada_s
@@ -7646,6 +7662,12 @@ components:
           maximum: 3.0
           minimum: 0.0
           title: Decimals
+        unit:
+          anyOf:
+          - type: string
+            maxLength: 12
+          - type: 'null'
+          title: Unit
       additionalProperties: false
       type: object
       required:

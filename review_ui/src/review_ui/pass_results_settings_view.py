@@ -24,6 +24,7 @@ from shared.models import (
     PassResultTestRequest,
     PassResultTestResponse,
 )
+from shared.pass_clock import with_unit
 
 
 @dataclass(frozen=True)
@@ -236,7 +237,9 @@ def trial_clock(answer: PassResultTestResponse) -> Markup | str | None:
     if not answer.clock_configured:
         return None
     if answer.clock_text is not None:
-        return markup("pass_results.test.clock", text=answer.clock_text)
+        return markup(
+            "pass_results.test.clock", text=with_unit(answer.clock_text, answer.clock_unit)
+        )
     return text("pass_results.test.clock_problem", reason=problem_sentence(answer.clock_problem))
 
 

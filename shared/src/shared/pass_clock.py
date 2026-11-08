@@ -71,6 +71,16 @@ def clock_text(units: int, decimals: int) -> str:
     return f"{whole}{DECIMAL_COMMA}{fraction:0{decimals}d}"
 
 
+def with_unit(text: str, unit: str | None) -> str:
+    """The official time with its unit, "66,0 s", for sentences (the overlay draws its own).
+
+    None is a clock recorded before the unit existed (LIVESTACK-53): its
+    number meant seconds, so it reads "s"; "" is a clock without a unit.
+    """
+    unit = "s" if unit is None else unit
+    return f"{text} {unit}" if unit else text
+
+
 def clock_text_at(raw_time_s: float, largada_s: float, official: int, decimals: int) -> str | None:
     """The clock's text at a moment of the raw video, or None when it is not shown."""
     units = clock_units(elapsed_microseconds(raw_time_s, largada_s), official, decimals)

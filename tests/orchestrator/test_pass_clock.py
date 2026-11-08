@@ -38,7 +38,7 @@ from tests.orchestrator.test_render_inputs import edit_review, report_inputs
 FEATURES_0_5_0 = ["framing", "no_audio", "pass_result"]
 FEATURES_0_6_0 = ["framing", "no_audio", "pass_result", "clock"]
 LARGADA_S = 1.5
-CLOCK_66 = {"largada_s": LARGADA_S, "official_units": 660, "decimals": 1}
+CLOCK_66 = {"largada_s": LARGADA_S, "official_units": 660, "decimals": 1, "unit": "s"}
 
 
 def ready_job_with_largada(harness, master, car=26, passagem=2, **fields) -> str:

@@ -166,5 +166,7 @@ class PassResultTestResponse(ReadByClients):
     # why it is not known. A prova with only a clock has no `text`.
     clock_configured: bool = False
     clock_text: str | None = None
+    # Its unit, written after it ("66,0 s"; LIVESTACK-53).
+    clock_unit: str | None = None
     clock_problem: PassResultProblem | None = None
     clock_problem_detail: str | None = None
