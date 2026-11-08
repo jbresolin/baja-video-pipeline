@@ -39,6 +39,8 @@ EDITABLE_FIELDS = (
     "rotation", "framing", "crop_position", "no_audio",
     # "Mostrar resultado da passagem" (LIVESTACK-47); stays NULL until set.
     "show_pass_result",
+    # The running clock (LIVESTACK-48): the largada mark, "Mostrar cronômetro".
+    "largada_s", "show_clock",
 )  # fmt: skip
 CLEARED_CLIP_COLUMNS = {
     "clip_sha256": None,
@@ -106,6 +108,11 @@ def _merged_fields(job_row: sqlite3.Row, update: ReviewUpdate) -> dict[str, Any]
     merged["framing"] = str(merged["framing"])
     if merged["show_pass_result"] is not None:
         merged["show_pass_result"] = int(bool(merged["show_pass_result"]))
+    if merged["show_clock"] is not None:
+        merged["show_clock"] = int(bool(merged["show_clock"]))
+    # "Left out = keep" cannot remove a mark, so removing it is its own flag.
+    if update.clear_largada:
+        merged["largada_s"] = None
     return merged
 
 
@@ -119,6 +126,14 @@ def _check_cuts(job_row: sqlite3.Row, merged: dict[str, Any]) -> None:
             422,
             ErrorCode.VALIDATION_ERROR,
             f"cut_out_s is past the end of the video ({duration} s)",
+            {"duration_s": duration},
+        )
+    largada = merged["largada_s"]
+    if duration is not None and largada is not None and largada > duration:
+        raise ApiError(
+            422,
+            ErrorCode.VALIDATION_ERROR,
+            f"largada_s is past the end of the video ({duration} s)",
             {"duration_s": duration},
         )
 

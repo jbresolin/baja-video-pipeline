@@ -5,6 +5,8 @@ import sqlite3
 from pathlib import PurePosixPath
 
 from orchestrator.db.database import from_db_time
+from orchestrator.domain.clip_names import clip_names_for_job, name_styles
+from orchestrator.domain.pass_clock import pass_clock_for_job
 from orchestrator.domain.pass_results import pass_result_for_job
 from orchestrator.domain.render_inputs import compare_newest_clip
 from orchestrator.errors import not_found
@@ -88,6 +90,8 @@ def clip_download_file_name(relative_path: str, version: int) -> str:
 def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLayout) -> Job:
     """`layout` says whether the VPS outbox still has the clip (ClipInfo.in_outbox)."""
     versions = clip_versions_of(connection, row["id"])
+    # The names a render draws now (the overlay preview, LIVESTACK-48).
+    names = clip_names_for_job(name_styles(connection), row)
     clip = None
     if row["clip_sha256"] is not None:
         current = next((v for v in versions if v.sha256 == row["clip_sha256"]), None)
@@ -171,6 +175,10 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
         crop_position=row["crop_position"],
         no_audio=bool(row["no_audio"]),
         show_pass_result=_optional_bool(row["show_pass_result"]),
+        largada_s=row["largada_s"],
+        show_clock=_optional_bool(row["show_clock"]),
+        clip_team_name=names.team,
+        clip_school_name=names.school,
         reviewed_by=row["reviewed_by"],
         reviewed_at=from_db_time(row["reviewed_at"]),
         clip=clip,
@@ -179,6 +187,8 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
         clip_inputs=compare_newest_clip(connection, row) if versions else None,
         # The official result of the passagem, from the latest fetch (LIVESTACK-47).
         pass_result=pass_result_for_job(connection, row),
+        # The running clock: official time, toggle, what a render draws (LIVESTACK-48).
+        pass_clock=pass_clock_for_job(connection, row),
         failure=failure,
         failed_from=JobState(row["failed_from"]) if row["failed_from"] else None,
         discarded_from=JobState(row["discarded_from"]) if row["discarded_from"] else None,

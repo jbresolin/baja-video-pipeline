@@ -8,7 +8,8 @@ declared all of them. A job that needs nothing new goes to any worker, as
 before. Without this, a 0.3.0 worker would take a vertical video and render
 the old narrow clip with its sound, ignoring task fields it does not know.
 
-To add a feature (LIVESTACK-47 did, for pass results in the overlay):
+To add a feature (LIVESTACK-47 did, for pass results in the overlay, and
+LIVESTACK-48 for the running clock):
 
 1. add it to RenderFeature and to the list the worker declares
    (worker/render_features.py);
@@ -24,11 +25,12 @@ import sqlite3
 from datetime import datetime
 
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
+from orchestrator.domain.pass_clock import clock_for_render
 from orchestrator.domain.pass_results import pass_text_for_render
 from orchestrator.domain.review_queue import NO_HOLDER_ONLINE
 from orchestrator.repositories import leases as leases_repo
 from shared.framing import needs_framing
-from shared.models import HolderStatus, RenderFeature
+from shared.models import HolderStatus, RenderClock, RenderFeature
 
 # Job.waiting_reason when holders are online but none runs a version that
 # can render the job's options. The review UI shows it in pt-BR.
@@ -41,9 +43,22 @@ NO_HOLDER_CAN_RENDER_PASS_RESULT = (
     "waiting for a holder of the raw that can draw the pass result"
     " (a worker updated to 0.5.0 or later)"
 )
+# The same when the job needs the running clock (LIVESTACK-48): 0.6.0 draws it.
+NO_HOLDER_CAN_RENDER_CLOCK = (
+    "waiting for a holder of the raw that can draw the running clock"
+    " (a worker updated to 0.6.0 or later)"
+)
+# The features newer than LIVESTACK-50's, newest first, with the sentence
+# that says a worker is missing exactly that one (process_waiting_reason).
+NEWER_FEATURE_REASONS = [
+    (RenderFeature.CLOCK, NO_HOLDER_CAN_RENDER_CLOCK),
+    (RenderFeature.PASS_RESULT, NO_HOLDER_CAN_RENDER_PASS_RESULT),
+]
 
 
-def required_render_features(job_row, pass_result_text: str | None = None) -> list[str]:
+def required_render_features(
+    job_row, pass_result_text: str | None = None, pass_clock: RenderClock | None = None
+) -> list[str]:
     """The features a render of this job needs now, in a fixed order.
 
     framing:     the reviewer turned the picture ("Girar"), or the picture
@@ -53,6 +68,8 @@ def required_render_features(job_row, pass_result_text: str | None = None) -> li
     pass_result: the render carries a result line (ProcessTask.
                  pass_result_text; pass it here). A worker before 0.5.0
                  would ignore it and render the clip without the pill.
+    clock:       the render carries a running clock (ProcessTask.pass_clock;
+                 pass it here). A worker before 0.6.0 would leave it out.
     """
     needed = []
     if needs_framing(job_row["display_width"], job_row["display_height"], job_row["rotation"]):
@@ -61,6 +78,8 @@ def required_render_features(job_row, pass_result_text: str | None = None) -> li
         needed.append(RenderFeature.NO_AUDIO.value)
     if pass_result_text is not None:
         needed.append(RenderFeature.PASS_RESULT.value)
+    if pass_clock is not None:
+        needed.append(RenderFeature.CLOCK.value)
     return needed
 
 
@@ -98,8 +117,9 @@ def process_waiting_reason(connection: sqlite3.Connection, job_row, now: datetim
 
     No confirmed holder online (and not paused) → NO_HOLDER_ONLINE; holders
     online but none declared the features the job needs → NO_HOLDER_CAN_RENDER,
-    or NO_HOLDER_CAN_RENDER_PASS_RESULT when the result pill is what is
-    missing (it needs a newer worker than the other features).
+    or the sentence of the newest feature a holder is missing when that is
+    all that stops it (NO_HOLDER_CAN_RENDER_CLOCK for the clock, 0.6.0;
+    NO_HOLDER_CAN_RENDER_PASS_RESULT for the result pill, 0.5.0).
     """
     snapshot = FleetSnapshot.take(connection, now)
     available = [
@@ -110,12 +130,18 @@ def process_waiting_reason(connection: sqlite3.Connection, job_row, now: datetim
     ]
     if not available:
         return NO_HOLDER_ONLINE
-    required = required_render_features(job_row, pass_text_for_render(connection, job_row))
+    required = required_render_features(
+        job_row, pass_text_for_render(connection, job_row), clock_for_render(connection, job_row)
+    )
     if any(can_render(worker_row, required) for worker_row in available):
         return None
-    without_result = [name for name in required if name != RenderFeature.PASS_RESULT]
-    if len(without_result) < len(required) and any(
-        can_render(worker_row, without_result) for worker_row in available
-    ):
-        return NO_HOLDER_CAN_RENDER_PASS_RESULT
+    # Leave out the newest features one at a time: the first that lets a
+    # holder render is the one to update the workers for.
+    remaining = list(required)
+    for feature, reason in NEWER_FEATURE_REASONS:
+        if feature not in remaining:
+            continue
+        remaining.remove(feature)
+        if any(can_render(worker_row, remaining) for worker_row in available):
+            return reason
     return NO_HOLDER_CAN_RENDER

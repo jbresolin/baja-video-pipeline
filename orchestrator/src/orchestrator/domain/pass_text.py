@@ -9,6 +9,7 @@ Settings page's "Testar" all ask build_pass_text(), so they always agree.
     car 2, passagem 1                              → "58 s · 8 cones, 2 saídas de pista → 118 s"
     car 26, passagem 1 (a clean run)               → "59 s"
     car 1, passagem 2 of a Suspensão with an extra → "37,81 s · 8 obstáculos"
+                                                      (or "· 1 obstáculo", names by count)
 
 The time, then its penalties by their configured names, then "→" and the
 corrected value when it differs from the time (as shown, i.e. after
@@ -22,7 +23,7 @@ import logging
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
-from orchestrator.domain.pass_results_config import PenaltyNames, ProvaPassConfig
+from orchestrator.domain.pass_results_config import ExtraSpec, PenaltyNames, ProvaPassConfig
 from orchestrator.domain.results_table import (
     ResultsTable,
     RunNumber,
@@ -67,6 +68,20 @@ def format_number(value: Decimal, decimals: int) -> str:
 
 def with_unit(number_text: str, unit: str) -> str:
     return f"{number_text} {unit}" if unit else number_text
+
+
+def extra_text(value: Decimal, extra: ExtraSpec) -> str:
+    """An extra column's value with its unit: "8 obstáculos", "1 obstáculo".
+
+    A unit given as names by count takes "one" when the number *as shown*
+    is exactly 1 (so 0, 2 and 1,5 take "other"), like penalty names.
+    """
+    shown = format_number(value, extra.decimals)
+    unit = extra.unit
+    if isinstance(unit, PenaltyNames):
+        is_one = Decimal(shown.replace(",", ".")) == 1
+        unit = unit.one if is_one else unit.other
+    return with_unit(shown, unit)
 
 
 def run_value(
@@ -125,9 +140,7 @@ def build_pass_text(
     for extra in spec.extra:
         value = run_value(table, config, extra.column, car_number, passagem)
         if value.value is not None:
-            text += PART_SEPARATOR + with_unit(
-                format_number(value.value, extra.decimals), extra.unit
-            )
+            text += PART_SEPARATOR + extra_text(value.value, extra)
     if len(text) > MAX_TEXT_LENGTH:
         text = text[: MAX_TEXT_LENGTH - 1].rstrip() + ELLIPSIS
     return PassText(text=text, unknown_penalties=tuple(unknown))

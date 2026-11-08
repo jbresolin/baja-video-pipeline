@@ -18,6 +18,7 @@ from orchestrator.domain.leases import sweep_expired_leases
 from orchestrator.domain.raw_copies import drop_inbox_copy, inbox_copy_is_redundant
 from orchestrator.domain.render_features import (
     NO_HOLDER_CAN_RENDER,
+    NO_HOLDER_CAN_RENDER_CLOCK,
     NO_HOLDER_CAN_RENDER_PASS_RESULT,
     process_waiting_reason,
 )
@@ -71,7 +72,13 @@ def _refresh_waiting_reasons(connection, now) -> None:
 
 # The sentences the sweeper writes itself (and so may replace or clear).
 OWN_WAITING_REASONS = frozenset(
-    {None, NO_HOLDER_ONLINE, NO_HOLDER_CAN_RENDER, NO_HOLDER_CAN_RENDER_PASS_RESULT}
+    {
+        None,
+        NO_HOLDER_ONLINE,
+        NO_HOLDER_CAN_RENDER,
+        NO_HOLDER_CAN_RENDER_PASS_RESULT,
+        NO_HOLDER_CAN_RENDER_CLOCK,
+    }
 )
 
 

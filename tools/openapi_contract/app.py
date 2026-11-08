@@ -55,7 +55,15 @@ from tools.openapi_contract import (
 # VPS first: an older orchestrator refuses every render-inputs report of a
 # 0.5.0 worker (it always carries the pass_result_text key, null or not); the
 # worker logs it and delivers anyway, and the version keeps the claim snapshot.
-CONTRACT_VERSION = "2.7.0"
+# 2.8.0: the running clock in the overlay (LIVESTACK-48): ProcessTask.pass_clock
+# (RenderClock) and the render feature "clock"; Job.largada_s, show_clock and
+# pass_clock (PassClock); ReviewUpdate.largada_s, clear_largada and show_clock;
+# RenderInputs.pass_clock, RenderInputsReport.pass_clock (ReportedClock) and
+# RenderInputField "clock"; PassResultTestResponse.clock_*. Deploy the VPS
+# first: an older orchestrator refuses every render-inputs report of a 0.6.0
+# worker (it always carries the pass_clock key); the worker logs it and
+# delivers anyway, and the version keeps the claim snapshot.
+CONTRACT_VERSION = "2.8.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

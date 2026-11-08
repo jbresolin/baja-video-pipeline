@@ -165,6 +165,8 @@ def test_the_workers_report_becomes_the_versions_inputs(harness, fleet):
         # No result line (LIVESTACK-47): this prova is not in the
         # pass-results configuration, and the report says none was drawn.
         "pass_result_text": None,
+        # No clock in this clip (LIVESTACK-48).
+        "pass_clock": None,
         "reported_by_worker": True,
     }
 

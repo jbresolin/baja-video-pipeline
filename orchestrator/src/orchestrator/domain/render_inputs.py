@@ -23,12 +23,15 @@ The official pass result (LIVESTACK-47) is compared as the text the
 overlay would show with the results fetched last: a result published or
 corrected by the judges after the clip was rendered makes it out of date,
 exactly like an edited cut. Reprocessing stays the reviewer's decision.
+The running clock (LIVESTACK-48) likewise: its largada, its official time
+(from the latest fetch) and its decimals.
 """
 
 import sqlite3
 from datetime import datetime
 
 from orchestrator.domain.clip_names import NameStyles, clip_names_for_job, name_styles
+from orchestrator.domain.pass_clock import clock_for_render
 from orchestrator.domain.pass_results import pass_text_for_render
 from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import jobs as jobs_repo
@@ -38,6 +41,7 @@ from shared.models import (
     Framing,
     JobState,
     ProcessTask,
+    RenderClock,
     RenderInputField,
     RenderInputs,
     RenderInputsReport,
@@ -107,6 +111,7 @@ def inputs_from_task(task: ProcessTask, styles: NameStyles, job_row: sqlite3.Row
             no_audio=task.no_audio,
         ),
         pass_result_text=task.pass_result_text,
+        pass_clock=task.pass_clock,
         reported_by_worker=False,
     )
 
@@ -154,6 +159,9 @@ def inputs_from_report(
             no_audio=report.no_audio,
         ),
         pass_result_text=report.pass_result_text,
+        pass_clock=(
+            None if report.pass_clock is None else RenderClock(**report.pass_clock.model_dump())
+        ),
         reported_by_worker=True,
     )
 
@@ -203,6 +211,7 @@ def inputs_now(
             no_audio=bool(job_row["no_audio"]),
         ),
         pass_result_text=pass_text_for_render(connection, job_row),
+        pass_clock=clock_for_render(connection, job_row),
     )
 
 
@@ -246,7 +255,21 @@ def changed_inputs(clip: RenderInputs, now: RenderInputs) -> list[RenderInputFie
     # The result line (LIVESTACK-47); None on both sides = no pill either way.
     if clip.pass_result_text != now.pass_result_text:
         changed.append(RenderInputField.PASS_RESULT)
+    # The running clock (LIVESTACK-48); None on both sides = no clock either way.
+    if not _same_clock(clip.pass_clock, now.pass_clock):
+        changed.append(RenderInputField.CLOCK)
     return changed
+
+
+def _same_clock(clip: RenderClock | None, now: RenderClock | None) -> bool:
+    """Same official time and decimals, and the largada at (nearly) the same moment."""
+    if clip is None or now is None:
+        return clip is now
+    return (
+        clip.official_units == now.official_units
+        and clip.decimals == now.decimals
+        and _same_cut(clip.largada_s, now.largada_s)
+    )
 
 
 def _same_framing(clip: RenderInputs, now: RenderInputs) -> bool:
