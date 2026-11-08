@@ -23,11 +23,13 @@ from shared.models import (
     ManifestEntry,
     ManifestResponse,
     NameStyle,
+    PassClock,
     PassResult,
     PassResultFetch,
     Prova,
     ReceivedAs,
     RecordedAtSource,
+    RenderClock,
     RenderInputField,
     RenderInputs,
     SenderMessage,
@@ -418,3 +420,41 @@ def pass_result_job(job_id: str = "job-result-1", **changes) -> Job:
     }
     fields.update(changes)
     return make_job(job_id, **fields)
+
+
+def pass_clock(**changes) -> PassClock:
+    """Job.pass_clock for car 26's second Manobrabilidade run (LIVESTACK-48).
+
+    The official time is 66 s, shown with one decimal ("66,0", 660 units);
+    the largada is marked at 12.345 s and the toggle is on, so a render
+    would draw the clock. Keyword arguments override any field.
+    """
+    fields = {
+        "configured": True,
+        "show": True,
+        "largada_s": 12.345,
+        "decimals": 1,
+        "official_units": 660,
+        "official_text": "66,0",
+        "fetch": PassResultFetch(
+            resultado_id="26BR_MAN",
+            last_attempt_at=T0,
+            last_attempt_ok=True,
+            last_success_at=T0,
+        ),
+        "render": RenderClock(largada_s=12.345, official_units=660, decimals=1),
+    }
+    fields.update(changes)
+    return PassClock(**fields)
+
+
+def pass_clock_job(job_id: str = "job-clock-1", **changes) -> Job:
+    """pass_result_job with the running clock too (largada marked, toggle on)."""
+    fields = {
+        "largada_s": 12.345,
+        "pass_clock": pass_clock(),
+        "clip_team_name": "Saci Baja",
+        "clip_school_name": "UNIFEI",
+    }
+    fields.update(changes)
+    return pass_result_job(job_id, **fields)

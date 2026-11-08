@@ -17,6 +17,7 @@ from review_ui.orchestrator_client import (
     OrchestratorError,
     OrchestratorUnavailableError,
 )
+from review_ui.pass_clock_view import overlay_preview_data, pass_clock_box
 from review_ui.pass_result_view import pass_result_box
 from review_ui.passagem_help_view import PassagemHelp, passagem_help
 from review_ui.render_options_view import render_options_box
@@ -89,6 +90,8 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
     # The job itself must load; a 404 or 401 here becomes the error page.
     job = orchestrator.get_job(job_id)
     context = panel_context(job, orchestrator)
+    now = utc_now()
+    pass_box = pass_result_box(job.pass_result, now)
     context.update(
         active_nav="queue",
         intake=intake_text(job),
@@ -98,7 +101,12 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
         render_box=render_options_box(job),
         # "Mostrar resultado da passagem" and its status line (LIVESTACK-47),
         # or None when the job's prova shows no result.
-        pass_box=pass_result_box(job.pass_result, utc_now()),
+        pass_box=pass_box,
+        # "Cronômetro": the largada mark and "Mostrar cronômetro" (LIVESTACK-48),
+        # or None when the job's prova has no clock.
+        clock_box=pass_clock_box(job.pass_clock, now, result_box_shown=pass_box is not None),
+        # What "Pré-visualizar overlay" draws over the player (LIVESTACK-48).
+        preview=overlay_preview_data(job),
         actions=action_buttons(job.state),
         prova_choices=prova_choices(orchestrator, job),
         team=team_or_none(orchestrator, job),

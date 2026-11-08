@@ -1,0 +1,67 @@
+/* "Pré-visualizar overlay" (LIVESTACK-48): the clip's lower third over the proxy.
+
+   Class names start with ovl- so the page's own (.chip, .team, .muted) never apply.
+
+   Every size, colour and font comes from BajaOvrLay's tokens.css, served
+   scoped to .overlay-preview (review_ui/overlay_preview.py), the same file
+   the worker draws the clip with. The stage is 1920×1080 like the clip and
+   is scaled to the player by js/overlay_preview.js; the pills are placed as
+   worker/overlay.py places them: the role pill's bottom at y 940, the name
+   pill above it, the result pill and the clock one gap below. */
+
+.overlay-preview { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.overlay-preview .ovl-stage {
+  position: absolute; left: 0; top: 0;
+  width: 1920px; height: 1080px;
+  transform-origin: 0 0;
+  font-family: var(--font-display);
+  font-weight: var(--weight-display);
+  color: var(--text);
+}
+.overlay-preview .ovl-lower-third {
+  position: absolute; left: var(--bug-left); bottom: var(--lower-third-bottom);
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--row-gap);
+}
+.overlay-preview .ovl-result-row {
+  position: absolute; left: var(--bug-left);
+  top: calc(1080px - var(--lower-third-bottom) + var(--row-gap));
+  display: flex; gap: var(--row-gap);
+}
+.overlay-preview .ovl-pill {
+  display: flex; align-items: center;
+  max-width: var(--lower-third-max-width);
+  overflow: hidden; white-space: nowrap;
+  background: var(--panel-base); border-radius: var(--radius);
+}
+.overlay-preview .ovl-name-pill {
+  height: var(--name-height); padding-right: var(--space-5);
+  font-size: var(--size-name); letter-spacing: var(--tracking-row);
+}
+.overlay-preview .ovl-name-pill .ovl-team:first-child { padding-left: var(--space-5); }
+.overlay-preview .ovl-chip {
+  display: flex; align-items: center; justify-content: center;
+  height: calc(var(--name-height) - 2 * var(--space-2));
+  min-width: calc(var(--name-height) - 2 * var(--space-2));
+  margin: 0 var(--space-4) 0 var(--space-2);
+  padding: var(--glyph-nudge) var(--space-3) 0;
+  box-sizing: border-box;
+  border-radius: var(--radius-chip);
+  background: var(--chip-car-background); color: var(--chip-car-text);
+  font-size: var(--size-chip-large); letter-spacing: 0;
+}
+.overlay-preview .ovl-name-pill .ovl-chip:last-child { margin-right: var(--space-2); }
+.overlay-preview .ovl-role-pill {
+  height: var(--role-height); padding: 0 var(--space-4);
+  font-size: var(--size-role); letter-spacing: var(--tracking-caption);
+}
+.overlay-preview .ovl-result-pill,
+.overlay-preview .ovl-clock-pill {
+  height: var(--board-row-height); padding: 0 var(--space-4);
+  font-size: var(--size-board); letter-spacing: var(--tracking-row);
+}
+.overlay-preview .ovl-separator,
+.overlay-preview .ovl-muted { color: var(--text-muted); letter-spacing: 0; }
+.overlay-preview .ovl-separator,
+.overlay-preview .ovl-arrow { margin: 0 var(--space-3); }
+/* Right-aligned at the official time's width: "9,9" then "10,0", like a stopwatch. */
+.overlay-preview .ovl-clock-digits { display: inline-block; text-align: right; }

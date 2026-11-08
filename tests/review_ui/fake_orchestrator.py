@@ -175,7 +175,12 @@ class FakeOrchestrator:
                 requested=update.action.value,
             )
         # Fields left out (None) keep their current value.
-        changes = update.model_dump(exclude_none=True, exclude={"expected_version", "action"})
+        changes = update.model_dump(
+            exclude_none=True, exclude={"expected_version", "action", "clear_largada"}
+        )
+        if update.clear_largada:
+            # Like the orchestrator (LIVESTACK-48): the flag removes the mark.
+            changes["largada_s"] = None
         if "car_number" in changes and changes["car_number"] in self.teams:
             changes["team_name"] = self.teams[changes["car_number"]].team_name
         updated = job.model_copy(update=changes)

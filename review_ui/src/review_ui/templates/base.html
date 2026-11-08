@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <title>{% block title %}{{ t("nav.queue") }}{% endblock %} · {{ t("page.title_suffix") }}</title>
   <link rel="stylesheet" href="{{ static('css/app.css') }}">
+  {% block head %}{% endblock %}
 </head>
 <body>
   <header class="topbar">

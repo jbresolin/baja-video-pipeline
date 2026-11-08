@@ -197,6 +197,10 @@ video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: var(
 .cut-bar { position: relative; flex: 1; height: 14px; background: var(--surface-2); border-radius: 7px; cursor: pointer; }
 .cut-range { position: absolute; top: 0; bottom: 0; background: var(--accent); opacity: 0.45; border-radius: 7px; }
 .playhead { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); }
+/* The largada (LIVESTACK-48): where the overlay's clock starts. */
+.largada-mark { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1px; background: var(--warn-ink); border-radius: 1px; }
+.preview-toggle { margin-top: 0.5rem; }
+.pass-clock { margin: 0.75rem 0; }
 .shortcuts { margin-top: 0.75rem; font-size: 0.85rem; color: var(--muted); }
 .shortcuts summary { cursor: pointer; }
 .shortcuts dl { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; margin: 0.5rem 0 0; }

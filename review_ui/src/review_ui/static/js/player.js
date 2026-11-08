@@ -1,8 +1,13 @@
-// The proxy player and the cut marks.
+// The proxy player, the cut marks and the largada mark.
 //
 // Times are seconds from the start of the video. The proxy is rendered at
 // a constant frame rate, so a time in the proxy is the same time in the raw
 // (docs/api.md §1) and the marks can be sent to the orchestrator as-is.
+//
+// The largada (LIVESTACK-48: where the overlay's clock starts at 0) is a
+// mark like the cuts: "Marcar" or the l key at the current frame, -/=
+// nudge it by one frame once it is the active mark, a line on the cut bar.
+// It is only on the page for a prova with a clock (_pass_clock.html).
 import { formatTimecode } from "./format.js";
 
 // Used when the page carries no frame rate; phone footage is ~30 fps.
@@ -19,8 +24,17 @@ function frameSecondsOf(jobElement) {
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
+// The largada as written into its field: rounded *down* to the millisecond,
+// so the frame the reviewer marked is at or after it and shows the clock at
+// 0 (a mark rounded up could land just after that frame's start).
+export function largadaFieldValue(seconds) {
+  return (Math.floor(seconds * 1000 + 1e-6) / 1000).toFixed(3);
+}
+
 export function setupPlayer({ video, form, jobElement }) {
   const inputs = { in: form.elements.cut_in_s, out: form.elements.cut_out_s };
+  if (form.elements.largada_s) inputs.largada = form.elements.largada_s;
+  const largadaMark = document.getElementById("largada-mark");
   const timecode = document.getElementById("current-time");
   const cutBar = document.getElementById("cut-bar");
   const cutRange = document.getElementById("cut-range");
@@ -39,6 +53,7 @@ export function setupPlayer({ video, form, jobElement }) {
   }
 
   function readMark(name) {
+    if (!inputs[name]) return null;
     const value = parseFloat(inputs[name].value);
     return Number.isFinite(value) ? value : null;
   }
@@ -51,8 +66,10 @@ export function setupPlayer({ video, form, jobElement }) {
   }
 
   function writeMark(name, seconds) {
+    if (!inputs[name]) return;
     const limit = duration() || Number.POSITIVE_INFINITY;
-    inputs[name].value = clamp(seconds, 0, limit).toFixed(3);
+    const value = clamp(seconds, 0, limit);
+    inputs[name].value = name === "largada" ? largadaFieldValue(value) : value.toFixed(3);
     setActive(name);
     // Lets the form know it has unsaved changes.
     inputs[name].dispatchEvent(new Event("input", { bubbles: true }));
@@ -72,6 +89,9 @@ export function setupPlayer({ video, form, jobElement }) {
       cutRange.style.left = `${(100 * start) / total}%`;
       cutRange.style.width = `${Math.max(0, (100 * (end - start)) / total)}%`;
       cutRange.hidden = cutIn === null && cutOut === null;
+      const largada = inputs.largada ? readMark("largada") : null;
+      largadaMark.hidden = largada === null;
+      if (largada !== null) largadaMark.style.left = `${(100 * largada) / total}%`;
     }
     const bothSet = cutIn !== null && cutOut !== null;
     lengthText.textContent = bothSet ? formatTimecode(cutOut - cutIn) : "—";
@@ -94,6 +114,7 @@ export function setupPlayer({ video, form, jobElement }) {
   }
 
   function nudgeActiveMark(frames) {
+    if (!inputs[activeMark]) return;
     const current = readMark(activeMark);
     if (current === null) return;
     writeMark(activeMark, current + frames * frameSeconds);
@@ -121,6 +142,7 @@ export function setupPlayer({ video, form, jobElement }) {
     if (key === " " || key === "k") togglePlay();
     else if (key === "i") writeMark("in", video ? video.currentTime : 0);
     else if (key === "o") writeMark("out", video ? video.currentTime : 0);
+    else if (key === "l" && inputs.largada) writeMark("largada", video ? video.currentTime : 0);
     else if (key === "I") seek(readMark("in") ?? 0);
     else if (key === "O") seek(readMark("out") ?? duration());
     else if (key === "ArrowLeft") event.shiftKey ? seekBy(-1) : stepFrames(-1);
@@ -136,9 +158,17 @@ export function setupPlayer({ video, form, jobElement }) {
     const name = button.dataset.setMark;
     button.addEventListener("click", () => writeMark(name, video ? video.currentTime : 0));
   }
-  for (const name of ["in", "out"]) {
+  for (const name of Object.keys(inputs)) {
     inputs[name].addEventListener("focus", () => setActive(name));
     inputs[name].addEventListener("input", render);
+  }
+  // "Limpar": no largada, so no clock in the clip.
+  for (const button of form.querySelectorAll("[data-clear-largada]")) {
+    button.addEventListener("click", () => {
+      inputs.largada.value = "";
+      inputs.largada.dispatchEvent(new Event("input", { bubbles: true }));
+      if (activeMark === "largada") setActive("in");
+    });
   }
   cutBar.addEventListener("click", (event) => {
     const box = cutBar.getBoundingClientRect();
@@ -155,5 +185,5 @@ export function setupPlayer({ video, form, jobElement }) {
   }
   setActive("in");
   render();
-  return { handleKey };
+  return { handleKey, readMark };
 }
