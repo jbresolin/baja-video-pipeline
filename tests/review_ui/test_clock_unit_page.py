@@ -73,19 +73,24 @@ def test_testar_says_where_the_clock_stops_with_its_unit():
 
 
 def test_the_preview_draws_the_clock_top_right_with_the_clips_tokens():
-    # The same tokens the worker draws with: right as far as the lower
-    # third's left (--bug-left), top at --stage-safe-top, the clock's size
-    # and pill height, the unit smaller and muted after a thin space.
+    # The same as the worker draws: right as far as the lower third's left
+    # (--bug-left), top at --stage-safe-top, 80 px digits in the on-air
+    # clock's pill grown by 80/56, the unit at 65 % and muted after a thin space.
     css = (STATIC_DIR / "css" / "overlay_preview.css").read_text(encoding="utf-8")
     rule = css[css.index(".overlay-preview .ovl-clock-pill {") :]
     rule = rule[: rule.index("}")]
+    assert "--clock-size: 80px;" in rule
+    assert "--clock-growth: calc(80 / 56);" in rule
     assert "position: absolute; right: var(--bug-left); top: var(--stage-safe-top);" in rule
-    assert "height: var(--strip-height)" in rule
-    assert "font-size: var(--size-time)" in rule
+    assert "height: calc(var(--strip-height) * var(--clock-growth))" in rule
+    assert "padding: 0 calc(var(--space-5) * var(--clock-growth))" in rule
+    assert "font-size: var(--clock-size)" in rule
     unit = css[css.index(".overlay-preview .ovl-clock-unit {") :]
     unit = unit[: unit.index("}")]
-    assert "margin-left: calc(var(--size-time) / 6)" in unit
-    assert "font-size: var(--size-strip-time); color: var(--text-muted)" in unit
+    assert "margin-left: calc(var(--clock-size) / 6)" in unit
+    assert "font-size: calc(var(--clock-size) * 0.65); color: var(--text-muted)" in unit
+    # The result pill's time unit: the same 65 %, of the pill's text.
+    assert ".overlay-preview .ovl-unit { font-size: 0.65em; }" in css
 
 
 NODE_SCRIPT = """

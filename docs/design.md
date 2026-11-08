@@ -1467,19 +1467,24 @@ installer 0.7.0.
   when both a clock and a result line are going into the clip and the cut
   ends at or before the freeze (the clip has no frame at its cut-out); it
   is decided live in the page (`js/clock_late.js`) and never blocks.
-* **The clock's size** (João decides; golden images in the PR). Proposed:
-  the theme's on-air clock time size, `--size-time` 56 px (1.87 × the
-  pills' 30 px), in a pill as tall as the on-air strip, `--strip-height`
-  72 px, padded `--space-5` like the name pill: the digits get the same
-  air above and below as the name pill's text. The alternative shown is
-  48 px in a 64 px pill (`--name-height`), 1.6 ×. Changing it is one
-  `ClockSize` (`worker/overlay_clock.py`) and the preview's CSS.
+* **The clock's size**: 80 px digits (João's choice after the proposals
+  of 56 and 48 px; 2.67 × the pills' 30 px). The pill is the theme's
+  on-air clock (`--size-time` 56 px in a `--strip-height` 72 px pill,
+  padded `--space-5`, corners `--radius`) grown by 80/56, to whole
+  pixels: 103 px tall, padded 29, corners 11, so the digits keep the
+  same air above and below. Changing it is `clock_size(…)` in
+  `worker/overlay_clock.py` and `--clock-size` in the preview's CSS.
 * **The unit**: `clock.unit` in the configuration (default `"s"`, `""` =
-  none, ≤ 12 characters, validated like the other keys). Drawn in
-  capitals like every overlay text ("66,0 S"; Bebas Neue has no
-  lowercase), at `--size-strip-time` 44 px in `--text-muted`, after a thin
-  space. The vendored Bebas Neue has no U+2009, and Pillow draws the unit
-  into the pill image once (it never changes), so the thin space is a
+  none, ≤ 12 characters, validated like the other keys). Bebas Neue has
+  only capitals and a second font is not wanted, so the unit is a capital
+  at 65 % of the digits (`UNIT_SIZE_RATIO`, 52 px), which reads like a
+  lowercase "s", in `--text-muted`, after a thin space. The result pill
+  uses the same trick for its times' unit ("66 s" and, after the arrow,
+  "86 s", in the text colour); the penalty and extra words ("4 CONES")
+  stay full size: the worker knows the line's shape (the time first, the
+  corrected time after "→") but not which other words are units. The
+  vendored Bebas Neue has no U+2009, and Pillow draws the unit into the
+  pill image once (it never changes), so the thin space is a
   gap of 1/6 em of the digits' size. drawtext still writes only the
   digits, right-aligned before it; the width stays fixed for the official
   time. The page's sentences say "66,0 s" with an ordinary space, like
@@ -1516,7 +1521,7 @@ installer 0.7.0.
   (0.8.0) and rebases.
 * **Not checked without real PCs**: the render cost of the extra result
   overlay on a worker PC (one small overlay with `enable`; measured here
-  only on the CI-sized test clips); drawtext at 56 px on the workers'
+  only on the CI-sized test clips); drawtext at 80 px on the workers'
   ffmpeg 9.0 on Windows (CI runs 9.0 on Linux); the page's block swapping
   in a real browser (the decisions are tested in Node on stand-ins, the
   endpoint end to end; there is no browser test setup).

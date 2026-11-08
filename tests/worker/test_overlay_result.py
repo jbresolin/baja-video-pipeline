@@ -33,7 +33,15 @@ from worker import overlay_tokens as theme
 from worker.overlay import render_lower_third
 from worker.overlay_arrow import ARROW, arrow_width
 from worker.overlay_result import layout_result_pill, result_runs
-from worker.overlay_text import ELLIPSIS, TextRun, font, runs_width, truncate_runs
+from worker.overlay_text import (
+    ELLIPSIS,
+    UNIT_SIZE_RATIO,
+    TextRun,
+    font,
+    run_width,
+    runs_width,
+    truncate_runs,
+)
 
 WITH_RESULT = replace(CAR_26_TEXT, pass_result="66 s · 4 cones → 86 s")
 
@@ -43,17 +51,41 @@ WITH_RESULT = replace(CAR_26_TEXT, pass_result="66 s · 4 cones → 86 s")
 
 def test_the_line_is_split_into_words_separators_and_an_arrow():
     runs = result_runs("58 s · 8 cones, 2 saídas de pista → 118 s")
-    # Capitals (the face has no lowercase), accents kept ("SAÍDAS").
-    assert [run.text for run in runs] == ["58 S", "·", "8 CONES, 2 SAÍDAS DE PISTA", "→", "118 S"]
+    # Capitals (the face has no lowercase), accents kept ("SAÍDAS"); each
+    # time's unit is a run of its own.
+    assert [run.text for run in runs] == [
+        "58 ", "S", "·", "8 CONES, 2 SAÍDAS DE PISTA", "→", "118 ", "S",
+    ]  # fmt: skip
     # The "·" is muted like the role pill's; the "→" is marked to be drawn
     # as a shape, in the normal text colour; nothing else is.
-    assert [run.muted for run in runs] == [False, True, False, False, False]
-    assert [run.arrow for run in runs] == [False, False, False, True, False]
+    assert [run.muted for run in runs] == [False, False, True, False, False, False, False]
+    assert [run.arrow for run in runs] == [False, False, False, False, True, False, False]
 
 
-def test_a_clean_run_and_a_decimal_comma_are_one_word():
-    assert [run.text for run in result_runs("59 s")] == ["59 S"]
-    assert [run.text for run in result_runs("59,4 s")] == ["59,4 S"]
+def test_the_times_unit_is_smaller_so_it_reads_like_a_lowercase_s():
+    # LIVESTACK-53: the face has only capitals; the time's "S" (and the
+    # corrected time's) is drawn at 65 % on the same baseline. The penalty
+    # words are not units of the time: they stay full size.
+    runs = result_runs("58 s · 8 cones → 118 s")
+    assert [run.size_ratio for run in runs] == [1.0, UNIT_SIZE_RATIO, 1.0, 1.0, 1.0, 1.0, 0.65]
+    assert UNIT_SIZE_RATIO == 0.65
+    # A longer unit too; a time without a unit is one run.
+    assert [(run.text, run.size_ratio) for run in result_runs("66,5 seg")] == [
+        ("66,5 ", 1.0), ("SEG", 0.65),
+    ]  # fmt: skip
+    assert [run.text for run in result_runs("66")] == ["66"]
+
+
+def test_the_small_unit_is_measured_at_its_own_size():
+    number, unit = result_runs("59 s")
+    width = runs_width([number, unit], 30, 1.0)
+    small_s = font(30 * 0.65).getlength("S") + theme.RESULT_TRACKING_EM * 30 * 0.65
+    assert width == pytest.approx(run_width(number, 30, 1.0) + small_s)
+
+
+def test_a_clean_run_and_a_decimal_comma_are_one_number():
+    assert [run.text for run in result_runs("59 s")] == ["59 ", "S"]
+    assert [run.text for run in result_runs("59,4 s")] == ["59,4 ", "S"]
 
 
 # --- Where the pill is ---
@@ -207,7 +239,7 @@ def test_a_cut_never_ends_on_the_arrow():
     # naive cut would leave the arrow dangling at the end ("4 CONES → …").
     runs = result_runs("66 s · 4 cones → 86 s")
     font_px = 22.5
-    room = runs_width(runs[:4], font_px, 1.0) + font(font_px).getlength(ELLIPSIS)
+    room = runs_width(runs[:5], font_px, 1.0) + font(font_px).getlength(ELLIPSIS)
 
     cut = truncate_runs(runs, font_px, room, 1.0)
 

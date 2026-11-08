@@ -73,8 +73,8 @@ RESULT_CONES_GATES = "58 s · 8 cones, 2 saídas de pista → 118 s"  # car 2, p
 # drawn a step smaller (95 %) but still whole. Cutting with an ellipsis,
 # past 75 %, is checked on a longer line (test_overlay_result.py).
 RESULT_LONG = (
-    "109 s · 17 cones, 1 saída de pista, 2 toques na barreira de pneus, "
-    "1 queima de largada, 3 advertências do fiscal → 204 s"
+    "109 s · 17 cones, 2 saídas de pista, 2 toques na barreira de pneus, "
+    "2 queimas de largada, 3 advertências do fiscal → 204 s"
 )
 CAR_26_TEXT = OverlayText(
     prova="Manobrabilidade",

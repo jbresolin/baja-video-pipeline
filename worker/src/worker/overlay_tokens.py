@@ -166,13 +166,12 @@ CHIP_NAME_GAP_PX = pixels(_TOKENS, "--space-4")
 GLYPH_NUDGE_PX = pixels(_TOKENS, "--glyph-nudge")  # digits sit high; push them down
 
 # --- The running clock (LIVESTACK-53): bigger than the pills' text, with its unit ---
-# The digits at the on-air clock's time size, in a pill as tall as the
-# on-air strip; the unit after them at the strip's time size, muted. These
-# give the digits the same air above and below as the name pill's text.
-CLOCK_FONT_PX = pixels(_TOKENS, "--size-time")  # 56: 1.87 × the result pill's 30
-CLOCK_PILL_HEIGHT_PX = pixels(_TOKENS, "--strip-height")  # 72
-CLOCK_UNIT_FONT_PX = pixels(_TOKENS, "--size-strip-time")  # 44
-CLOCK_PILL_PADDING_PX = pixels(_TOKENS, "--space-5")  # 20, like the name pill
+# The theme's on-air clock: --size-time digits in a pill as tall as the
+# on-air strip, with the name pill's padding. The clip's clock is this
+# grown in proportion to João's 80 px digits (worker.overlay_clock).
+ON_AIR_CLOCK_FONT_PX = pixels(_TOKENS, "--size-time")  # 56
+ON_AIR_CLOCK_HEIGHT_PX = pixels(_TOKENS, "--strip-height")  # 72
+ON_AIR_CLOCK_PADDING_PX = pixels(_TOKENS, "--space-5")  # 20, like the name pill
 # Top right (LIVESTACK-53): its right edge as far from the frame's right as
 # the lower third is from the left (--bug-left, so the corners mirror), its
 # top at the theme's title-safe top: nearer the top than the lower third is

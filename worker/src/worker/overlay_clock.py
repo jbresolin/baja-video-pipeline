@@ -6,12 +6,14 @@ from the right as the lower third is from the left, its top at the
 theme's title-safe top. The lower third keeps its place bottom-left.
 
     ┌──────────────┐
-    │  66,0 S      │   digits by ffmpeg, the unit (muted) drawn with the pill
+    │  66,0 s      │   digits by ffmpeg, the unit (small, muted) drawn with the pill
     └──────────────┘
 
-It is bigger than the pills' text (CLOCK_SIZE, from the tokens: the
-on-air clock's time size in a pill as tall as the on-air strip), and sized
-once for the official time, so it never changes width while it runs.
+It is bigger than the pills' text (CLOCK_SIZE: 80 px digits, João's
+choice, in the theme's on-air clock pill grown in proportion), and sized
+once for the official time, so it never changes width while it runs. The
+unit is a capital at UNIT_SIZE_RATIO of the digits, so it reads like a
+lowercase "s" (the face has only capitals), as in the result pill.
 Bebas Neue's digits all have the same width, so the digits, right-aligned
 before the unit, never shift either: "9,9" then "10,0", like a stopwatch.
 
@@ -34,7 +36,7 @@ from shared.models import RenderClock
 from shared.pass_clock import DECIMAL_COMMA, clock_text, units_per_second
 from worker import overlay_tokens as theme
 from worker.overlay_draw import PlacedImage, baseline_for_centre, even_region, paste_rounded_box
-from worker.overlay_text import font
+from worker.overlay_text import UNIT_SIZE_RATIO, font
 
 # A thin space between the number and its unit ("66,0 s"). Bebas Neue has
 # no thin-space character, and Pillow draws the unit anyway, so it is a gap.
@@ -49,16 +51,29 @@ class ClockSize:
     unit_font_px: float
     height_px: float
     padding_px: float
+    radius_px: float
 
 
-# The clock João reviews in the golden images (tokens: --size-time digits
-# in a --strip-height pill, the unit at --size-strip-time, muted).
-CLOCK_SIZE = ClockSize(
-    font_px=theme.CLOCK_FONT_PX,
-    unit_font_px=theme.CLOCK_UNIT_FONT_PX,
-    height_px=theme.CLOCK_PILL_HEIGHT_PX,
-    padding_px=theme.CLOCK_PILL_PADDING_PX,
-)
+def clock_size(font_px: float) -> ClockSize:
+    """The theme's on-air clock pill grown in proportion to `font_px` digits.
+
+    Height, padding and corner radius keep the on-air clock's proportions
+    (--size-time in a --strip-height pill), so the digits keep the same air
+    above and below; the unit is UNIT_SIZE_RATIO of the digits.
+    """
+    growth = font_px / theme.ON_AIR_CLOCK_FONT_PX
+    return ClockSize(
+        font_px=font_px,
+        unit_font_px=font_px * UNIT_SIZE_RATIO,
+        height_px=round(theme.ON_AIR_CLOCK_HEIGHT_PX * growth),
+        padding_px=round(theme.ON_AIR_CLOCK_PADDING_PX * growth),
+        radius_px=round(theme.PILL_RADIUS_PX * growth),
+    )
+
+
+# João's size (LIVESTACK-53): 80 px digits (2.67 × the result pill's 30 px)
+# in a 103 px pill, the unit 52 px.
+CLOCK_SIZE = clock_size(80)
 
 
 @dataclass(frozen=True)
@@ -155,7 +170,7 @@ def layout_clock(
         unit_text=unit,
         unit_left=unit_left,
         unit_font_px=unit_font_px,
-        radius=theme.PILL_RADIUS_PX * scale,
+        radius=size.radius_px * scale,
     )
 
 

@@ -3,7 +3,7 @@
 Background for a beginner: the clip's overlay is one still picture (the
 pills with the team, the prova and the result). The clock cannot be in it,
 because it changes every frame and only appears at the largada. So the
-worker draws the clock's pill (and its unit, "S", which never changes) as
+worker draws the clock's pill (and its small unit, "S", which never changes) as
 a small picture of its own, and ffmpeg writes the digits on it frame by
 frame with the same font and colour.
 
@@ -43,7 +43,7 @@ from worker.overlay_clock import (
     write_clock_pill,
 )
 from worker.overlay_result import layout_result_pill, result_runs
-from worker.overlay_text import font
+from worker.overlay_text import UNIT_SIZE_RATIO, font
 
 # The bottom of the role pill (y 940) plus one gap: the result row's top.
 RESULT_ROW_TOP = 1080 - theme.BOTTOM_OFFSET_PX + theme.PILL_GAP_PX
@@ -114,22 +114,32 @@ def test_without_a_clock_the_result_stays_in_the_still_png():
 
 
 def test_the_clock_is_clearly_bigger_than_the_pills_text():
-    # The proposal (golden images): the on-air clock's 56 px digits, 1.87 ×
-    # the result pill's 30 px, in a 72 px pill.
-    assert CLOCK_SIZE.font_px == 56
-    assert 1.6 <= CLOCK_SIZE.font_px / theme.RESULT_FONT_PX <= 2
-    assert CLOCK_SIZE.height_px == 72
-    assert clock_layout().height == 72
+    # João's choice: 80 px digits, 2.67 × the result pill's 30 px.
+    assert CLOCK_SIZE.font_px == 80
+    assert CLOCK_SIZE.font_px / theme.RESULT_FONT_PX == pytest.approx(2.67, abs=0.01)
+    assert clock_layout().height == CLOCK_SIZE.height_px
+
+
+def test_the_pill_is_the_on_air_clocks_grown_in_proportion():
+    # The theme's on-air clock is 56 px digits in a 72 px pill, padded 20,
+    # corners 8; at 80 px everything grows by 80/56 (to whole pixels), so
+    # the digits keep the same air above and below.
+    on_air = (theme.ON_AIR_CLOCK_FONT_PX, theme.ON_AIR_CLOCK_HEIGHT_PX)
+    assert on_air == (56, 72)
+    assert (CLOCK_SIZE.height_px, CLOCK_SIZE.padding_px, CLOCK_SIZE.radius_px) == (103, 29, 11)
+    assert CLOCK_SIZE.height_px / CLOCK_SIZE.font_px == pytest.approx(72 / 56, abs=0.01)
+    # The unit: 65 % of the digits, so its capital reads like a lowercase "s".
+    assert CLOCK_SIZE.unit_font_px == 80 * UNIT_SIZE_RATIO == 52
 
 
 def test_the_pill_is_as_wide_as_the_official_time_and_its_unit_and_never_changes():
     # 66,0 s: two digits, a comma, one digit, a thin space and the "S";
     # Bebas Neue's digits all have the same width, so "0,0" and "66,0" fit
     # the same pill.
-    digit = advance("0", 56)
-    comma = advance(",", 56)
-    unit = THIN_SPACE_EM * 56 + font(44).getlength("S")
-    padding = 2 * theme.CLOCK_PILL_PADDING_PX
+    digit = advance("0", 80)
+    comma = advance(",", 80)
+    unit = THIN_SPACE_EM * 80 + font(52).getlength("S")
+    padding = 2 * CLOCK_SIZE.padding_px
     assert clock_pill_width(CLOCK_66) == pytest.approx(padding + 3 * digit + comma + unit)
     # A clock that never reaches 10 s has one whole-second digit fewer.
     short = CLOCK_66.model_copy(update={"official_units": 95})
@@ -144,7 +154,7 @@ def test_no_unit_means_no_thin_space_either():
     # existed (None): just the digits.
     for unit in ("", None):
         clock = CLOCK_66.model_copy(update={"unit": unit})
-        expected = 2 * theme.CLOCK_PILL_PADDING_PX + 3 * advance("0", 56) + advance(",", 56)
+        expected = 2 * CLOCK_SIZE.padding_px + 3 * advance("0", 80) + advance(",", 80)
         assert clock_pill_width(clock) == pytest.approx(expected)
         assert clock_layout(replace(CLOCK_TEXT, clock=clock)).unit_text == ""
 
@@ -152,14 +162,14 @@ def test_no_unit_means_no_thin_space_either():
 def test_the_unit_follows_the_digits_in_capitals_on_their_baseline():
     layout = clock_layout(replace(CLOCK_TEXT, clock=CLOCK_66.model_copy(update={"unit": "seg"})))
     assert layout.unit_text == "SEG"
-    assert layout.unit_font_px == theme.CLOCK_UNIT_FONT_PX == 44
+    assert layout.unit_font_px == CLOCK_SIZE.unit_font_px == 52
     # A thin space (1/6 of the digits' size) after the last digit's tracking.
     gap = layout.unit_left - layout.text_right
-    tracking = theme.RESULT_TRACKING_EM * 56
-    assert gap == pytest.approx(tracking + THIN_SPACE_EM * 56)
+    tracking = theme.RESULT_TRACKING_EM * 80
+    assert gap == pytest.approx(tracking + THIN_SPACE_EM * 80)
     # And the unit ends one padding before the pill's right edge.
-    unit_right = layout.unit_left + font(44).getlength("SEG")
-    right = layout.left + layout.width - theme.CLOCK_PILL_PADDING_PX
+    unit_right = layout.unit_left + font(52).getlength("SEG")
+    right = layout.left + layout.width - CLOCK_SIZE.padding_px
     assert unit_right == pytest.approx(right)
 
 
@@ -175,7 +185,7 @@ def test_the_region_has_even_edges_and_holds_the_whole_pill():
 def test_on_a_smaller_frame_everything_scales_with_the_height():
     # A 1280×720 frame (the overlay is laid out for any height): two thirds.
     small = clock_layout(frame_width=1280, frame_height=720)
-    assert small.height == pytest.approx(48)
+    assert small.height == pytest.approx(103 * 2 / 3)
     assert small.top == pytest.approx(36)
     assert 1280 - (small.left + small.width) == pytest.approx(64)
 
@@ -219,7 +229,7 @@ def test_the_worker_hands_ffmpeg_the_pill_font_colour_and_times(tmp_path):
     assert overlay.pill_position == layout.region[:2]
     # The pills' own font file and text colour, at the clock's size.
     assert str(overlay.font_path) == theme.font_path()
-    assert overlay.font_px == 56
+    assert overlay.font_px == 80
     red, green, blue, alpha = theme.TEXT_COLOUR
     assert overlay.text_colour == f"0x{red:02x}{green:02x}{blue:02x}{alpha:02x}"
     assert (overlay.text_right, overlay.baseline) == (layout.text_right, layout.baseline)
@@ -236,7 +246,7 @@ def test_the_pill_is_the_same_at_every_count():
     running = compose_clock(layout, 334, 1)
     # Left of the digits (the pill's padding) and from the unit on, nothing differs.
     digits_left = int(
-        layout.text_right - layout.region[0] - 3 * advance("0", 56) - advance(",", 56)
+        layout.text_right - layout.region[0] - 3 * advance("0", 80) - advance(",", 80)
     )
     unit_left = int(layout.unit_left - layout.region[0])
     for x in [*range(0, digits_left - 1), *range(unit_left, frozen.width)]:

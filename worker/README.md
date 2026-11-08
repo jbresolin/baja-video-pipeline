@@ -239,15 +239,17 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   never fetches results), the overlay gets a third pill *under* the role
   pill (`overlay_result.py`): sized like the theme's scoreboard rows
   (`--board-row-height`, `--size-board`), in capitals, shrunk then cut with
-  "…" like the other pills. The name and role pills do not move. Bebas
+  "…" like the other pills; the times' unit is a smaller capital, 65 %
+  (LIVESTACK-53). The name and role pills do not move. Bebas
   Neue has no "→", so the arrow is drawn as a shape (`overlay_arrow.py`).
   The text is in the clip's sidecar (a corrected result renders again)
   and in the render-inputs report. When the task carries `pass_clock`
   (LIVESTACK-48; its look since LIVESTACK-53, installer 0.7.0), a running
   clock goes in the frame's top-right corner (right margin = the lower
   third's left, top at `--stage-safe-top`), bigger than the pills
-  (`--size-time` in a `--strip-height` pill) and with its unit after a
-  thin space ("66,0 S", `--size-strip-time`, muted): Pillow draws its pill
+  (80 px digits in the on-air clock's `--strip-height` pill grown in
+  proportion) and with its unit after a thin space ("66,0 s": a capital
+  at 65 %, muted, so it reads like a lowercase "s"): Pillow draws its pill
   and unit, sized for the official time (`overlay_clock.py`), and ffmpeg's
   `drawtext` writes the digits on every frame from the frame's time, with
   the same font file and colour (`shared/ffmpeg_clock.py`), from the

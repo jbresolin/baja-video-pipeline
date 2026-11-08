@@ -123,15 +123,18 @@ def _draw_runs(
             draw_arrow(layer, x, baseline, text_font, font_px, colour)
             x += arrow_width(font_px)
         else:
-            spacing = run.tracking_em * font_px
+            # A smaller run (a unit) sits on the same baseline.
+            run_px = font_px * run.size_ratio
+            run_font = text_font if run.size_ratio == 1.0 else font(run_px)
+            spacing = run.tracking_em * run_px
             for index, character in enumerate(run.text):
                 # Measuring the prefix keeps the font's kerning; letter-spacing
                 # is added after every character, as browsers do.
-                offset = text_font.getlength(run.text[:index]) + index * spacing
+                offset = run_font.getlength(run.text[:index]) + index * spacing
                 draw.text(
-                    (x + offset, baseline), character, font=text_font, fill=colour, anchor="ls"
+                    (x + offset, baseline), character, font=run_font, fill=colour, anchor="ls"
                 )
-            x += text_font.getlength(run.text) + len(run.text) * spacing
+            x += run_font.getlength(run.text) + len(run.text) * spacing
         if run.gap_after:
             x += gap
     canvas.alpha_composite(layer)

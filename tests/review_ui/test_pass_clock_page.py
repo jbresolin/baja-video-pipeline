@@ -380,12 +380,13 @@ def test_the_largada_field_is_rounded_down_to_the_millisecond(js):
 
 
 def test_the_preview_splits_the_result_like_the_worker(js):
+    # Each time carries its unit apart, drawn smaller (LIVESTACK-53).
     assert js["result"] == [
-        {"text": "58 S", "kind": "words"},
+        {"text": "58", "kind": "words", "unit": "S"},
         {"text": "·", "kind": "separator"},
         {"text": "8 CONES, 2 SAÍDAS DE PISTA", "kind": "words"},
         {"text": "→", "kind": "arrow"},
-        {"text": "118 S", "kind": "words"},
+        {"text": "118", "kind": "words", "unit": "S"},
     ]
 
 

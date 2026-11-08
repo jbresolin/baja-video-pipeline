@@ -37,14 +37,23 @@ export function clockUnitText(unit) {
   return (unit ?? "").trim().toUpperCase();
 }
 
+// A time with its unit, "66 S" or "66,5 SEG": the number, the unit.
+const TIME_WITH_UNIT = /^(\d[\d.,]*)\s+(\S.*)$/;
+
 // The result line as the worker splits it: words, a muted "·", the "→".
+// The time (first, and after the "→") carries its unit apart, drawn
+// smaller like the clip's, so the capital reads like a lowercase "s".
 export function resultParts(line) {
   const parts = [];
   const pieces = line.trim().toUpperCase().split(SEPARATOR_OR_ARROW);
   pieces.forEach((piece, index) => {
     const isSeparator = index % 2 === 1;
     if (!isSeparator) {
-      if (piece.trim()) parts.push({ text: piece.trim(), kind: "words" });
+      if (!piece.trim()) return;
+      const isTime = !parts.length || parts[parts.length - 1].kind === "arrow";
+      const time = isTime ? piece.trim().match(TIME_WITH_UNIT) : null;
+      if (time) parts.push({ text: time[1], kind: "words", unit: time[2] });
+      else parts.push({ text: piece.trim(), kind: "words" });
       return;
     }
     if (!parts.length || parts[parts.length - 1].kind !== "words") return;
@@ -108,7 +117,10 @@ export function setupOverlayPreview({ video, form, player }) {
     namePill.hidden = namePill.childElementCount === 0;
     resultPill.replaceChildren();
     for (const part of data.result_text ? resultParts(data.result_text) : []) {
-      resultPill.append(element("span", `ovl-${part.kind}`, part.text));
+      const span = element("span", `ovl-${part.kind}`, part.text);
+      // Inside the words' span, so it keeps the space and sits on their baseline.
+      if (part.unit) span.append(" ", element("span", "ovl-unit", part.unit));
+      resultPill.append(span);
     }
   }
   fillNameAndResult();
@@ -144,7 +156,7 @@ export function setupOverlayPreview({ video, form, player }) {
     fillNameAndResult();
   });
 
-  // The clock, top right (LIVESTACK-53): digits, then its unit ("66,0 S").
+  // The clock, top right (LIVESTACK-53): digits, then its small unit ("66,0 s").
   const clockPill = element("div", "ovl-pill ovl-clock-pill");
   const clockLine = element("span", "ovl-clock-text");
   const clockDigits = element("span", "ovl-clock-digits");

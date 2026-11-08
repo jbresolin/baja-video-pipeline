@@ -4,10 +4,13 @@ The orchestrator sends the line ready to draw (ProcessTask.pass_result_text,
 e.g. "66 s · 4 cones → 86 s"); the worker never fetches results itself.
 Here it becomes text runs, like the role pill's:
 
-    66 S  ·  4 CONES  →  86 S
+    66 s  ·  4 CONES  →  86 s
     words    muted "·"   the arrow, drawn as a shape (worker.overlay_arrow)
 
-with the theme's part gap (--space-3) around each "·" and "→". The pill is
+with the theme's part gap (--space-3) around each "·" and "→". The time's
+unit (in the first part and after the "→") is a capital drawn smaller
+(UNIT_SIZE_RATIO, LIVESTACK-53), so it reads like the lowercase "s" the
+face does not have; other words ("CONES") stay full size. The pill is
 sized like a row of the theme's scoreboard (--board-row-height, --size-board),
 so a penalty count stays readable at 1080p, and fits like the other pills:
 shrink to 75 %, then cut with an ellipsis (never ending on a "·" or "→").
@@ -18,19 +21,22 @@ import re
 from worker import overlay_tokens as theme
 from worker.overlay_arrow import ARROW
 from worker.overlay_draw import PillLayout
-from worker.overlay_text import TextRun, fit_runs, runs_width
+from worker.overlay_text import UNIT_SIZE_RATIO, TextRun, fit_runs, runs_width
 
 SEPARATOR = "·"
 # A "·" or "→" with the spaces around it; the brackets keep it in the split.
 _SEPARATOR_OR_ARROW = re.compile(rf"\s*([{SEPARATOR}{ARROW}])\s*")
+# A time with its unit, "66 S" or "66,5 SEG": the number (and its space), the unit.
+_TIME_WITH_UNIT = re.compile(r"^(\d[\d.,]*\s+)(\S.*)$")
 
 
 def result_runs(result_text: str) -> list[TextRun]:
     """The result line as runs: words in capitals, a muted "·", and "→" as an arrow run.
 
     Bebas Neue has no lowercase, so the words are set in capitals ("S",
-    "SAÍDAS"). Empty pieces are skipped, a "·" or "→" right after another
-    one is left out, and none is left at either end.
+    "SAÍDAS"); the time's unit is a smaller run after its number. Empty
+    pieces are skipped, a "·" or "→" right after another one is left out,
+    and none is left at either end.
     """
     runs: list[TextRun] = []
     pieces = _SEPARATOR_OR_ARROW.split(result_text.strip().upper())
@@ -39,7 +45,9 @@ def result_runs(result_text: str) -> list[TextRun]:
         is_separator = index % 2 == 1
         if not is_separator:
             if piece.strip():
-                runs.append(TextRun(piece.strip(), tracking_em=theme.RESULT_TRACKING_EM))
+                # The time comes first, and the corrected time after the arrow.
+                is_time = not runs or runs[-1].arrow
+                runs.extend(_word_runs(piece.strip(), is_time))
             continue
         if not runs or _is_separator(runs[-1]):
             continue
@@ -50,6 +58,19 @@ def result_runs(result_text: str) -> list[TextRun]:
     if runs and _is_separator(runs[-1]):
         runs.pop()
     return runs
+
+
+def _word_runs(words: str, is_time: bool) -> list[TextRun]:
+    """A part's words as one run; a time's unit as a smaller run after its number."""
+    tracking = theme.RESULT_TRACKING_EM
+    time = _TIME_WITH_UNIT.match(words) if is_time else None
+    if time is None:
+        return [TextRun(words, tracking_em=tracking)]
+    number, unit = time.groups()
+    return [
+        TextRun(number, tracking_em=tracking),
+        TextRun(unit, tracking_em=tracking, size_ratio=UNIT_SIZE_RATIO),
+    ]
 
 
 def _is_separator(run: TextRun) -> bool:
