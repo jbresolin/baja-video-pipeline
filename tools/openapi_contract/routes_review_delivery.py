@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query, Response
 
 from shared.models import (
     CarVideosResponse,
+    ClipDownload,
     EventsResponse,
     FleetResponse,
     Job,
@@ -239,6 +240,40 @@ def update_review(job_id: str, body: ReviewUpdate) -> Job:
 def regenerate_proxy(job_id: str) -> RegenerateProxyResponse:
     """Does not change the job state. If no holder is online, `queued` is
     still true and `waiting_reason` says so; the task waits."""
+    not_implemented()
+
+
+@router.get(
+    "/jobs/{job_id}/clip-download",
+    tags=["review"],
+    summary='Where "Baixar clipe" stands (LIVESTACK-52)',
+    response_model=ClipDownload,
+    dependencies=_reviewer_only,
+    responses=error_responses(401, 404),
+)
+def get_clip_download(job_id: str) -> ClipDownload:
+    """No side effects. `ready` carries the link ("/requested-clips/<job_id>/
+    <readable clip name>", relative to the public base URL) and when the
+    VPS copy goes: 30 minutes after the first complete download, else 24 h
+    after the request (Settings)."""
+    not_implemented()
+
+
+@router.post(
+    "/jobs/{job_id}/clip-download",
+    tags=["review"],
+    summary='"Baixar clipe": make the newest clip downloadable for a while',
+    response_model=ClipDownload,
+    dependencies=_reviewer_only,
+    responses=error_responses(401, 404, 409),
+)
+def request_clip_download(job_id: str) -> ClipDownload:
+    """Always the job's newest clip version (409 conflict without a clip).
+    Ready at once while the VPS outbox has exactly that clip; otherwise a
+    PC that has it is offered `upload_clip`: the master (archive) first,
+    then the worker that rendered it, the studio only as a last resort and
+    not while it is delivering; only workers declaring the render feature
+    `upload_clip`. Asking again restarts the times."""
     not_implemented()
 
 

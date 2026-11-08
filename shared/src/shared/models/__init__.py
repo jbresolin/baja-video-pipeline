@@ -74,6 +74,7 @@ from shared.models.api_operations import (
 )
 from shared.models.api_review import (
     CarVideosResponse,
+    ClipDownload,
     JobPresenceResponse,
     OriginalDownload,
     RegenerateProxyResponse,
@@ -106,6 +107,8 @@ from shared.models.common import ErrorBody, ErrorCode, ErrorResponse, utc_now
 from shared.models.enums import (
     AdminArea,
     CatalogSource,
+    ClipDownloadState,
+    ClipPreviewState,
     ContactStatus,
     DeliveryRoute,
     EnrollmentTokenStatus,
@@ -134,6 +137,7 @@ from shared.models.events import Event, EventsResponse
 from shared.models.evolution import EvolutionWebhook, IncomingMedia, find_incoming_video
 from shared.models.job import (
     ClipInfo,
+    ClipPreview,
     ClipVersion,
     DuplicateCopy,
     Holder,
@@ -175,13 +179,18 @@ from shared.models.tasks import (
     NextTaskResponse,
     ProcessTask,
     Task,
+    UploadClipTask,
     UploadOriginalTask,
 )
 from shared.models.worker import EnrollmentToken, Worker, WorkerCapabilities, WorkerStats
 
 __all__ = [
+    "ClipDownload",
     "OriginalDownload",
+    "ClipDownloadState",
+    "ClipPreviewState",
     "OriginalState",
+    "UploadClipTask",
     "UploadOriginalTask",
     "AdminArea",
     "AdminSettings",
@@ -189,6 +198,7 @@ __all__ = [
     "ChunkAccepted",
     "ClipArchiveProgress",
     "ClipArchivedRequest",
+    "ClipPreview",
     "ClipVersion",
     "ClipInputsComparison",
     "RenderInputField",

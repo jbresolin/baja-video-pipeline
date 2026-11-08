@@ -13,7 +13,7 @@ from shared.models.common import (
     Sha256Hex,
 )
 from shared.models.enums import WorkerRole
-from shared.models.job import Lease
+from shared.models.job import ClipPreview, Lease
 from shared.models.render_inputs import ClipInputsComparison
 from shared.models.worker import Worker, WorkerCapabilities
 
@@ -203,6 +203,9 @@ class ManifestEntry(ReadByClients):
     # This clip's render inputs next to the review now (LIVESTACK-43), as
     # Job.clip_inputs: `changed` not empty = out of date. None when unknown.
     clip_inputs: ClipInputsComparison | None = None
+    # This clip's preview, or why there is none (LIVESTACK-52): the clips
+    # page's "Ver clipe". None from an orchestrator older than 2.11.0.
+    preview: ClipPreview | None = None
 
 
 class ManifestResponse(ReadByClients):

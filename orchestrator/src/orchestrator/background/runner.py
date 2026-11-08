@@ -12,8 +12,10 @@ from dataclasses import dataclass
 
 from orchestrator.background import sweepers
 from orchestrator.context import OrchestratorContext
+from orchestrator.domain.clip_previews import evict_previews_once
 from orchestrator.domain.originals import sweep_originals
 from orchestrator.domain.pass_results_fetch import poll_due_tables
+from orchestrator.domain.requested_clips import sweep_requested_clips
 from orchestrator.domain.results_sync import sync_if_due
 from orchestrator.domain.sessions import delete_idle_sessions
 
@@ -34,6 +36,12 @@ PERIODIC_TASKS = [
     PeriodicTask("outbox-cleanup", 60, sweepers.clean_outbox_once),
     # Originals reviewers downloaded (item 15): by age, folder cap, disk.
     PeriodicTask("originals-eviction", 60, sweep_originals),
+    # "Ver clipe" (LIVESTACK-52): previews of replaced versions, and the
+    # oldest ones when the disk is tight (after the proxies, listed above).
+    PeriodicTask("clip-preview-eviction", 60, evict_previews_once),
+    # "Baixar clipe" (LIVESTACK-52): 30 min after the first full download,
+    # 24 h after an unused request, earlier when the disk is tight.
+    PeriodicTask("requested-clips-cleanup", 60, sweep_requested_clips),
     # Filmmakers' messages kept for the job page (LIVESTACK-49): by age, in days.
     PeriodicTask("sender-messages-retention", 3600, sweepers.delete_old_sender_messages_once),
     # Provas and teams from the results API: every 6 h while an event is set

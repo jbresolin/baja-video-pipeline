@@ -140,6 +140,12 @@ class ProcessTask(ReadByClients):
     # offers it only to a worker that declared every one of them; empty =
     # any worker. For the record: a worker does not need to check it.
     required_render_features: list[RenderFeatureName] = Field(default_factory=list)
+    # Where to upload a 480p preview of the finished clip (LIVESTACK-52),
+    # chunked, without a lease, after the delivery, with the Clip-SHA256
+    # header naming the clip it was made from. None = make no preview
+    # (Settings "Gerar prévia dos clipes" is off, or an older orchestrator).
+    # Workers that cannot make one ignore it (RenderFeature.CLIP_PREVIEW).
+    preview_upload_url: str | None = None
 
 
 class DeliverTask(ReadByClients):
@@ -200,6 +206,34 @@ class UploadOriginalTask(ReadByClients):
     upload_url: str
 
 
+class UploadClipTask(ReadByClients):
+    """A PC that has a finished clip sends it to the VPS for "Baixar clipe" (LIVESTACK-52).
+
+    Offered to the master when it archived that clip (or kept it), then to
+    the worker that rendered it, and to the studio only as a last resort
+    while it is not delivering. The worker looks the clip up by `sha256`:
+    among its kept clips, then in the master's archive at
+    `archive_relative_path`, then (the studio) in its clip folder at
+    `studio_relative_path`, and uploads it, chunked and resumable like a
+    clip, to `upload_url`. The upload ends the lease; the job never changes.
+
+    Read by clients: unknown fields are ignored.
+    """
+
+    kind: Literal[TaskKind.UPLOAD_CLIP] = TaskKind.UPLOAD_CLIP
+    job_id: str
+    # Which rendering: 1, then 2 after a reprocess, ... (ClipVersion).
+    version: int = Field(ge=1)
+    sha256: Sha256Hex
+    size_bytes: ByteCount
+    # The master's archive path of this version (shared.layout.archive_relative_path).
+    archive_relative_path: str
+    # Where the studio stored it, relative to its clip root ("…-p3-v2.mp4").
+    studio_relative_path: str
+    # POST chunks here (Lease-Id header), like POST /jobs/{id}/clip.
+    upload_url: str
+
+
 # "Any one of the task models", picked by looking at the `kind` field.
 Task = Annotated[
     DownloadRawTask
@@ -207,7 +241,8 @@ Task = Annotated[
     | ProcessTask
     | DeliverTask
     | ArchiveClipTask
-    | UploadOriginalTask,
+    | UploadOriginalTask
+    | UploadClipTask,
     Field(discriminator="kind"),
 ]
 

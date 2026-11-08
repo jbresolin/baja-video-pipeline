@@ -68,6 +68,40 @@ class TaskKind(StrEnum):
     # A holder uploads the raw to the VPS's originals/ folder because a
     # reviewer asked for the original on the job page (LIVESTACK-41 item 15).
     UPLOAD_ORIGINAL = "upload_original"
+    # A PC that has the finished clip (the master's archive, the worker that
+    # rendered it, the studio as a last resort) uploads it to the VPS's
+    # requested_clips/ folder for "Baixar clipe" (LIVESTACK-52).
+    UPLOAD_CLIP = "upload_clip"
+
+
+class ClipDownloadState(StrEnum):
+    """Where a reviewer's "Baixar clipe" stands (GET/POST /jobs/{id}/clip-download)."""
+
+    # Nobody asked yet (or the copy was deleted): the button only asks.
+    NOT_REQUESTED = "not_requested"
+    # Asked; a PC that has the clip is online and was offered the upload.
+    PREPARING = "preparing"
+    # On the VPS: download_url works now.
+    READY = "ready"
+    # Asked, but no PC that has the clip (and can upload it) is online now.
+    NO_SOURCE_ONLINE = "no_source_online"
+
+
+class ClipPreviewState(StrEnum):
+    """Whether the newest clip has a small preview to watch ("Ver clipe", LIVESTACK-52)."""
+
+    # The preview is on the VPS: ClipPreview.url plays it.
+    READY = "ready"
+    # The worker that rendered the clip is making or sending it (minutes at most).
+    MAKING = "making"
+    # "Gerar prévia dos clipes" was off when the clip was rendered.
+    SWITCHED_OFF = "switched_off"
+    # The worker that rendered the clip runs a version that makes no previews.
+    OLDER_WORKER = "older_worker"
+    # Deleted to free the VPS disk (like proxies).
+    EVICTED = "evicted"
+    # None arrived: rendered before previews existed, or the worker failed.
+    MISSING = "missing"
 
 
 class OriginalState(StrEnum):
@@ -317,6 +351,15 @@ class RenderFeature(StrEnum):
     # the time's unit small. A clip with a clock or a result line needs it,
     # so an older worker never draws the old look. Installer 0.7.0.
     CLOCK_TOP_RIGHT = "clock_top_right"
+    # Not a render requirement but a worker ability, declared the same way
+    # (LIVESTACK-52): after a render the worker makes a 480p preview of the
+    # clip and uploads it when the task gives a preview_upload_url. No task
+    # needs it; a worker without it simply sends no preview. Installer 0.7.0.
+    CLIP_PREVIEW = "clip_preview"
+    # Also an ability (LIVESTACK-52): the worker can upload a finished clip
+    # it has for "Baixar clipe" (TaskKind.UPLOAD_CLIP). That task is offered
+    # only to a worker that declared it. Installer 0.7.0.
+    UPLOAD_CLIP = "upload_clip"
 
 
 class PassResultProblem(StrEnum):

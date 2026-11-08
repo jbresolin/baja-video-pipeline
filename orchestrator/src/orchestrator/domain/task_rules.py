@@ -18,6 +18,7 @@ from datetime import timedelta
 from orchestrator.db.database import from_db_time
 from orchestrator.domain.archive_rules import evaluate_archive_clip
 from orchestrator.domain.clip_archive import next_clip_relative_path
+from orchestrator.domain.clip_downloads import evaluate_upload_clip
 from orchestrator.domain.clip_names import clip_names_for_job, name_styles
 from orchestrator.domain.fleet_snapshot import (
     FleetSnapshot,
@@ -30,6 +31,7 @@ from orchestrator.domain.pass_clock import clock_for_render
 from orchestrator.domain.pass_results import pass_text_for_render
 from orchestrator.domain.render_features import can_render, required_render_features
 from orchestrator.domain.task_decision import TaskDecision, refuse
+from orchestrator.repositories import app_settings as settings_repo
 from orchestrator.repositories import leases as leases_repo
 from orchestrator.storage import VpsLayout
 from shared.models import (
@@ -73,6 +75,9 @@ def evaluate_task(
         if not is_studio:
             return refuse(ErrorCode.NOT_CLAIMABLE, "only the studio delivers")
         return _evaluate_deliver(connection, layout, job_row, worker_row)
+    if kind == TaskKind.UPLOAD_CLIP:
+        # "Baixar clipe" (LIVESTACK-52): the studio too, as a last resort.
+        return evaluate_upload_clip(connection, layout, snapshot, job_row, worker_row)
     if is_studio:
         return refuse(ErrorCode.NOT_CLAIMABLE, "the studio never holds or processes raws")
     if kind == TaskKind.ARCHIVE_CLIP:
@@ -143,6 +148,11 @@ def delivery_plan(
     return DeliveryPlan(mode=DeliveryRoute.DIRECT, studio_url=studio_url)
 
 
+def clip_previews_enabled(connection: sqlite3.Connection) -> bool:
+    """Settings "Gerar prévia dos clipes" (LIVESTACK-52) as stored; on before the first save."""
+    return bool(settings_repo.load_settings_values(connection).get("clip_previews_enabled", True))
+
+
 def _evaluate_process(
     connection: sqlite3.Connection,
     layout: VpsLayout,
@@ -150,6 +160,7 @@ def _evaluate_process(
     job_row: sqlite3.Row,
     worker_row: sqlite3.Row,
 ) -> TaskDecision:
+    previews_enabled = clip_previews_enabled(connection)
     state = JobState(job_row["state"])
     if state == JobState.CLAIMED:
         # Only reachable here when the process lease is the caller's own.
@@ -203,6 +214,10 @@ def _evaluate_process(
             pass_result_text=pass_result_text,
             pass_clock=pass_clock,
             required_render_features=required,
+            # "Ver clipe" (LIVESTACK-52): only while the Settings switch is on.
+            preview_upload_url=(
+                layout.api_url(f"/jobs/{job_id}/clip-preview") if previews_enabled else None
+            ),
         )
     )
 

@@ -132,6 +132,15 @@ class AdminSettings(ReadByClients):
     duplicate_video_message: str = Field(
         default=DEFAULT_DUPLICATE_VIDEO_MESSAGE, max_length=MAX_DUPLICATE_VIDEO_MESSAGE_LENGTH
     )
+    # "Gerar prévia dos clipes" (LIVESTACK-52): after a render, the worker
+    # makes a 480p preview of the clip for "Ver clipe". Off for an event
+    # where the VPS disk is tight; clips rendered while off have none.
+    clip_previews_enabled: bool = True
+    # "Baixar clipe" (LIVESTACK-52): the VPS copy goes this many minutes
+    # after its first complete download (time to retry a broken one)...
+    clip_download_keep_minutes: float = Field(default=30, ge=0, le=1440)
+    # ...or this many hours after the request when nobody downloads it.
+    clip_download_unused_hours: float = Field(default=24, ge=0, le=720)
 
 
 class UpdateSettingsRequest(ReceivedByServer):
@@ -165,6 +174,9 @@ class UpdateSettingsRequest(ReceivedByServer):
     duplicate_video_message: str | None = Field(
         default=None, max_length=2 * MAX_DUPLICATE_VIDEO_MESSAGE_LENGTH
     )
+    clip_previews_enabled: bool | None = None
+    clip_download_keep_minutes: float | None = Field(default=None, ge=0, le=1440)
+    clip_download_unused_hours: float | None = Field(default=None, ge=0, le=720)
 
 
 class EvolutionStatus(ReadByClients):

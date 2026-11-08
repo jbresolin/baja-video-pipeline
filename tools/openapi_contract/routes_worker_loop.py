@@ -344,6 +344,55 @@ def upload_original(
 
 
 @router.post(
+    "/jobs/{job_id}/clip-preview",
+    tags=["worker loop"],
+    summary="Chunked upload of a clip's 480p preview (LIVESTACK-52), after delivery",
+    response_model=ChunkAccepted,
+    openapi_extra=_CHUNK_BODY,
+    responses=error_responses(400, 401, 403, 404, 409, 413, 422),
+)
+def upload_clip_preview(
+    job_id: str,
+    upload_offset: int = Header(..., alias="Upload-Offset"),
+    upload_length: int = Header(..., alias="Upload-Length"),
+    upload_sha256: str = Header(..., alias="Upload-SHA256"),
+    clip_sha256: str = Header(
+        ..., alias="Clip-SHA256", description="The SHA-256 of the clip the preview was made from"
+    ),
+) -> ChunkAccepted:
+    """To ProcessTask.preview_upload_url, after the clip was delivered; no
+    lease (the delivery ended it). Only the worker that rendered that clip
+    version may send it (403), and only while it is the job's newest
+    version (409 conflict: a reprocess replaced it; also re-checked on the
+    completing chunk). On the completing chunk the preview is in
+    previews/<job_id>.<clip sha256>.mp4 (Caddy /previews/*, signed-in
+    users) and the older version's preview is deleted."""
+    not_implemented()
+
+
+@router.post(
+    "/jobs/{job_id}/clip-download-upload",
+    tags=["worker loop"],
+    summary='Chunked upload of a clip a reviewer asked for ("Baixar clipe", upload_clip)',
+    response_model=ChunkAccepted,
+    openapi_extra=_CHUNK_BODY,
+    responses=error_responses(400, 401, 404, 409, 413, 422),
+)
+def upload_requested_clip(
+    job_id: str,
+    upload_offset: int = Header(..., alias="Upload-Offset"),
+    upload_length: int = Header(..., alias="Upload-Length"),
+    upload_sha256: str = Header(..., alias="Upload-SHA256"),
+    lease_id: str = Header(..., alias="Lease-Id"),
+) -> ChunkAccepted:
+    """Under an upload_clip lease (LIVESTACK-52). Upload-SHA256 must be the
+    requested clip version's (422 otherwise). On the completing chunk the
+    clip is in requested_clips/<job_id>.mp4 and the lease ends; the job
+    does not change."""
+    not_implemented()
+
+
+@router.post(
     "/jobs/{job_id}/clip-archived",
     tags=["delivery"],
     summary="Master: confirm one clip version is in the archive (sha256 checked)",
