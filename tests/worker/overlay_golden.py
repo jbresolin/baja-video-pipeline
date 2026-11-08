@@ -140,11 +140,18 @@ CLOCK_GOLDEN_CASES: dict[str, tuple[OverlayText, int, Path]] = {
 
 
 def render_clock_frame(text: OverlayText, units: int) -> Image.Image:
-    """The still overlay with the clock at `units`, as one transparent 1920x1080 frame."""
-    canvas, layout = lay_out_overlay(text, frame_width=1920, frame_height=1080)
+    """The still overlay with the clock at `units`, as one transparent 1920x1080 frame.
+
+    The result pill is drawn only once the clock shows the official time:
+    with a clock, the result appears when it stops (LIVESTACK-53).
+    """
+    layout = lay_out_overlay(text, frame_width=1920, frame_height=1080)
+    canvas = layout.still.copy()
     canvas.alpha_composite(
-        compose_clock(layout, units, text.clock.decimals), dest=layout.region[:2]
+        compose_clock(layout.clock, units, text.clock.decimals), dest=layout.clock.region[:2]
     )
+    if layout.result is not None and units == text.clock.official_units:
+        canvas.alpha_composite(layout.result.image, dest=layout.result.position)
     return canvas
 
 

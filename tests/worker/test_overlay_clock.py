@@ -42,8 +42,7 @@ RESULT_ROW_TOP = 1080 - theme.BOTTOM_OFFSET_PX + theme.PILL_GAP_PX
 
 
 def clock_layout(text=CLOCK_TEXT):
-    _, layout = lay_out_overlay(text, frame_width=1920)
-    return layout
+    return lay_out_overlay(text, frame_width=1920).clock
 
 
 # --- Where it goes ---
@@ -67,11 +66,11 @@ def test_without_a_result_the_clock_starts_at_the_left_edge():
 def test_no_clock_means_no_layout_and_the_still_png_never_has_it():
     # The still PNG is the same with or without a clock: the clock is not
     # in it (it must be absent before the largada), only its place is kept.
-    without, layout = lay_out_overlay(replace(CLOCK_TEXT, clock=None), frame_width=1920)
-    with_clock, clock_place = lay_out_overlay(CLOCK_TEXT, frame_width=1920)
-    assert layout is None
-    assert clock_place is not None
-    assert count_differing_pixels(without, with_clock) == 0
+    without = lay_out_overlay(replace(CLOCK_TEXT, clock=None, pass_result=None), frame_width=1920)
+    with_clock = lay_out_overlay(replace(CLOCK_TEXT, pass_result=None), frame_width=1920)
+    assert without.clock is None
+    assert with_clock.clock is not None
+    assert count_differing_pixels(without.still, with_clock.still) == 0
 
 
 def test_a_long_result_line_leaves_room_for_the_clock():

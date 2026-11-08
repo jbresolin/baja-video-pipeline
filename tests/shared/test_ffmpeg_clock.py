@@ -153,3 +153,45 @@ def test_the_clock_shows_from_the_largada_on():
     entry = clock_filter(a_clock(), source="lower_third", pill_input=2)
     # Both the pill and the digits carry the same switch.
     assert entry.count("enable='gte((round(t*1000000)-2345000),0)'") == 2
+
+
+# --- The result pill, shown from the freeze (LIVESTACK-53) ---
+
+
+def test_the_result_is_switched_on_when_the_elapsed_time_reaches_the_official_time():
+    # 66,0 with one decimal = 66 000 000 µs after the largada: a comparison
+    # of whole numbers, true from the first frame whose clock shows 66,0.
+    assert a_clock().frozen_expression() == "gte((round(t*1000000)-2345000),66000000)"
+
+
+def test_a_clock_with_a_result_adds_it_as_the_fourth_input_laid_on_from_the_freeze():
+    clock = a_clock(result_png=Path("job.result.png"), result_position=(96, 948))
+    args = build_final_render_command(
+        RAW, OUT, 10.0, 20.0, X264_ENCODER, overlay_image=OVERLAY, clock=clock
+    )
+    # Inputs: raw, overlay, clock pill, result pill.
+    inputs = [args[index + 1] for index, arg in enumerate(args) if arg == "-i"]
+    assert inputs == [str(RAW), str(OVERLAY), "job.clock.png", "job.result.png"]
+    graph = value_after(args, "-filter_complex")
+    # The clock is drawn first, then the result over it, then the format.
+    assert (
+        "[clock][3:v]overlay=x=96:y=948"
+        ":enable='gte((round(t*1000000)-2345000),66000000)',format=yuv420p[video]"
+    ) in graph
+
+
+def test_a_clock_without_a_result_line_has_no_result_step():
+    graph = value_after(
+        build_final_render_command(
+            RAW, OUT, 10.0, 20.0, X264_ENCODER, overlay_image=OVERLAY, clock=a_clock()
+        ),
+        "-filter_complex",
+    )
+    assert "[clock]" not in graph
+    assert "66000000" not in graph
+
+
+def test_a_result_image_without_its_input_index_is_refused():
+    clock = a_clock(result_png=Path("job.result.png"), result_position=(96, 948))
+    with pytest.raises(ClockFilterError):
+        clock_filter(clock, source="lower_third", pill_input=2)

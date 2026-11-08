@@ -20,6 +20,12 @@ which the Python tests, the JavaScript test and the real-ffmpeg test read.
 The clock counts in *units* of the last decimal shown: with 1 decimal,
 66 s is 660 units. The official time is turned into units once, by the
 orchestrator (official_units), so no float rounding happens later.
+
+The result (LIVESTACK-53): with a clock, the result pill appears when the
+clock freezes, never while it runs, and stays to the end of the clip. The
+freeze is a whole number of microseconds after the largada (66,0 is
+66 000 000 µs), so "is the result shown" is one comparison of whole
+numbers, true exactly from the frame whose clock shows the official time.
 """
 
 import math
@@ -69,3 +75,36 @@ def clock_text_at(raw_time_s: float, largada_s: float, official: int, decimals: 
     """The clock's text at a moment of the raw video, or None when it is not shown."""
     units = clock_units(elapsed_microseconds(raw_time_s, largada_s), official, decimals)
     return None if units is None else clock_text(units, decimals)
+
+
+def freeze_elapsed_microseconds(official: int, decimals: int) -> int:
+    """Microseconds after the largada at which the clock reaches the official time.
+
+    Exact: a unit is 10^(6 - decimals) µs, a whole number for 0 to 3 decimals.
+    """
+    return official * (MICROSECONDS_PER_SECOND // units_per_second(decimals))
+
+
+def result_shown(elapsed_us: int, official: int, decimals: int) -> bool:
+    """With a clock, the result is shown from the freeze on (LIVESTACK-53).
+
+    The same moment as clock_units() reaching `official`: elapsed · units/s
+    ≥ official · 10⁶ is elapsed ≥ official · 10⁶ / units/s, a whole number.
+    """
+    return elapsed_us >= freeze_elapsed_microseconds(official, decimals)
+
+
+def result_shown_at(raw_time_s: float, largada_s: float, official: int, decimals: int) -> bool:
+    """Whether the result pill is shown at a moment of the raw video, when the clip has a clock."""
+    return result_shown(elapsed_microseconds(raw_time_s, largada_s), official, decimals)
+
+
+def clip_ends_before_freeze(
+    cut_out_s: float, largada_s: float, official: int, decimals: int
+) -> bool:
+    """True when the clip ends before the clock stops, so its result never appears.
+
+    The clip has frames before its cut-out only, so a freeze exactly at the
+    cut-out is already too late.
+    """
+    return not result_shown(elapsed_microseconds(cut_out_s, largada_s) - 1, official, decimals)

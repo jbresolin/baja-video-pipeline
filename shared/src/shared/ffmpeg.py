@@ -177,7 +177,8 @@ def build_final_render_command(
     that is not 16:9 into 1920×1080; None, or a plan without framing and
     rotation, is the render used before LIVESTACK-50, unchanged.
     `clock` (LIVESTACK-48, shared.ffmpeg_clock) adds the running clock on
-    top of the overlay; it needs `overlay_image`. None = the command is
+    top of the overlay, and its result pill from the freeze on when it has
+    one (LIVESTACK-53); it needs `overlay_image`. None = the command is
     exactly the one before LIVESTACK-48.
     """
     if cut_out_s <= cut_in_s:
@@ -207,11 +208,17 @@ def build_final_render_command(
         ]
     else:
         inputs += ["-i", str(overlay_image), "-i", str(clock.pill_png)]
+        # The result pill, shown from the clock's freeze (LIVESTACK-53).
+        result_input = None
+        if clock.result_png is not None:
+            inputs += ["-i", str(clock.result_png)]
+            result_input = 3
+        clocked = clock_filter(clock, source="lower_third", pill_input=2, result_input=result_input)
         filters = [
             *picture[:-1],
             f"{picture[-1]}[base]",
             "[base][1:v]overlay=x=0:y=main_h-overlay_h[lower_third]",
-            clock_filter(clock, source="lower_third", pill_input=2) + ",format=yuv420p[video]",
+            clocked + ",format=yuv420p[video]",
         ]
     maps = ["-map", "[video]"]
     audio_args = ["-an"]

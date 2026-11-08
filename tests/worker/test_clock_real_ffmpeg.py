@@ -83,9 +83,10 @@ def render_with_clock(
     """The worker's render of `raw` with the overlay and the clock, as process.py does it."""
     text = OverlayText(**{**OVERLAY.__dict__, "clock": clock})
     overlay_png = tmp_path / "overlay.png"
-    layout = render_overlay(overlay_png, text, frame_width=1920)
-    assert layout is not None
-    images = write_clock_pill(layout, clock, cut_in_s, tmp_path, stem="job")
+    overlay = render_overlay(overlay_png, text, frame_width=1920)
+    assert overlay.clock is not None
+    layout = overlay.clock
+    images = write_clock_pill(layout, clock, cut_in_s, tmp_path, stem="job", result=overlay.result)
     clip = tmp_path / "clip.mp4"
     command = build_final_render_command(
         raw,
@@ -116,7 +117,12 @@ def frame_times(clip: Path) -> list[float]:
 
 def clock_regions(clip: Path, layout: ClockLayout) -> list[Image.Image]:
     """The clock's region of every frame, as RGB pictures."""
-    x, y, width, height = layout.region
+    return frame_regions(clip, layout.region)
+
+
+def frame_regions(clip: Path, region: tuple[int, int, int, int]) -> list[Image.Image]:
+    """One region (x, y, width, height) of every frame, as RGB pictures."""
+    x, y, width, height = region
     decoded = subprocess.run(
         [
             "ffmpeg", "-hide_banner", "-nostdin", "-v", "error", "-i", str(clip),

@@ -69,6 +69,33 @@ def test_a_task_with_a_clock_gives_the_render_its_pill(harness, raw_bytes):
     assert not Path(seen_pills[0]).exists()
 
 
+def test_with_a_clock_the_result_pill_is_its_own_input_shown_from_the_freeze(harness, raw_bytes):
+    # Setup: a task with a clock and a result line (LIVESTACK-53).
+    job = hold_raw(harness, raw_bytes)
+    seen = []
+
+    def look(what):
+        if what == "final render":
+            command = harness.media.command_for("final render")
+            seen.extend(arg for arg in command if arg.endswith(".result.png"))
+            assert all(Path(arg).exists() for arg in seen)
+
+    harness.media.during_render = look
+
+    harness.claim_and_run(
+        process_task(job, pass_clock=CLOCK, pass_result_text="66 s · 4 cones → 86 s")
+    )
+
+    # The result pill went to ffmpeg as a picture of its own, switched on
+    # at the freeze (66 000 000 µs after the largada)...
+    assert [Path(arg).name for arg in seen] == [f"{job.job_id}.result.png"]
+    command = final_render_command(harness)
+    graph = command[command.index("-filter_complex") + 1]
+    assert ",66000000)'" in graph
+    # ...and is cleaned up afterwards.
+    assert not Path(seen[0]).exists()
+
+
 def test_a_task_without_a_clock_renders_exactly_as_before(harness, raw_bytes):
     job = hold_raw(harness, raw_bytes)
     harness.claim_and_run(process_task(job))

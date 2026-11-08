@@ -22,7 +22,6 @@ compose_clock() draws a clock with Pillow alone, for the golden images
 (the look João reviews) and the preview of a layout.
 """
 
-import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,7 +31,7 @@ from shared.ffmpeg_clock import ClockOverlay
 from shared.models import RenderClock
 from shared.pass_clock import DECIMAL_COMMA, clock_text, units_per_second
 from worker import overlay_tokens as theme
-from worker.overlay_draw import baseline_for_centre, paste_rounded_box
+from worker.overlay_draw import PlacedImage, baseline_for_centre, even_region, paste_rounded_box
 from worker.overlay_text import font
 
 
@@ -82,18 +81,8 @@ def layout_clock(clock: RenderClock, left: float, top: float, scale: float = 1.0
     text_right = left + width - theme.RESULT_PILL_PADDING_PX * scale
     text_right -= theme.RESULT_TRACKING_EM * font_px
     baseline = baseline_for_centre(font(font_px), top + height / 2)
-    region = _even_region(left, top, width, height)
+    region = even_region(left, top, width, height)
     return ClockLayout(left, top, width, height, font_px, text_right, baseline, region)
-
-
-def _even_region(left: float, top: float, width: float, height: float) -> tuple[int, int, int, int]:
-    """The smallest box with even edges around the pill: 4:2:0 video keeps colour
-    per 2×2 pixels, so the pill lands on whole colour samples, and tests can cut it out."""
-    x0 = math.floor(left) // 2 * 2
-    y0 = math.floor(top) // 2 * 2
-    x1 = math.ceil(left + width)
-    y1 = math.ceil(top + height)
-    return x0, y0, x1 - x0 + (x1 - x0) % 2, y1 - y0 + (y1 - y0) % 2
 
 
 def draw_clock_pill(layout: ClockLayout) -> Image.Image:
@@ -119,12 +108,22 @@ def ffmpeg_colour(rgba: tuple[int, int, int, int]) -> str:
 
 
 def write_clock_pill(
-    layout: ClockLayout, clock: RenderClock, cut_in_s: float, directory: Path, stem: str
+    layout: ClockLayout,
+    clock: RenderClock,
+    cut_in_s: float,
+    directory: Path,
+    stem: str,
+    result: PlacedImage | None = None,
 ) -> ClockOverlay:
-    """Save the pill as a PNG, and say how ffmpeg draws the clock."""
+    """Save the pill (and the result pill, shown from the freeze) as PNGs, and say
+    how ffmpeg draws them."""
     directory.mkdir(parents=True, exist_ok=True)
     pill_path = directory / f"{stem}.clock.png"
     draw_clock_pill(layout).save(pill_path, format="PNG")
+    result_path = None
+    if result is not None:
+        result_path = directory / f"{stem}.result.png"
+        result.image.save(result_path, format="PNG")
     return ClockOverlay(
         pill_png=pill_path,
         pill_position=(layout.region[0], layout.region[1]),
@@ -137,6 +136,8 @@ def write_clock_pill(
         largada_s=clock.largada_s,
         official_units=clock.official_units,
         decimals=clock.decimals,
+        result_png=result_path,
+        result_position=None if result is None else result.position,
     )
 
 
