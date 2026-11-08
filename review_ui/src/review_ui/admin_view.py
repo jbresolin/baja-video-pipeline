@@ -46,6 +46,7 @@ DONE_KEYS = {
     "contact_created",
     "contact_created_welcome_sent",
     "contact_updated",
+    "contact_updated_prova_applied",
     "welcome_sent",
     "prova_created",
     "prova_updated",

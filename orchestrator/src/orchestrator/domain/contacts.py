@@ -15,6 +15,10 @@ Intake asks two questions here for every private message:
 
 An allowed or unknown sender's default prova (if any) is filled into
 their new jobs; the reviewer can still change it.
+
+Contacts are keyed by one form of the phone number (domain/phones.py), so
+a number the admin typed with the mobile 9th digit and a WhatsApp JID
+without it are the same contact (LIVESTACK-51).
 """
 
 import re
@@ -23,38 +27,41 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from orchestrator.db.database import from_db_time, to_db_time
+from orchestrator.domain.phones import canonical_phone_from_jid_digits, canonical_typed_phone
 from orchestrator.repositories import catalog as catalog_repo
 from orchestrator.repositories import contacts as contacts_repo
 from shared.models import ContactStatus, IntakeMode
 
 REFUSAL_REPLY_INTERVAL = timedelta(hours=24)
-MIN_PHONE_DIGITS = 8
-MAX_PHONE_DIGITS = 20
 
 
 def phone_from_jid(remote_jid: str) -> str:
-    """The sender's number as digits only.
+    """The sender's number as the JID writes it, digits only.
 
     "5511987654321@s.whatsapp.net" → "5511987654321". A device suffix
-    ("5511987654321:12@s.whatsapp.net") is dropped too.
+    ("5511987654321:12@s.whatsapp.net") is dropped too. Not the contact
+    key: see contact_phone_from_jid.
     """
     user_part = remote_jid.split("@", 1)[0].split(":", 1)[0]
     return re.sub(r"\D", "", user_part)
+
+
+def contact_phone_from_jid(remote_jid: str) -> str:
+    """The contact key of a JID: "551981234567@s.whatsapp.net" → "5519981234567"."""
+    return canonical_phone_from_jid_digits(phone_from_jid(remote_jid))
 
 
 def sender_phone(sender_jid: str | None) -> str | None:
     """The contact key of a job's or message's sender JID; None without one (test uploads)."""
     if not sender_jid:
         return None
-    return phone_from_jid(sender_jid) or None
+    return contact_phone_from_jid(sender_jid) or None
 
 
 def normalize_phone(typed: str) -> str | None:
-    """Digits of a number an admin typed ("+55 (11) 98765-4321"), or None if implausible."""
-    digits = re.sub(r"\D", "", typed)
-    if not MIN_PHONE_DIGITS <= len(digits) <= MAX_PHONE_DIGITS:
-        return None
-    return digits
+    """The contact key of a number an admin typed ("+55 (11) 98765-4321",
+    "19 98123-4567"), or None if implausible (domain/phones.py)."""
+    return canonical_typed_phone(typed)
 
 
 def record_sender(
@@ -65,7 +72,7 @@ def record_sender(
     The display name is prefilled from the profile name only while it is
     empty, so a name the admin typed is never overwritten.
     """
-    phone = phone_from_jid(remote_jid)
+    phone = contact_phone_from_jid(remote_jid)
     row = contacts_repo.get_contact_row(connection, phone)
     if row is None:
         contacts_repo.insert_contact(

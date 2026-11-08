@@ -15,7 +15,9 @@ from shared.models.enums import ContactStatus
 class Contact(ReadByClients):
     """Read by clients: unknown fields are ignored."""
 
-    # Digits only, from the webhook's remoteJid, e.g. "5511987654321".
+    # Digits only, one form for every way the number is written
+    # (LIVESTACK-51): a Brazilian mobile with its 9th digit, e.g.
+    # "5511987654321", even when WhatsApp's JID leaves the 9 out.
     phone: str
     # Editable by the admin; prefilled from the WhatsApp profile name.
     display_name: str | None = None
@@ -33,6 +35,11 @@ class Contact(ReadByClients):
     # When Evolution last accepted the welcome message for this contact
     # (LIVESTACK-44); None if it never did. Failed sends are only events.
     welcome_sent_at: datetime | None = None
+    # This sender's videos still waiting for review (received, proxy_ready,
+    # awaiting_review) with no prova yet (LIVESTACK-51): what "apply the
+    # default prova to them" would change. Filled in by GET /admin/contacts
+    # and PATCH /admin/contacts/{phone}.
+    waiting_without_prova: int = Field(default=0, ge=0)
 
 
 class ContactsResponse(ReadByClients):
@@ -111,3 +118,7 @@ class UpdateContactRequest(ReceivedByServer):
     status: ContactStatus | None = None
     default_prova_id: int | None = None
     notes: str | None = Field(default=None, max_length=500)
+    # Also fill the (new) default prova into this sender's videos still
+    # waiting for review with no prova yet (LIVESTACK-51); the page asks
+    # first. Ignored when the contact has no default prova after the change.
+    apply_default_prova_to_waiting: bool = False

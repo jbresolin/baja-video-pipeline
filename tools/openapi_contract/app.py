@@ -69,6 +69,9 @@ from tools.openapi_contract import (
 # JobSummary.duplicate_of, AdminSettings.duplicate_video_message.
 # Who has a job page open: PUT/DELETE /jobs/{id}/presence (JobPresenceResponse,
 # PresentReviewer) and JobSummary.reviewing.
+# One contact per phone: Contact.waiting_without_prova and
+# UpdateContactRequest.apply_default_prova_to_waiting; a {phone} in the path
+# may be written in any form (9th digit, +55).
 # Only reviewer-facing answers changed; workers ignore them (§14).
 CONTRACT_VERSION = "2.9.0"
 

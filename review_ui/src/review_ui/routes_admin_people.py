@@ -186,14 +186,19 @@ def update_contact(request: Request, phone: str, form: dict = Depends(read_form)
         changes["display_name"] = form_text(form, "display_name")
         changes["default_prova_id"] = form_int(form, "default_prova_id")
         changes["notes"] = form_text(form, "notes")
+        # "Aplicar … aos vídeos …?" answered yes (js/admin.js, LIVESTACK-51).
+        changes["apply_default_prova_to_waiting"] = (
+            form.get("apply_default_prova_to_waiting") == "1"
+        )
     try:
         body = UpdateContactRequest(**changes)
     except ValueError:
         return _contacts_page(request, text("error.validation_error"), 400)
+    applied = changes.get("apply_default_prova_to_waiting", False)
     return apply_change(
         lambda: admin_client_for(request).update_contact(phone, body),
         CONTACTS_PATH,
-        "contact_updated",
+        "contact_updated_prova_applied" if applied else "contact_updated",
         lambda error, status: _contacts_page(request, error, status),
     )
 

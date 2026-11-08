@@ -4301,6 +4301,11 @@ components:
             format: date-time
           - type: 'null'
           title: Welcome Sent At
+        waiting_without_prova:
+          type: integer
+          minimum: 0.0
+          title: Waiting Without Prova
+          default: 0
       type: object
       required:
       - phone
@@ -4357,6 +4362,11 @@ components:
             format: date-time
           - type: 'null'
           title: Welcome Sent At
+        waiting_without_prova:
+          type: integer
+          minimum: 0.0
+          title: Waiting Without Prova
+          default: 0
         welcome:
           anyOf:
           - $ref: '#/components/schemas/WelcomeResult'
@@ -8104,6 +8114,10 @@ components:
             maxLength: 500
           - type: 'null'
           title: Notes
+        apply_default_prova_to_waiting:
+          type: boolean
+          title: Apply Default Prova To Waiting
+          default: false
       additionalProperties: false
       type: object
       title: UpdateContactRequest

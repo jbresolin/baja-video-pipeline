@@ -24,6 +24,7 @@
   {% endfor %}
   </tbody>
 </table>
+<p class="hint">{{ t("contacts.default_prova.hint") }}</p>
 {% else %}
 <p class="empty">{{ t("contacts.empty_with_status") if chosen_status else t("contacts.empty") }}</p>
 {% endif %}
@@ -45,6 +46,7 @@
     </select>
   </label>
   <label>{{ t("contacts.notes") }} <input name="notes" maxlength="500"></label>
+  <p class="hint">{{ t("contacts.default_prova.hint") }}</p>
   {# LIVESTACK-44. Checked for "Permitido" (the first status); js/admin.js
      unchecks and disables it for "Bloqueado" (the orchestrator never sends
      to a blocked contact anyway). Disabled while the message is empty. #}
