@@ -7,9 +7,12 @@
 // of the worker's drawing:
 //   * the texts come from the server as a render gets them (names after
 //     the Settings' choices, the result line, the official time in clock
-//     units: #overlay-preview-data); the page's own fields are read live,
-//     so unsaved edits show (prova, passagem and its toggle, "Mostrar
-//     resultado", "Mostrar cronômetro", the largada and the cuts);
+//     units: #overlay-preview-data), fetched again after a save
+//     (GET /review/api/jobs/{id}/overlay-preview); the page's own fields
+//     are read live, so unsaved edits show (prova, passagem and its toggle,
+//     "Mostrar resultado", "Mostrar cronômetro", the largada and the cuts),
+//     and so does a typed car number with the team the form looked up for
+//     it ("team-looked-up" from js/review_form.js);
 //   * the clock follows the same rule as the clip (js/pass_clock.js),
 //     from the video's currentTime, frame by frame (requestAnimationFrame);
 //   * outside the cut there is no clip, so nothing is drawn.
@@ -44,6 +47,25 @@ export function resultParts(line) {
   return parts;
 }
 
+// The name pill's parts: the car number chip and the team, as the clip shows them.
+export function nameParts({ carNumber, teamName }) {
+  const parts = [];
+  if (Number.isInteger(carNumber)) parts.push({ text: String(carNumber), kind: "chip" });
+  if (teamName && teamName.trim()) parts.push({ text: teamName.trim().toUpperCase(), kind: "team" });
+  return parts;
+}
+
+// What the preview keeps from a "team-looked-up" answer (GET /teams/{car}):
+// the names the clip uses, by the Settings' choices, else the plain ones.
+export function namesFromTeamAnswer(carNumber, team) {
+  if (team === null) return { car_number: carNumber, team_name: null, school_name: null };
+  return {
+    car_number: carNumber,
+    team_name: team.clip_team_name ?? team.team_name ?? null,
+    school_name: team.clip_school_name ?? team.school ?? null,
+  };
+}
+
 // The role pill's parts, as worker/overlay.py's OverlayText.role_parts().
 export function roleParts({ prova, passagem, showPass, school }) {
   const parts = [];
@@ -58,21 +80,54 @@ export function setupOverlayPreview({ video, form, player }) {
   const toggle = document.getElementById("overlay-preview-toggle");
   const dataElement = document.getElementById("overlay-preview-data");
   if (!box || !toggle || !dataElement || !video) return;
-  const data = JSON.parse(dataElement.textContent);
+  // Changed by "team-looked-up" (names) and after a save (everything).
+  let data = JSON.parse(dataElement.textContent);
+  const jobId = form.closest("[data-job-id]")?.dataset.jobId;
 
-  // --- The pills, built once; their texts change in place. ---
+  // --- The pills; their contents are redrawn when the data changes. ---
   const stage = element("div", "ovl-stage");
   const lowerThird = element("div", "ovl-lower-third");
   const namePill = element("div", "ovl-pill ovl-name-pill");
-  if (data.car_number !== null) namePill.append(element("span", "ovl-chip", String(data.car_number)));
-  if (data.team_name) namePill.append(element("span", "ovl-team", data.team_name.trim().toUpperCase()));
   const rolePill = element("div", "ovl-pill ovl-role-pill");
   lowerThird.append(namePill, rolePill);
   const resultRow = element("div", "ovl-result-row");
   const resultPill = element("div", "ovl-pill ovl-result-pill");
-  for (const part of data.result_text ? resultParts(data.result_text) : []) {
-    resultPill.append(element("span", `ovl-${part.kind}`, part.text));
+
+  function fillNameAndResult() {
+    namePill.replaceChildren();
+    for (const part of nameParts({ carNumber: data.car_number, teamName: data.team_name })) {
+      namePill.append(element("span", part.kind === "chip" ? "ovl-chip" : "ovl-team", part.text));
+    }
+    namePill.hidden = namePill.childElementCount === 0;
+    resultPill.replaceChildren();
+    for (const part of data.result_text ? resultParts(data.result_text) : []) {
+      resultPill.append(element("span", `ovl-${part.kind}`, part.text));
+    }
   }
+  fillNameAndResult();
+
+  // A car number typed in the form: its team, as the form looked it up.
+  form.addEventListener("team-looked-up", (event) => {
+    const { carNumber, team } = event.detail;
+    data = { ...data, ...namesFromTeamAnswer(carNumber, team) };
+    fillNameAndResult();
+  });
+
+  // Saved without a reload: the server's texts may have changed (a result
+  // for the new car or passagem, its official time), so fetch them again.
+  form.addEventListener("review-saved", async () => {
+    if (!jobId) return;
+    const answer = await fetch(`/review/api/jobs/${encodeURIComponent(jobId)}/overlay-preview`, {
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+    });
+    if (!answer.ok) return;
+    data = await answer.json();
+    clockWidthSet = false;
+    clockDigits.style.width = "";
+    fillNameAndResult();
+  });
+
   const clockPill = element("div", "ovl-pill ovl-clock-pill");
   const clockDigits = element("span", "ovl-clock-digits");
   clockPill.append(clockDigits);

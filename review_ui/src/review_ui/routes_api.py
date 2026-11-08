@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from review_ui.catalog import text
 from review_ui.errors import UiRequestError
 from review_ui.job_view import describe_waiting_reason, save_message
+from review_ui.pass_clock_view import overlay_preview_data
 from review_ui.presence_view import presence_sentence
 from review_ui.request_context import orchestrator_for, render_fragment
 from review_ui.routes_job import build_passagem_help
@@ -156,6 +157,13 @@ def passagem_help(
             "suggestion": panel.suggestion if panel else None,
         }
     )
+
+
+@router.get("/jobs/{job_id}/overlay-preview")
+def get_overlay_preview(request: Request, job_id: str) -> JSONResponse:
+    """The overlay preview's server texts, fetched again by the page after a save."""
+    job = orchestrator_for(request).get_job(job_id)
+    return JSONResponse(overlay_preview_data(job))
 
 
 @router.get("/teams/{car_number}")

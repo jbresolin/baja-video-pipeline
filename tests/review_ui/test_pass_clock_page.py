@@ -168,6 +168,22 @@ def test_the_preview_toggle_and_its_data_are_on_the_page(ui, fake_orchestrator):
     assert "css/overlay_preview.css" in html
 
 
+def test_the_preview_texts_can_be_fetched_again_after_a_save(ui, fake_orchestrator):
+    # Arrange: a Manobrabilidade job with a result and an official time.
+    # (Seen 2026-11-08: the preview drew the texts the page was opened with,
+    # so a car number or passagem saved afterwards did not show.)
+    fake_orchestrator.add_job(pass_clock_job("job-preview-again"))
+
+    # Act: ask for the preview's data the way the page does after a save.
+    answer = ui.get("/review/api/jobs/job-preview-again/overlay-preview")
+
+    # Assert: the same data the page embeds when it is opened.
+    assert answer.status_code == 200, "the page must be able to refresh the preview"
+    assert answer.json() == overlay_preview_data(pass_clock_job("job-preview-again")), (
+        "the refreshed preview must be built exactly like the embedded one"
+    )
+
+
 def test_the_largada_and_the_toggle_go_to_the_orchestrator(ui, fake_orchestrator):
     fake_orchestrator.add_job(pass_clock_job("job-send"))
 
@@ -287,7 +303,7 @@ const input = JSON.parse(process.env.CASES);
 globalThis.document = { getElementById: () => ({ textContent: input.catalog }) };
 const { collectReviewBody } = await import(input.review_form);
 const { largadaFieldValue } = await import(input.player);
-const { resultParts, roleParts } = await import(input.preview);
+const { resultParts, roleParts, nameParts, namesFromTeamAnswer } = await import(input.preview);
 function form(extra) {
   return { elements: {
     prova: { value: "Manobrabilidade" }, car_number: { value: "26" }, passagem: { value: "2" },
@@ -305,6 +321,13 @@ console.log(JSON.stringify({
   result: resultParts("58 s · 8 cones, 2 saídas de pista → 118 s"),
   role: roleParts({ prova: "Manobrabilidade", passagem: 2, showPass: true, school: "Unifei" }),
   roleHidden: roleParts({ prova: "Enduro", passagem: 2, showPass: false, school: "" }),
+  name: nameParts({ carNumber: 26, teamName: " Saci Baja UNIFEI " }),
+  nameNumberOnly: nameParts({ carNumber: 26, teamName: null }),
+  nameEmpty: nameParts({ carNumber: null, teamName: null }),
+  typedTeam: namesFromTeamAnswer(26, {
+    team_name: "Saci Baja UNIFEI", clip_team_name: "Saci", school: "UNIFEI", clip_school_name: null,
+  }),
+  typedUnknown: namesFromTeamAnswer(999, null),
 }));
 """
 
@@ -399,3 +422,26 @@ def test_testar_says_why_the_clock_has_no_time():
 
 def test_testar_without_a_clock_says_nothing_about_one():
     assert trial(text="59 s").clock is None
+
+
+def test_js_name_pill_shows_the_number_and_the_team_in_capitals(js):
+    # The car number chip and the team in capitals, as the clip draws them.
+    assert js["name"] == [
+        {"text": "26", "kind": "chip"},
+        {"text": "SACI BAJA UNIFEI", "kind": "team"},
+    ], "the name pill must show the number and the team"
+
+
+def test_js_name_pill_shows_the_number_alone_before_the_team_is_known(js):
+    # A typed number whose team has not been looked up yet: the chip alone.
+    assert js["nameNumberOnly"] == [{"text": "26", "kind": "chip"}]
+    # No car at all: an empty pill (the page then hides it).
+    assert js["nameEmpty"] == []
+
+
+def test_js_a_typed_car_uses_the_names_the_clip_will_use(js):
+    # The team lookup answers both name styles; the preview takes the clip's
+    # (Settings: short team name), and falls back to the plain school.
+    assert js["typedTeam"] == {"car_number": 26, "team_name": "Saci", "school_name": "UNIFEI"}
+    # A number with no team: the chip stays, the names go.
+    assert js["typedUnknown"] == {"car_number": 999, "team_name": None, "school_name": None}

@@ -114,6 +114,9 @@ export function setupReviewForm({ form, jobElement, confirmForward = () => true 
       markMissing([]);
       if (action === "save" && !result.data.refresh_page) {
         showFlash(t("script.saved_version", { message: result.data.message, version }), "success");
+        // Saved without a reload: the overlay preview fetches its server
+        // texts again (result line, official time, names).
+        form.dispatchEvent(new CustomEvent("review-saved"));
       } else if (action === "save") {
         // A clip exists: reload so the warning about the clip on air shows now.
         flashAfterReload(t("script.saved_version", { message: result.data.message, version }), "warning");
@@ -146,11 +149,18 @@ export function setupReviewForm({ form, jobElement, confirmForward = () => true 
   }
 
   // --- Team name from the car number (GET /teams/{car} via the UI). ---
+  // Each answer is also sent to the page as a "team-looked-up" event, so the
+  // overlay preview (js/overlay_preview.js) shows the typed car's team
+  // without waiting for a save. `team` is the API's answer, or null.
+  function announceTeam(carNumber, team) {
+    form.dispatchEvent(new CustomEvent("team-looked-up", { detail: { carNumber, team } }));
+  }
   let lookupTimer = null;
   async function lookUpTeam() {
     const carNumber = numberOrNull(form.elements.car_number.value, (t) => parseInt(t, 10));
     if (carNumber === null) {
       teamText.textContent = "";
+      announceTeam(null, null);
       return;
     }
     teamText.textContent = t("script.team_looking_up");
@@ -158,6 +168,7 @@ export function setupReviewForm({ form, jobElement, confirmForward = () => true 
     // Ignore a late answer for a number the reviewer already changed.
     if (numberOrNull(form.elements.car_number.value, (t) => parseInt(t, 10)) !== carNumber) return;
     teamText.replaceChildren();
+    announceTeam(carNumber, result.ok ? result.data : null);
     if (result.ok) {
       // The names a clip shows, by the Settings page's choices (full or short).
       const schoolText = result.data.clip_school_name ?? result.data.school;

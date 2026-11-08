@@ -1413,3 +1413,10 @@ ignore the new answer fields, §14). Migrations 0017 and 0018.
   recognised as HDR. The clip maker now sets them with `setparams`. The
   workers' own renders were not affected: their outputs come out labelled
   BT.709 as before.
+* **Overlay preview follows the form** (2026-11-08). The preview drew the
+  names and texts the job page was opened with, so a car typed (or saved
+  without a reload) showed no number or team. The name pill now follows
+  the typed car with the team the form looks up (a `team-looked-up` event
+  from `review_form.js`), and after a save without a reload the page
+  fetches the preview's server texts again
+  (`GET /review/api/jobs/{id}/overlay-preview`).
