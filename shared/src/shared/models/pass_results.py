@@ -161,3 +161,10 @@ class PassResultTestResponse(ReadByClients):
     # Penalty icons in the table that the configuration has no name for;
     # they are shown with their class name and logged.
     unknown_penalties: list[str] = Field(default_factory=list)
+    # The running clock (LIVESTACK-48), for a prova with a `clock` block:
+    # the official time it freezes on, as the clock writes it ("66,0"), or
+    # why it is not known. A prova with only a clock has no `text`.
+    clock_configured: bool = False
+    clock_text: str | None = None
+    clock_problem: PassResultProblem | None = None
+    clock_problem_detail: str | None = None

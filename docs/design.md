@@ -1136,8 +1136,8 @@ installer 0.5.0.
   "1.234"). A missing corrected value leaves just the time. Then each
   `extra` column's value for the same run, `· <value> <unit>`, with its own
   decimals (Suspensão's obstacles, from the 2024 Sudeste table); an extra
-  with no value for the run is left out. The unit is fixed text, so "1
-  obstáculos" is possible; names by count exist only for penalties.
+  with no value for the run is left out. The unit is fixed text, or
+  (§33) names by count like a penalty's.
 * **Fetching** (`domain/pass_results_fetch.py`, background every 10 s):
   tables of configured provas that have jobs in `awaiting_review`,
   `ready`, `claimed`, `uploaded`, `delivered` or `done`, however long ago
@@ -1200,3 +1200,101 @@ installer 0.5.0.
   fetch is not seen (the event is over by then); how the API writes a
   "---" run in `raw` was not seen (the 24SE snapshots are of the old pages;
   `"---"`, `"-"` and null all mean no result).
+
+## 33. The running clock in the overlay (LIVESTACK-48, 2026-11-07)
+
+For timed provas the audience wants a clock over the video that stops on
+the official time (brief "09", part B, on top of §32). Contract 2.8.0,
+installer 0.6.0.
+
+* **The largada** is a mark on the job page like the cuts ("Marcar", the
+  `l` key, `-`/`=` nudge it by a frame, a line on the cut bar, "Limpar"),
+  stored on the job in raw-video seconds (`jobs.largada_s`, migration
+  0016). Only provas whose configuration has a `clock` block offer it.
+  The browser writes it rounded **down** to the millisecond, so the frame
+  the reviewer marked is at or after it and shows 0. `ReviewUpdate` keeps
+  "left out = keep"; `clear_largada: true` removes the mark. A largada
+  past the end of the video is refused (422).
+* **"Mostrar cronômetro"** (`jobs.show_clock`, NULL = the prova's
+  `show_by_default`, like the result toggle): João asked for a toggle for
+  the clock next to the result's. Off = no clock in the clip.
+* **The official time** is the `clock.column` value of the run, the raw
+  time, not the corrected one, read by the same table lookup as the result
+  line (`pass_text.run_value`), from the same fetched tables. It becomes
+  whole **clock units** once, on the orchestrator, rounded down
+  (`shared.pass_clock.official_units`: 59.44 s with 1 decimal = 594). No
+  official time = no clock (the job page says why, with the result line's
+  sentences); a negative value is "not a number".
+* **The rule** (`shared/pass_clock.py`; `review_ui/static/js/pass_clock.js`):
+  at raw time *t*, elapsed = µs(*t*) − µs(largada), each rounded half up
+  to whole microseconds; before the largada nothing; else
+  `min(⌊elapsed · 10^decimals / 10⁶⌋, official_units)`, written with a
+  decimal comma and no leading zeros ("0,0", "9,9", "10,0", "66,0").
+  Counting in whole µs and whole units avoids float traps (1.0 − 0.9 is
+  0.0999… in floating point). `tests/fixtures/pass_clock/vectors.json` is
+  read by the Python and the JavaScript tests; ffmpeg's expression is
+  checked frame by frame against the Python rule.
+* **Burning it in.** The pills stay one still PNG; the clock is two more
+  steps, both switched on from the largada (timeline `enable`): its pill,
+  a small PNG drawn by Pillow like the others (worker/overlay_clock.py),
+  and the digits by ffmpeg's `drawtext` with the vendored Bebas Neue and
+  the pills' text colour, right-aligned in the pill on the pills' baseline
+  (`y_align=baseline`), its text an expression of the frame's own `t`
+  (`%{eif:…}`; raw time = cut-in + *t*, the render seeks to the cut-in).
+  So every output frame, VFR included, shows its own value; the clock
+  freezes by `min()`, the same text at the same place. The pill sits on
+  the result pill's row, one `--row-gap` to its right (alone at the left
+  edge without a result), board-row sized, as wide as the official time
+  (Bebas Neue's digits all have the same advance, so "9,9" then "10,0"
+  never shifts). With a clock, the result pill has that much less room.
+  **Why drawtext**: the first version showed Pillow-drawn digit strips
+  moved per frame by `overlay` expressions over a cut-out region; it was
+  just as exact but made a 20 s 4K HEVC render ~25 % slower with ffmpeg
+  6.1 (six extra filters). drawtext costs nothing measurable (5.2–5.6 s
+  with or without the clock on that render). Its digits lack the 0.02 em
+  tracking Pillow adds; side by side they are otherwise the same.
+  Option values are quoted and `:` and `\` escaped (a Windows font path
+  "C:/…"); a font path with a `'` is refused. The worker's BtbN gpl build
+  has libfreetype.
+* **Render feature `clock`** (§29 mechanism): a task needs it when it
+  carries `ProcessTask.pass_clock`. A 0.5.0 worker is not offered it; the
+  job says "Esperando um PC … 0.6.0". The waiting reason names the newest
+  feature a holder lacks when leaving it out is enough
+  (`render_features.NEWER_FEATURE_REASONS`).
+* **Render inputs** (§25): `RenderInputs.pass_clock` (largada within
+  0.5 ms, official units, decimals). The official time arriving or being
+  corrected, the largada moved, or the toggle changed flags a delivered
+  clip ("O cronômetro agora entraria no clipe…"). Never reprocessed
+  automatically.
+* **Preview on the job page.** "Pré-visualizar overlay" (any job with a
+  proxy) draws the lower third over the proxy in HTML/CSS with the
+  worker's own `tokens.css` and font: the review UI has byte-for-byte
+  copies (`tools/refresh_overlay_theme.py` writes both; a test compares
+  them) and serves `tokens.css` with its `:root` rule scoped to
+  `.overlay-preview`, because `--radius` and `--text` mean something else
+  in `app.css`. Texts come from the server (`Job.clip_team_name`,
+  `clip_school_name`, the result line, the official units); the form's
+  fields are read live, so unsaved toggles, passagem, largada and cuts
+  show. The clock runs from the video's `currentTime` on every animation
+  frame; outside the cut nothing is drawn. A quick check: names are the
+  saved ones, and the browser shrinks long lines differently.
+* **`extra` units by count** (João): an `extra` item's `unit` may be
+  `{"one": …, "other": …}`; "one" when the number *as shown* is exactly 1
+  ("1 obstáculo", "1,0 obstáculo"; 0 and 1,5 take "other", like the
+  penalties). Fixed text still works.
+* **"Testar"** also says where the clock stops ("Cronômetro para em
+  66,0 s") or why it would not run; a prova with only a `clock` block can
+  be tested.
+* **Deployment order: the VPS first, then the workers.** A 0.6.0 worker
+  always sends `pass_clock` (null or not) in its render-inputs report,
+  which an orchestrator before 2.8.0 refuses; it logs that and delivers,
+  and the version keeps the claim snapshot. The review UI goes with the
+  orchestrator.
+* **Not checked without a real event**: the largada on real phone footage
+  (proxy CFR 30 fps vs a VFR raw: the mark is a proxy time, the rule is
+  applied to raw frame times, so a frame may differ by up to one proxy
+  frame from what the reviewer saw when the raw's frames fall between the
+  proxy's); drawtext on the worker's ffmpeg 9.0 (tested with 6.1:
+  `y_align`, `%{eif}` padding and the escaping are the same there, per its
+  documentation); the render-time cost on a worker PC (measured here on a
+  32-thread machine).

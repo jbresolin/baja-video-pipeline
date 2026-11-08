@@ -120,6 +120,12 @@ class ReviewUpdate(ReceivedByServer):
     # "Mostrar resultado da passagem" (LIVESTACK-47). Left out = keep. A job
     # never set follows its prova's `show_by_default` (Job.show_pass_result).
     show_pass_result: bool | None = None
+    # The running clock (LIVESTACK-48): the largada in raw-video seconds
+    # ("Largada" on the job page) and "Mostrar cronômetro". Left out = keep,
+    # like the rest; `clear_largada: true` removes the mark (no clock).
+    largada_s: Seconds | None = None
+    clear_largada: bool | None = None
+    show_clock: bool | None = None
 
     @model_validator(mode="after")
     def _cuts_in_order(self) -> "ReviewUpdate":

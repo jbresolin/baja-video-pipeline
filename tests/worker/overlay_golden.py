@@ -12,7 +12,9 @@ from pathlib import Path
 
 from PIL import Image, ImageChops
 
-from worker.overlay import OverlayText, render_overlay_png
+from shared.models import RenderClock
+from worker.overlay import OverlayText, lay_out_overlay, render_overlay_png
+from worker.overlay_clock import compose_clock
 
 GOLDEN_PATH = Path(__file__).parent / "golden" / "overlay-car1-1080p.png"
 # Exactly what the orchestrator sends for car 1 of the fake results API
@@ -114,6 +116,38 @@ RESULT_GOLDEN_CASES: dict[str, tuple[OverlayText, Path]] = {
 }
 
 
+# The running clock (LIVESTACK-48): the overlay as a frame of the clip
+# shows it, the clock drawn with Pillow (worker.overlay_clock.compose_clock;
+# the render writes the same text with ffmpeg's drawtext, in the same font,
+# colour and place, minus Pillow's 0.02 em tracking). Car 26's second
+# Manobrabilidade run
+# ("66 s · 4 cones → 86 s"), official time 66 s with one decimal: at the
+# largada (0,0, the tens place blank), mid-run (33,4) and frozen (66,0;
+# every frame after the freeze is this same picture). "alone": the result
+# toggle off, so the clock takes the result pill's place at the left edge.
+CLOCK_66 = RenderClock(largada_s=12.345, official_units=660, decimals=1)
+CLOCK_TEXT = replace(CAR_26_TEXT, passagem=2, pass_result=RESULT_CONES, clock=CLOCK_66)
+CLOCK_GOLDEN_CASES: dict[str, tuple[OverlayText, int, Path]] = {
+    "start": (CLOCK_TEXT, 0, GOLDEN_PATH.with_name("overlay-clock-start-1080p.png")),
+    "mid": (CLOCK_TEXT, 334, GOLDEN_PATH.with_name("overlay-clock-mid-1080p.png")),
+    "frozen": (CLOCK_TEXT, 660, GOLDEN_PATH.with_name("overlay-clock-frozen-1080p.png")),
+    "alone": (
+        replace(CLOCK_TEXT, pass_result=None),
+        334,
+        GOLDEN_PATH.with_name("overlay-clock-alone-1080p.png"),
+    ),
+}
+
+
+def render_clock_frame(text: OverlayText, units: int) -> Image.Image:
+    """The still overlay with the clock at `units`, as one transparent 1920x1080 frame."""
+    canvas, layout = lay_out_overlay(text, frame_width=1920, frame_height=1080)
+    canvas.alpha_composite(
+        compose_clock(layout, units, text.clock.decimals), dest=layout.region[:2]
+    )
+    return canvas
+
+
 def golden_case_id(choice: tuple[str, str]) -> str:
     """A readable test id for a GOLDEN_CASES key, e.g. "team-full-school-short"."""
     team_style, school_style = choice
@@ -142,4 +176,7 @@ if __name__ == "__main__":
     print(f"wrote {GOLDEN_PATH}")
     for text, path in [*GOLDEN_CASES.values(), *RESULT_GOLDEN_CASES.values()]:
         render_golden(path, text)
+        print(f"wrote {path}")
+    for text, units, path in CLOCK_GOLDEN_CASES.values():
+        render_clock_frame(text, units).save(path, format="PNG")
         print(f"wrote {path}")

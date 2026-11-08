@@ -48,6 +48,17 @@ export function collectReviewBody(form, version, action) {
   // keeps the job's value (or the prova's default).
   const showPassResult = form.elements.show_pass_result;
   if (showPassResult) body.show_pass_result = showPassResult.checked;
+  // "Cronômetro" (LIVESTACK-48): only on the page for a prova with a clock,
+  // like the result's box. An empty largada field removes the mark (an
+  // empty field means "keep" everywhere else, so removing is its own flag).
+  const largada = form.elements.largada_s;
+  if (largada) {
+    const seconds = numberOrNull(largada.value, parseFloat);
+    if (seconds === null) body.clear_largada = true;
+    else body.largada_s = seconds;
+  }
+  const showClock = form.elements.show_clock;
+  if (showClock) body.show_clock = showClock.checked;
   return body;
 }
 

@@ -17,4 +17,7 @@ DECLARED_RENDER_FEATURES = [
     # Installer 0.5.0, LIVESTACK-47: the passagem's official result as a
     # third pill under the lower third (worker.overlay_result).
     RenderFeature.PASS_RESULT.value,
+    # Installer 0.6.0, LIVESTACK-48: the running clock, from the largada to
+    # the official time (worker.overlay_clock, shared.ffmpeg_clock).
+    RenderFeature.CLOCK.value,
 ]

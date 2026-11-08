@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from shared.ffmpeg_clock import ClockOverlay, clock_filter
 from shared.ffmpeg_picture import BlurFill, picture_filters
 from shared.framing import FramePlan
 
@@ -161,6 +162,7 @@ def build_final_render_command(
     ffmpeg_binary: str = "ffmpeg",
     tone_map_hdr: bool = False,
     frame_plan: FramePlan | None = None,
+    clock: ClockOverlay | None = None,
 ) -> list[str]:
     """Command that trims the raw, draws the overlay and normalises loudness.
 
@@ -174,9 +176,14 @@ def build_final_render_command(
     `frame_plan` (shared.framing.plan_frame) turns and fits a picture
     that is not 16:9 into 1920×1080; None, or a plan without framing and
     rotation, is the render used before LIVESTACK-50, unchanged.
+    `clock` (LIVESTACK-48, shared.ffmpeg_clock) adds the running clock on
+    top of the overlay; it needs `overlay_image`. None = the command is
+    exactly the one before LIVESTACK-48.
     """
     if cut_out_s <= cut_in_s:
         raise ValueError("cut_out_s must be greater than cut_in_s")
+    if clock is not None and overlay_image is None:
+        raise ValueError("the clock is drawn on top of the overlay image; pass both")
     duration_s = cut_out_s - cut_in_s
 
     inputs = ["-ss", f"{cut_in_s:.3f}", "-i", str(raw_path)]
@@ -191,12 +198,20 @@ def build_final_render_command(
     )
     if overlay_image is None:
         filters = [*picture[:-1], f"{picture[-1]},format=yuv420p[video]"]
-    else:
+    elif clock is None:
         inputs += ["-i", str(overlay_image)]
         filters = [
             *picture[:-1],
             f"{picture[-1]}[base]",
             "[base][1:v]overlay=x=0:y=main_h-overlay_h,format=yuv420p[video]",
+        ]
+    else:
+        inputs += ["-i", str(overlay_image), "-i", str(clock.pill_png)]
+        filters = [
+            *picture[:-1],
+            f"{picture[-1]}[base]",
+            "[base][1:v]overlay=x=0:y=main_h-overlay_h[lower_third]",
+            clock_filter(clock, source="lower_third", pill_input=2) + ",format=yuv420p[video]",
         ]
     maps = ["-map", "[video]"]
     audio_args = ["-an"]

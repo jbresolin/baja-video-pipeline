@@ -17,7 +17,8 @@ one stays in force. Shape (docs/design.md §32 has a commented example):
           "show_by_default": true,        # the job page's toggle, until a reviewer sets it
           "result": {"column": "Tempo", "unit": "s", "decimals": 0,
                      "penalties": true, "corrected_column": "Tempo Corrigido",
-                     "extra": [{"column": "Obstáculos", "unit": "obstáculos"}]},
+                     "extra": [{"column": "Obstáculos",
+                                "unit": {"one": "obstáculo", "other": "obstáculos"}}]},
           "clock": {"column": "Tempo", "decimals": 1}   # read by LIVESTACK-48
         }
       }
@@ -73,10 +74,14 @@ class PenaltyNames:
 
 @dataclass(frozen=True)
 class ExtraSpec:
-    """One more column's value at the end of the line: "· 8 obstáculos"."""
+    """One more column's value at the end of the line: "· 8 obstáculos".
+
+    `unit` is fixed text, or names by count like a penalty's
+    ({"one": "obstáculo", "other": "obstáculos"}: "1 obstáculo", "8 obstáculos").
+    """
 
     column: str
-    unit: str = ""
+    unit: str | PenaltyNames = ""
     decimals: int = 0
 
 
@@ -223,9 +228,15 @@ def _extras(value: Any, path: list[str]) -> tuple[ExtraSpec, ...]:
 
 def _extra(value: Any, path: list[str]) -> ExtraSpec:
     entry = _object(value, path, allowed={"column", "unit", "decimals"}, required={"column"})
+    unit = entry.get("unit", "")
     return ExtraSpec(
         column=_text(entry["column"], [*path, "column"], MAX_COLUMN_LENGTH),
-        unit=_text(entry.get("unit", ""), [*path, "unit"], MAX_UNIT_LENGTH, allow_empty=True),
+        # Text, or names by count like a penalty's: {"one": …, "other": …}.
+        unit=(
+            _penalty_names(unit, [*path, "unit"])
+            if isinstance(unit, dict)
+            else _text(unit, [*path, "unit"], MAX_UNIT_LENGTH, allow_empty=True)
+        ),
         decimals=_decimals(entry.get("decimals", 0), [*path, "decimals"]),
     )
 

@@ -31,6 +31,7 @@ from tests.review_ui.sample_data import (  # noqa: E402
     delivered_job,
     failed_job,
     make_job,
+    pass_clock_job,
     pass_result_job,
 )
 
@@ -48,6 +49,8 @@ def main() -> None:
     fake.add_job(delivered_job("job-done-1"))
     # "Mostrar resultado da passagem" (LIVESTACK-47).
     fake.add_job(pass_result_job("job-result-1"))
+    # The largada and "Mostrar cronômetro", with the overlay preview (LIVESTACK-48).
+    fake.add_job(pass_clock_job("job-clock-1"))
 
     app = create_app(ReviewUiSettings(), orchestrator_http_client=fake.http_client())
     if arguments.media_dir:

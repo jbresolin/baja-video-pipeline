@@ -19,6 +19,7 @@ from review_ui.job_view import (
     intake_text,
 )
 from review_ui.media_info_view import media_panel
+from review_ui.pass_clock_view import overlay_preview_data, pass_clock_box
 from review_ui.pass_result_view import pass_result_box
 from review_ui.passagem_help_view import passagem_help
 from review_ui.queue_view import STATES_IN_PIPELINE_ORDER, QueueFilter
@@ -39,6 +40,7 @@ from tests.review_ui.sample_data import (
     make_job,
     make_manifest,
     on_event_day,
+    pass_clock_job,
     pass_result,
     pass_result_job,
 )
@@ -72,6 +74,11 @@ def job_context(job) -> dict:
         "render_box": render_options_box(job),
         # "Mostrar resultado da passagem" (LIVESTACK-47); None for most sample jobs.
         "pass_box": pass_result_box(job.pass_result, T0),
+        # "Cronômetro" and the overlay preview (LIVESTACK-48), as job_page adds them.
+        "clock_box": pass_clock_box(
+            job.pass_clock, T0, result_box_shown=job.pass_result is not None
+        ),
+        "preview": overlay_preview_data(job),
     }
 
 
@@ -154,6 +161,8 @@ CASES = {
     "_pass_result.html": lambda: job_context(
         pass_result_job(pass_result=pass_result(fetch=failing_fetch()))
     ),
+    # The running clock: largada marked, official time known (LIVESTACK-48).
+    "_pass_clock.html": lambda: job_context(pass_clock_job()),
     "clips.html": clips_context,
     "fleet.html": fleet_context,
     "_fleet_body.html": fleet_context,

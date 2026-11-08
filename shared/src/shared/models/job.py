@@ -25,6 +25,7 @@ from shared.models.enums import (
     RecordedAtSource,
     TaskKind,
 )
+from shared.models.pass_clock import PassClock
 from shared.models.pass_results import PassResult
 from shared.models.render_inputs import ClipInputsComparison, RenderInputs
 
@@ -264,6 +265,16 @@ class Job(ReadByClients):
     # None = never set, so the prova's `show_by_default` applies
     # (`pass_result.show` is the value in force).
     show_pass_result: bool | None = None
+    # The running clock (LIVESTACK-48): the largada the reviewer marked, in
+    # raw-video seconds (None = not marked), and "Mostrar cronômetro" as set
+    # (None = never set: the prova's `show_by_default`).
+    largada_s: Seconds | None = None
+    show_clock: bool | None = None
+    # The team and school as a render would draw them now (the Settings'
+    # name choices applied; ProcessTask.team_name and school_short), for the
+    # job page's overlay preview (LIVESTACK-48). None = left out (unknown).
+    clip_team_name: str | None = None
+    clip_school_name: str | None = None
     reviewed_by: str | None = None
     reviewed_at: datetime | None = None
 
@@ -280,6 +291,9 @@ class Job(ReadByClients):
     # the text the overlay would show now, or why there is none. None from
     # an orchestrator older than this.
     pass_result: PassResult | None = None
+    # The running clock: the official time, the toggle in force and what a
+    # render would draw now (LIVESTACK-48). None from an older orchestrator.
+    pass_clock: PassClock | None = None
     # Set when a worker reported a failure; shown to the reviewer, who then
     # chooses retry or discard. Cleared by "retry".
     failure: JobFailure | None = None

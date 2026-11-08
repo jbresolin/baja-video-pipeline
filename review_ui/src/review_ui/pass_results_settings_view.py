@@ -177,6 +177,9 @@ class TrialOutcome:
     fetch_warning: str | None
     fetch_error: str | None
     unknown_penalties: str | None
+    # "Cronômetro para em 66,0 s." or why not, for a prova with a clock
+    # (LIVESTACK-48); None otherwise.
+    clock: Markup | str | None = None
     # The car's rows: (column, raw, display) as plain strings, escaped by the template.
     rows: list[list[tuple[str, str, str]]] = field(default_factory=list)
     # True when the text tested is not the one saved.
@@ -199,6 +202,8 @@ def trial_outcome(
             time=relative_time_text(fetch.last_success_at, now),
         )
     warning = fetch_warning(fetch, now)
+    # A prova with only a clock has no line and nothing to say about one.
+    clock_only = answer.clock_configured and answer.text is None and answer.problem is None
     return TrialOutcome(
         title=text(
             "pass_results.test.title",
@@ -207,7 +212,7 @@ def trial_outcome(
             passagem=request.passagem,
         ),
         text=answer.text,
-        problem=None if answer.text else problem_sentence(answer.problem),
+        problem=None if answer.text or clock_only else problem_sentence(answer.problem),
         detail=None if answer.text else answer.problem_detail,
         fetched=fetched,
         fetch_warning=warning,
@@ -217,12 +222,22 @@ def trial_outcome(
             if answer.unknown_penalties
             else None
         ),
+        clock=trial_clock(answer),
         rows=[
             [(cell_text(cell.column), cell_text(cell.raw), cell_text(cell.display)) for cell in row]
             for row in answer.cells
         ],
         unsaved=unsaved,
     )
+
+
+def trial_clock(answer: PassResultTestResponse) -> Markup | str | None:
+    """Where the running clock would stop (LIVESTACK-48), or why it would not run."""
+    if not answer.clock_configured:
+        return None
+    if answer.clock_text is not None:
+        return markup("pass_results.test.clock", text=answer.clock_text)
+    return text("pass_results.test.clock_problem", reason=problem_sentence(answer.clock_problem))
 
 
 # --- The whole block ---

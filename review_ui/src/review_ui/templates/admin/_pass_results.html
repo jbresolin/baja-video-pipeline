@@ -48,6 +48,7 @@
     {% if outcome.unsaved %}<p class="hint">{{ t("pass_results.test.unsaved") }}</p>{% endif %}
     {% if outcome.text %}<p class="pass-pill">{{ outcome.text }}</p>
     {% else %}<p>{{ outcome.problem }}{% if outcome.detail %} {{ m.english(outcome.detail, class="small") }}{% endif %}</p>{% endif %}
+    {% if outcome.clock %}<p id="pass-results-clock">{{ outcome.clock }}</p>{% endif %}
     {% if outcome.fetched %}<p class="hint">{{ outcome.fetched }}</p>{% endif %}
     {% if outcome.fetch_warning %}<p class="warning-text">{{ outcome.fetch_warning }}
       {%- if outcome.fetch_error %} {{ m.english(outcome.fetch_error, class="small") }}{% endif %}</p>{% endif %}

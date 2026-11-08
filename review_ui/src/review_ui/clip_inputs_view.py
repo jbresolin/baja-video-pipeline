@@ -20,9 +20,11 @@ from shared.models import (
     Framing,
     JobState,
     NameStyle,
+    RenderClock,
     RenderInputField,
     RenderInputs,
 )
+from shared.pass_clock import clock_text
 
 # While the job waits for (or is in) its new rendering, the version on air
 # stays until the new one arrives: the banner says a new one is coming
@@ -90,6 +92,29 @@ def _pass_result_sentence(clip: str | None, now: str | None) -> str:
     return text("outdated.pass_result.changed", clip=clip, now=now)
 
 
+def _clock_text(clock: RenderClock) -> str:
+    """ "largada em 0:12,345, parando em 66,0 s" """
+    return text(
+        "outdated.clock.describe",
+        largada=format_timecode(clock.largada_s),
+        official=clock_text(clock.official_units, clock.decimals),
+    )
+
+
+def _clock_sentence(clip: RenderClock | None, now: RenderClock | None) -> str:
+    """The running clock changed (LIVESTACK-48): it would appear, change, or go away.
+
+    "Appear" covers the official time arriving after the render and the
+    largada marked since; "go away" the toggle turned off, the mark
+    removed, or the prova's clock taken out of the configuration.
+    """
+    if clip is None:
+        return text("outdated.clock.published", now=_clock_text(now))
+    if now is None:
+        return text("outdated.clock.removed", clip=_clock_text(clip))
+    return text("outdated.clock.changed", clip=_clock_text(clip), now=_clock_text(now))
+
+
 def difference_sentence(field: RenderInputField, clip: RenderInputs, now: RenderInputs) -> str:
     """One sentence for one differing input."""
     if field == RenderInputField.CUT:
@@ -117,6 +142,8 @@ def difference_sentence(field: RenderInputField, clip: RenderInputs, now: Render
         return text("outdated.audio.dropped_now" if now.no_audio else "outdated.audio.kept_now")
     if field == RenderInputField.PASS_RESULT:
         return _pass_result_sentence(clip.pass_result_text, now.pass_result_text)
+    if field == RenderInputField.CLOCK:
+        return _clock_sentence(clip.pass_clock, now.pass_clock)
     if field in (RenderInputField.TEAM_NAME, RenderInputField.SCHOOL_NAME):
         attribute = (
             "overlay_team_name" if field == RenderInputField.TEAM_NAME else "overlay_school_name"

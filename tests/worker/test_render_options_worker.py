@@ -36,7 +36,8 @@ def test_every_heartbeat_declares_the_render_features(harness):
 
     [sent] = harness.orchestrator.heartbeats
     # pass_result: installer 0.5.0, LIVESTACK-47 (tests/worker/test_pass_result_worker.py).
-    assert sent.render_features == ["framing", "no_audio", "pass_result"]
+    # clock: installer 0.6.0, LIVESTACK-48 (tests/worker/test_pass_clock_worker.py).
+    assert sent.render_features == ["framing", "no_audio", "pass_result", "clock"]
     assert sent.render_features == DECLARED_RENDER_FEATURES
 
 

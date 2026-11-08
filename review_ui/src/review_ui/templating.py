@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from review_ui import __version__, formatting
 from review_ui.catalog import SCRIPT_TEXT, markup, markup_plural
 from review_ui.job_view import describe_waiting_reason
+from review_ui.overlay_preview import overlay_theme_url
 from review_ui.settings import ReviewUiSettings
 
 PACKAGE_DIR = Path(__file__).parent
@@ -53,6 +54,8 @@ def build_templates(settings: ReviewUiSettings) -> Jinja2Templates:
     )
     templates.env.globals.update(
         static=static_url,
+        # The overlay preview's tokens.css (scoped) and font (LIVESTACK-48).
+        overlay_theme_url=overlay_theme_url,
         media_url=partial(media_url, settings.public_base_url),
         percent=formatting.percent,
         age=formatting.age_text,

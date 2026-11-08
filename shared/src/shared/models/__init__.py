@@ -6,6 +6,7 @@ The models are split over several files only to keep each file short:
     job.py              Job, Lease, Holder, ClipInfo
     render_inputs.py    what a clip was rendered from, compared with the review
     pass_results.py     official pass results in the overlay (job page, Settings)
+    pass_clock.py       the running clock in the overlay
     worker.py           Worker, WorkerCapabilities, EnrollmentToken
     tasks.py            the four task kinds handed out by /next
     api_worker_loop.py  heartbeat, holder-confirm, uploads, ACKs, peers
@@ -141,6 +142,7 @@ from shared.models.job import (
     Lease,
     ProbeReport,
 )
+from shared.models.pass_clock import PassClock, RenderClock, ReportedClock
 from shared.models.pass_results import (
     MAX_PASS_RESULTS_CONFIG_LENGTH,
     PassResult,
@@ -269,6 +271,9 @@ __all__ = [
     "RegenerateProxyResponse",
     "RenderFeature",
     "MAX_PASS_RESULTS_CONFIG_LENGTH",
+    "PassClock",
+    "RenderClock",
+    "ReportedClock",
     "PassResult",
     "PassResultCell",
     "PassResultFetch",

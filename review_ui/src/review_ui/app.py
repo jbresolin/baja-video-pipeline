@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from review_ui import (
     __version__,
+    overlay_preview,
     routes_admin_catalog,
     routes_admin_inline,
     routes_admin_operations,
@@ -71,6 +72,8 @@ def create_app(
     app.include_router(routes_admin_operations.router)
     app.include_router(routes_admin_pass_results.router)
     app.include_router(routes_admin_inline.router)
+    # The overlay preview's tokens.css (scoped) and font (LIVESTACK-48).
+    app.include_router(overlay_preview.router)
     register_error_handlers(app)
 
     @app.get("/healthz", include_in_schema=False)

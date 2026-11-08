@@ -2,6 +2,12 @@
 {% import "macros.html" as m with context %}
 {% block title %}{{ t("job.title", id=job.id|short_id) }}{% endblock %}
 {% block main_class %}wide{% endblock %}
+{# The overlay preview (LIVESTACK-48): BajaOvrLay's tokens, scoped to the
+   preview, and its pills drawn with them. #}
+{% block head %}
+<link rel="stylesheet" href="{{ overlay_theme_url('tokens.css') }}">
+<link rel="stylesheet" href="{{ static('css/overlay_preview.css') }}">
+{% endblock %}
 {% block content %}
 <div class="page-head">
   <a class="back" href="/review/">{{ t("job.back") }}</a>
@@ -37,6 +43,9 @@
              {% if job.thumbnail_url %}poster="{{ media_url(job.thumbnail_url) }}"{% endif %}
              preload="auto" controls playsinline{% if job.no_audio %} muted{% endif %}></video>
       <div class="crop-band" id="crop-band" hidden></div>
+      {# "Pré-visualizar overlay" (LIVESTACK-48): js/overlay_preview.js draws the
+         clip's overlay over the proxy, the clock running from currentTime. #}
+      <div class="overlay-preview" id="overlay-preview" hidden aria-hidden="true"></div>
     </div>
     {% else %}
     <div class="player-empty">
@@ -48,9 +57,16 @@
       <span class="timecode" id="current-time">{{ 0|timecode }}</span>
       <div class="cut-bar" id="cut-bar" title="{{ t('job.cut_bar.title') }}">
         <span class="cut-range" id="cut-range"></span>
+        <span class="largada-mark" id="largada-mark" hidden></span>
         <span class="playhead" id="playhead"></span>
       </div>
     </div>
+    {% if job.proxy_available and preview %}
+    <label class="check preview-toggle"><input type="checkbox" id="overlay-preview-toggle">
+      {{ t("preview.toggle") }}</label>
+    <p class="hint">{{ t("preview.hint") }}</p>
+    <script type="application/json" id="overlay-preview-data">{{ preview|tojson }}</script>
+    {% endif %}
     {% if media %}{% include "_media_info.html" %}{% else %}
     <p class="hint media-info-missing">{{ t("job.media_missing") }}</p>
     {% endif %}
@@ -62,6 +78,7 @@
         <dt><kbd>Shift</kbd>+<kbd>i</kbd> / <kbd>o</kbd></dt><dd>{{ t("shortcuts.jump_to_marks") }}</dd>
         <dt><kbd>←</kbd> / <kbd>→</kbd></dt><dd>{{ t("shortcuts.frame_step", fps=frame_rate|number) }}</dd>
         <dt><kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd></dt><dd>{{ t("shortcuts.second_step") }}</dd>
+        {% if clock_box %}<dt><kbd>l</kbd></dt><dd>{{ t("shortcuts.largada") }}</dd>{% endif %}
         <dt><kbd>-</kbd> / <kbd>=</kbd></dt><dd>{{ t("shortcuts.nudge") }}</dd>
         <dt><kbd>p</kbd></dt><dd>{{ t("shortcuts.play_cut") }}</dd>
         <dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>{{ t("shortcuts.save") }}</dd>
@@ -132,6 +149,8 @@
         {{ t("job.show_pass") }}</label>
       {# The official result of the passagem (LIVESTACK-47), for a configured prova. #}
       {% if pass_box %}{% include "_pass_result.html" %}{% endif %}
+      {# The running clock (LIVESTACK-48), for a prova with a clock. #}
+      {% if clock_box %}{% include "_pass_clock.html" %}{% endif %}
 
       {% include "_render_options.html" %}
 

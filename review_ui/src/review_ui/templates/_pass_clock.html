@@ -1,0 +1,26 @@
+{# "Cronômetro" (LIVESTACK-48), only for a prova whose pass-results
+   configuration has a `clock` block. `clock_box` is a
+   pass_clock_view.PassClockBox. The largada is a mark like the cuts
+   (js/player.js: "Marcar", the l key, -/= nudge it by a frame, a line on
+   the cut bar); js/review_form.js sends largada_s (or clear_largada when
+   the field is empty) and show_clock only when this block is on the page. #}
+{% import "macros.html" as m with context %}
+<fieldset class="pass-clock" id="pass-clock">
+  <legend>{{ t("pass_clock.legend") }}</legend>
+  <p class="hint">{{ t("pass_clock.hint") }}</p>
+  <div class="cut" data-mark-box="largada">
+    <label for="largada_s">{{ t("pass_clock.largada") }} <span class="unit">{{ t("job.seconds_unit") }}</span></label>
+    <input id="largada_s" name="largada_s" type="number" step="0.001" min="0" inputmode="decimal"
+           value="{{ clock_box.largada_value }}">
+    <button type="button" data-set-mark="largada" title="{{ t('pass_clock.set_largada.title') }}">{{ t("job.set_mark") }} <kbd>l</kbd></button>
+    <button type="button" class="subtle" data-clear-largada title="{{ t('pass_clock.clear_largada.title') }}">{{ t("pass_clock.clear_largada") }}</button>
+  </div>
+  <label class="check"><input type="checkbox" name="show_clock" {% if clock_box.show %}checked{% endif %}>
+    {{ t("pass_clock.show") }}</label>
+  <p class="hint" id="pass-clock-status">{{ clock_box.status }}
+    {%- if clock_box.detail %} {{ m.english(clock_box.detail) }}{% endif %}</p>
+  {% if clock_box.fetch_warning %}
+  <p class="hint warning-text" id="pass-clock-fetch">{{ clock_box.fetch_warning }}
+    {%- if clock_box.fetch_error %} {{ m.english(clock_box.fetch_error, class="small") }}{% endif %}</p>
+  {% endif %}
+</fieldset>

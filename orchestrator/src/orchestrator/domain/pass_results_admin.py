@@ -12,6 +12,7 @@ prova's table now and may try a configuration that is not saved yet.
 from orchestrator.context import OrchestratorContext
 from orchestrator.domain import pass_results_fetch
 from orchestrator.domain.audit import AdminActor, record_admin_change
+from orchestrator.domain.pass_clock import official_clock
 from orchestrator.domain.pass_results import (
     CONFIG_KEY,
     config_text,
@@ -21,7 +22,7 @@ from orchestrator.domain.pass_results import (
     stored_table,
 )
 from orchestrator.domain.pass_results_config import ConfigError, parse_config
-from orchestrator.domain.pass_text import build_pass_text
+from orchestrator.domain.pass_text import PassText, build_pass_text
 from orchestrator.domain.results_table import ResultsTable
 from orchestrator.errors import ApiError
 from orchestrator.repositories import app_settings as settings_repo
@@ -104,10 +105,10 @@ def test_pass_result(
         except ConfigError as error:
             raise _refuse(error) from error
     prova_config = config.for_prova(request.prova_id)
-    if prova_config is None or prova_config.result is None:
+    if prova_config is None:
         return PassResultTestResponse(
             problem=PassResultProblem.NOT_CONFIGURED,
-            problem_detail=f"no 'result' for prova '{request.prova_id}' in the configuration",
+            problem_detail=f"no prova '{request.prova_id}' in the configuration",
         )
     event = context.admin_settings.current.event_id
     if not event:
@@ -125,6 +126,10 @@ def test_pass_result(
     outcome = build_pass_text(
         table, prova_config, config.penalties, request.car_number, request.passagem
     )
+    if prova_config.result is None:
+        # A prova with only a clock: no line, and no problem to report for it.
+        outcome = PassText()
+    clock = official_clock(table, prova_config, request.car_number, request.passagem)
     return answer.model_copy(
         update={
             "text": outcome.text,
@@ -132,6 +137,11 @@ def test_pass_result(
             "problem_detail": outcome.detail,
             "cells": _car_cells(table, request.car_number),
             "unknown_penalties": list(outcome.unknown_penalties),
+            # The running clock's stop (LIVESTACK-48), when the prova has a clock.
+            "clock_configured": prova_config.clock is not None,
+            "clock_text": clock.text,
+            "clock_problem": None if prova_config.clock is None else clock.problem,
+            "clock_problem_detail": None if prova_config.clock is None else clock.detail,
         }
     )
 
