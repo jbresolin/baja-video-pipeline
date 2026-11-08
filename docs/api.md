@@ -308,6 +308,13 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
   online but none declared `clock`, `waiting_reason` is "waiting for a
   holder of the raw that can draw the running clock (a worker updated to
   0.6.0 or later)".
+  Contract 2.10.0 (LIVESTACK-53, installer 0.7.0) adds `clock_top_right`:
+  a task with `pass_clock` needs it too (the clock top right, with its
+  unit, and the result pill from the freeze; a 0.6.0 worker would draw
+  the old look). Without it, `waiting_reason` is "waiting for a holder of
+  the raw that can draw the new running clock (a worker updated to 0.7.0
+  or later)". When several features are missing, the sentence names the
+  newest one left out (the version a holder needs).
 
 | Task kind | Who gets it | What to do | How it ends |
 | --- | --- | --- | --- |
@@ -410,6 +417,10 @@ null = no clock, also what inputs recorded before 2.8.0 mean). In `now`
 it is the clock a render would draw with the latest results fetched, so
 the official time arriving or being corrected, the largada moved (0.5 ms
 tolerance) or the clock turned on or off lists `clock` in `changed`.
+Since 2.10.0 the clock also has its `unit` (`ReportedClock.unit` in the
+worker's report); a clock recorded without one (null: rendered before
+2.10.0) is not compared on it, so the new look alone never flags a clip,
+while a unit changed in the configuration after delivery does.
 
 `Job.clip_inputs` (`ClipInputsComparison`) puts the **newest** version's
 inputs (`clip`) next to what a render would use now (`now`: the review as
@@ -710,13 +721,22 @@ removes it; 422 past the end of the video); `Job.show_clock` the toggle
 `render`, the `RenderClock` a render would draw now (null without a
 largada, an official time, or with the toggle off).
 `ProcessTask.pass_clock` carries it, only to workers that declared
-`clock`. What the clock shows at raw time *t*: `min(⌊(µs(t) − µs(largada))
+`clock` (and, since 2.10.0, `clock_top_right`). What the clock shows at raw time *t*: `min(⌊(µs(t) − µs(largada))
 · 10^decimals / 10⁶⌋, official_units)` units, each time rounded half up
 to whole microseconds, nothing before the largada; written with a decimal
 comma. `Job.clip_team_name` and `clip_school_name` are the names a render
 would draw now (for the job page's overlay preview).
 `PassResultTestResponse` ("Testar") adds `clock_configured`, `clock_text`
 and `clock_problem`.
+
+**The clock's look** (contract 2.10.0, LIVESTACK-53; design §36). The
+clock is drawn top right, bigger than the pills, with its unit after the
+digits: `clock.unit` in the configuration (default `"s"`, `""` = none, up
+to 12 characters), sent as `RenderClock.unit` (and `PassClock.unit`,
+`PassResultTestResponse.clock_unit`). With a clock, the result pill is
+shown from the **freeze** on: elapsed µs ≥ `official_units` ×
+10^(6 − decimals), the first frame whose clock shows the official time;
+without a clock, the whole clip as before.
 
 **Before a save** (contract 2.10.0, LIVESTACK-53). `GET
 /jobs/{id}/pass-preview?prova=…&car_number=…&passagem=…` (reviewer
