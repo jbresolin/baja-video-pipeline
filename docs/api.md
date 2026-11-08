@@ -301,12 +301,18 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
   everything else are online but none declared `pass_result`,
   `waiting_reason` is "waiting for a holder of the raw that can draw the
   pass result (a worker updated to 0.5.0 or later)".
+  Contract 2.8.0 (LIVESTACK-48, installer 0.6.0) adds `clock`: a task
+  needs it when it carries `pass_clock` (the running clock, "Running
+  clock" in §7.1). When holders that could render everything else are
+  online but none declared `clock`, `waiting_reason` is "waiting for a
+  holder of the raw that can draw the running clock (a worker updated to
+  0.6.0 or later)".
 
 | Task kind | Who gets it | What to do | How it ends |
 | --- | --- | --- | --- |
 | `download_raw` | master (always, see backfill below), one more worker; never studio | GET `download_url` with your bearer (Caddy inbox), or the `fallback_download_urls` (peers, port 8710, no token), with `shared.http_transfer.download_file`; ffprobe it | `POST /jobs/{id}/holder-confirm` |
 | `make_proxy` | a confirmed holder | Probe (`shared.media_probe`), render thumbnail and proxy with `tone_map_hdr=info.is_hdr`; `PUT …/media-info` (when the task has `media_info_upload_url`), `PUT …/thumbnail`, then chunked `POST …/proxy` | completing chunk of `…/proxy` |
-| `process` | a confirmed holder that declared the task's `required_render_features` | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`; `rotation`, `framing`, `crop_position` and `no_audio` through `shared.framing.plan_frame`, below; `pass_result_text`, when set, as a third pill under the other two). Report what it was rendered from (`PUT …/render-inputs`, below). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
+| `process` | a confirmed holder that declared the task's `required_render_features` | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`; `rotation`, `framing`, `crop_position` and `no_audio` through `shared.framing.plan_frame`, below; `pass_result_text`, when set, as a third pill under the other two; `pass_clock`, when set, as the running clock beside it: its pill from the largada on, the digits by `drawtext` from the frame time, `shared.ffmpeg_clock`). Report what it was rendered from (`PUT …/render-inputs`, below). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
 | `deliver` | studio only | GET `download_url` (Caddy outbox) with your bearer, verify SHA-256, store at `clip_relative_path`, rewrite `latest.m3u` | `POST /outbox/{id}/ack` |
 | `upload_original` | a confirmed holder that is online, the master first (LIVESTACK-41 item 15) | A reviewer asked for the original: chunked upload of the held raw to `upload_url` (`POST /jobs/{id}/original-upload`, `Lease-Id`, `Upload-SHA256` = the job's sha256). Offered right after proxies. A failure report never fails the job; that holder is just not asked again for it | completing chunk of `…/original-upload` |
 | `archive_clip` | master only, lowest priority (after backfill) | Keep one clip version in the archive at `archive_relative_path`: move your own kept copy, else GET the first working `download_urls` entry (peers' `:8710/clip/{job_id}?sha256=…` without token, the Caddy outbox with it), verify SHA-256 | `POST /jobs/{id}/clip-archived` |
@@ -397,6 +403,13 @@ toggle changed, lists `pass_result` in `changed`. A failed fetch keeps the
 last good answer, so it never changes the comparison. Nothing is
 reprocessed automatically.
 
+Running clock (contract 2.8.0, LIVESTACK-48): the inputs also hold
+`pass_clock` (`RenderClock`: `largada_s`, `official_units`, `decimals`;
+null = no clock, also what inputs recorded before 2.8.0 mean). In `now`
+it is the clock a render would draw with the latest results fetched, so
+the official time arriving or being corrected, the largada moved (0.5 ms
+tolerance) or the clock turned on or off lists `clock` in `changed`.
+
 `Job.clip_inputs` (`ClipInputsComparison`) puts the **newest** version's
 inputs (`clip`) next to what a render would use now (`now`: the review as
 saved, the Settings' name choices as they are) and lists in `changed`
@@ -404,7 +417,7 @@ every input that differs: `cut` (in and out together, 0.5 ms tolerance),
 `prova`, `car_number`, `passagem`, `show_pass`, `team_name`,
 `school_name` (the texts, so a name choice that draws the same text is no
 difference), `raw`, `rotation`, `framing` (framing and the crop band's
-place, half a percent tolerance), `audio` and `pass_result`. The theme version is recorded, not compared (only
+place, half a percent tolerance), `audio`, `pass_result` and `clock`. The theme version is recorded, not compared (only
 workers know theirs). `clip_inputs` is null without a clip version, for a
 version without recorded inputs and for a discarded job;
 `JobSummary.clip_outdated` is true when `changed` is not empty;
@@ -663,7 +676,30 @@ the event is finished (max-age 300 s); then one last fetch and no more
 null follows the prova's `show_by_default`. A prova's `result.extra`
 columns are appended as `· <value> <unit>`. Values `"-"`, `"---"`, empty,
 `"SPOILERS"`, `"?"` and any text that is not a number never reach the
-overlay (`problem`: `no_result_yet`, `not_a_number`).
+overlay (`problem`: `no_result_yet`, `not_a_number`). An `extra` item's
+`unit` may also be names by count, `{"one": "obstáculo", "other":
+"obstáculos"}` ("one" when the number as shown is exactly 1; LIVESTACK-48).
+
+**Running clock** (LIVESTACK-48, contract 2.8.0; design §33). For a
+prova whose configuration has a `clock` block, the clip shows a clock that
+starts at 0 on the **largada** and freezes on the **official time** (the
+`clock.column` value of the run, the raw time, not the corrected one).
+`Job.largada_s` is the reviewer's mark in raw-video seconds
+(`ReviewUpdate.largada_s`; left out = keep, `clear_largada: true`
+removes it; 422 past the end of the video); `Job.show_clock` the toggle
+("Mostrar cronômetro"; null follows `show_by_default`). `Job.pass_clock`
+(`PassClock`): `configured`, `show`, `largada_s`, `decimals`,
+`official_units` and `official_text` ("66,0") or `problem`, `fetch`, and
+`render`, the `RenderClock` a render would draw now (null without a
+largada, an official time, or with the toggle off).
+`ProcessTask.pass_clock` carries it, only to workers that declared
+`clock`. What the clock shows at raw time *t*: `min(⌊(µs(t) − µs(largada))
+· 10^decimals / 10⁶⌋, official_units)` units, each time rounded half up
+to whole microseconds, nothing before the largada; written with a decimal
+comma. `Job.clip_team_name` and `clip_school_name` are the names a render
+would draw now (for the job page's overlay preview).
+`PassResultTestResponse` ("Testar") adds `clock_configured`, `clock_text`
+and `clock_problem`.
 
 **Names on the clips** (LIVESTACK-42). Two independent Settings,
 `clip_team_name_style` and `clip_school_name_style` (`full` | `short`,
