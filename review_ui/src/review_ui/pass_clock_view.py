@@ -31,6 +31,10 @@ class PassClockBox:
     # (which says it otherwise) is not on the page.
     fetch_warning: str | None
     fetch_error: str | None
+    # Where the clock stops, in clock units, for the page's live warning
+    # that the cut ends before it (LIVESTACK-53); None while unknown.
+    official_units: int | None = None
+    decimals: int = 0
 
 
 def clock_status(clock: PassClock) -> tuple[str, str | None]:
@@ -60,6 +64,8 @@ def pass_clock_box(
         detail=detail,
         fetch_warning=warning,
         fetch_error=clock.fetch.last_error if warning and clock.fetch is not None else None,
+        official_units=clock.official_units,
+        decimals=clock.decimals,
     )
 
 

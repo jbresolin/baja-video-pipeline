@@ -20,6 +20,12 @@ TEXT: dict[str, str] = {
     "pass_clock.on_air": "Na tarja: da largada até {official} s, e para.",
     "pass_clock.not_burned": "Não será gravado (pararia em {official} s).",
     "pass_clock.no_largada": "Marque a largada para gravar o cronômetro (para em {official} s).",
+    # The cut ends before the clock stops, so the result never appears
+    # (LIVESTACK-53; js/clock_late.js shows it, it never blocks).
+    "pass_clock.ends_before_freeze": (
+        "O clipe termina antes do cronômetro parar; o resultado não vai aparecer. "
+        "Estenda o fim do corte."
+    ),
     # Why there is no official time: the result line's sentences
     # (pass_result.problem.*), after this.
     "pass_clock.no_official": "Sem tempo oficial ainda:",

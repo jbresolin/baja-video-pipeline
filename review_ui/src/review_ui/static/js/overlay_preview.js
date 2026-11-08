@@ -15,9 +15,10 @@
 //     it ("team-looked-up" from js/review_form.js);
 //   * the clock follows the same rule as the clip (js/pass_clock.js),
 //     from the video's currentTime, frame by frame (requestAnimationFrame);
+//     with a clock, the result pill appears when it stops (LIVESTACK-53);
 //   * outside the cut there is no clip, so nothing is drawn.
 // Laid out on a 1920×1080 stage like the clip, scaled to the player.
-import { clockText, clockTextAt } from "./pass_clock.js";
+import { clockText, clockTextAt, resultShownAt } from "./pass_clock.js";
 
 const STAGE_WIDTH = 1920;
 const STAGE_HEIGHT = 1080;
@@ -199,13 +200,17 @@ export function setupOverlayPreview({ video, form, player }) {
     const cutOut = player.readMark("out") ?? Number.POSITIVE_INFINITY;
     stage.hidden = now < cutIn || now > cutOut;
     updateRole();
-    resultPill.hidden = !(data.result_text && checked("show_pass_result", false));
     const largada = fieldNumber("largada_s");
+    const clockOn = data.clock && largada !== null && checked("show_clock", false);
     let clock = null;
-    if (data.clock && largada !== null && checked("show_clock", false)) {
+    if (clockOn) {
       fixClockWidth();
       clock = clockTextAt(now, largada, data.clock.official_units, data.clock.decimals);
     }
+    // With a clock, the result only from its freeze on, as in the clip.
+    const resultNow =
+      !clockOn || resultShownAt(now, largada, data.clock.official_units, data.clock.decimals);
+    resultPill.hidden = !(data.result_text && checked("show_pass_result", false) && resultNow);
     clockPill.hidden = clock === null;
     if (clock !== null) clockDigits.textContent = clock;
   }

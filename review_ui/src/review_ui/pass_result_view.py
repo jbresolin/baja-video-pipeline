@@ -37,6 +37,10 @@ class PassResultBox:
     fetch_warning: str | None
     # The orchestrator's English error for the last failed fetch, or None.
     fetch_error: str | None
+    # There is a line to burn in (shown or not): with a running clock it
+    # appears when the clock stops, so the clock block warns when the cut
+    # ends before that (LIVESTACK-53, js/clock_late.js).
+    has_text: bool = False
 
 
 def problem_sentence(problem: PassResultProblem | None) -> str:
@@ -84,4 +88,5 @@ def pass_result_box(result: PassResult | None, now: datetime) -> PassResultBox |
         detail=detail,
         fetch_warning=warning,
         fetch_error=fetch.last_error if warning and fetch is not None else None,
+        has_text=result.text is not None,
     )

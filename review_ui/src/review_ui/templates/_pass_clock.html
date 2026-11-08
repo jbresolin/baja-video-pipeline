@@ -3,9 +3,13 @@
    pass_clock_view.PassClockBox. The largada is a mark like the cuts
    (js/player.js: "Marcar", the l key, -/= nudge it by a frame, a line on
    the cut bar); js/review_form.js sends largada_s (or clear_largada when
-   the field is empty) and show_clock only when this block is on the page. #}
+   the field is empty) and show_clock only when this block is on the page.
+   With a running clock the result appears when the clock stops
+   (LIVESTACK-53); js/clock_late.js shows #pass-clock-late while the cut
+   ends before that, from data-official-units and the form's fields. #}
 {% import "macros.html" as m with context %}
-<fieldset class="pass-clock" id="pass-clock">
+<fieldset class="pass-clock" id="pass-clock"
+          {%- if clock_box.official_units is not none %} data-official-units="{{ clock_box.official_units }}" data-decimals="{{ clock_box.decimals }}"{% endif %}>
   <legend>{{ t("pass_clock.legend") }}</legend>
   <p class="hint">{{ t("pass_clock.hint") }}</p>
   <div class="cut" data-mark-box="largada">
@@ -17,6 +21,7 @@
   </div>
   <label class="check"><input type="checkbox" name="show_clock" {% if clock_box.show %}checked{% endif %}>
     {{ t("pass_clock.show") }}</label>
+  <p class="hint warning-text" id="pass-clock-late" hidden>{{ t("pass_clock.ends_before_freeze") }}</p>
   <p class="hint" id="pass-clock-status">{{ clock_box.status }}
     {%- if clock_box.detail %} {{ m.english(clock_box.detail) }}{% endif %}</p>
   {% if clock_box.fetch_warning %}
