@@ -48,7 +48,7 @@ from shared.models import (
     WorkerRole,
     utc_now,
 )
-from shared.protocol import FRAME_RATE_HEADER
+from shared.protocol import CLIP_SHA256_HEADER, FRAME_RATE_HEADER
 from shared.testing.credentials import PLACEHOLDER_ENROLLMENT_TOKEN, PLACEHOLDER_WORKER_TOKEN
 from tests.worker.fake_orchestrator_parts import FakeJob, error, range_response, receive_chunk
 
@@ -110,6 +110,8 @@ class FakeOrchestrator:
         self.upload_log: list[tuple[str, int, int]] = []  # (endpoint, status, offset)
         # The Frame-Rate header of every proxy chunk, None where it was absent.
         self.proxy_frame_rate_headers: list[str | None] = []
+        # The Clip-SHA256 header of every clip preview chunk (LIVESTACK-52).
+        self.preview_clip_sha256_headers: list[str | None] = []
         self.delivered: list[tuple[str, DeliveredRequest]] = []
         self.outbox_acks: list[tuple[str, OutboxAckRequest]] = []
         self.file_requests: list[tuple[str, dict[str, str]]] = []  # (path, headers)
@@ -158,6 +160,18 @@ class FakeOrchestrator:
             Route(
                 "/jobs/{job_id}/original-upload",
                 self._chunk_endpoint("originals"),
+                methods=["POST"],
+            ),
+            # "Ver clipe" and "Baixar clipe" (LIVESTACK-52). The preview comes
+            # after the delivery, without a lease.
+            Route(
+                "/jobs/{job_id}/clip-preview",
+                self._chunk_endpoint("previews", needs_lease=False),
+                methods=["POST"],
+            ),
+            Route(
+                "/jobs/{job_id}/clip-download-upload",
+                self._chunk_endpoint("requested_clips"),
                 methods=["POST"],
             ),
             Route("/jobs/{job_id}/failed", self._failed, methods=["POST"]),
@@ -296,7 +310,7 @@ class FakeOrchestrator:
         self.render_inputs.append((request.path_params["job_id"], report))
         return Response(status_code=204)
 
-    def _chunk_endpoint(self, kind: str):
+    def _chunk_endpoint(self, kind: str, needs_lease: bool = True):
         async def receive_chunk(request: Request) -> Response:
             job_id = request.path_params["job_id"]
             lease_id = request.headers.get("lease-id", "")
@@ -304,9 +318,11 @@ class FakeOrchestrator:
             self.request_log.append(f"POST {request.url.path}")
             if kind == "proxies":
                 self.proxy_frame_rate_headers.append(request.headers.get(FRAME_RATE_HEADER))
+            if kind == "previews":
+                self.preview_clip_sha256_headers.append(request.headers.get(CLIP_SHA256_HEADER))
             if not self._authorized(request):
                 response = error(401, "unauthenticated")
-            elif not self._lease_is_alive(lease_id):
+            elif needs_lease and not self._lease_is_alive(lease_id):
                 response = error(409, "lease_lost")
             else:
                 response = self._accept_chunk(kind, job_id, lease_id, request, await request.body())

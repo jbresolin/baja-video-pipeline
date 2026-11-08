@@ -14,6 +14,7 @@ from orchestrator.context import OrchestratorContext
 from orchestrator.db.database import from_db_time, to_db_time
 from orchestrator.domain.clip_archive import outbox_copy_still_needed, record_clip_version
 from orchestrator.domain.clip_names import clip_names_for_job, name_styles
+from orchestrator.domain.clip_preview_status import preview_status
 from orchestrator.domain.job_view import clip_download_file_name, require_job_row
 from orchestrator.domain.leases import require_active_lease, sweep_expired_leases
 from orchestrator.domain.render_inputs import compare_newest_clip
@@ -264,6 +265,8 @@ def _manifest_from_rows(context, connection, rows, since, wanted_slug) -> Manife
                 clip_team_name=names.team,
                 clip_school_name=names.school,
                 clip_inputs=compare_newest_clip(connection, row, styles),
+                # "Ver clipe" on the clips page (LIVESTACK-52).
+                preview=preview_status(context.layout, connection, row, context.clock.now()),
             )
         )
     return ManifestResponse(clips=entries, generated_at=context.clock.now())

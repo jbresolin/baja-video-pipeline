@@ -13,6 +13,8 @@ from orchestrator.api.auth import (
 from orchestrator.context import OrchestratorContext
 from orchestrator.domain import (
     clip_archive,
+    clip_downloads,
+    clip_previews,
     delivery,
     fleet,
     media_info,
@@ -227,6 +229,41 @@ async def upload_original(
     chunk = await request.body()
     return await run_in_threadpool(
         uploads.accept_original_chunk, context, worker_row, job_id, lease_id, request.headers, chunk
+    )
+
+
+@router.post("/jobs/{job_id}/clip-preview", response_model=ChunkAccepted)
+async def upload_clip_preview(
+    job_id: str,
+    request: Request,
+    worker_row: sqlite3.Row = Depends(require_worker),
+    context: OrchestratorContext = Depends(get_context),
+) -> ChunkAccepted:
+    """The worker that rendered a clip sends its 480p preview (LIVESTACK-52); no lease."""
+    chunk = await request.body()
+    return await run_in_threadpool(
+        clip_previews.accept_preview_chunk, context, worker_row, job_id, request.headers, chunk
+    )
+
+
+@router.post("/jobs/{job_id}/clip-download-upload", response_model=ChunkAccepted)
+async def upload_requested_clip(
+    job_id: str,
+    request: Request,
+    lease_id: str = Header(..., alias=LEASE_ID_HEADER),
+    worker_row: sqlite3.Row = Depends(require_worker),
+    context: OrchestratorContext = Depends(get_context),
+) -> ChunkAccepted:
+    """A PC that has the clip uploads it for "Baixar clipe" (LIVESTACK-52)."""
+    chunk = await request.body()
+    return await run_in_threadpool(
+        clip_downloads.accept_clip_download_chunk,
+        context,
+        worker_row,
+        job_id,
+        lease_id,
+        request.headers,
+        chunk,
     )
 
 

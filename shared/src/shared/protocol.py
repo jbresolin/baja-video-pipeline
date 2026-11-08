@@ -26,6 +26,9 @@ CLIP_RELATIVE_PATH_HEADER = "Clip-Relative-Path"
 # Proxy upload only: the proxy's frame rate from ffprobe (frames per second,
 # e.g. "29.97"). The review UI steps one frame with it (design §17).
 FRAME_RATE_HEADER = "Frame-Rate"
+# Clip preview upload only (LIVESTACK-52): the SHA-256 of the clip the
+# preview was made from, so the VPS knows which version it shows.
+CLIP_SHA256_HEADER = "Clip-SHA256"
 # Shared secret the Evolution webhook must send so random posts are rejected.
 WEBHOOK_SECRET_HEADER = "X-Webhook-Secret"
 

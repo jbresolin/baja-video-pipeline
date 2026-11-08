@@ -16,7 +16,12 @@ import time
 from collections import deque
 from pathlib import Path
 
-from shared.ffmpeg import build_final_render_command, build_proxy_command, build_thumbnail_command
+from shared.ffmpeg import (
+    build_clip_preview_command,
+    build_final_render_command,
+    build_proxy_command,
+    build_thumbnail_command,
+)
 from shared.ffmpeg_clock import ClockOverlay
 from shared.framing import FramePlan
 from shared.media_probe import MediaInfo, build_probe_command, parse_probe_output
@@ -92,6 +97,13 @@ class MediaTools:
             tone_map_hdr=info.is_hdr,
         )
         self.run_ffmpeg(args, cancel, what="proxy")
+
+    def make_clip_preview(self, clip: Path, preview: Path, cancel: CancelToken) -> None:
+        """The 480p preview of a rendered clip (LIVESTACK-52), with the proxy's settings."""
+        args = build_clip_preview_command(
+            clip, preview, self.video_encoder, ffmpeg_binary=self.ffmpeg_path
+        )
+        self.run_ffmpeg(args, cancel, what="clip preview")
 
     def render_final(
         self,

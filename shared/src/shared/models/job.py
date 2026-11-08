@@ -17,6 +17,7 @@ from shared.models.common import (
     utc_now,
 )
 from shared.models.enums import (
+    ClipPreviewState,
     DeliveryRoute,
     Framing,
     HolderStatus,
@@ -121,6 +122,25 @@ class ClipInfo(ReadByClients):
     # The name a download should get, e.g. "enduro-042-p3.mp4" or
     # "enduro-042-p3-v2.mp4" (shared.layout, LIVESTACK-41 item 12).
     download_file_name: str | None = None
+
+
+class ClipPreview(ReadByClients):
+    """The small preview of the newest clip, to watch in the browser (LIVESTACK-52).
+
+    Made by the worker that rendered the clip, 480p like the review proxies,
+    and replaced by the next version's preview after a reprocess (older
+    versions keep none). `state` says why there is none when `url` is None.
+
+    Read by clients: unknown fields are ignored.
+    """
+
+    state: ClipPreviewState
+    # Relative to the public base URL, e.g. "/previews/<job_id>.<clip sha256>.mp4"
+    # (signed-in users only, like proxies); only when "ready".
+    url: str | None = None
+    # The clip version it shows: 1, then 2 after a reprocess, ...
+    version: int | None = Field(default=None, ge=1)
+    size_bytes: ByteCount | None = None
 
 
 class ClipVersion(ReadByClients):
@@ -301,6 +321,9 @@ class Job(ReadByClients):
     # and only a reprocess fixes it. None without a clip version, for a
     # version rendered before inputs were recorded, and for a discarded job.
     clip_inputs: ClipInputsComparison | None = None
+    # The newest clip's preview, or why there is none ("Ver clipe",
+    # LIVESTACK-52); None while the job has no clip.
+    clip_preview: ClipPreview | None = None
     # The official result of the passagem from the results API (LIVESTACK-47):
     # the text the overlay would show now, or why there is none. None from
     # an orchestrator older than this.

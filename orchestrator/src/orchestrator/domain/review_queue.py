@@ -37,11 +37,15 @@ def review_queue(
     with context.database.transaction() as connection:
         if outdated_only:
             rows = jobs_repo.list_review_queue_rows(connection, states)
-            jobs = [job_from_row(connection, row, context.layout) for row in rows]
+            jobs = [
+                job_from_row(connection, row, context.layout, context.clock.now()) for row in rows
+            ]
             jobs = [job for job in jobs if job.clip_inputs and job.clip_inputs.changed][:limit]
         else:
             rows = jobs_repo.list_review_queue_rows(connection, states, limit)
-            jobs = [job_from_row(connection, row, context.layout) for row in rows]
+            jobs = [
+                job_from_row(connection, row, context.layout, context.clock.now()) for row in rows
+            ]
         counts = sender_messages.message_counts(connection, rows)
         summaries = with_senders(connection, summaries_with_message_counts(jobs, counts), jobs)
     # Who has each video open now (LIVESTACK-51), so people pick another.
@@ -104,7 +108,7 @@ def holder_available(connection, job_id: str, now) -> bool:
 
 def get_job(context: OrchestratorContext, job_id: str) -> Job:
     with context.database.transaction() as connection:
-        return load_job(connection, job_id, context.layout)
+        return load_job(connection, job_id, context.layout, context.clock.now())
 
 
 def find_team(context: OrchestratorContext, car_number: int) -> Team:

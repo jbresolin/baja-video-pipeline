@@ -23,4 +23,10 @@ DECLARED_RENDER_FEATURES = [
     # Installer 0.7.0, LIVESTACK-53: the clock top right, bigger, with its
     # unit, and the result pill from the clock's freeze on.
     RenderFeature.CLOCK_TOP_RIGHT.value,
+    # Installer 0.7.0, LIVESTACK-52: abilities rather than render options,
+    # declared the same way. A 480p preview of every clip after its delivery
+    # (worker.tasks.clip_preview), and uploading a clip for "Baixar clipe"
+    # (worker.tasks.upload_clip; the studio too).
+    RenderFeature.CLIP_PREVIEW.value,
+    RenderFeature.UPLOAD_CLIP.value,
 ]

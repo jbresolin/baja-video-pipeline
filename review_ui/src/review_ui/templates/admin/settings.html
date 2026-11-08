@@ -78,6 +78,19 @@
   <input id="originals_cap_gb" name="originals_cap_gb" type="number" step="1" min="0"
          value="{{ '%g'|format(values.originals_cap_gb) }}" required>
   <p class="hint">{{ t("settings.originals.hint") }}</p>
+  {# "Ver clipe" and "Baixar clipe" (LIVESTACK-52). The hidden field says the
+     box was on the page, so an unticked box (which sends nothing) means "off". #}
+  <input type="hidden" name="clip_previews_enabled_shown" value="1">
+  <label class="check"><input type="checkbox" name="clip_previews_enabled" value="1" {% if values.clip_previews_enabled %}checked{% endif %}>
+    {{ t("settings.clip_previews") }}</label>
+  <p class="hint">{{ t("settings.clip_previews.hint") }}</p>
+  <label for="clip_download_keep_minutes">{{ t("settings.clip_download_keep") }}</label>
+  <input id="clip_download_keep_minutes" name="clip_download_keep_minutes" type="number" step="1" min="0" max="1440"
+         value="{{ '%g'|format(values.clip_download_keep_minutes) }}" required>
+  <label for="clip_download_unused_hours">{{ t("settings.clip_download_unused") }}</label>
+  <input id="clip_download_unused_hours" name="clip_download_unused_hours" type="number" step="1" min="0" max="720"
+         value="{{ '%g'|format(values.clip_download_unused_hours) }}" required>
+  <p class="hint">{{ t("settings.clip_download.hint") }}</p>
   {# The filmmakers' messages on the job page (LIVESTACK-49). #}
   <label for="sender_messages_keep_days">{{ t("settings.sender_messages_keep") }}</label>
   <input id="sender_messages_keep_days" name="sender_messages_keep_days" type="number" step="1" min="1" max="365"

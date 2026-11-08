@@ -40,6 +40,15 @@ REQUIRED_ENDPOINTS = {
     ("get", "/jobs/{job_id}/original"),
     ("post", "/jobs/{job_id}/original"),
     ("post", "/jobs/{job_id}/original-upload"),
+    # "Ver clipe" and "Baixar clipe" (LIVESTACK-52): the preview a worker
+    # sends after a render, the request, the upload of the clip, and the
+    # download itself (served by the orchestrator, not Caddy).
+    ("post", "/jobs/{job_id}/clip-preview"),
+    ("get", "/jobs/{job_id}/clip-download"),
+    ("post", "/jobs/{job_id}/clip-download"),
+    ("post", "/jobs/{job_id}/clip-download-upload"),
+    ("get", "/requested-clips/{job_id}/{file_name}"),
+    ("head", "/requested-clips/{job_id}/{file_name}"),
     # What a clip was rendered from (LIVESTACK-43).
     ("put", "/jobs/{job_id}/render-inputs"),
     # Review

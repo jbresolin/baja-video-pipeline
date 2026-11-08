@@ -1524,12 +1524,117 @@ installer 0.7.0.
   before 2.10.0 refuses a 0.7.0 worker's render-inputs report (its clock
   carries `unit`); the worker logs it and delivers, and the version keeps
   the claim snapshot. The review UI goes with the orchestrator.
-  LIVESTACK-52 (clip preview and download) also bumps the installer and
-  touches the worker: whichever merges second takes the next minor
-  (0.8.0) and rebases.
+  LIVESTACK-52 (clip preview and download, §37) also touches the worker.
+  0.7.0 was never released, so both ship in it (João, 2026-11-08); there
+  is no 0.8.0 for it.
 * **Not checked without real PCs**: the render cost of the extra result
   overlay on a worker PC (one small overlay with `enable`; measured here
   only on the CI-sized test clips); drawtext at 80 px on the workers'
   ffmpeg 9.0 on Windows (CI runs 9.0 on Linux); the page's block swapping
   in a real browser (the decisions are tested in Node on stand-ins, the
   endpoint end to end; there is no browser test setup).
+
+## 37. Watch and download the rendered clip (LIVESTACK-52, 2026-11-08)
+
+Reviewers could not see what was rendered (orientation, cuts, overlay,
+result pill, clock): the clip lived only on the worker that rendered it,
+the master's archive and the studio (brief "13 — Watch and download the
+rendered clip", from LIVEBAJA-18). Contract 2.11.0, installer 0.7.0 (not
+bumped: 0.7.0 was never released and ships with §36), migration 0019.
+
+* **"Ver clipe": a preview of every rendered clip.** While the Settings
+  switch "Gerar prévia dos clipes" (`AdminSettings.clip_previews_enabled`,
+  default on) is on, a process task carries `preview_upload_url`. The
+  worker delivers the clip as always, then makes the preview from the
+  kept clip with **exactly the review proxy's settings** (480p, 1.5 Mbit/s
+  capped, 30 fps CFR, AAC 96k, faststart; `build_clip_preview_command`
+  wraps `build_proxy_command`, no tone mapping since the clip is already
+  SDR) and uploads it, chunked, to `POST /jobs/{id}/clip-preview` with
+  `Clip-SHA256`. **After the delivery, outside the lease**: the clip on
+  air never waits for a preview, and a direct push's ACK ends the lease
+  first, so the preview step stops only for a shutdown
+  (`CancelToken.shutdown_only`). A failure is logged and never fails the
+  task. The process stage stays busy those seconds. With no lease, the
+  orchestrator accepts a preview only from the worker that rendered that
+  version (403) and only while it is the job's newest (409, checked again
+  on the completing chunk).
+* **One file per clip version**: `previews/<job_id>.<clip sha256>.mp4`,
+  served by Caddy `/previews/*` with `forward_auth` like proxies (a
+  cached copy can never be the wrong version). When a newer version's
+  preview arrives, the older file is deleted. Until it arrives the page
+  does **not** show the older version's preview (it would show the old
+  cut as if it were on air): `Job.clip_preview` (`ClipPreview`, also
+  `ManifestEntry.preview`) describes the newest version only.
+* **Why there is no preview** (`ClipPreviewState`, one function,
+  `domain/clip_preview_status.py`): `making` for 15 minutes after the
+  version was recorded, then `missing`; `switched_off` when the switch
+  was off at the claim (`jobs.preview_wanted`, set at every process
+  claim); `older_worker` when the renderer did not declare `clip_preview`;
+  `evicted`. Clips rendered before this have `preview_wanted` NULL and
+  say `missing` (out of scope: no previews of older clips). The page
+  shows the reason and points at "Baixar clipe".
+* **Eviction like proxies**: only below `proxy_evict_min_free_gb` free,
+  finished jobs (done, discarded) first, oldest first, after the proxies
+  (their sweeper runs first; a holder can make a proxy again, nobody makes
+  a preview again). Previews of versions that are no longer the newest go
+  at once, except files younger than 10 minutes (an upload may have just
+  been renamed into place before its row says so).
+* **"Baixar clipe"**, the same pattern as "Baixar original" (§24):
+  `POST /jobs/{id}/clip-download` asks for the job's **newest** version
+  (asking again starts the times over and replaces a copy of an older
+  version). If the outbox has exactly that clip it is hard-linked into
+  `requested_clips/<job_id>.mp4` at once; otherwise `upload_clip` is
+  offered, right after `upload_original`, in tiers: the master (when that
+  version is archived or it keeps it), then workers keeping it (the
+  renderer first), then the studio, only when nobody else can and only
+  while it is not delivering (no deliver lease and no job `uploaded`; the
+  studio also leaves the kind out while its deliver stage is busy). A PC
+  that cannot find the clip reports scope `worker` and the next is asked.
+  The worker looks in its kept clips, the archive path, then the studio
+  folder under any version name of the passagem (a locked clip makes the
+  studio store "-v3"), always by SHA-256. "Archived" means the current
+  master; a previous master's archive is not tracked.
+* **The download is served by the orchestrator, not Caddy.** Deleting
+  "30 minutes after the first complete download" needs to know a
+  download finished, which only the sender can tell. So Caddy passes
+  `GET/HEAD /requested-clips/*` to the orchestrator
+  (`flush_interval -1`), which checks the `bvp_session` cookie like
+  `/auth/media`, names the file (`Content-Disposition`, the clip's own
+  readable name, "suspensao-007-p2.mp4"), honours one `Range`, and
+  records the first complete download when the response that carries
+  the file's last byte has handed it over (a generator that is closed
+  when the browser leaves never gets there). A resumed download whose
+  last range reaches the end counts; a range that stops early does not.
+  Caveat: "handed over" is to Caddy's buffers, so a browser that drops
+  the last few hundred kilobytes can be counted as complete; the 30
+  minutes exist for exactly that retry. Clips are tens of MB, so an app
+  process in this byte path (unlike proxies, §6) is fine.
+* **Times** (Settings): `clip_download_keep_minutes` (30) after the first
+  complete download, `clip_download_unused_hours` (24) after the request
+  if never downloaded; below the eviction threshold, downloaded copies
+  first, then the oldest request. No folder cap (the brief asks for none;
+  copies are short-lived).
+* **UI.** Job page: a closed "Ver clipe" block (`preload="none"`) and
+  "Baixar clipe" in the actions; clips page: "Ver clipe" opens one
+  `<dialog>` player, "sem prévia" with the reason on hover, "Baixar clipe"
+  on every row, including the outbox list. The old direct link to outbox
+  clips (`/clip-downloads/`) is gone from both pages (Caddy still serves
+  it); an outbox clip is ready at once through the new button anyway. The
+  page does not refresh a preview that is being made: reload.
+* **Render features as abilities.** `clip_preview` and `upload_clip` are
+  declared like render features (§29) but never required by a render:
+  the first only explains a missing preview, the second gates the task.
+  A 0.7.0 worker that meets an older orchestrator gets 400 for
+  `upload_clip` on `/next` and leaves it out for 5 minutes (§26).
+* **Storage** (measured with the real preview command on 30 s 1080p30
+  clips, ffmpeg 6.1 libx264; both a plain test pattern and a heavy-noise
+  worst case hit the bitrate cap): **≈ 6.1 MB per 30 s clip, ≈ 12.2 MB
+  per minute; 400 clips of 30 s ≈ 2.45 GB**, next to ≈ 6 GB of proxies
+  per 200 passes (§10). A real-ffmpeg test keeps it under 13 MB/min.
+* **Deployment order: the VPS first, then the workers** (as §29).
+* **Not checked without real PCs**: the NVENC preview encode and its time
+  on a volunteer's PC (CI runs libx264 on ffmpeg 9.0); the studio reading
+  a clip OBS has open while uploading it on Windows; a real browser's
+  download through the real Caddy (completion is tested on the
+  generator and through the in-memory client), and the dialog player
+  (no browser test setup).

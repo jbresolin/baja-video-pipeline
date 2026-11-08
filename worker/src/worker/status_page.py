@@ -39,6 +39,7 @@ TASK_WORDS = {
     "deliver": "Recebendo clipe",
     "archive_clip": "Arquivando clipe",
     "upload_original": "Enviando o original",
+    "upload_clip": "Enviando um clipe a um revisor",
 }
 STATUS_STYLE = (
     ".state{font-size:1.6em;font-weight:700;padding:.6em .8em;border-radius:8px;color:#fff}"

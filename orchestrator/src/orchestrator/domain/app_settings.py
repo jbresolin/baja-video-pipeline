@@ -95,6 +95,16 @@ class AdminSettingsStore:
     def originals_cap_bytes(self) -> int:
         return int(self.current.originals_cap_gb * BYTES_PER_GB)
 
+    @property
+    def clip_download_keep(self) -> timedelta:
+        """How long a requested clip stays after its first complete download."""
+        return timedelta(minutes=self.current.clip_download_keep_minutes)
+
+    @property
+    def clip_download_unused(self) -> timedelta:
+        """How long a requested clip stays when nobody downloads it."""
+        return timedelta(hours=self.current.clip_download_unused_hours)
+
     def update(
         self, actor: AdminActor, request: UpdateSettingsRequest, now: datetime
     ) -> AdminSettings:

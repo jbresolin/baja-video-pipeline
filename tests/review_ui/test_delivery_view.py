@@ -78,15 +78,21 @@ def test_an_archived_clip_names_its_place_in_the_archive_and_older_versions():
 
 
 def test_the_job_page_offers_the_outbox_clip_for_download(ui, fake_orchestrator):
+    # Since LIVESTACK-52 every clip has "Baixar clipe", which asks the
+    # orchestrator (an outbox clip is ready at once); no direct outbox link.
     fake_orchestrator.add_job(uploaded_job())
     html = ui.get("/review/jobs/job-outbox-1").text
-    assert 'href="/clip-downloads/job-outbox-1.mp4" download' in html
+    assert 'data-clip-download="job-outbox-1"' in html
+    assert "/clip-downloads/" not in html
     assert "Clipe na caixa de saída do servidor, esperando o estúdio buscar." in html
 
 
-def test_no_download_when_the_outbox_no_longer_has_the_clip(ui):
-    # The sample delivered job's clip went straight to the studio.
+def test_a_clip_no_longer_in_the_outbox_can_be_downloaded_too(ui):
+    # The sample delivered job's clip went straight to the studio: before
+    # LIVESTACK-52 it could not be downloaded at all; now a PC that has it
+    # uploads it on request.
     html = ui.get("/review/jobs/job-done-1").text
+    assert 'data-clip-download="job-done-1"' in html
     assert "/clip-downloads/" not in html
 
 
@@ -94,4 +100,4 @@ def test_the_clips_page_lists_outbox_clips_with_a_download_button(ui, fake_orche
     fake_orchestrator.add_job(uploaded_job())
     html = ui.get("/review/clips").text
     assert "Na caixa de saída do servidor, esperando o estúdio buscar" in html
-    assert 'href="/clip-downloads/job-outbox-1.mp4" download>Baixar</a>' in html
+    assert 'data-clip-download="job-outbox-1"' in html

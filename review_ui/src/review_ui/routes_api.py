@@ -118,7 +118,7 @@ async def regenerate_proxy(request: Request, job_id: str) -> JSONResponse:
 
 
 def _original_answer(request: Request, answer) -> JSONResponse:
-    """The orchestrator's OriginalDownload, with a link the browser can use."""
+    """The orchestrator's OriginalDownload or ClipDownload, with a link the browser can use."""
     body = answer.model_dump(mode="json")
     body["download_url"] = media_url(
         request.app.state.settings.public_base_url, answer.download_url
@@ -139,6 +139,23 @@ async def original_status(request: Request, job_id: str) -> JSONResponse:
     """Polled by the job page while the original is being prepared."""
     orchestrator = orchestrator_for(request)
     return _original_answer(request, await run_in_threadpool(orchestrator.get_original, job_id))
+
+
+@router.post("/jobs/{job_id}/clip-download")
+async def request_clip_download(request: Request, job_id: str) -> JSONResponse:
+    """ "Baixar clipe" (LIVESTACK-52); the same answer shape as the original's."""
+    await read_json_body(request)
+    orchestrator = orchestrator_for(request)
+    answer = await run_in_threadpool(orchestrator.request_clip_download, job_id)
+    return _original_answer(request, answer)
+
+
+@router.get("/jobs/{job_id}/clip-download")
+async def clip_download_status(request: Request, job_id: str) -> JSONResponse:
+    """Polled by the page while the clip is being prepared."""
+    orchestrator = orchestrator_for(request)
+    answer = await run_in_threadpool(orchestrator.get_clip_download, job_id)
+    return _original_answer(request, answer)
 
 
 @router.get("/jobs/{job_id}/passagem-help")

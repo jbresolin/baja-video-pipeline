@@ -40,10 +40,12 @@ from shared.protocol import (
 
 # Order in which /next looks at the kinds a worker accepts. Proxies first:
 # they unblock the human reviewers, who are the slowest part of the line.
-# Then an original a reviewer is waiting for (item 15), before renders.
+# Then an original or a clip a reviewer is waiting for (item 15,
+# LIVESTACK-52), before renders.
 KIND_PRIORITY = [
     TaskKind.MAKE_PROXY,
     TaskKind.UPLOAD_ORIGINAL,
+    TaskKind.UPLOAD_CLIP,
     TaskKind.PROCESS,
     TaskKind.DOWNLOAD_RAW,
     TaskKind.DELIVER,
@@ -167,6 +169,8 @@ def _candidate_rows(connection: sqlite3.Connection, worker_row: sqlite3.Row, kin
         return jobs_repo.list_jobs_held_by(connection, worker_id, [JobState.READY])
     if kind == TaskKind.UPLOAD_ORIGINAL:
         return jobs_repo.list_original_request_rows(connection)
+    if kind == TaskKind.UPLOAD_CLIP:
+        return jobs_repo.list_clip_download_rows(connection)
     return jobs_repo.list_outbox_deliver_candidates(connection)
 
 
@@ -282,6 +286,10 @@ def claim_task(
             leases_repo.add_assigned_holder(connection, job_id, worker_id, now)
         if kind == TaskKind.PROCESS:
             remember_claimed_inputs(connection, job_id, decision.task, now)
+            # Whether this render will bring a preview (LIVESTACK-52).
+            jobs_repo.set_preview_wanted(
+                connection, job_id, decision.task.preview_upload_url is not None
+            )
             move_job(
                 connection,
                 job_row,

@@ -259,6 +259,14 @@ def _optional_whole_number(form: dict, name: str) -> int | None:
     return int(value)
 
 
+def _optional_checkbox(form: dict, name: str) -> bool | None:
+    """A ticked box sends its name, an unticked one nothing. The page also sends
+    "<name>_shown", so a form without the box (an older page) keeps the stored value."""
+    if not form.get(f"{name}_shown"):
+        return None
+    return bool(form.get(name))
+
+
 @router.post("/settings")
 def save_settings(request: Request, form: dict = Depends(read_form)) -> Response:
     try:
@@ -284,6 +292,10 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
             # The bot's reply to a duplicate video (LIVESTACK-51); same rules.
             duplicate_video_message=form.get("duplicate_video_message"),
             sender_messages_keep_days=_optional_whole_number(form, "sender_messages_keep_days"),
+            # "Gerar prévia dos clipes" and "Baixar clipe" (LIVESTACK-52).
+            clip_previews_enabled=_optional_checkbox(form, "clip_previews_enabled"),
+            clip_download_keep_minutes=_optional_number(form, "clip_download_keep_minutes"),
+            clip_download_unused_hours=_optional_number(form, "clip_download_unused_hours"),
         )
     except ValueError:
         return settings_page_response(

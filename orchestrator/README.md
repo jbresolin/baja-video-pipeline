@@ -64,6 +64,7 @@ or `http://[::1]…`:
   | `/inbox/<job>.<ext>` | the worker holding that job's `download_raw` lease (`/auth/file` rules) |
   | `/outbox/<job>.mp4` | the studio (`/auth/file` rules) |
   | `/proxies/<job>.mp4`, `/thumbs/<job>.jpg` | a reviewer (basic auth, like Caddy) |
+  | `/previews/<job>.<clip sha256>.mp4` | a reviewer ("Ver clipe", LIVESTACK-52) |
 
   GET and HEAD, with `Range` (206) like Caddy's `file_server`; dot-files
   and `*.part` are never served. The routes are left out of `/openapi.json`.
@@ -103,11 +104,17 @@ docker build -f orchestrator/Dockerfile -t baja-orchestrator .
 python:3.12-slim + uv, runs as uid/gid 10001, listens on 8000, has a
 `/health` healthcheck. It refuses to start, naming the missing variables,
 until every required setting is present (docs/api.md §10). It writes
-`inbox/ proxies/ thumbs/ outbox/ db/` under `BVP_DATA_DIR`, so on the VPS:
+`inbox/ proxies/ thumbs/ outbox/ originals/ previews/ requested_clips/ db/`
+under `BVP_DATA_DIR`, so on the VPS:
 
 ```sh
-sudo install -d -o 10001 -g 10001 /srv/pipeline/{inbox,proxies,thumbs,outbox,db}
+sudo install -d -o 10001 -g 10001 /srv/pipeline/{inbox,proxies,thumbs,outbox,originals,previews,requested_clips,db}
 ```
+
+`GET /requested-clips/<job_id>/<name>` ("Baixar clipe", LIVESTACK-52) is a
+real route in every mode, not a dev-mode stand-in: Caddy passes it to the
+orchestrator, which sends the bytes itself so it knows when a download
+finished (`domain/requested_clips.py`).
 
 ## Code map
 

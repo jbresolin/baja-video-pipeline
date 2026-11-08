@@ -1,4 +1,5 @@
-"""Routes (dev mode only): /inbox/* /outbox/* /proxies/* /thumbs/* /clip-downloads/* without Caddy.
+"""Routes (dev mode only): /inbox/* /outbox/* /proxies/* /thumbs/* /previews/* /clip-downloads/*
+without Caddy.
 
 create_app() includes this router only when BVP_DEV_MODE=1, and the
 routes are left out of the OpenAPI document: they are Caddy's paths, not
@@ -51,6 +52,17 @@ def proxy_file(
     context: OrchestratorContext = Depends(get_context),
 ) -> FileResponse:
     path = dev_files.review_media_path(context, "proxies", file_name)
+    return FileResponse(path, media_type="video/mp4")
+
+
+@router.api_route("/previews/{file_name}", methods=READ_METHODS)
+def preview_file(
+    file_name: str,
+    reviewer: str = Depends(require_reviewer),
+    context: OrchestratorContext = Depends(get_context),
+) -> FileResponse:
+    # Like Caddy's /previews/* ("Ver clipe", LIVESTACK-52).
+    path = dev_files.review_media_path(context, "previews", file_name)
     return FileResponse(path, media_type="video/mp4")
 
 

@@ -18,6 +18,9 @@ after rendering and is offered the same job again with the same inputs,
 it skips the render and resumes the upload. A lost lease (the reviewer
 changed the cut, or the lease expired) deletes the clip.
 
+After the delivery, a 480p preview of the clip goes to the VPS when the
+task asks for one (LIVESTACK-52, worker.tasks.clip_preview).
+
 After a verified delivery the clip is *kept* (design §11 as amended:
 processed clips are the archive) as clips/<clip name>.<job_id>.<sha256>.mp4
 (e.g. enduro-042-p3.<job>.<sha>.mp4), until
@@ -40,6 +43,7 @@ from worker.leases import ActiveLease, CancelToken, TaskCancelledError
 from worker.overlay import OverlayText, render_overlay
 from worker.overlay_clock import write_clock_pill
 from worker.tasks.clip_delivery import deliver_clip
+from worker.tasks.clip_preview import send_clip_preview
 from worker.tasks.environment import TaskEnvironment
 
 logger = logging.getLogger(__name__)
@@ -67,8 +71,10 @@ def run_process(
                 env.storage.delete_clip(task.job_id)
             raise
     clip_name = PurePosixPath(task.clip_relative_path).stem  # "enduro-042-p3" (item 12)
-    env.storage.clips.keep(clip_path, task.job_id, clip_sha256, clip_name)
+    kept_path = env.storage.clips.keep(clip_path, task.job_id, clip_sha256, clip_name)
     env.storage.delete_clip(task.job_id)  # only the sidecar is left by now
+    # "Ver clipe" (LIVESTACK-52): after the delivery, never instead of it.
+    send_clip_preview(env, task, kept_path, clip_sha256, cancel)
 
 
 def render_inputs(task: ProcessTask) -> dict:

@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from shared.models import (
     CarVideosResponse,
+    ClipDownload,
     CurrentUser,
     ErrorResponse,
     Event,
@@ -194,6 +195,15 @@ class OrchestratorClient:
     def get_original(self, job_id: str) -> OriginalDownload:
         response = self._request("GET", f"/jobs/{_path_segment(job_id)}/original")
         return self._parse(OriginalDownload, response)
+
+    def request_clip_download(self, job_id: str) -> ClipDownload:
+        """ "Baixar clipe" (LIVESTACK-52): ask for the newest clip (again)."""
+        response = self._request("POST", f"/jobs/{_path_segment(job_id)}/clip-download")
+        return self._parse(ClipDownload, response)
+
+    def get_clip_download(self, job_id: str) -> ClipDownload:
+        response = self._request("GET", f"/jobs/{_path_segment(job_id)}/clip-download")
+        return self._parse(ClipDownload, response)
 
     def get_team(self, car_number: int) -> Team | None:
         """The team for a car number, or None when the teams table does not know it."""

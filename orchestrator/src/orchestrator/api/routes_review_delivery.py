@@ -15,6 +15,7 @@ from orchestrator.api.auth import (
 from orchestrator.context import OrchestratorContext
 from orchestrator.domain import (
     car_videos,
+    clip_downloads,
     delivery,
     event_log,
     fleet,
@@ -26,6 +27,7 @@ from orchestrator.domain import (
 )
 from shared.models import (
     CarVideosResponse,
+    ClipDownload,
     EventsResponse,
     FleetResponse,
     Job,
@@ -182,6 +184,26 @@ def request_original(
 ) -> OriginalDownload:
     """ "Baixar original": ready at once while the inbox has the raw, else a holder uploads it."""
     return originals.request_original(context, job_id, reviewer)
+
+
+@router.get("/jobs/{job_id}/clip-download", tags=["review"], response_model=ClipDownload)
+def get_clip_download(
+    job_id: str,
+    reviewer: str = Depends(require_reviewer),
+    context: OrchestratorContext = Depends(get_context),
+) -> ClipDownload:
+    """Where "Baixar clipe" stands (LIVESTACK-52); no side effects."""
+    return clip_downloads.get_clip_download(context, job_id)
+
+
+@router.post("/jobs/{job_id}/clip-download", tags=["review"], response_model=ClipDownload)
+def request_clip_download(
+    job_id: str,
+    reviewer: str = Depends(require_reviewer),
+    context: OrchestratorContext = Depends(get_context),
+) -> ClipDownload:
+    """ "Baixar clipe": ready at once while the outbox has the clip, else a PC uploads it."""
+    return clip_downloads.request_clip_download(context, job_id, reviewer)
 
 
 @router.get(

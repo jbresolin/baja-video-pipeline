@@ -12,6 +12,7 @@ docs/api.md describes:
                                           show_pass_result updates pass_result.show)
     POST  /jobs/{job_id}/regenerate-proxy
     GET   /jobs/{job_id}/original, POST /jobs/{job_id}/original
+    GET   /jobs/{job_id}/clip-download, POST /jobs/{job_id}/clip-download
     GET   /teams/{car_number}
     GET   /manifest
     GET   /fleet
@@ -396,6 +397,28 @@ def build_app(fake: FakeOrchestrator) -> FastAPI:
     @app.get("/jobs/{job_id}/original")
     def original_status(job_id: str):
         return {"state": "preparing"}
+
+    # "Baixar clipe" (LIVESTACK-52): asking prepares it; the next status says ready.
+    @app.post("/jobs/{job_id}/clip-download")
+    def request_clip_download(job_id: str):
+        if job_id not in fake.jobs:
+            return _error(404, "not_found", f"no job {job_id}")
+        if fake.jobs[job_id].clip is None:
+            return _error(409, "conflict", "this job has no clip yet")
+        return {"state": "preparing", "version": 1}
+
+    @app.get("/jobs/{job_id}/clip-download")
+    def clip_download_status(job_id: str):
+        name = "suspensao-007-p1.mp4"
+        return {
+            "state": "ready",
+            "download_url": f"/requested-clips/{job_id}/{name}",
+            "file_name": name,
+            "size_bytes": 80_000_000,
+            "version": 1,
+            "downloaded_at": None,
+            "expires_at": "2026-10-26T12:00:00Z",
+        }
 
     @app.get("/teams/{car_number}")
     def get_team(car_number: int):

@@ -195,8 +195,10 @@
         {% else %}
         <p class="hint">{{ t("job.no_actions") }}</p>
         {% endfor %}
-        {% if job.clip and job.clip.download_url %}
-        <a class="action subtle" href="{{ media_url(job.clip.download_url) }}" download="{{ job.clip.download_file_name or '' }}" title="{{ t('job.download_clip.title') }}">{{ t("job.download_clip") }}</a>
+        {# "Baixar clipe" (LIVESTACK-52): any clip, wherever it is; js/clip_review.js. #}
+        {% if job.clip %}
+        <button type="button" class="action subtle" data-clip-download="{{ job.id }}" title="{{ t('clip_download.button.title') }}">{{ t("clip_download.button") }}</button>
+        <span class="hint" data-clip-download-status aria-live="polite"></span>
         {% endif %}
         {# "Baixar original" (LIVESTACK-41 item 15): the raw, when the 480p proxy is not enough. #}
         <button type="button" class="action subtle" data-original title="{{ t('job.download_original.title') }}">{{ t("job.download_original") }}</button>
@@ -206,6 +208,8 @@
         {% endif %}
       </div>
     </form>
+
+    {% include "_clip_preview.html" %}
 
     {% include "_job_events.html" %}
   </section>

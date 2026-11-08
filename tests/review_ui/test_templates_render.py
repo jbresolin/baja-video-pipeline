@@ -43,6 +43,7 @@ from tests.review_ui.sample_data import (
     pass_clock_job,
     pass_result,
     pass_result_job,
+    previewed_job,
 )
 from tests.review_ui.sample_events import make_events
 from tests.review_ui.test_media_panel import IPHONE_REPORT
@@ -152,6 +153,8 @@ CASES = {
     # A clip edited after delivery: the status strip carries the warning banner.
     "_job_status.html": lambda: job_context(edited_after_delivery_job()),
     "_job_events.html": lambda: job_context(delivered_job()),
+    # "Ver clipe" (LIVESTACK-52): a delivered clip with its preview.
+    "_clip_preview.html": lambda: job_context(previewed_job()),
     "_media_info.html": lambda: job_context(make_job(media_info=IPHONE_REPORT)),
     # A phone video filmed upright, "Cortar" chosen: the whole box shows.
     "_render_options.html": lambda: job_context(

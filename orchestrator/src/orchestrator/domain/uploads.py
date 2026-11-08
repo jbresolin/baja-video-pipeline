@@ -49,7 +49,7 @@ def parse_upload_headers(headers: Mapping[str, str]) -> UploadHeaders:
         raise ApiError(400, ErrorCode.VALIDATION_ERROR, str(error)) from error
 
 
-def _check_lease(
+def check_upload_lease(
     context: OrchestratorContext,
     worker_row: sqlite3.Row,
     job_id: str,
@@ -66,7 +66,7 @@ def _check_lease(
         return job_row
 
 
-def _receive_chunk(
+def receive_chunk(
     context: OrchestratorContext, path: Path, max_bytes: int, upload: UploadHeaders, chunk: bytes
 ) -> ChunkAccepted:
     receiver = ChunkedUploadReceiver(path, max_bytes=max_bytes)
@@ -86,7 +86,7 @@ def _receive_chunk(
             raise ApiError(413, ErrorCode.UPLOAD_TOO_LARGE, str(error)) from error
 
 
-def _finish_under_lease(
+def finish_upload_under_lease(
     context: OrchestratorContext,
     worker_row: sqlite3.Row,
     job_id: str,
@@ -122,8 +122,8 @@ def accept_proxy_chunk(
 ) -> ChunkAccepted:
     """`frame_rate` (Frame-Rate header) is stored on the job when the upload completes."""
     upload = parse_upload_headers(headers)
-    _check_lease(context, worker_row, job_id, lease_id, TaskKind.MAKE_PROXY)
-    accepted = _receive_chunk(
+    check_upload_lease(context, worker_row, job_id, lease_id, TaskKind.MAKE_PROXY)
+    accepted = receive_chunk(
         context, context.layout.proxy_path(job_id), MAX_PROXY_BYTES, upload, chunk
     )
     if not accepted.complete:
@@ -159,7 +159,7 @@ def accept_proxy_chunk(
             changes={"waiting_reason": None},
         )
 
-    _finish_under_lease(
+    finish_upload_under_lease(
         context, worker_row, job_id, lease_id, TaskKind.MAKE_PROXY, proxy_is_in_place
     )
     return accepted
@@ -172,7 +172,7 @@ def store_thumbnail(
     lease_id: str,
     jpeg: bytes,
 ) -> None:
-    _check_lease(context, worker_row, job_id, lease_id, TaskKind.MAKE_PROXY)
+    check_upload_lease(context, worker_row, job_id, lease_id, TaskKind.MAKE_PROXY)
     if len(jpeg) > MAX_THUMBNAIL_BYTES:
         raise ApiError(413, ErrorCode.UPLOAD_TOO_LARGE, "thumbnail is over 5 MB")
     if not jpeg.startswith(JPEG_MAGIC):
@@ -197,7 +197,7 @@ def accept_clip_chunk(
     chunk: bytes,
 ) -> ChunkAccepted:
     upload = parse_upload_headers(headers)
-    job_row = _check_lease(context, worker_row, job_id, lease_id, TaskKind.PROCESS)
+    job_row = check_upload_lease(context, worker_row, job_id, lease_id, TaskKind.PROCESS)
     if job_row["state"] != JobState.CLAIMED:
         raise ApiError(
             409,
@@ -205,7 +205,7 @@ def accept_clip_chunk(
             "clip uploads need a claimed job",
             {"current": job_row["state"], "requested": str(JobState.UPLOADED)},
         )
-    accepted = _receive_chunk(
+    accepted = receive_chunk(
         context, context.layout.outbox_path(job_id), MAX_CLIP_BYTES, upload, chunk
     )
     if not accepted.complete:
@@ -246,7 +246,9 @@ def accept_clip_chunk(
             },
         )
 
-    _finish_under_lease(context, worker_row, job_id, lease_id, TaskKind.PROCESS, clip_is_in_outbox)
+    finish_upload_under_lease(
+        context, worker_row, job_id, lease_id, TaskKind.PROCESS, clip_is_in_outbox
+    )
     return accepted
 
 
@@ -265,11 +267,11 @@ def accept_original_chunk(
     never changes; the completing chunk ends the upload_original lease.
     """
     upload = parse_upload_headers(headers)
-    job_row = _check_lease(context, worker_row, job_id, lease_id, TaskKind.UPLOAD_ORIGINAL)
+    job_row = check_upload_lease(context, worker_row, job_id, lease_id, TaskKind.UPLOAD_ORIGINAL)
     if upload.sha256 != job_row["sha256"]:
         raise ApiError(422, ErrorCode.HASH_MISMATCH, "that is not this job's raw")
     path = context.layout.original_path(job_id, job_row["raw_extension"])
-    accepted = _receive_chunk(context, path, MAX_ORIGINAL_BYTES, upload, chunk)
+    accepted = receive_chunk(context, path, MAX_ORIGINAL_BYTES, upload, chunk)
     if not accepted.complete:
         return accepted
 
@@ -284,7 +286,7 @@ def accept_original_chunk(
             reason="the original is ready for download",
         )
 
-    _finish_under_lease(
+    finish_upload_under_lease(
         context, worker_row, job_id, lease_id, TaskKind.UPLOAD_ORIGINAL, original_is_on_the_vps
     )
     return accepted

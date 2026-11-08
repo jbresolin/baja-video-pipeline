@@ -54,7 +54,7 @@ def car_videos(context: OrchestratorContext, prova: str, car_number: int) -> Car
                     folder_of[row["prova"]] = prova_slug_for(connection, row["prova"])
                 if folder_of[row["prova"]] == slug:
                     rows.append(row)
-        jobs = [job_from_row(connection, row, context.layout) for row in rows]
+        jobs = [job_from_row(connection, row, context.layout, context.clock.now()) for row in rows]
         counts = sender_messages.message_counts(connection, rows)
     return CarVideosResponse(
         prova_slug=slug,

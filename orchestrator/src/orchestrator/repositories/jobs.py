@@ -310,3 +310,74 @@ def set_original_requested_at(
         "UPDATE jobs SET original_requested_at = ? WHERE id = ?",
         (to_db_time(when) if when is not None else None, job_id),
     )
+
+
+# --- Clip previews and "Baixar clipe" (LIVESTACK-52) ---
+#
+# Not through update_job, like the original requests above: watching or
+# downloading a clip is not a change to the job, so updated_at stays.
+
+
+def set_preview_wanted(connection: sqlite3.Connection, job_id: str, wanted: bool) -> None:
+    """At each process claim: did the task ask for a preview (Settings switch on)?"""
+    connection.execute(
+        "UPDATE jobs SET preview_wanted = ? WHERE id = ?", (1 if wanted else 0, job_id)
+    )
+
+
+def set_preview_clip_sha256(
+    connection: sqlite3.Connection, job_id: str, clip_sha256: str | None
+) -> None:
+    """Which clip the job's preview file shows (None = no preview at all)."""
+    connection.execute(
+        "UPDATE jobs SET preview_clip_sha256 = ? WHERE id = ?", (clip_sha256, job_id)
+    )
+
+
+def list_job_rows_with_preview(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Jobs that have (or had, before an eviction) a clip preview, finished ones
+    first and oldest first, the order previews are evicted in."""
+    return connection.execute(
+        "SELECT * FROM jobs WHERE preview_clip_sha256 IS NOT NULL"
+        " ORDER BY state NOT IN ('done', 'discarded'), finished_at, created_at, id"
+    ).fetchall()
+
+
+def list_clip_download_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Jobs a reviewer asked the clip of ("Baixar clipe"), oldest request first."""
+    return connection.execute(
+        "SELECT * FROM jobs WHERE clip_download_requested_at IS NOT NULL"
+        " ORDER BY clip_download_requested_at, id"
+    ).fetchall()
+
+
+def set_clip_download_request(
+    connection: sqlite3.Connection, job_id: str, when: datetime, clip_sha256: str
+) -> None:
+    """Remember a reviewer's "Baixar clipe" of that clip; a new request starts over."""
+    connection.execute(
+        "UPDATE jobs SET clip_download_requested_at = ?, clip_download_sha256 = ?,"
+        " clip_download_completed_at = NULL WHERE id = ?",
+        (to_db_time(when), clip_sha256, job_id),
+    )
+
+
+def clear_clip_download_request(connection: sqlite3.Connection, job_id: str) -> None:
+    """Forget the request (its copy was deleted)."""
+    connection.execute(
+        "UPDATE jobs SET clip_download_requested_at = NULL, clip_download_sha256 = NULL,"
+        " clip_download_completed_at = NULL WHERE id = ?",
+        (job_id,),
+    )
+
+
+def set_clip_download_completed(
+    connection: sqlite3.Connection, job_id: str, when: datetime
+) -> bool:
+    """Record the *first* complete download; True when this was it."""
+    cursor = connection.execute(
+        "UPDATE jobs SET clip_download_completed_at = ? WHERE id = ?"
+        " AND clip_download_requested_at IS NOT NULL AND clip_download_completed_at IS NULL",
+        (to_db_time(when), job_id),
+    )
+    return cursor.rowcount == 1

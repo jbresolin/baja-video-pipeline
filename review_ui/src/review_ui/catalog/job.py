@@ -76,8 +76,6 @@ TEXT: dict[str, str] = {
     "job.team_with_school": "Equipe: <strong>{name}</strong> ({school})",
     "job.show_pass": "Mostrar o número da passagem na tarja do clipe",
     "job.no_actions": "Nenhuma ação de revisão neste estado.",
-    "job.download_clip": "Baixar clipe",
-    "job.download_clip.title": "O clipe como está na caixa de saída do servidor",
     "job.download_original": "Baixar original",
     "job.download_original.title": (
         "O vídeo como chegou pelo WhatsApp, em qualidade total (o proxy é só 480p)"
@@ -168,12 +166,14 @@ TEXT: dict[str, str] = {
     "task.doing.deliver": "entregando o clipe ao estúdio",
     "task.doing.archive_clip": "arquivando o clipe",
     "task.doing.upload_original": "enviando o original para download",
+    "task.doing.upload_clip": "enviando o clipe para baixar",
     "task.verb.download_raw": "baixar o original",
     "task.verb.make_proxy": "renderizar o proxy",
     "task.verb.process": "renderizar o clipe",
     "task.verb.deliver": "entregar o clipe ao estúdio",
     "task.verb.archive_clip": "arquivar o clipe",
     "task.verb.upload_original": "enviar o original para download",
+    "task.verb.upload_clip": "enviar o clipe para baixar",
     # --- File details under the player (media_info_view.py) ---
     "media.title": "Detalhes do arquivo",
     "media.location_present": "tinha localização",

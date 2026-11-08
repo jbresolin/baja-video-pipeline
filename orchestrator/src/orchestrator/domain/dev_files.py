@@ -5,6 +5,7 @@ On the VPS, Caddy serves the bytes (design §6, §15):
     /inbox/*  /outbox/*    tailnet listener, after forward_auth → GET /auth/file
     /proxies/* /thumbs/*   public site, behind reviewer basic auth
     /clip-downloads/*      public site, reviewer auth: outbox/<job_id>.mp4
+    /previews/*            public site, reviewer auth: clip previews (LIVESTACK-52)
 
 A laptop has no Caddy, so with BVP_DEV_MODE=1 (which config.load_settings
 only accepts with a localhost BVP_PUBLIC_BASE_URL) the orchestrator answers
@@ -25,6 +26,8 @@ from orchestrator.errors import not_found
 # like Caddy's `hide .* *.part *.part.json`.
 PROXY_FILE_NAME = re.compile(r"^[0-9a-f]{32}\.mp4$")
 THUMBNAIL_FILE_NAME = re.compile(r"^[0-9a-f]{32}\.jpg$")
+# "Ver clipe" (LIVESTACK-52): previews/<job_id>.<clip sha256>.mp4.
+PREVIEW_FILE_NAME = re.compile(r"^[0-9a-f]{32}\.[0-9a-f]{64}\.mp4$")
 
 
 def worker_file_path(
@@ -45,9 +48,11 @@ def worker_file_path(
 
 
 def review_media_path(context: OrchestratorContext, folder: str, file_name: str) -> Path:
-    """The proxy, thumbnail or outbox clip to give a reviewer, or raise 404."""
+    """The proxy, thumbnail, clip preview or outbox clip to give a reviewer, or raise 404."""
     if folder == "proxies":
         pattern, folder_path = PROXY_FILE_NAME, context.layout.proxies_dir
+    elif folder == "previews":
+        pattern, folder_path = PREVIEW_FILE_NAME, context.layout.previews_dir
     elif folder == "clip-downloads":
         pattern, folder_path = PROXY_FILE_NAME, context.layout.outbox_dir
     else:

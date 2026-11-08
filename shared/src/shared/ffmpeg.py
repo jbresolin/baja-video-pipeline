@@ -131,6 +131,25 @@ def build_proxy_command(
     ]  # fmt: skip
 
 
+def build_clip_preview_command(
+    clip_path: Path,
+    preview_path: Path,
+    encoder: str,
+    settings: ProxySettings = DEFAULT_PROXY_SETTINGS,
+    ffmpeg_binary: str = "ffmpeg",
+) -> list[str]:
+    """Command that makes the small preview of a finished clip ("Ver clipe", LIVESTACK-52).
+
+    Exactly the review proxy's settings (480p, 1.5 Mbps, 30 fps, AAC 96k,
+    faststart), so a reviewer sees the clip the way they see every proxy,
+    on the same browsers. The clip is already SDR (the render tone-maps
+    HDR), so no tone mapping; a clip without sound gives a silent preview.
+    """
+    return build_proxy_command(
+        clip_path, preview_path, encoder, settings, ffmpeg_binary, tone_map_hdr=False
+    )
+
+
 def build_thumbnail_command(
     source_path: Path,
     thumbnail_path: Path,

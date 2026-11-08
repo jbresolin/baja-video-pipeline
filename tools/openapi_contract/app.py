@@ -82,7 +82,18 @@ from tools.openapi_contract import (
 # or a result line needs it, so an older worker never draws the old look. Deploy the VPS
 # first: an older orchestrator refuses a report whose pass_clock carries
 # `unit`; the worker logs it and delivers anyway.
-CONTRACT_VERSION = "2.10.0"
+# 2.11.0: watch and download the rendered clip (LIVESTACK-52). "Ver clipe":
+# ProcessTask.preview_upload_url, POST /jobs/{id}/clip-preview (Clip-SHA256),
+# Job.clip_preview and ManifestEntry.preview (ClipPreview, ClipPreviewState).
+# "Baixar clipe": task kind upload_clip (UploadClipTask), GET/POST
+# /jobs/{id}/clip-download (ClipDownload, ClipDownloadState), POST
+# /jobs/{id}/clip-download-upload, GET/HEAD /requested-clips/{job_id}/{name}.
+# AdminSettings.clip_previews_enabled, clip_download_keep_minutes,
+# clip_download_unused_hours. Render features (worker abilities)
+# "clip_preview" and "upload_clip" (installer 0.7.0). Deploy the VPS first:
+# an older orchestrator answers 400 to a /next asking for upload_clip; the
+# 0.7.0 worker leaves that kind out for 5 minutes, then asks again.
+CONTRACT_VERSION = "2.11.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

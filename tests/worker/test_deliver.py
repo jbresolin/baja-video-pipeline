@@ -29,8 +29,13 @@ def studio_with_outbox_clip(tmp_path):
 def test_studio_only_asks_for_deliver_tasks(tmp_path):
     harness, job, task = studio_with_outbox_clip(tmp_path)
     harness.dispatcher.run_once()
-    # The studio never volunteers as a holder (design §13).
-    assert harness.orchestrator.next_requests[0].accept_kinds == [TaskKind.DELIVER]
+    # The studio never volunteers as a holder (design §13). It also uploads
+    # a clip for "Baixar clipe" as a last resort (LIVESTACK-52), only while
+    # it is not delivering (tests/worker/test_upload_clip.py).
+    assert harness.orchestrator.next_requests[0].accept_kinds == [
+        TaskKind.DELIVER,
+        TaskKind.UPLOAD_CLIP,
+    ]
 
 
 def test_outbox_clip_is_stored_listed_and_acked(tmp_path):

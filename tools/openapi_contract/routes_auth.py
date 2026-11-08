@@ -97,3 +97,42 @@ def media_access() -> Response:
     watch proxies and thumbnails.
     """
     not_implemented()
+
+
+_REQUESTED_CLIP_RESPONSES = {
+    200: {"description": "The whole clip", "content": {"video/mp4": {}}},
+    206: {"description": "One byte range (Range: bytes=a-b)", "content": {"video/mp4": {}}},
+    **error_responses(401, 404, 416),
+}
+
+
+@router.get(
+    "/requested-clips/{job_id}/{file_name}",
+    tags=["review"],
+    summary='Download a clip a reviewer asked for ("Baixar clipe", LIVESTACK-52)',
+    response_class=Response,
+    dependencies=[Depends(session_cookie)],
+    responses=_REQUESTED_CLIP_RESPONSES,
+)
+def download_requested_clip(job_id: str, file_name: str) -> Response:
+    """Public site; Caddy passes it on unchanged. Unlike proxies, the
+    orchestrator sends these bytes itself, because the copy is deleted 30
+    minutes after the first *complete* download (the last byte sent; a
+    download that breaks off before does not count). Any signed-in user,
+    by the `bvp_session` cookie. One Range is honoured. The download is
+    named after the clip (Content-Disposition), e.g. suspensao-007-p2.mp4;
+    `file_name` in the path is only for the browser."""
+    not_implemented()
+
+
+@router.head(
+    "/requested-clips/{job_id}/{file_name}",
+    tags=["review"],
+    summary="The same answer as GET, without the bytes",
+    response_class=Response,
+    dependencies=[Depends(session_cookie)],
+    responses=_REQUESTED_CLIP_RESPONSES,
+)
+def requested_clip_headers(job_id: str, file_name: str) -> Response:
+    """For download managers asking the size first."""
+    not_implemented()

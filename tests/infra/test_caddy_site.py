@@ -108,6 +108,26 @@ def test_originals_are_served_like_clip_downloads_with_their_readable_name():
     assert "hide .* *.part *.part.json" in originals
 
 
+def test_clip_previews_are_served_like_proxies():
+    # "Ver clipe" (LIVESTACK-52): previews are static files, behind the same
+    # sign-in check as proxies.
+    assert "import bvp_pipeline_files" in block(site_text(), "handle /previews/*")
+
+
+def test_requested_clips_go_to_the_orchestrator_which_sends_them_itself():
+    # "Baixar clipe" (LIVESTACK-52): Caddy does not serve this file. The
+    # orchestrator sends the bytes, because it must know when a download
+    # finished (the copy goes 30 minutes later); it checks the cookie itself.
+    text = site_text()
+    matcher = block(text, "@bvp_requested_clip")
+    assert "path /requested-clips/*" in matcher and "method GET HEAD" in matcher
+    route = block(text, "handle @bvp_requested_clip")
+    assert "reverse_proxy bvp-orchestrator:8000" in route
+    # Pieces are passed on as they come, not buffered whole.
+    assert "flush_interval -1" in route
+    assert "file_server" not in route
+
+
 def test_the_forward_auth_target_is_in_the_contract_and_reads_the_same_cookie():
     contract = OPENAPI_PATH.read_text(encoding="utf-8")
     assert "  /auth/media:" in contract

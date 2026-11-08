@@ -15,6 +15,7 @@ from shared.models.common import (
     Seconds,
 )
 from shared.models.enums import (
+    ClipDownloadState,
     Framing,
     JobState,
     OriginalState,
@@ -198,4 +199,31 @@ class OriginalDownload(ReadByClients):
     size_bytes: ByteCount | None = None
     # When the VPS deletes its copy unless someone asks again (24 h after
     # the last request, admin Settings); None unless "ready".
+    expires_at: datetime | None = None
+
+
+class ClipDownload(ReadByClients):
+    """GET/POST /jobs/{job_id}/clip-download: "Baixar clipe" (LIVESTACK-52).
+
+    Always the job's newest clip version. The VPS copy is temporary: it
+    goes 30 minutes after its first complete download (so a broken
+    download can be tried again), 24 h after the request if nobody
+    downloads it, and earlier when the disk is tight (both times are
+    Settings values).
+
+    Read by clients: unknown fields are ignored.
+    """
+
+    state: ClipDownloadState
+    # Relative to the public base URL, e.g.
+    # "/requested-clips/<job_id>/suspensao-007-p2.mp4"; only when "ready".
+    download_url: str | None = None
+    # The name the download gets: the clip's readable name (shared.layout).
+    file_name: str | None = None
+    size_bytes: ByteCount | None = None
+    # 1 for the first rendering, 2 after a reprocess, ...
+    version: int | None = Field(default=None, ge=1)
+    # When the first complete download ended; None until then.
+    downloaded_at: datetime | None = None
+    # When the VPS deletes its copy unless someone asks again; None unless "ready".
     expires_at: datetime | None = None

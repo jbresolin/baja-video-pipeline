@@ -2,10 +2,12 @@
 
 import json
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 
 from orchestrator.db.database import from_db_time
 from orchestrator.domain.clip_names import clip_names_for_job, name_styles
+from orchestrator.domain.clip_preview_status import preview_status
 from orchestrator.domain.duplicates import duplicates_of
 from orchestrator.domain.pass_clock import pass_clock_for_job
 from orchestrator.domain.pass_results import pass_result_for_job
@@ -88,8 +90,15 @@ def clip_download_file_name(relative_path: str, version: int) -> str:
     return PurePosixPath(versioned_clip_relative_path(first_name, version)).name
 
 
-def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLayout) -> Job:
-    """`layout` says whether the VPS outbox still has the clip (ClipInfo.in_outbox)."""
+def job_from_row(
+    connection: sqlite3.Connection,
+    row: sqlite3.Row,
+    layout: VpsLayout,
+    now: datetime | None = None,
+) -> Job:
+    """`layout` says whether the VPS outbox still has the clip (ClipInfo.in_outbox)
+    and the preview (Job.clip_preview); `now` (the context's clock) whether a
+    missing preview may still come. Left out: the real time."""
     versions = clip_versions_of(connection, row["id"])
     # The names a render draws now (the overlay preview, LIVESTACK-48).
     names = clip_names_for_job(name_styles(connection), row)
@@ -186,6 +195,8 @@ def job_from_row(connection: sqlite3.Connection, row: sqlite3.Row, layout: VpsLa
         clip_versions=versions,
         # Does the newest clip still match the review? (LIVESTACK-43)
         clip_inputs=compare_newest_clip(connection, row) if versions else None,
+        # "Ver clipe" (LIVESTACK-52): the newest clip's preview, or why none.
+        clip_preview=preview_status(layout, connection, row, now or datetime.now(UTC)),
         # The official result of the passagem, from the latest fetch (LIVESTACK-47).
         pass_result=pass_result_for_job(connection, row),
         # The running clock: official time, toggle, what a render draws (LIVESTACK-48).
@@ -209,5 +220,7 @@ def require_job_row(connection: sqlite3.Connection, job_id: str) -> sqlite3.Row:
     return row
 
 
-def load_job(connection: sqlite3.Connection, job_id: str, layout: VpsLayout) -> Job:
-    return job_from_row(connection, require_job_row(connection, job_id), layout)
+def load_job(
+    connection: sqlite3.Connection, job_id: str, layout: VpsLayout, now: datetime | None = None
+) -> Job:
+    return job_from_row(connection, require_job_row(connection, job_id), layout, now)

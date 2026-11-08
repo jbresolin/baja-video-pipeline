@@ -22,6 +22,7 @@ from orchestrator.api import (
     routes_dev_files,
     routes_intake_enrollment,
     routes_metrics,
+    routes_requested_clips,
     routes_review_delivery,
     routes_worker_loop,
 )
@@ -121,6 +122,7 @@ def create_app(context: OrchestratorContext, *, run_background_tasks: bool = Tru
     app.include_router(routes_review_delivery.router)
     app.include_router(routes_metrics.router)
     app.include_router(routes_auth.router)
+    app.include_router(routes_requested_clips.router)
     app.include_router(routes_admin_people.router)
     app.include_router(routes_admin_catalog.router)
     app.include_router(routes_admin_operations.router)

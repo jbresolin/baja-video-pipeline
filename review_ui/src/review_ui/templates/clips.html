@@ -34,8 +34,9 @@
         <td>{{ item.prova }}</td>
         <td class="num">{{ m.or_unknown(item.car_number) }}</td>
         <td class="num">{{ m.or_unknown(item.passagem) }}</td>
-        <td><a class="button" href="{{ media_url(item.clip_download_url) }}" download>{{ t("clips.download") }}</a>
-            <a href="/review/jobs/{{ item.id }}" title="{{ t('clips.open_job.title') }}">{{ t("clips.open_job") }}</a></td>
+        <td><button type="button" data-clip-download="{{ item.id }}" title="{{ t('clip_download.button.title') }}">{{ t("clip_download.button") }}</button>
+            <a href="/review/jobs/{{ item.id }}" title="{{ t('clips.open_job.title') }}">{{ t("clips.open_job") }}</a>
+            <span class="hint" data-clip-download-status aria-live="polite"></span></td>
       </tr>
       {% endfor %}
     </tbody>
@@ -48,7 +49,7 @@
 <div class="table-wrap">
   <table class="data clips">
     <thead>
-      <tr><th>{{ t("clips.col.delivered") }}</th><th>{{ t("clips.col.prova") }}</th><th class="num">{{ t("clips.col.car") }}</th><th>{{ t("clips.col.team") }}</th><th class="num">{{ t("clips.col.pass") }}</th><th>{{ t("clips.col.studio_path") }}</th><th>{{ t("clips.col.download") }}</th></tr>
+      <tr><th>{{ t("clips.col.delivered") }}</th><th>{{ t("clips.col.prova") }}</th><th class="num">{{ t("clips.col.car") }}</th><th>{{ t("clips.col.team") }}</th><th class="num">{{ t("clips.col.pass") }}</th><th>{{ t("clips.col.studio_path") }}</th><th>{{ t("clips.col.clip") }}</th></tr>
     </thead>
     <tbody>
       {% for clip, path, outdated in rows %}
@@ -74,7 +75,19 @@
             <a href="/review/jobs/{{ clip.job_id }}" title="{{ t('clips.open_job.title') }}">{{ t("clips.open_job") }}</a>
           </span>
         </td>
-        <td>{% if clip.download_url %}<a class="button" href="{{ media_url(clip.download_url) }}" download>{{ t("clips.download") }}</a>{% if clip.version > 1 %} <span class="hint">v{{ clip.version }}</span>{% endif %}{% else %}<span class="hint" title="{{ t('clips.only_outbox_downloads') }}">{{ t("no_value") }}</span>{% endif %}</td>
+        {# "Ver clipe" and "Baixar clipe" (LIVESTACK-52); js/clip_review.js. #}
+        <td class="clip-actions">
+          {% if clip.preview and clip.preview.url %}
+          <button type="button" data-preview-url="{{ media_url(clip.preview.url) }}"
+                  data-preview-title="{{ clip.prova }} · {{ clip.car_number }} · {{ clip.passagem }}{% if clip.version > 1 %} · v{{ clip.version }}{% endif %}"
+                  title="{{ t('clip_preview.summary.title') }}">{{ t("clip_preview.title") }}</button>
+          {% elif clip.preview %}
+          <span class="hint" data-preview-state="{{ clip.preview.state }}" title="{{ t('clip_preview.state.' ~ clip.preview.state) }}">{{ t("clips.no_preview") }}</span>
+          {% endif %}
+          <button type="button" data-clip-download="{{ clip.job_id }}" title="{{ t('clip_download.button.title') }}">{{ t("clip_download.button") }}</button>
+          {% if clip.version > 1 %}<span class="hint">v{{ clip.version }}</span>{% endif %}
+          <span class="hint" data-clip-download-status aria-live="polite"></span>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -85,5 +98,15 @@
 {% else %}
 <p class="empty">{{ t("clips.empty") }}</p>
 {% endif %}
+
+{# One player for every row's "Ver clipe" (js/clip_review.js). #}
+<dialog class="clip-preview-dialog" id="clip-preview-dialog" aria-labelledby="clip-preview-dialog-title">
+  <form method="dialog" class="dialog-head">
+    <h2 id="clip-preview-dialog-title" data-preview-title></h2>
+    <button type="submit">{{ t("clip_preview.close") }}</button>
+  </form>
+  <video controls preload="none" playsinline></video>
+  <p class="hint">{{ t("clip_preview.small") }}</p>
+</dialog>
 {% endblock %}
 {% block scripts %}<script type="module" src="{{ static('js/clips.js') }}"></script>{% endblock %}

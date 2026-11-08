@@ -63,6 +63,7 @@ _ERROR_DESCRIPTIONS = {
     404: "No such job / worker / team / user / ... (not_found)",
     409: "Conflicts with the current state (see error.code)",
     413: "Body too large (upload_too_large, inbox_full)",
+    416: "The Range starts past the end of the file; Content-Range says its size",
     422: "Well-formed but wrong (hash_mismatch, missing_review_fields, unknown_prova, ...)",
     429: "Too many requests from this source IP (rate_limited); see Retry-After",
     503: "Temporarily unavailable (dev_mode_disabled, upstream_error)",
