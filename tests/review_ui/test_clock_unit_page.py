@@ -8,11 +8,20 @@ existed (an old clip) has none on record; its number meant seconds.
 
 Plain functions over the API models (no server), with sample_data's
 car 26 second Manobrabilidade run: official time 66,0, largada marked.
+The overlay preview draws the clock as the clip does: top right, bigger,
+"66,0 S" (checked on its stylesheet, and its unit text in Node).
 """
+
+import json
+import shutil
+import subprocess
+
+import pytest
 
 from review_ui.clip_inputs_view import difference_sentence
 from review_ui.pass_clock_view import pass_clock_box
 from review_ui.pass_results_settings_view import trial_clock
+from review_ui.templating import STATIC_DIR
 from shared.models import PassResultTestResponse, RenderClock, RenderInputField, RenderInputs
 from shared.pass_clock import with_unit
 from tests.review_ui.sample_data import T0, pass_clock
@@ -55,3 +64,47 @@ def test_testar_says_where_the_clock_stops_with_its_unit():
         ok=True, clock_configured=True, clock_text="66,0", clock_unit="seg"
     )
     assert str(trial_clock(answer)) == "Cronômetro para em <strong>66,0 seg</strong>."
+
+
+# --- The overlay preview (js/overlay_preview.js, css/overlay_preview.css) ---
+
+
+def test_the_preview_draws_the_clock_top_right_with_the_clips_tokens():
+    # The same tokens the worker draws with: right as far as the lower
+    # third's left (--bug-left), top at --stage-safe-top, the clock's size
+    # and pill height, the unit smaller and muted after a thin space.
+    css = (STATIC_DIR / "css" / "overlay_preview.css").read_text(encoding="utf-8")
+    rule = css[css.index(".overlay-preview .ovl-clock-pill {") :]
+    rule = rule[: rule.index("}")]
+    assert "position: absolute; right: var(--bug-left); top: var(--stage-safe-top);" in rule
+    assert "height: var(--strip-height)" in rule
+    assert "font-size: var(--size-time)" in rule
+    unit = css[css.index(".overlay-preview .ovl-clock-unit {") :]
+    unit = unit[: unit.index("}")]
+    assert "margin-left: calc(var(--size-time) / 6)" in unit
+    assert "font-size: var(--size-strip-time); color: var(--text-muted)" in unit
+
+
+NODE_SCRIPT = """
+globalThis.document = { getElementById: () => null };
+const { clockUnitText } = await import(process.env.MODULE);
+console.log(JSON.stringify([clockUnitText("s"), clockUnitText(" seg "), clockUnitText(""),
+                            clockUnitText(null), clockUnitText(undefined)]));
+"""
+
+
+def test_js_writes_the_unit_in_capitals_and_nothing_without_one():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is not installed; the JavaScript half needs it")
+    finished = subprocess.run(
+        [node, "--input-type=module", "-e", NODE_SCRIPT],
+        env={"MODULE": (STATIC_DIR / "js" / "overlay_preview.js").as_uri(), "PATH": ""},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert finished.returncode == 0, finished.stderr
+    # As the clip: capitals; an empty unit or a clock recorded without one: nothing.
+    assert json.loads(finished.stdout) == ["S", "SEG", "", "", ""]

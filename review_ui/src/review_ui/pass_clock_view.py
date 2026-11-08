@@ -94,7 +94,11 @@ def overlay_preview_pass_data(result: PassResult | None, clock: PassClock | None
     return {
         "result_text": result.text if result is not None and result.configured else None,
         "clock": (
-            {"official_units": clock.official_units, "decimals": clock.decimals}
+            {
+                "official_units": clock.official_units,
+                "decimals": clock.decimals,
+                "unit": clock.unit,
+            }
             if clock is not None and clock.configured and clock.official_units is not None
             else None
         ),

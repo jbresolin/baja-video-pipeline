@@ -89,7 +89,7 @@ def test_a_prova_with_a_clock_answers_both_blocks_and_the_preview_texts(ui, fake
     # And what the overlay preview draws with.
     assert answer["preview"] == {
         "result_text": "66 s · 4 cones → 86 s",
-        "clock": {"official_units": 660, "decimals": 1},
+        "clock": {"official_units": 660, "decimals": 1, "unit": "s"},
     }
 
 

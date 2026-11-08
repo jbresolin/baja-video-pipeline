@@ -31,6 +31,12 @@ function element(tag, className, text) {
   return node;
 }
 
+// The clock's unit as the clip draws it: in capitals; "" for none. A clock
+// from before the unit existed has none on record (null).
+export function clockUnitText(unit) {
+  return (unit ?? "").trim().toUpperCase();
+}
+
 // The result line as the worker splits it: words, a muted "·", the "→".
 export function resultParts(line) {
   const parts = [];
@@ -138,17 +144,23 @@ export function setupOverlayPreview({ video, form, player }) {
     fillNameAndResult();
   });
 
+  // The clock, top right (LIVESTACK-53): digits, then its unit ("66,0 S").
   const clockPill = element("div", "ovl-pill ovl-clock-pill");
+  const clockLine = element("span", "ovl-clock-text");
   const clockDigits = element("span", "ovl-clock-digits");
-  clockPill.append(clockDigits);
-  resultRow.append(resultPill, clockPill);
-  stage.append(lowerThird, resultRow);
+  const clockUnit = element("span", "ovl-clock-unit");
+  clockLine.append(clockDigits, clockUnit);
+  clockPill.append(clockLine);
+  resultRow.append(resultPill);
+  stage.append(lowerThird, resultRow, clockPill);
   box.append(stage);
 
   // The clock pill keeps the official time's width while it runs, like the clip's.
   let clockWidthSet = false;
   function fixClockWidth() {
     if (clockWidthSet || !data.clock) return;
+    clockUnit.textContent = clockUnitText(data.clock.unit);
+    clockUnit.hidden = clockUnit.textContent === "";
     clockDigits.textContent = clockText(data.clock.official_units, data.clock.decimals);
     const width = clockDigits.offsetWidth;
     if (width) {
