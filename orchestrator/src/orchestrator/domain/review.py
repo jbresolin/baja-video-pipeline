@@ -9,6 +9,7 @@ from orchestrator.domain import provas_catalog
 from orchestrator.domain.discard import discard_job, restore_job
 from orchestrator.domain.job_view import load_job, require_job_row
 from orchestrator.domain.render_features import process_waiting_reason
+from orchestrator.domain.result_hold import apply_result_wait_choice
 from orchestrator.domain.transitions import move_job, revoke_job_leases
 from orchestrator.errors import ApiError, illegal_transition
 from orchestrator.repositories import events as events_repo
@@ -201,6 +202,16 @@ def update_review(
             changes.update(_team_names(connection, update.car_number))
         actor = events_repo.reviewer_actor(reviewer)
         _apply_action(context, connection, job_row, update.action, changes, merged, actor)
+        # "Esperar o resultado oficial" (LIVESTACK-62): hold the render, or
+        # check a held job's hold after a save.
+        apply_result_wait_choice(
+            connection,
+            require_job_row(connection, job_id),
+            update,
+            context.admin_settings.current.result_wait_minutes,
+            actor,
+            context.clock.now(),
+        )
         return load_job(connection, job_id, context.layout, context.clock.now())
 
 
@@ -261,7 +272,8 @@ def _apply_action(
         return
     if action == ReviewAction.DISCARD:
         # Nothing is deleted yet: raws stay for the grace period (domain/discard.py).
-        discard_job(context, connection, job_row, changes, actor)
+        # A wait for the result (LIVESTACK-62) ends with the job's `ready`.
+        discard_job(context, connection, job_row, {**changes, "result_hold_until": None}, actor)
         return
     if action == ReviewAction.RESTORE:
         restore_job(context, connection, job_row, changes, actor)

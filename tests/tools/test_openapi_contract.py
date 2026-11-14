@@ -62,6 +62,8 @@ REQUIRED_ENDPOINTS = {
     ("put", "/jobs/{job_id}/presence"),
     ("delete", "/jobs/{job_id}/presence"),
     ("patch", "/jobs/{job_id}/review"),
+    # "Renderizar agora": end a wait for the official result (LIVESTACK-62).
+    ("post", "/jobs/{job_id}/render-now"),
     ("post", "/jobs/{job_id}/regenerate-proxy"),
     ("get", "/teams/{car_number}"),
     # Delivery

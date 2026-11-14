@@ -1638,3 +1638,87 @@ bumped: 0.7.0 was never released and ships with §36), migration 0019.
   download through the real Caddy (completion is tested on the
   generator and through the in-memory client), and the dialog player
   (no browser test setup).
+
+## 38. Wait for the official result before rendering (LIVESTACK-62, 2026-11-14)
+
+Judges often enter a passagem's result a few minutes after the reviewer
+has the video ready. The clip then rendered without the result line (and
+without the clock, which needs the official time), was flagged
+"desatualizado" when the result arrived (§32), and someone had to
+remember to reprocess it. Now "Pronto" can wait for the result (brief
+"Wait for the official result before rendering"). Contract 2.12.0,
+migration 0020; orchestrator and review UI only, no worker change.
+
+* **A hold is one column.** `jobs.result_hold_until` (`Job` and
+  `JobSummary.result_hold_until`): while it is set the job is `ready`,
+  editable as any ready job, and `task_rules` offers its render to no
+  worker (`/next` skips it, `/claim` → 409 `not_claimable`). Cleared when
+  the hold ends; a discard clears it too, and a restore does not bring
+  it back. Being a column, it survives restarts.
+* **Starting one.** `ReviewUpdate.wait_for_result: true` with `ready` or
+  `reprocess` (the page's "Esperar o resultado oficial (até N min)" next
+  to "Pronto" and "Salvar e reprocessar") sets the deadline to now +
+  `AdminSettings.result_wait_minutes` (Configurações, default 15, whole
+  minutes 1–120; fixed on the job, so a change affects new holds only).
+  Left out or false = render at once, as before: the API default is "no
+  hold" so scripts and older pages are never held by surprise; the page
+  ticks the box by default. **No hold** when a render would draw nothing
+  from the results (result line not shown, and no clock: no clock block,
+  "Mostrar cronômetro" off or no largada), or when everything it would
+  draw is already fetched: waiting could not change the clip.
+  `domain/result_hold.py` decides; the page only asks.
+* **Ending one** (`release_held_jobs`), first match wins: nothing left to
+  wait for → `result_hold_dropped`; the result line (when shown) is in
+  the latest good answer (a stale one counts, as for the render) and,
+  with a clock, its official time → `result_hold_released_result_arrived`;
+  the deadline passed → `result_hold_released_deadline_passed` (rendered
+  with whatever there is; §32 flags the clip when the result comes);
+  "Renderizar agora" → `result_hold_released_by_reviewer`. It runs right
+  after every good results fetch (`pass_results_fetch.fetch_table`, so
+  also after "Testar" and the pass preview's first fetch) and in the
+  lease sweeper (every 5 s: deadlines, and configuration changes such as
+  a prova taken out). A reviewer's `save` on a held job is checked at
+  once: switching the result and the clock off drops it, a passagem
+  whose result is already in releases it; other edits keep the hold and
+  its deadline. A result missing for another reason (no event id set)
+  simply waits for the deadline. Automatic ends are recorded as `system`,
+  also a drop caused by a reviewer's save.
+* **"Renderizar agora"** is `POST /jobs/{id}/render-now` (reviewer
+  session), not a review action: no `expected_version`, the version does
+  not move (like `regenerate-proxy`), and a job that is not held is
+  answered as it is, so a second click (or a stale page) is harmless.
+  The page does not reload (the form may hold unsaved typing): the banner
+  goes and the next poll shows the job.
+* **Waiting reason.** A held job's `waiting_reason` is "waiting for the
+  official result of the passagem before rendering", never a "waiting for
+  a worker" sentence (the sweeper's `waiting_reason_for_ready_job`); once
+  released it gets the usual holder/render-feature sentence at once.
+* **Results fetcher.** Confirmed: `ready` is among the states whose
+  tables are fetched (`repositories/pass_results.py`), so a held job keeps
+  its prova's table fetched; tested.
+* **Events.** `result_hold_started` carries `details: {until, waits_for:
+  ["result", "clock"]}`; the job page writes "renderização esperando o
+  resultado oficial até 14:42" from it. The four ends have one kind each.
+* **Job page.** The box is on the page whenever "Pronto" or "Salvar e
+  reprocessar" is and the orchestrator says how long it waits
+  (`Job.result_wait_minutes`, the Settings' value: reviewers cannot read
+  the admin Settings). It is *shown* only while "Mostrar resultado da
+  passagem" or "Mostrar cronômetro" is ticked (the brief's rule; the
+  largada is the orchestrator's business), following the form and the
+  swapped result/clock blocks (`js/result_wait.js`); a hidden box is
+  disabled and `js/review_form.js` leaves it out of the request. So a
+  prova without a results configuration never shows it. While held, the
+  status strip has "Aguardando o resultado oficial (até 14:42)." with
+  "Renderizar agora" instead of the generic waiting note.
+* **Lists.** The queue and the "Outros vídeos" panel (the places a ready
+  job is listed) show "⏳ aguardando resultado até 14:42"; the queue row's
+  waiting note is left out for a held job. The clips page lists no ready
+  jobs.
+* **Deployment: orchestrator and review UI together.** The review UI
+  sends `wait_for_result`, which an orchestrator before 2.12.0 refuses
+  (`extra="forbid"`). Workers are unaffected: a held render is simply
+  never offered, and they ignore the new answer fields (§14).
+* **Not checked**: the box, the banner's button and the block swapping in
+  a real browser (the decisions are tested in Node on stand-ins, the pages
+  against the real orchestrator; there is no browser test setup); real
+  judges' timing on an event day (the 15-minute default is the brief's).

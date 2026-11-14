@@ -100,6 +100,8 @@ h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .banner > p { margin: 0; }
 .banner > p + p { margin-top: 0.4rem; }
 .banner.with-action { display: flex; align-items: center; gap: 1rem; }
+/* The render waits for the official result (LIVESTACK-62): information, not a problem. */
+.banner.info { background: var(--info-bg); color: var(--info-ink); }
 /* "The clip on air no longer matches the review" (LIVESTACK-43): one line per difference. */
 .banner ul { margin: 0.35rem 0 0.4rem 1.2rem; padding: 0; }
 details.outdated { margin-top: 0.25rem; }
@@ -277,6 +279,8 @@ video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: var(
 .messages-before { margin-top: 0.5rem; }
 .messages-before > summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
 .badge.messages { background: var(--info-bg); color: var(--info-ink); }
+/* "⏳ aguardando resultado até 14:42" (LIVESTACK-62). */
+.badge.hold { background: var(--info-bg); color: var(--info-ink); }
 .ready-warnings { margin: 1rem 0 0; font-size: 0.85rem; }
 .ready-warnings p, .ready-warnings ul { margin: 0; }
 .ready-warnings ul { padding-left: 1.2rem; }

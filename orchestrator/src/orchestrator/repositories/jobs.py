@@ -30,6 +30,7 @@ UPDATABLE_JOB_COLUMNS = frozenset(
         "claimed_render_inputs_json", "reported_render_inputs_json",
         "display_width", "display_height", "rotation", "framing", "crop_position", "no_audio",
         "show_pass_result", "largada_s", "show_clock", "duplicate_of",
+        "result_hold_until",
     }
 )  # fmt: skip
 
@@ -124,6 +125,14 @@ def list_car_job_rows(connection: sqlite3.Connection, car_number: int) -> list[s
         "SELECT * FROM jobs WHERE car_number = ? AND prova IS NOT NULL AND state != 'discarded'"
         " ORDER BY COALESCE(recorded_at, created_at), created_at, id",
         (car_number,),
+    ).fetchall()
+
+
+def list_held_job_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Ready jobs whose render waits for the official result (LIVESTACK-62), oldest first."""
+    return connection.execute(
+        "SELECT * FROM jobs WHERE state = 'ready' AND result_hold_until IS NOT NULL"
+        " ORDER BY created_at, id"
     ).fetchall()
 
 

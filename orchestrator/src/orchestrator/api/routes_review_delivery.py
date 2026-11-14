@@ -21,6 +21,7 @@ from orchestrator.domain import (
     fleet,
     originals,
     pass_preview,
+    result_hold,
     review,
     review_queue,
     sender_messages,
@@ -150,6 +151,16 @@ def update_review(
     context: OrchestratorContext = Depends(get_context),
 ) -> Job:
     return review.update_review(context, reviewer, job_id, body)
+
+
+@router.post("/jobs/{job_id}/render-now", tags=["review"], response_model=Job)
+def render_now(
+    job_id: str,
+    reviewer: str = Depends(require_reviewer),
+    context: OrchestratorContext = Depends(get_context),
+) -> Job:
+    """ "Renderizar agora": a render waiting for the official result goes now (LIVESTACK-62)."""
+    return result_hold.render_now(context, reviewer, job_id)
 
 
 @router.post(

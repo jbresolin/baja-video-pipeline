@@ -44,6 +44,12 @@
 <time class="received" datetime="{{ moment|iso }}" title="{{ t('received.title') }}: {{ moment|clock }}">{{ t("received.label") }} {{ recorded_time(moment, reference) }}</time>
 {%- endmacro %}
 
+{# "⏳ aguardando resultado até 14:42" (LIVESTACK-62): a ready job whose render
+   waits for the official result. `video` is a Job or JobSummary. #}
+{% macro result_hold(video) -%}
+{% if video.result_hold_until and video.state == "ready" %}<span class="badge hold" title="{{ t('result_hold.marker.title') }}">{{ t("result_hold.marker.until", time=video.result_hold_until|short_clock) }}</span>{% endif %}
+{%- endmacro %}
+
 {# The queue row's speech bubble: how many messages the sender wrote about
    this video (JobSummary.sender_message_count, LIVESTACK-49). #}
 {% macro message_count(video) -%}

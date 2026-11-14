@@ -47,6 +47,8 @@ def build_templates(settings: ReviewUiSettings) -> Jinja2Templates:
         short_id=formatting.short_id,
         iso=formatting.iso_utc,
         clock=formatting.clock_text,
+        # Hours and minutes only, São Paulo: "14:42" (the result wait's deadline).
+        short_clock=formatting.short_clock_text,
         rate=formatting.format_rate,
         state_label=formatting.state_label,
         # '%g' with a decimal comma: 29.97 → "29,97" (shown numbers, never input values).

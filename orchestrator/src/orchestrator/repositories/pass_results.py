@@ -12,7 +12,9 @@ from shared.models import JobState
 
 # Jobs whose results matter: in review, waiting for or in their render,
 # with a clip uploaded, or delivered (a result corrected later flags the
-# clip as no longer matching, however long ago it was delivered).
+# clip as no longer matching, however long ago it was delivered). A job
+# whose render waits for its official result (LIVESTACK-62) is `ready`,
+# so its table is fetched until the result releases it.
 STATES_NEEDING_RESULTS = (
     JobState.AWAITING_REVIEW,
     JobState.READY,

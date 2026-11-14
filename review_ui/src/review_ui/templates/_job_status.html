@@ -11,6 +11,14 @@
     <p>{{ outdated.next_step }}</p>
   </div>
   {% endif %}
+  {# The render waits for the official result (LIVESTACK-62): until when, and
+     "Renderizar agora" (js/job.js; the strip is swapped every few seconds). #}
+  {% if hold %}
+  <div class="banner info with-action result-hold" id="result-hold">
+    <p><strong>{{ hold.text }}</strong> {{ hold.hint }}</p>
+    <button type="button" data-render-now title="{{ t('result_hold.render_now.title') }}">{{ t("result_hold.render_now") }}</button>
+  </div>
+  {% endif %}
   {% for note in notes %}
   <p class="note {{ note.level }}">{{ note.text }}{% if note.detail %} {{ m.english(note.detail) }}{% endif %}{% if note.at %} {{ m.time(note.at) }}.{% endif %}</p>
   {% endfor %}

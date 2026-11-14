@@ -179,6 +179,21 @@ Bloqueado) and each row a "Boas-vindas" column: when it was last sent and
 the orchestrator could not send it, the page answers the POST directly with
 a yellow banner and Evolution's reason (`warning` in `admin_context`).
 
+**Waiting for the official result** (LIVESTACK-62, design §38). Next to
+"Pronto" and "Salvar e reprocessar" the job page has **"Esperar o
+resultado oficial (até 15 min)"** (the minutes are the Settings' value,
+`Job.result_wait_minutes`), ticked by default and shown only while
+"Mostrar resultado da passagem" or "Mostrar cronômetro" is ticked
+(`static/js/result_wait.js`, which follows the swapped blocks; a hidden
+box is disabled and `js/review_form.js` does not send `wait_for_result`).
+While the render waits, the status strip says "Aguardando o resultado
+oficial (até 14:42)." with **"Renderizar agora"** (`POST
+/review/api/jobs/{id}/render-now`, relayed to the orchestrator; no
+reload), and the queue and the "Outros vídeos" panel mark the row "⏳
+aguardando resultado até 14:42" (macro `result_hold`). Words in
+`result_hold_view.py` and `catalog/result_hold.py`; Configurações has the
+number of minutes.
+
 **Review fixes from the 2026-11-07 test** (LIVESTACK-51, design §34).
 *Two reviewers*: the page says it is open (`static/js/presence.js`, through
 `PUT /review/api/jobs/{id}/presence` every 20 s, `…/presence/leave` on
@@ -268,7 +283,7 @@ base Caddy as `bvp-review-ui:8001` on `baja-edge`.
 | `app.py` | `create_app()`: wiring, static files, routers |
 | `orchestrator_client.py` | Every orchestrator call, with the reviewer's Authorization |
 | `routes_queue.py`, `routes_job.py`, `routes_clips_fleet.py` | HTML pages and their refresh fragments |
-| `routes_api.py` | JSON endpoints for the page scripts (review actions, proxy request, team lookup, the passagem panel) |
+| `routes_api.py` | JSON endpoints for the page scripts (review actions, "Renderizar agora", proxy request, team lookup, the passagem panel) |
 | `routes_admin_pass_results.py` | Configurações → "Resultados das passagens": "Salvar" and "Testar" (LIVESTACK-47) |
 | `routes_admin_inline.py` | JSON endpoints behind the admin toggles that change a row in place (provas active/order, contacts allow/block): they answer with the re-rendered rows (`templates/admin/_provas_rows.html`, `_contact_row.html`) and `static/js/admin.js` swaps them in, so the page neither reloads nor scrolls |
 | `errors.py` | Error page for browsers, JSON errors for scripts, 401 sign-in challenge |
@@ -279,6 +294,7 @@ base Caddy as `bvp-review-ui:8001` on `baja-edge`.
 | `pass_result_view.py`, `pass_results_settings_view.py` | The official result of the passagem: the job page's line, the Settings block (status, refusals, "Testar") (LIVESTACK-47) |
 | `pass_clock_view.py`, `overlay_preview.py` | The running clock's block and the overlay preview's data; the scoped overlay theme (LIVESTACK-48); `GET …/pass-blocks` for unsaved values is in `routes_api.py` (LIVESTACK-53) |
 | `render_options_view.py` | The job page's "Imagem e som" box: orientation sentence, whether "Enquadramento" applies, the choices (LIVESTACK-50) |
+| `result_hold_view.py` | "Esperar o resultado oficial" next to "Pronto", and the banner with "Renderizar agora" while a render waits (LIVESTACK-62) |
 | `event_log_view.py` | Orchestrator events (`Event`) in words: actor names, state changes, reasons; used by the job and fleet pages |
 | `catalog/` | Every pt-BR text the UI shows, by English key (see "Language") |
 | `formatting.py` | Dates (São Paulo time) and numbers (decimal comma) for the templates |

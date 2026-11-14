@@ -23,6 +23,7 @@ from review_ui.passagem_help_view import PassagemHelp, passagem_help
 from review_ui.presence_view import presence_sentence
 from review_ui.render_options_view import render_options_box
 from review_ui.request_context import orchestrator_for, render_page
+from review_ui.result_hold_view import result_hold_note, result_wait_box
 from review_ui.sender_messages_view import SenderMessagesSection, sender_messages_section
 from review_ui.settings import JOB_PANEL_POLL_SECONDS
 from shared.models import Job, Team, utc_now
@@ -80,6 +81,9 @@ def panel_context(job: Job, orchestrator: OrchestratorClient) -> dict:
         "notes": explain_status(job, worker_names),
         # The clip on air no longer matches the review (LIVESTACK-43), or None.
         "outdated": outdated_clip(job.clip_inputs, job.state),
+        # The render waits for the official result (LIVESTACK-62): the banner
+        # with "Renderizar agora", or None.
+        "hold": result_hold_note(job),
         # None means "could not load"; an empty list means "no events yet".
         "event_lines": event_lines_or_none(orchestrator, job.id, worker_names),
     }
@@ -109,6 +113,8 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
         # What "Pré-visualizar overlay" draws over the player (LIVESTACK-48).
         preview=overlay_preview_data(job),
         actions=action_buttons(job.state),
+        # "Esperar o resultado oficial (até N min)" next to "Pronto" (LIVESTACK-62).
+        wait_box=result_wait_box(job, action_buttons(job.state)),
         prova_choices=prova_choices(orchestrator, job),
         team=team_or_none(orchestrator, job),
         # "Outros vídeos de <prova>, carro <n>" for the saved values (LIVESTACK-45).

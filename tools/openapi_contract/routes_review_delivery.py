@@ -211,6 +211,15 @@ def update_review(job_id: str, body: ReviewUpdate) -> Job:
     * `action: ready` from awaiting_review → ready.
     * `action: reprocess` from claimed/uploaded/delivered/done → ready; any
       process lease is revoked (the worker sees `lost` on its next heartbeat).
+    * `wait_for_result: true` with `ready` or `reprocess` (LIVESTACK-62): the
+      render waits for the passagem's official result (and, with a clock,
+      its official time) for at most the Settings' `result_wait_minutes`:
+      `Job.result_hold_until` is set and no worker is offered the render
+      until the result is fetched, that moment passes, or
+      `POST …/render-now`. No hold when nothing would be drawn from the
+      results or all of it is already there. A `save` on a held job
+      releases it at once when the result is in or nothing is left to wait
+      for. Left out or false: rendered at once, as before.
     * `action: discard` from awaiting_review/ready/failed → discarded (final):
       leases revoked, the VPS inbox copy deleted, and holders get the job in
       `deletable_job_ids` on their next heartbeat. Fields are not required.
@@ -225,6 +234,24 @@ def update_review(job_id: str, body: ReviewUpdate) -> Job:
     * `team_name` is resolved from car_number when it changes.
     * cut_out_s beyond the known duration → 422 `validation_error`.
     """
+    not_implemented()
+
+
+@router.post(
+    "/jobs/{job_id}/render-now",
+    tags=["review"],
+    summary='"Renderizar agora": end the wait for the official result (LIVESTACK-62)',
+    response_model=Job,
+    dependencies=_reviewer_only,
+    responses=error_responses(401, 404),
+)
+def render_now(job_id: str) -> Job:
+    """A job held by `ready`/`reprocess` with `wait_for_result` (its
+    `result_hold_until` is set) is released at once: the render is offered
+    to the holders from now on, without waiting for the result. Event
+    `result_hold_released_by_reviewer`. A job that is not held is answered
+    as it is (a second click is harmless). Not a review change: `version`
+    stays. 404 unknown job."""
     not_implemented()
 
 

@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from orchestrator.testing.scenarios import ensure_prova, send_video
-from review_ui.job_view import NO_HOLDER_ONLINE_REASON
+from review_ui.job_view import NO_HOLDER_ONLINE_REASON, WAITING_FOR_OFFICIAL_RESULT_REASON
 from review_ui.templating import STATIC_DIR
 from shared.models import JobState, Lease, PassResultProblem, TaskKind, WorkerRole
 from shared.testing.credentials import PLACEHOLDER_WRONG_PASSWORD
@@ -106,6 +106,18 @@ def every_kind_of_job(fake_orchestrator):
     for problem in PassResultProblem:
         result = pass_result(text=None, problem=problem, problem_detail="no value yet")
         extra.append(pass_result_job(f"job-result-{problem.value}", pass_result=result))
+    # Waiting for the official result (LIVESTACK-62): the box next to "Pronto",
+    # and a held job (banner, "Renderizar agora", queue marker).
+    extra.append(pass_result_job("job-result-wait-box", result_wait_minutes=15))
+    extra.append(
+        pass_result_job(
+            "job-result-held",
+            state=JobState.READY,
+            waiting_reason=WAITING_FOR_OFFICIAL_RESULT_REASON,
+            result_hold_until=T0 + timedelta(minutes=15),
+            result_wait_minutes=15,
+        )
+    )
     for job in extra:
         fake_orchestrator.add_job(job)
     return fake_orchestrator

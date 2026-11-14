@@ -104,6 +104,18 @@ async def leave_presence(request: Request, job_id: str) -> JSONResponse:
     return JSONResponse({"left": True})
 
 
+@router.post("/jobs/{job_id}/render-now")
+async def render_now(request: Request, job_id: str) -> JSONResponse:
+    """ "Renderizar agora" in the status strip (LIVESTACK-62): the render that
+    waits for the official result goes now. The page reloads afterwards."""
+    await read_json_body(request)
+    orchestrator = orchestrator_for(request)
+    job = await run_in_threadpool(orchestrator.render_now, job_id)
+    return JSONResponse(
+        {"job": job.model_dump(mode="json"), "message": text("result_hold.released")}
+    )
+
+
 @router.post("/jobs/{job_id}/regenerate-proxy")
 async def regenerate_proxy(request: Request, job_id: str) -> JSONResponse:
     await read_json_body(request)

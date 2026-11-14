@@ -10,6 +10,7 @@ docs/api.md describes:
     GET   /jobs/{job_id}/pass-preview?prova=…&car_number=…&passagem=…   (LIVESTACK-53)
     PATCH /jobs/{job_id}/review          (expected_version, actions, 409/422;
                                           show_pass_result updates pass_result.show)
+    POST  /jobs/{job_id}/render-now      (LIVESTACK-62: clears result_hold_until)
     POST  /jobs/{job_id}/regenerate-proxy
     GET   /jobs/{job_id}/original, POST /jobs/{job_id}/original
     GET   /jobs/{job_id}/clip-download, POST /jobs/{job_id}/clip-download
@@ -374,6 +375,16 @@ def build_app(fake: FakeOrchestrator) -> FastAPI:
         except ValidationError as error:
             return _error(400, "validation_error", str(error))
         return fake.apply_review(job_id, update, _reviewer_from(request) or "")
+
+    @app.post("/jobs/{job_id}/render-now")
+    def render_now(job_id: str):
+        # Like the orchestrator: the wait for the official result ends; a job
+        # that is not held is answered as it is.
+        if job_id not in fake.jobs:
+            return _error(404, "not_found", f"no job {job_id}")
+        released = fake.jobs[job_id].model_copy(update={"result_hold_until": None})
+        fake.jobs[job_id] = released
+        return released.model_dump(mode="json")
 
     @app.post("/jobs/{job_id}/regenerate-proxy", status_code=202)
     def regenerate_proxy(job_id: str):
