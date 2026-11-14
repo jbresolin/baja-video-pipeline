@@ -72,6 +72,12 @@ class FinalRenderSettings:
     # Quality targets (lower = better/bigger): NVENC "cq" and x264 "crf".
     nvenc_constant_quality: int = 21
     x264_crf: int = 20
+    # A keyframe at least this often, in seconds (LIVESTACK-56). OBS's media
+    # source can only jump to a keyframe: asked for 6.5 s it lands on the
+    # keyframe at or before it. With the encoders' default of one keyframe
+    # every 250 frames (8.3 s at 30 fps), the studio's replay and seek
+    # buttons landed up to 8 s early; every 0.5 s they land within half a second.
+    keyframe_interval_s: float = 0.5
     # The sides of a picture that is not 16:9 (Framing.BLURRED, LIVESTACK-50).
     blur: BlurFill = field(default_factory=BlurFill)
 
@@ -98,6 +104,21 @@ def _video_encoder_args_for_quality(encoder: str, settings: FinalRenderSettings)
         quality = str(settings.nvenc_constant_quality)
         return ["-c:v", NVENC_ENCODER, "-preset", "p5", "-rc", "vbr", "-cq", quality, "-b:v", "0"]
     return ["-c:v", X264_ENCODER, "-preset", "fast", "-crf", str(settings.x264_crf)]
+
+
+def _keyframe_args(encoder: str, interval_s: float) -> list[str]:
+    """Flags that put a keyframe every `interval_s` seconds (final render).
+
+    `-force_key_frames expr:gte(t,n_forced*0.5)` asks for a keyframe each
+    time the clip's time passes the next multiple of 0.5 s, whatever the
+    frame rate. NVENC turns a forced keyframe into a plain I-frame unless
+    told otherwise; `-forced-idr 1` makes it a real IDR frame, the kind a
+    player (and OBS) can start decoding from. x264 already does that.
+    """
+    args = ["-force_key_frames", f"expr:gte(t,n_forced*{interval_s:g})"]
+    if encoder == NVENC_ENCODER:
+        args += ["-forced-idr", "1"]
+    return args
 
 
 def build_proxy_command(
@@ -259,6 +280,7 @@ def build_final_render_command(
         *maps,
         "-t", f"{duration_s:.3f}",
         *_video_encoder_args_for_quality(encoder, settings),
+        *_keyframe_args(encoder, settings.keyframe_interval_s),
         *audio_args,
         "-movflags", "+faststart",
         str(clip_path),

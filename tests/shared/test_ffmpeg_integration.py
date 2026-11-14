@@ -67,6 +67,33 @@ def test_real_ffmpeg_makes_a_proxy_and_a_final_clip(tmp_path):
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(ffmpeg_missing, reason="ffmpeg/ffprobe not installed")
+def test_real_ffmpeg_final_clip_has_a_keyframe_every_half_second(tmp_path):
+    # OBS can only jump to keyframes (LIVESTACK-56), so the final clip must
+    # have one at 0.0, 0.5, 1.0, 1.5 ... s. Make a 4 s raw, render 3 s of it.
+    raw = tmp_path / "raw.mp4"
+    subprocess.run(build_test_clip_command(raw, duration_s=4.0), check=True, capture_output=True)
+    clip = tmp_path / "clip.mp4"
+    command = build_final_render_command(raw, clip, 0.5, 3.5, X264_ENCODER)
+    subprocess.run(command, check=True, capture_output=True)
+
+    # Ask ffprobe for the time of every keyframe ("-skip_frame nokey" makes
+    # it look at keyframes only).
+    listing = subprocess.run(
+        ["ffprobe", "-v", "error", "-skip_frame", "nokey", "-select_streams", "v:0",
+         "-show_entries", "frame=pts_time", "-of", "csv=p=0", str(clip)],
+        capture_output=True, text=True, check=True,
+    ).stdout  # fmt: skip
+    keyframes = [float(line.strip(",")) for line in listing.split() if line.strip(",")]
+
+    # One keyframe per half second: 0.0, 0.5, ... 2.5 (six), each within one
+    # frame (1/30 s) of its half-second mark.
+    assert len(keyframes) >= 6
+    for index, time_s in enumerate(keyframes[:6]):
+        assert time_s == pytest.approx(index * 0.5, abs=1 / 30 + 0.001)
+
+
+@pytest.mark.integration
 @pytest.mark.skipif(
     not ffmpeg_has_filters("zscale", "tonemap"), reason="ffmpeg without zscale/tonemap"
 )
