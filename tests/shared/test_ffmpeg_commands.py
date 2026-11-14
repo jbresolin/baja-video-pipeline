@@ -14,6 +14,7 @@ from shared.ffmpeg import (
     NVENC_ENCODER,
     TONE_MAP_HDR_TO_SDR,
     X264_ENCODER,
+    FinalRenderSettings,
     ProxySettings,
     build_final_render_command,
     build_proxy_command,
@@ -144,6 +145,32 @@ def test_final_render_encoder_flags():
     assert value_after(x264, "-c:v") == "libx264"
     assert value_after(x264, "-crf") == "20"
     assert value_after(x264, "-movflags") == "+faststart"
+
+
+def test_final_render_puts_a_keyframe_every_half_second():
+    # OBS can only jump to a keyframe (LIVESTACK-56). Without this flag the
+    # encoder makes one every 250 frames (8.3 s), so the studio's replay
+    # button landed seconds early. "expr:gte(t,n_forced*0.5)" means: force a
+    # keyframe each time the time t passes the next multiple of 0.5 s.
+    for encoder in (NVENC_ENCODER, X264_ENCODER):
+        args = build_final_render_command(RAW, OUT, 0.0, 1.0, encoder)
+        assert value_after(args, "-force_key_frames") == "expr:gte(t,n_forced*0.5)"
+
+
+def test_final_render_makes_nvenc_keyframes_real_idr_frames():
+    # NVENC would make a forced keyframe a plain I-frame; "-forced-idr 1"
+    # makes it an IDR frame, which a player can start decoding from.
+    # x264 does that by itself, so its command doesn't carry the flag.
+    nvenc = build_final_render_command(RAW, OUT, 0.0, 1.0, NVENC_ENCODER)
+    x264 = build_final_render_command(RAW, OUT, 0.0, 1.0, X264_ENCODER)
+    assert value_after(nvenc, "-forced-idr") == "1"
+    assert "-forced-idr" not in x264
+
+
+def test_final_render_keyframe_interval_can_be_changed():
+    settings = FinalRenderSettings(keyframe_interval_s=0.25)
+    args = build_final_render_command(RAW, OUT, 0.0, 1.0, X264_ENCODER, settings=settings)
+    assert value_after(args, "-force_key_frames") == "expr:gte(t,n_forced*0.25)"
 
 
 @pytest.mark.parametrize(("cut_in", "cut_out"), [(5.0, 5.0), (6.0, 5.0)])
