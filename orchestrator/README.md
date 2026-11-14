@@ -124,10 +124,10 @@ finished (`domain/requested_clips.py`).
 | `app.py`, `__main__.py` | wiring (`build_context`, `create_app`) and `python -m orchestrator` |
 | `db/` | SQLite in WAL mode, numbered `migrations/*.sql` applied at startup |
 | `repositories/` | plain SQL, one module per table group |
-| `domain/` | the rules: sessions, users/contacts/provas/teams admin, the welcome message to new contacts (`welcome.py`), `results_sync`, `first_start` imports, intake, enrollment, `recording_time` (when a video was filmed), `car_videos` (one car's videos in a prova), `whatsapp_notes` / `intake_notes` / `sender_messages` (the sender's other messages: read, kept, edited or deleted, and which video they belong to), `task_rules` (who gets what, delivery plan), `render_features` (which worker versions may render which jobs, LIVESTACK-50), the official pass results (LIVESTACK-47: `pass_results_config` checks the Settings' JSON, `results_table` reads the API's table, `pass_text` builds the overlay's result line, `pass_results` gives a job its line, `pass_results_fetch` fetches every 30 s, `pass_results_admin` serves Settings and "Testar"; LIVESTACK-48: `pass_clock` gives a job its running clock), `vertical_reply` (the bot's "grave na horizontal"), LIVESTACK-51: `presence` (who has a job page open, in memory), `duplicates` (same video sent again: discarded at once), `phones` (one form per phone number) and `waiting_prova` (apply a default prova to waiting videos), `worker_loop` (`/next` order incl. the master's backfill), `task_results` (failure scopes), leases, uploads, review, delivery, fleet, `event_log`, `/auth/file` |
+| `domain/` | the rules: sessions, users/contacts/provas/teams admin, the welcome message to new contacts (`welcome.py`), `results_sync`, `first_start` imports, intake, enrollment, `recording_time` (when a video was filmed), `car_videos` (one car's videos in a prova), `whatsapp_notes` / `intake_notes` / `sender_messages` (the sender's other messages: read, kept, edited or deleted, and which video they belong to), `task_rules` (who gets what, delivery plan), `render_features` (which worker versions may render which jobs, LIVESTACK-50), the official pass results (LIVESTACK-47: `pass_results_config` checks the Settings' JSON, `results_table` reads the API's table, `pass_text` builds the overlay's result line, `pass_results` gives a job its line, `pass_results_fetch` fetches every 30 s, `pass_results_admin` serves Settings and "Testar"; LIVESTACK-48: `pass_clock` gives a job its running clock), `vertical_reply` (the bot's "grave na horizontal"), LIVESTACK-51: `presence` (who has a job page open, in memory), `duplicates` (same video sent again: discarded at once), `phones` (one form per phone number) and `waiting_prova` (apply a default prova to waiting videos), LIVESTACK-62: `result_hold` (a ready render waits for the official result), `worker_loop` (`/next` order incl. the master's backfill), `task_results` (failure scopes), leases, uploads, review, delivery, fleet, `event_log`, `/auth/file` |
 | `clients/` | Evolution `sendText` and instance status, Tailscale key minting, the Baja results API (`results_api.py`), the old teams CSV parser |
 | `api/` | FastAPI routes, the auth schemes and roles, rate limits, the error shape |
-| `background/` | lease expiry, inbox cleanup, proxy eviction, outbox cleanup, sender-messages retention |
+| `background/` | lease expiry (and the end of waits for the official result, LIVESTACK-62), inbox cleanup, proxy eviction, outbox cleanup, sender-messages retention |
 | `testing/` | fakes, harness, scenarios, the dev server |
 
 Every state change goes through `domain/transitions.move_job`, which asks
@@ -165,5 +165,14 @@ Every state change goes through `domain/transitions.move_job`, which asks
   recorded without one) are render inputs.
   `GET /jobs/{id}/pass-preview` (`domain/pass_preview.py`) answers the
   result line and the clock for prova, car and passagem not saved yet.
+* **Waiting for the official result** (LIVESTACK-62, design §38):
+  `PATCH …/review` with `wait_for_result: true` on `ready`/`reprocess`
+  sets `jobs.result_hold_until` (now + the Settings' `result_wait_minutes`,
+  default 15) unless nothing would be drawn from the results or it is all
+  fetched already. While set, the render is offered to nobody. It ends
+  when the result (and, with a clock, the official time) is fetched
+  (checked after every good fetch), at the deadline (the lease sweeper),
+  on `POST /jobs/{id}/render-now`, or when nothing is left to wait for.
+  Tests: call `sweepers.expire_leases_once` after moving the clock.
 * **Users** sign in with `POST /auth/login` (`domain/sessions.py`); review
   routes take any session, `/admin/*` an admin session or the admin token.

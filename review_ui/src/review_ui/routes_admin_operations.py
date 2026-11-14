@@ -296,6 +296,8 @@ def save_settings(request: Request, form: dict = Depends(read_form)) -> Response
             clip_previews_enabled=_optional_checkbox(form, "clip_previews_enabled"),
             clip_download_keep_minutes=_optional_number(form, "clip_download_keep_minutes"),
             clip_download_unused_hours=_optional_number(form, "clip_download_unused_hours"),
+            # "Esperar o resultado oficial por até N minutos" (LIVESTACK-62).
+            result_wait_minutes=_optional_whole_number(form, "result_wait_minutes"),
         )
     except ValueError:
         return settings_page_response(

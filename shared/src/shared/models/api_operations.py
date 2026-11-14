@@ -141,6 +141,10 @@ class AdminSettings(ReadByClients):
     clip_download_keep_minutes: float = Field(default=30, ge=0, le=1440)
     # ...or this many hours after the request when nobody downloads it.
     clip_download_unused_hours: float = Field(default=24, ge=0, le=720)
+    # "Esperar o resultado oficial por até N minutos" (LIVESTACK-62): how
+    # long "Pronto" with the box ticked holds a render for the official
+    # result. Fixed on the job when it is held: a change affects new holds only.
+    result_wait_minutes: int = Field(default=15, ge=1, le=120)
 
 
 class UpdateSettingsRequest(ReceivedByServer):
@@ -177,6 +181,7 @@ class UpdateSettingsRequest(ReceivedByServer):
     clip_previews_enabled: bool | None = None
     clip_download_keep_minutes: float | None = Field(default=None, ge=0, le=1440)
     clip_download_unused_hours: float | None = Field(default=None, ge=0, le=720)
+    result_wait_minutes: int | None = Field(default=None, ge=1, le=120)
 
 
 class EvolutionStatus(ReadByClients):

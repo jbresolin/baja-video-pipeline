@@ -16,10 +16,11 @@ from orchestrator.domain.discard import discard_grace_is_over
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
 from orchestrator.domain.leases import sweep_expired_leases
 from orchestrator.domain.raw_copies import drop_inbox_copy, inbox_copy_is_redundant
-from orchestrator.domain.render_features import (
-    NEWER_FEATURE_REASONS,
-    NO_HOLDER_CAN_RENDER,
-    process_waiting_reason,
+from orchestrator.domain.render_features import NEWER_FEATURE_REASONS, NO_HOLDER_CAN_RENDER
+from orchestrator.domain.result_hold import (
+    WAITING_FOR_OFFICIAL_RESULT,
+    release_held_jobs,
+    waiting_reason_for_ready_job,
 )
 from orchestrator.domain.review_queue import NO_HOLDER_ONLINE
 from orchestrator.repositories import events as events_repo
@@ -36,13 +37,16 @@ ABANDONED_UPLOAD_AGE = timedelta(hours=24)
 
 
 def expire_leases_once(context: OrchestratorContext) -> list[str]:
-    """End expired leases (process jobs go back to ready); refresh waiting reasons.
+    """End expired leases (process jobs go back to ready); end the holds for
+    the official result that are over (LIVESTACK-62: a deadline passed, or
+    nothing is left to wait for); refresh waiting reasons.
 
     Returns the ids of the leases that expired.
     """
     with context.database.transaction() as connection:
         now = context.clock.now()
         expired = sweep_expired_leases(connection, now)
+        release_held_jobs(connection, now)
         _refresh_waiting_reasons(connection, now)
     return [lease.lease_id for lease in expired]
 
@@ -51,13 +55,15 @@ def _refresh_waiting_reasons(connection, now) -> None:
     """Say why ready jobs (and requested proxies) are not moving, or clear it.
 
     A ready job waits for a holder online, and for one whose version can
-    render its options (domain/render_features.py); a requested proxy only
-    for a holder online. Only ever sets or clears these sentences of its
-    own, never a failure message.
+    render its options (domain/render_features.py), unless its render waits
+    for the official result (domain/result_hold.py): then that is its only
+    reason. A requested proxy waits only for a holder online. Only ever sets
+    or clears these sentences of its own, never a failure message.
     """
     snapshot = FleetSnapshot.take(connection, now)
     for row in jobs_repo.list_job_rows_in_states(connection, [JobState.READY]):
-        _set_own_waiting_reason(connection, row, now, process_waiting_reason(connection, row, now))
+        wanted = waiting_reason_for_ready_job(connection, row, now)
+        _set_own_waiting_reason(connection, row, now, wanted)
     for row in jobs_repo.list_job_rows_needing_proxy(connection):
         if not row["proxy_requested"] or row["state"] == JobState.READY:
             continue
@@ -77,6 +83,7 @@ OWN_WAITING_REASONS = frozenset(
         NO_HOLDER_ONLINE,
         NO_HOLDER_CAN_RENDER,
         *(reason for _, reason in NEWER_FEATURE_REASONS),
+        WAITING_FOR_OFFICIAL_RESULT,
     }
 )
 

@@ -10,6 +10,7 @@ import { parseFragment, startPolling } from "./poll.js";
 import { setupPassagemHelp } from "./passagem_help.js";
 import { setupPresence } from "./presence.js";
 import { setupRenderOptions } from "./render_options.js";
+import { setupResultWait } from "./result_wait.js";
 import { setupReviewForm } from "./review_form.js";
 import { t } from "./text.js";
 
@@ -26,6 +27,8 @@ setupRenderOptions({ form, video });
 setupPassBlocks({ form });
 // With a clock the result appears when it stops: warn when the cut ends first (LIVESTACK-53).
 setupClockLate({ form });
+// "Esperar o resultado oficial" next to "Pronto", while the result or the clock is on (LIVESTACK-62).
+setupResultWait({ form });
 // "Pré-visualizar overlay" (LIVESTACK-48): the overlay and its clock over the proxy.
 setupOverlayPreview({ video, form, player });
 // Who else is on this video (LIVESTACK-51); may hold the form until chosen.
@@ -123,6 +126,26 @@ for (const button of document.querySelectorAll("[data-original]")) {
 }
 
 setupClipDownloads(document);
+
+// "Renderizar agora" (LIVESTACK-62): the render waiting for the official
+// result goes now. The button is in the status strip, which the poll below
+// replaces every few seconds, so the click is caught on the document. The
+// page is not reloaded (the form may hold unsaved typing); the banner goes
+// at once and the next poll shows the job as it is.
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest?.("[data-render-now]");
+  if (!button) return;
+  button.disabled = true;
+  const jobId = encodeURIComponent(jobElement.dataset.jobId);
+  const result = await sendJson(`/review/api/jobs/${jobId}/render-now`, "POST", {});
+  if (!result.ok) {
+    button.disabled = false;
+    showFlash(errorMessage(result), "error");
+    return;
+  }
+  document.getElementById("result-hold")?.remove();
+  showFlash(result.data.message, "success");
+});
 
 for (const button of document.querySelectorAll("[data-reload]")) {
   button.addEventListener("click", () => window.location.reload());

@@ -355,6 +355,16 @@ class Job(ReadByClients):
     # Human-readable reason the job is stuck, shown in the review UI,
     # e.g. "waiting for a holder to come back online". None when not stuck.
     waiting_reason: str | None = None
+    # Wait for the official result (LIVESTACK-62). While set, the job is
+    # `ready` but its render is offered to no worker until the result of
+    # the passagem (and, with a running clock, its official time) is
+    # fetched, a reviewer chooses "Renderizar agora", or this moment
+    # passes; then it is cleared. None for every job not held.
+    result_hold_until: datetime | None = None
+    # The Settings' "Esperar o resultado oficial por até N minutos": how long
+    # "Pronto" (or "Salvar e reprocessar") with the box ticked would hold a
+    # render now. The job page's checkbox label. None from an older orchestrator.
+    result_wait_minutes: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _cuts_in_order(self) -> "Job":
@@ -423,6 +433,9 @@ class JobSummary(ReadByClients):
     # A copy of this job's video (Job.duplicate_of, LIVESTACK-51): the queue
     # marks it "duplicado".
     duplicate_of: str | None = None
+    # Until when the render waits for the official result (Job.result_hold_until,
+    # LIVESTACK-62): the queue shows "⏳ aguardando resultado". None when not held.
+    result_hold_until: datetime | None = None
     # Who has this job's page open now, first arrived first (LIVESTACK-51):
     # the queue shows "👤 Alessander" so people pick another video. Filled
     # in by GET /review/queue only; nothing is locked.
@@ -454,4 +467,5 @@ class JobSummary(ReadByClients):
             clip_outdated=bool(job.clip_inputs and job.clip_inputs.changed),
             vertical=job.vertical,
             duplicate_of=job.duplicate_of,
+            result_hold_until=job.result_hold_until,
         )

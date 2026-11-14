@@ -13,6 +13,7 @@ from orchestrator.domain.pass_clock import pass_clock_for_job
 from orchestrator.domain.pass_results import pass_result_for_job
 from orchestrator.domain.render_inputs import compare_newest_clip
 from orchestrator.errors import not_found
+from orchestrator.repositories import app_settings as settings_repo
 from orchestrator.repositories import clips as clips_repo
 from orchestrator.repositories import jobs as jobs_repo
 from orchestrator.repositories import leases as leases_repo
@@ -88,6 +89,16 @@ def clip_download_file_name(relative_path: str, version: int) -> str:
     """
     first_name = unversioned_clip_relative_path(relative_path)
     return PurePosixPath(versioned_clip_relative_path(first_name, version)).name
+
+
+def stored_result_wait_minutes(connection: sqlite3.Connection) -> int | None:
+    """Settings' "Esperar o resultado oficial por até N minutos" (LIVESTACK-62).
+
+    Read from the table rather than through domain/result_hold.py, which
+    imports this module. The settings store writes every key at startup,
+    so None only for a table nobody started an orchestrator on.
+    """
+    return settings_repo.load_settings_values(connection).get("result_wait_minutes")
 
 
 def job_from_row(
@@ -209,6 +220,9 @@ def job_from_row(
         duplicate_of=row["duplicate_of"],
         duplicates=duplicates_of(connection, row["id"]),
         waiting_reason=row["waiting_reason"],
+        # Waiting for the official result before rendering (LIVESTACK-62).
+        result_hold_until=from_db_time(row["result_hold_until"]),
+        result_wait_minutes=stored_result_wait_minutes(connection),
     )
 
 

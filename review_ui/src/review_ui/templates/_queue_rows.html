@@ -22,12 +22,13 @@
         </span>
         {% if item.failure_message %}
         <span class="row-note error">{{ m.english(item.failure_message) }}</span>
-        {% elif item.waiting_reason %}
+        {% elif item.waiting_reason and not (item.result_hold_until and item.state == "ready") %}
         <span class="row-note warning">{{ m.waiting(item.waiting_reason) }}</span>
         {% endif %}
       </span>
       <span class="row-badges">
         {{ m.state_badge(item.state) }}
+        {{ m.result_hold(item) }}
         {% if presence_markers is defined and item.id in presence_markers %}<span class="badge presence" title="{{ t('presence.queue_marker.title') }}">{{ presence_markers[item.id] }}</span>{% endif %}
         {{ m.message_count(item) }}
         {% if item.low_res %}<span class="badge flag" title="{{ t('badge.low_res.title') }}">{{ t("badge.low_res") }}</span>{% endif %}

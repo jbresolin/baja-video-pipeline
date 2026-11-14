@@ -39,9 +39,11 @@ class Event(ReadByClients):
     to_state: JobState | None = None
     # Human words, e.g. "proxy uploaded" or the worker's failure message.
     reason: str | None = None
-    # Admin changes only (kinds user_*, contact_*, prova_*, team*, settings_*,
+    # Admin changes (kinds user_*, contact_*, prova_*, team*, settings_*,
     # enrollment_token_revoked, worker_revoked): {"before": ..., "after": ...},
     # each the changed record as JSON (None when it did not exist).
+    # result_hold_started (LIVESTACK-62): {"until": <ISO time>, "waits_for":
+    # ["result", "clock"]}, the deadline and what the render waits for.
     details: dict[str, Any] | None = None
 
 

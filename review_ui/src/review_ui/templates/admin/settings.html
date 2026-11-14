@@ -91,6 +91,11 @@
   <input id="clip_download_unused_hours" name="clip_download_unused_hours" type="number" step="1" min="0" max="720"
          value="{{ '%g'|format(values.clip_download_unused_hours) }}" required>
   <p class="hint">{{ t("settings.clip_download.hint") }}</p>
+  {# "Pronto" can wait for the official result (LIVESTACK-62). #}
+  <label for="result_wait_minutes">{{ t("settings.result_wait") }}</label>
+  <input id="result_wait_minutes" name="result_wait_minutes" type="number" step="1" min="1" max="120"
+         value="{{ values.result_wait_minutes }}" required>
+  <p class="hint">{{ t("settings.result_wait.hint") }}</p>
   {# The filmmakers' messages on the job page (LIVESTACK-49). #}
   <label for="sender_messages_keep_days">{{ t("settings.sender_messages_keep") }}</label>
   <input id="sender_messages_keep_days" name="sender_messages_keep_days" type="number" step="1" min="1" max="365"

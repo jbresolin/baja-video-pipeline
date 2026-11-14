@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from review_ui.catalog import has_text, text
-from review_ui.formatting import short_id, state_label
+from review_ui.formatting import short_clock_text, short_id, state_label
 from shared.models import Event
 
 
@@ -75,8 +75,26 @@ def describe_kind(event: Event) -> tuple[str, bool]:
             # The very first state of a new job.
             return text("events.created_as", state=state_label(event.to_state)), False
         return f"{state_label(event.from_state)} → {state_label(event.to_state)}", False
+    if event.kind == "result_hold_started":
+        return held_for_result_text(event), False
     words = kind_text(event.kind)
     return (words, False) if words is not None else (event.kind, True)
+
+
+def held_for_result_text(event: Event) -> str:
+    """ "renderização esperando o resultado oficial até 14:42" (LIVESTACK-62).
+
+    The deadline is in the event's details ({"until": ISO time}); without it
+    (or unreadable) the sentence simply leaves the time out.
+    """
+    until_text = (event.details or {}).get("until")
+    try:
+        until = datetime.fromisoformat(until_text) if until_text else None
+    except ValueError:
+        until = None
+    if until is None:
+        return text("event.result_hold_started")
+    return text("event.result_hold_started.until", time=short_clock_text(until))
 
 
 def describe_event(event: Event, worker_names: dict[str, str]) -> EventLine:

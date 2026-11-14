@@ -70,7 +70,7 @@ types**; this page explains the behaviour around them. Design background:
 | `POST /auth/login` | none (the password is the credential; 20 per source IP per 600 s) |
 | `/admin/*`, `POST /intake/test-upload`, `GET /metrics` | sessionBearer (role admin) **or** adminBearer |
 | worker loop, `/workers`, `/auth/file`, `/outbox/{id}/ack` | workerBearer |
-| `/review/queue`, `/review/car-videos`, `GET /jobs/{job_id}/sender-messages`, `GET /jobs/{job_id}/pass-preview`, `PUT/DELETE /jobs/{job_id}/presence`, `PATCH …/review`, `…/regenerate-proxy`, `GET/POST …/original`, `GET/POST …/clip-download`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
+| `/review/queue`, `/review/car-videos`, `GET /jobs/{job_id}/sender-messages`, `GET /jobs/{job_id}/pass-preview`, `PUT/DELETE /jobs/{job_id}/presence`, `PATCH …/review`, `POST …/render-now`, `…/regenerate-proxy`, `GET/POST …/original`, `GET/POST …/clip-download`, `/teams/*`, `/auth/logout`, `/auth/me` | sessionBearer |
 | `GET /auth/media`, `GET/HEAD /requested-clips/{job_id}/{name}` | sessionCookie |
 | `GET /jobs/{job_id}`, `GET /manifest` | sessionBearer **or** workerBearer |
 | `GET /fleet`, `GET /jobs/{job_id}/events`, `GET /events`, `GET /provas` | sessionBearer **or** adminBearer |
@@ -212,6 +212,14 @@ direct push: the studio ACK moves claimed → uploaded → delivered in one call
   eviction and `regenerate-proxy` never change the state.
 * `waiting_reason` is a human sentence for the UI when a job is stuck,
   else `null`.
+* **Waiting for the official result** (contract 2.12.0, LIVESTACK-62).
+  A `ready` job may be *held*: `Job.result_hold_until` is set and its
+  render is offered to no worker (`/next` skips it, `/claim` → 409
+  `not_claimable`) until the passagem's official result is fetched, that
+  moment passes, or a reviewer calls `POST …/render-now`. The state stays
+  `ready` and the review stays editable. Its `waiting_reason` is "waiting
+  for the official result of the passagem before rendering", never a
+  worker sentence. See "Waiting for the official result" in §7.1.
 * **`version` is the review version.** It goes up by one only when a
   reviewer changes the job: any `PATCH …/review` action (`save`, `ready`,
   `reprocess`, `discard`, `restore`, `retry`), including the state change
@@ -595,6 +603,7 @@ Request/response models are in `shared.models`; the YAML has every field.
 | `GET /jobs/{job_id}/sender-messages` | → `SenderMessagesResponse` | reviewer session only; the job page's "Mensagens de <remetente>" (below, "Sender messages"); 404 unknown job |
 | `GET /jobs/{job_id}/pass-preview?prova=…&car_number=…&passagem=…` | → `PassPreview` | reviewer session only; the result line and the clock for values not saved yet (below, "Running clock"); nothing is stored on the job; a prova whose results table was never fetched gets it fetched once (3 s timeout, not again within 30 s; on failure `problem: not_fetched`); 404 unknown job |
 | `PATCH /jobs/{job_id}/review` | `ReviewUpdate` → `Job` | see below |
+| `POST /jobs/{job_id}/render-now` | → `Job` | "Renderizar agora": ends a wait for the official result at once (below, "Waiting for the official result"); a job that is not held is answered as it is; `version` unchanged; 404 unknown job |
 | `POST /jobs/{job_id}/regenerate-proxy` | → 202 `RegenerateProxyResponse` | no state change |
 | `GET /teams/{car_number}` | → `Team` | the teams table (results API sync + admin corrections); 404 unknown car |
 | `GET /provas` | → `ProvasResponse` | synced provas first, then manual; inactive ones flagged |
@@ -625,7 +634,7 @@ the event log with `details: {before, after}`, readable at `GET
 | `PATCH /admin/workers/{worker_id}` | `UpdateWorkerRequest` → `Worker` | the display name (below); revoked workers too |
 | `POST /admin/workers/{worker_id}/make-master` | → `Worker` | "Tornar master" (below); 409 for a studio or a revoked worker |
 | `POST /admin/workers/{worker_id}/revoke` | → `Worker` | its token answers 401, leases end, holder rows dropped |
-| `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing; the clip name choices, the welcome message, the vertical-video reply and `sender_messages_keep_days` have no `.env` value |
+| `GET/PATCH /admin/settings` | `UpdateSettingsRequest` → `SettingsResponse` | `.env` values are first-start defaults only; secrets only as configured/missing; the clip name choices, the welcome message, the vertical-video reply, `sender_messages_keep_days` and `result_wait_minutes` (1–120, default 15; LIVESTACK-62) have no `.env` value |
 | `GET /admin/pass-results` | → `PassResultsSettings` | the configuration as saved and each configured prova's fetch status; see "Pass results" below |
 | `PUT /admin/pass-results/config` | `UpdatePassResultsConfigRequest` → `PassResultsSettings` | checked first: 422 `validation_error` with `details.path` and `details.problem`, the one in force stays; audit kind `pass_results_config_updated` |
 | `POST /admin/pass-results/test` | `PassResultTestRequest` → `PassResultTestResponse` | "Testar": fetches the table now (reuses one from the last 5 s) and builds the line; `config_text` tries an unsaved configuration |
@@ -742,6 +751,32 @@ comma. `Job.clip_team_name` and `clip_school_name` are the names a render
 would draw now (for the job page's overlay preview).
 `PassResultTestResponse` ("Testar") adds `clock_configured`, `clock_text`
 and `clock_problem`.
+
+**Waiting for the official result** (contract 2.12.0, LIVESTACK-62;
+design §38). `ReviewUpdate.wait_for_result: true` with `ready` or
+`reprocess` makes the job `ready` as usual and *holds* its render for at
+most `AdminSettings.result_wait_minutes` (default 15, 1–120; fixed on the
+job when held: `Job.result_hold_until`, also `JobSummary.result_hold_until`).
+No hold when nothing would be drawn from the results (no `pass_result`
+shown, no clock: `pass_clock` not configured, toggle off or no largada),
+or when all of it is already fetched. The hold ends, and the render is
+offered at once, on the first of: the result line (when shown) and, with
+a clock, the official time are in the latest fetch (checked right after
+every good fetch, and every 5 s by the lease sweeper); the deadline
+passes (rendered with whatever there is; the clip is flagged later as
+for any result that arrives after a render); `POST
+/jobs/{job_id}/render-now`; nothing left to wait for (a `save` with the
+result and the clock switched off, the prova taken out of the
+configuration). A `save` on a held job is checked at once: a passagem
+whose result is already in releases it. A discard ends it. Left out or
+false, the job renders at once, as before. Holds are stored on the job
+and survive restarts. Events: `result_hold_started` (`details: {until,
+waits_for}`), `result_hold_released_result_arrived`,
+`result_hold_released_deadline_passed`, `result_hold_released_by_reviewer`
+(actor: the reviewer), `result_hold_dropped`. `Job.result_wait_minutes`
+is the Settings' value, for the job page's "Esperar o resultado oficial
+(até N min)". The results fetcher already fetches the tables of `ready`
+jobs, held ones included. No worker change.
 
 **The clock's look** (contract 2.10.0, LIVESTACK-53; design §36). The
 clock is drawn top right, bigger than the pills, with its unit after the
@@ -998,8 +1033,8 @@ actions (§4), the conflict means another reviewer changed the job.
 | `action` | From states | Effect |
 | --- | --- | --- |
 | `save` | any except `discarded` | store fields/cuts only |
-| `ready` | `awaiting_review` | → `ready`; needs all fields |
-| `reprocess` | `claimed`, `uploaded`, `delivered`, `done` | stores the fields sent with it and → `ready` in one request (the review UI's "Salvar e reprocessar"); revokes any process lease; needs all fields; accepted with no holder online (`waiting_reason` then says so at once). The next rendering is the next clip version, delivered under its `-vN` name (§8.1) |
+| `ready` | `awaiting_review` | → `ready`; needs all fields; with `wait_for_result: true`, the render may wait for the official result (§7.1 "Waiting for the official result") |
+| `reprocess` | `claimed`, `uploaded`, `delivered`, `done` | stores the fields sent with it and → `ready` in one request (the review UI's "Salvar e reprocessar"); revokes any process lease; needs all fields; accepted with no holder online (`waiting_reason` then says so at once); `wait_for_result` as for `ready`. The next rendering is the next clip version, delivered under its `-vN` name (§8.1) |
 | `discard` | `awaiting_review`, `ready`, `failed` | → `discarded`, records `discarded_from`; nothing deleted during the grace period (§4); fields not needed |
 | `restore` | `discarded` | → `discarded_from`; 409 `raw_unavailable` after the grace period when no copy of the raw is left; fields not needed |
 | `retry` | `failed` | → `failed_from` (`claimed` → `ready`); clears `failure`; needs all fields only when the target is `ready` (may be corrected in the same call) |

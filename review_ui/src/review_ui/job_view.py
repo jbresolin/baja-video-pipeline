@@ -72,6 +72,11 @@ NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT_REASON = (
     "waiting for a holder of the raw that can draw the new result and clock look"
     " (a worker updated to 0.7.0 or later)"
 )
+# The job's render waits for the official result (orchestrator
+# domain/result_hold.py, LIVESTACK-62); the status strip's banner says until when.
+WAITING_FOR_OFFICIAL_RESULT_REASON = (
+    "waiting for the official result of the passagem before rendering"
+)
 _TASK_FAILED_ON = re.compile(
     r"^(?P<kind>[a-z_]+) failed on (?P<worker>.+?): (?P<message>.*)$", re.DOTALL
 )
@@ -109,6 +114,8 @@ def describe_waiting_reason(reason: str) -> WaitingReason:
         return WaitingReason(text("waiting.no_holder_can_render_clock"), None)
     if reason == NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT_REASON:
         return WaitingReason(text("waiting.no_holder_can_render_clock_top_right"), None)
+    if reason == WAITING_FOR_OFFICIAL_RESULT_REASON:
+        return WaitingReason(text("waiting.official_result"), None)
     match = _TASK_FAILED_ON.match(reason)
     if match and match["kind"] in {kind.value for kind in TaskKind}:
         task = TASK_VERBS[TaskKind(match["kind"])]
@@ -209,8 +216,11 @@ def explain_status(
     if discarded is not None:
         notes.append(discarded)
 
-    if job.waiting_reason:
+    held_for_result = job.state == JobState.READY and job.result_hold_until is not None
+    if job.waiting_reason and not held_for_result:
         # Why the job is stuck, in the orchestrator's words when we do not know them.
+        # A render waiting for the official result has its own banner instead
+        # (result_hold_view.py, with "Renderizar agora").
         waiting = describe_waiting_reason(job.waiting_reason)
         notes.append(StatusNote("warning", waiting.text, detail=waiting.detail))
 

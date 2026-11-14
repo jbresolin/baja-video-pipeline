@@ -26,6 +26,10 @@ buscado", as before.
 A failure never removes the last good answer: texts keep coming from it,
 marked stale, so nothing on air is blanked because the API had a bad
 minute. Each table records when it was last fetched and whether it worked.
+
+Every good answer is followed by a check of the renders held for their
+official result (LIVESTACK-62, domain/result_hold.py): held jobs are
+`ready`, so their tables are fetched like any other job's.
 """
 
 import json
@@ -43,6 +47,7 @@ from orchestrator.domain.pass_results import (
     resultado_id_for,
     stored_table,
 )
+from orchestrator.domain.result_hold import release_held_jobs
 from orchestrator.domain.results_table import BadTableError, parse_table
 from orchestrator.repositories import pass_results as pass_results_repo
 
@@ -123,6 +128,9 @@ def fetch_table(
             event_finished(answer.max_age_s),
             context.clock.now(),
         )
+        # Renders held for their official result (LIVESTACK-62) go as soon
+        # as this answer has it, not at the sweeper's next pass.
+        release_held_jobs(connection, context.clock.now())
     return True
 
 

@@ -137,6 +137,13 @@ class ReviewUpdate(ReceivedByServer):
     largada_s: Seconds | None = None
     clear_largada: bool | None = None
     show_clock: bool | None = None
+    # "Esperar o resultado oficial (até N min)" next to "Pronto" (LIVESTACK-62).
+    # Read with `ready` and `reprocess` only. True: the job becomes ready as
+    # usual but its render waits for the passagem's official result (and
+    # the clock's official time) for at most the Settings' minutes, unless
+    # that is already there or nothing would be drawn from it. Left out or
+    # false: rendered at once, as before (scripts are not held by surprise).
+    wait_for_result: bool | None = None
 
     @model_validator(mode="after")
     def _cuts_in_order(self) -> "ReviewUpdate":

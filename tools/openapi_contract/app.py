@@ -93,7 +93,12 @@ from tools.openapi_contract import (
 # "clip_preview" and "upload_clip" (installer 0.7.0). Deploy the VPS first:
 # an older orchestrator answers 400 to a /next asking for upload_clip; the
 # 0.7.0 worker leaves that kind out for 5 minutes, then asks again.
-CONTRACT_VERSION = "2.11.0"
+# 2.12.0: wait for the official result before rendering (LIVESTACK-62):
+# ReviewUpdate.wait_for_result, Job.result_hold_until and result_wait_minutes,
+# JobSummary.result_hold_until, POST /jobs/{id}/render-now ("Renderizar
+# agora"), AdminSettings.result_wait_minutes. Orchestrator and review UI
+# only: workers are never offered a held render and ignore the new fields.
+CONTRACT_VERSION = "2.12.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

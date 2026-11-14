@@ -188,6 +188,15 @@
         <p>{{ t("passagens.warnings_on_ready") }}</p>
         <ul>{% for warning in (help.warnings if help else []) %}<li>{{ warning }}</li>{% endfor %}</ul>
       </div>
+      {# "Esperar o resultado oficial (até N min)" (LIVESTACK-62), next to "Pronto"
+         and "Salvar e reprocessar": shown while the result line or the clock is
+         on; js/result_wait.js keeps it current, and a hidden box is disabled,
+         so js/review_form.js does not send it. #}
+      {% if wait_box %}
+      <label class="check result-wait" id="result-wait"{% if not wait_box.shown %} hidden{% endif %} title="{{ wait_box.title }}">
+        <input type="checkbox" name="wait_for_result" checked{% if not wait_box.shown %} disabled{% endif %}>
+        {{ wait_box.label }}</label>
+      {% endif %}
       <div class="actions">
         {# Primary first ("Salvar e reprocessar" once a clip exists, LIVESTACK-43). #}
         {% for button in actions %}

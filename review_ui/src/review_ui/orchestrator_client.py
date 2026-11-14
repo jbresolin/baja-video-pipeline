@@ -187,6 +187,11 @@ class OrchestratorClient:
         response = self._request("POST", f"/jobs/{_path_segment(job_id)}/regenerate-proxy")
         return self._parse(RegenerateProxyResponse, response)
 
+    def render_now(self, job_id: str) -> Job:
+        """ "Renderizar agora": end the wait for the official result (LIVESTACK-62)."""
+        response = self._request("POST", f"/jobs/{_path_segment(job_id)}/render-now")
+        return self._parse(Job, response)
+
     def request_original(self, job_id: str) -> OriginalDownload:
         """ "Baixar original" (LIVESTACK-41 item 15): ask for it (again)."""
         response = self._request("POST", f"/jobs/{_path_segment(job_id)}/original")

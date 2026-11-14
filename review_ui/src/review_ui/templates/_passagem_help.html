@@ -21,7 +21,7 @@
     <span class="passagem-number">
       {%- if row.video.passagem is not none %}{{ t("passagens.passagem", passagem=row.video.passagem) }}{% else %}<span class="muted">{{ t("passagens.no_passagem") }}</span>{% endif -%}
     </span>
-    <span class="passagem-state">{{ m.state_badge(row.video.state) }}</span>
+    <span class="passagem-state">{{ m.state_badge(row.video.state) }} {{ m.result_hold(row.video) }}</span>
     <span class="passagem-link">
       {%- if row.is_this_video %}<strong>{{ t("passagens.this_video") }}</strong>
       {%- else %}<a href="/review/jobs/{{ row.video.id }}">{{ t("passagens.open") }}</a>{% endif -%}

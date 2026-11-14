@@ -59,6 +59,13 @@ export function collectReviewBody(form, version, action) {
   }
   const showClock = form.elements.show_clock;
   if (showClock) body.show_clock = showClock.checked;
+  // "Esperar o resultado oficial" (LIVESTACK-62): only with "Pronto" and
+  // "Salvar e reprocessar", and only while the box is shown (js/result_wait.js
+  // disables a hidden one). Left out, the clip is rendered at once.
+  const waitForResult = form.elements.wait_for_result;
+  if (RENDERING_ACTIONS.includes(action) && waitForResult && !waitForResult.disabled) {
+    body.wait_for_result = waitForResult.checked;
+  }
   return body;
 }
 

@@ -169,6 +169,14 @@ def _evaluate_process(
             return refuse(ErrorCode.NOT_CLAIMABLE, "job is claimed")
     elif state != JobState.READY:
         return refuse(ErrorCode.NOT_CLAIMABLE, f"job is '{state}', not ready")
+    elif job_row["result_hold_until"] is not None:
+        # "Esperar o resultado oficial" (LIVESTACK-62, domain/result_hold.py):
+        # nobody renders it until the result is in, the deadline passes or a
+        # reviewer clicks "Renderizar agora".
+        return refuse(
+            ErrorCode.NOT_CLAIMABLE,
+            f"the render waits for the official result until {job_row['result_hold_until']}",
+        )
     # The official result line (LIVESTACK-47), from the latest results
     # fetched; None when there is none to show (the pill is then absent).
     pass_result_text = pass_text_for_render(connection, job_row)
