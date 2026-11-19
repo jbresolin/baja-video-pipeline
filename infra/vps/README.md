@@ -26,6 +26,7 @@ Files in this directory:
 | `compose-smoke.sh` (+ `smoke_checks.py`) | Smoke test, PASS/FAIL table; `up.sh` runs it last (§11) |
 | `backup.sh`, `systemd/baja-backup.{service,timer}`, `restore.md` | Nightly backups of the pipeline's state while it is up (§12) |
 | `sqlite_backup.py`, `sqlite_in_orchestrator.sh` | Copy, check and restore the jobs DB, run with the orchestrator image's own SQLite (§12) |
+| `clear_event_data.sh` (+ `clear_event_data.py`) | Delete every video and keep the setup, to start an event from scratch (§15) |
 | `MONITORING.md` | Pointing an external Prometheus/Grafana at `GET /metrics` |
 | `EVENT_DAY.md` | Event-day runbook: T-7, T-1, during, after |
 
@@ -574,3 +575,52 @@ Other:
 * [R23] Caddy `forward_auth`: https://caddyserver.com/docs/caddyfile/directives/forward_auth
 * [R24] Caddy `file_server` (`hide`, Range → 206): https://caddyserver.com/docs/caddyfile/directives/file_server ; `basic_auth` (hash cache enabled from the Caddyfile: https://github.com/caddyserver/caddy/blob/v2.11.7/modules/caddyhttp/caddyauth/caddyfile.go): https://caddyserver.com/docs/caddyfile/directives/basic_auth ; `import`: https://caddyserver.com/docs/caddyfile/directives/import
 * GitHub container registry, visibility and authentication: https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
+
+## 15. Starting an event from scratch
+
+Deletes every video and everything about it (jobs, their history, the
+senders' messages, cached results, and the files in `inbox/`, `proxies/`,
+`thumbs/`, `outbox/`, `originals/`, `previews/`, `requested_clips/`) and
+keeps the setup: users, contacts with their default prova, provas, teams,
+Settings (including the pass-results config), enrolled workers, enrollment
+tokens and the admin history. The DB is copied to
+`/var/backups/baja/before-clear-<UTC time>/` first; `restore.md` brings it
+back.
+
+On the VPS:
+
+```bash
+cd /opt/baja && git pull && cd infra/vps
+sudo ./down.sh
+sudo ./clear_event_data.sh      # type APAGAR when asked
+sudo ./up.sh
+```
+
+On each PC the worker keeps its own copies. Find its working folder on the
+worker page (http://localhost:8700, Detalhes → "Pasta de trabalho"), then,
+in an admin PowerShell (here `E:\BajaWorker`):
+
+```powershell
+Stop-Service BajaWorker
+$workingFolder = "E:\BajaWorker"
+foreach ($folder in "raws", "clips", "tmp") {
+    Get-ChildItem -Force -LiteralPath "$workingFolder\$folder" -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force
+}
+Start-Service BajaWorker
+```
+
+On the studio PC, close OBS's VLC source (or OBS) first so no clip is open,
+then do the same and also empty the clip folder (here `D:\BajaClips`; the
+worker page shows it), including `latest.m3u` and the hidden
+`.playlist-index.json`:
+
+```powershell
+Stop-Service BajaWorker
+Get-ChildItem -Force -LiteralPath "D:\BajaClips" | Remove-Item -Recurse -Force
+Start-Service BajaWorker
+```
+
+A PC that keeps old raws is harmless (the VPS never asks for them again and
+never tells a PC to delete raws of jobs it does not know), but the space is
+only freed by hand.

@@ -1722,3 +1722,21 @@ migration 0020; orchestrator and review UI only, no worker change.
   a real browser (the decisions are tested in Node on stand-ins, the pages
   against the real orchestrator; there is no browser test setup); real
   judges' timing on an event day (the 15-minute default is the brief's).
+
+## 39. Starting an event from scratch (2026-11-19)
+
+* `infra/vps/clear_event_data.sh` deletes every video and everything about
+  it (jobs, holders, leases, clip versions, the clips PCs reported, task
+  exclusions, the jobs' events, intake records, senders' messages, cached
+  results tables, PC speed samples) and empties the job folders on the VPS.
+  It keeps the setup: users and sessions, contacts, provas, teams,
+  Settings, workers, enrollment tokens, one-time import records and the
+  admin history (events with no job). README §15.
+* It runs only with the pipeline down, after typing APAGAR, and copies the
+  DB first to `/var/backups/baja/before-clear-<time>/` (not rotated by the
+  nightly backups). The DB part is one transaction, run with the
+  orchestrator image's SQLite (`sqlite_in_orchestrator.sh clear-event-data`).
+* PCs are emptied by hand (stop the service, empty `raws`, `clips`, `tmp`
+  and the studio's clip folder): the orchestrator never tells a PC to
+  delete raws of a job it does not know, so leftovers are harmless, only
+  space.

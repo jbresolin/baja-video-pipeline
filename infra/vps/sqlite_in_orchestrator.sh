@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Run sqlite_backup.py with the orchestrator's own Python and SQLite.
+# Run sqlite_backup.py (or clear_event_data.py) with the orchestrator's own
+# Python and SQLite.
 #
 #   sqlite_in_orchestrator.sh backup  /srv/pipeline/db/bvp.sqlite3 /some/folder/bvp.sqlite3
 #   sqlite_in_orchestrator.sh restore /var/backups/baja/<stamp>/bvp.sqlite3 /srv/pipeline/db/bvp.sqlite3
+#   sqlite_in_orchestrator.sh clear-event-data /srv/pipeline/db/bvp.sqlite3
 #
 # Why not the VPS's python3: a backup must be read and judged by the SQLite
 # that writes the DB. On 2026-11-07 Ubuntu 24.04's SQLite 3.45.1 reported
@@ -16,7 +18,7 @@
 #
 # The source's and destination's folders are mounted at the same paths, as
 # the orchestrator's user (uid 10001, design §17), with no network.
-# Exit status and output are sqlite_backup.py's.
+# Exit status and output are the Python script's.
 
 set -euo pipefail
 
@@ -24,13 +26,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_PROJECT=baja-pipeline
 DATA_UID="${BAJA_BACKUP_UID:-10001}"
 
-if [[ $# -ne 3 || ( "$1" != "backup" && "$1" != "restore" ) ]]; then
+usage() {
     echo "usage: $0 backup|restore <source> <destination>" >&2
+    echo "       $0 clear-event-data <database>" >&2
     exit 2
-fi
-action="$1"
-source_file="$(realpath -m -- "$2")"
-destination_file="$(realpath -m -- "$3")"
+}
+action="${1:-}"
+case "$action" in
+    backup | restore)
+        [[ $# -eq 3 ]] || usage
+        script=sqlite_backup.py
+        source_file="$(realpath -m -- "$2")"
+        destination_file="$(realpath -m -- "$3")"
+        script_arguments=("$action" "$source_file" "$destination_file")
+        ;;
+    clear-event-data)
+        [[ $# -eq 2 ]] || usage
+        script=clear_event_data.py
+        source_file="$(realpath -m -- "$2")"
+        destination_file="$source_file"
+        script_arguments=("$source_file")
+        ;;
+    *) usage ;;
+esac
 
 orchestrator_image() {
     local container_id
@@ -67,6 +85,6 @@ fi
 exec docker run --rm --network none \
     --user "$DATA_UID:$DATA_UID" \
     "${mounts[@]}" \
-    --volume "$SCRIPT_DIR/sqlite_backup.py:/opt/sqlite_backup.py:ro" \
+    --volume "$SCRIPT_DIR/$script:/opt/$script:ro" \
     --entrypoint python \
-    "$image" /opt/sqlite_backup.py "$action" "$source_file" "$destination_file"
+    "$image" "/opt/$script" "${script_arguments[@]}"

@@ -153,6 +153,10 @@ Goal: one real video from a phone reaches the studio box as a clip.
    `teste`). On the streaming PC delete the `teste` folder; its line in
    `latest.m3u` drops off as real clips arrive.
 7. `sudo ./compose-smoke.sh` once more, and check tonight's backup runs.
+8. Once the dry run is good, start the event clean: README §15
+   (`down.sh`, `clear_event_data.sh`, `up.sh`, then empty the PCs' `raws`,
+   `clips` and the studio's clip folder). Users, contacts, provas, teams,
+   Settings and enrolled PCs stay.
 
 ---
 
