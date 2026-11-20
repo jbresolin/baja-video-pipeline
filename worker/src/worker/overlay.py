@@ -30,6 +30,10 @@ the result appears when the clock stops, so it is drawn on an image of its
 own (OverlayLayout.result) that ffmpeg lays on from the freeze frame.
 Without a clock it stays in the PNG, on for the whole clip, as before.
 
+The top speed (worker.overlay_speed, LIVESTACK-67, "Aceleração e
+Velocidade") is a pill of its own under the clock, laid on from the speed
+mark; only a clip with a clock has one.
+
 Unknown parts are left out (no team → the chip alone in the name pill;
 no school → no school part; show_pass off → no passagem). Bebas Neue has
 no lowercase, so every word is set in capitals. A pill grows with its text
@@ -51,11 +55,12 @@ from pathlib import Path
 
 from PIL import Image
 
-from shared.models import RenderClock
+from shared.models import RenderClock, RenderSpeed
 from worker import overlay_tokens as theme
 from worker.overlay_clock import ClockLayout, layout_clock_top_right
 from worker.overlay_draw import PillLayout, PlacedImage, draw_pill, draw_pill_alone
 from worker.overlay_result import layout_result_pill, result_runs
+from worker.overlay_speed import SpeedLayout, layout_speed_under_clock
 from worker.overlay_text import TextRun, fit_runs, font, runs_width
 
 FINAL_FRAME_HEIGHT = 1080
@@ -77,6 +82,9 @@ class OverlayText:
     pass_result: str | None = None
     # The running clock (LIVESTACK-48); None = no clock.
     clock: RenderClock | None = None
+    # The top speed under the clock (LIVESTACK-67); None = no speed pill.
+    # Drawn only with a clock.
+    speed: RenderSpeed | None = None
 
     def name(self) -> str | None:
         """The team as shown in the name pill, or None when unknown."""
@@ -113,6 +121,8 @@ class OverlayLayout:
     # With a clock, the result pill on its own image, shown from the
     # clock's freeze (LIVESTACK-53); None = no result, or it is in `still`.
     result: PlacedImage | None = None
+    # Where the top speed goes under the clock (LIVESTACK-67); None = none.
+    speed: SpeedLayout | None = None
 
 
 def render_overlay_png(
@@ -148,6 +158,7 @@ def lay_out_overlay(
         role_runs=role_runs(text.role_parts()),
         result_runs=result_runs(result) if result else [],
         clock=text.clock,
+        speed=text.speed,
     )
 
 
@@ -199,11 +210,13 @@ def lay_out_lower_third(
     role_runs: list[TextRun],
     result_runs: list[TextRun] | None = None,
     clock: RenderClock | None = None,
+    speed: RenderSpeed | None = None,
 ) -> OverlayLayout:
     """render_lower_third, plus the clock's place in the top-right corner.
 
     With a clock, the result pill is drawn on its own image, not on the
-    still one: it appears when the clock stops (LIVESTACK-53).
+    still one: it appears when the clock stops (LIVESTACK-53). The speed
+    goes under the clock (LIVESTACK-67); without a clock it is left out.
     """
     scale = frame_height / FINAL_FRAME_HEIGHT
     left = theme.LEFT_PX * scale
@@ -237,7 +250,10 @@ def lay_out_lower_third(
         else:
             draw_pill(canvas, result_pill, left, row_top, scale)
     clock_layout = layout_clock_top_right(clock, frame_width, scale) if clock else None
-    return OverlayLayout(canvas, clock_layout, result_image)
+    speed_layout = None
+    if clock_layout is not None and speed is not None:
+        speed_layout = layout_speed_under_clock(speed, clock_layout, scale)
+    return OverlayLayout(canvas, clock_layout, result_image, speed_layout)
 
 
 def layout_name_pill(

@@ -208,7 +208,8 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   that need one only to workers that declared it; `clip_preview` and
   `upload_clip`, LIVESTACK-52, installer 0.7.0, abilities rather than
   render options, declared the same way: a preview after each render, and
-  "Baixar clipe" uploads). An orchestrator older than contract 2.6.0
+  "Baixar clipe" uploads; `speed`, LIVESTACK-67, installer 0.8.0, the top
+  speed under the clock). An orchestrator older than contract 2.6.0
   refuses that field with 400: the beat is resent without it, and it is
   left out for 5 minutes. Acts on `lost` leases, `accepting_new_raws`,
   `deletable_job_ids` and `role`.
@@ -261,7 +262,17 @@ from it. Partial raws nobody resumed for 24 h are deleted at start.
   its own small PNG, laid on from the freeze frame to the end
   (`OverlayLayout.result`); without one it stays in the still PNG. The
   clock is in the sidecar and the report too (a 0.6.0 sidecar, without
-  the unit, is rendered again). Then it tells the orchestrator what the clip was rendered
+  the unit, is rendered again). When the task also carries `pass_speed`
+  (LIVESTACK-67, "Aceleração e Velocidade", installer 0.8.0), the run's
+  top speed ("37,2 km/h") goes in a smaller pill under the clock,
+  right-aligned with it, one row gap below: 48 px digits in the on-air
+  clock pill grown in proportion, the unit small and muted like the
+  clock's (`overlay_speed.py`, `SPEED_SIZE`). It never changes, so the
+  whole pill is one PNG, laid on from the speed mark to the end of the
+  clip (`shared/ffmpeg_clock.py`, the same microsecond rule as the
+  largada). Only under a clock: a speed without one is not drawn. The
+  speed is in the sidecar (a sidecar from before 0.8.0, without it, is
+  rendered again) and in the report. Then it tells the orchestrator what the clip was rendered
   from (LIVESTACK-43, `PUT /jobs/{id}/render-inputs` under the lease:
   cuts, review fields, the render options, the overlay texts as drawn,
   the SHA-256 of the vendored `overlay_theme/tokens.css` and of the

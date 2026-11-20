@@ -23,6 +23,11 @@ clock shows the official time (shared.pass_clock.result_shown: elapsed
 microseconds ≥ the official time in microseconds, one comparison of whole
 numbers), to the end of the clip.
 
+The top speed under the clock (LIVESTACK-67) is the last step when the
+clip has one: its own small PNG (number and unit, it never changes), laid
+on from the speed mark to the end of the clip, by the same comparison as
+the largada's (shared.pass_clock.speed_shown_at).
+
 Why drawtext and not images moved per frame: an earlier version showed
 each digit from a Pillow-drawn strip, which needs the frame region cut
 out, five overlays and the region put back; with ffmpeg 6.1 that made a
@@ -79,10 +84,23 @@ class ClockOverlay:
     # shown from the freeze; None = the clip has no result line.
     result_png: Path | None = None
     result_position: tuple[int, int] | None = None
+    # The top speed's pill (LIVESTACK-67), where it goes, and the speed mark
+    # in raw-video seconds it is shown from; None = the clip has no speed.
+    speed_png: Path | None = None
+    speed_position: tuple[int, int] | None = None
+    speed_mark_s: float | None = None
 
     def elapsed_us_expression(self) -> str:
         """Microseconds since the largada at the frame's time `t`, as an ffmpeg expression."""
-        offset = microseconds(self.cut_in_s) - microseconds(self.largada_s)
+        return self.microseconds_since_expression(self.largada_s)
+
+    def microseconds_since_expression(self, mark_s: float) -> str:
+        """Microseconds since a mark (raw-video seconds) at the frame's time `t`.
+
+        Raw time = cut-in + t; each of cut-in and mark rounded half up to
+        whole microseconds on its own, as shared.pass_clock does.
+        """
+        offset = microseconds(self.cut_in_s) - microseconds(mark_s)
         return f"(round(t*{MICROSECONDS_PER_SECOND}){offset:+d})"
 
     def units_expression(self) -> str:
@@ -94,6 +112,12 @@ class ClockOverlay:
     def shown_expression(self) -> str:
         """True (1) from the largada on."""
         return f"gte({self.elapsed_us_expression()},0)"
+
+    def speed_shown_expression(self) -> str:
+        """True (1) from the speed mark on: the speed pill's `enable` (LIVESTACK-67)."""
+        if self.speed_mark_s is None:
+            raise ClockFilterError("the clock has no speed mark")
+        return f"gte({self.microseconds_since_expression(self.speed_mark_s)},0)"
 
     def frozen_expression(self) -> str:
         """True (1) from the freeze on: the result pill's `enable` (LIVESTACK-53)."""
@@ -132,23 +156,36 @@ def drawtext_filter(clock: ClockOverlay, text: str, enable: str | None) -> str:
 
 
 def clock_filter(
-    clock: ClockOverlay, *, source: str, pill_input: int, result_input: int | None = None
+    clock: ClockOverlay,
+    *,
+    source: str,
+    pill_input: int,
+    result_input: int | None = None,
+    speed_input: int | None = None,
 ) -> str:
-    """The filter_complex entries drawing the clock (and the result) onto `[source]`.
+    """The filter_complex entries drawing the clock (the result, the speed) onto `[source]`.
 
     `pill_input` is the input index of clock.pill_png, `result_input` that
-    of clock.result_png (needed when the clock has one). The last entry has
-    no output label, so the caller can chain the pixel format onto it.
+    of clock.result_png and `speed_input` that of clock.speed_png (each
+    needed when the clock has that image). The last entry has no output
+    label, so the caller can chain the pixel format onto it.
     """
     shown = clock.shown_expression()
     x, y = clock.pill_position
     pill = f"[{source}][{pill_input}:v]overlay=x={x}:y={y}:enable={quoted_option(shown)}"
-    running = f"{pill},{drawtext_filter(clock, clock.text_expansion(), shown)}"
-    if clock.result_png is None:
-        return running
-    if result_input is None or clock.result_position is None:
-        raise ClockFilterError("the clock has a result image: pass its input index")
-    result_x, result_y = clock.result_position
-    frozen = quoted_option(clock.frozen_expression())
-    result = f"[clock][{result_input}:v]overlay=x={result_x}:y={result_y}:enable={frozen}"
-    return f"{running}[clock];{result}"
+    steps = f"{pill},{drawtext_filter(clock, clock.text_expansion(), shown)}"
+    if clock.result_png is not None:
+        if result_input is None or clock.result_position is None:
+            raise ClockFilterError("the clock has a result image: pass its input index")
+        result_x, result_y = clock.result_position
+        frozen = quoted_option(clock.frozen_expression())
+        result = f"[clock][{result_input}:v]overlay=x={result_x}:y={result_y}:enable={frozen}"
+        steps = f"{steps}[clock];{result}"
+    if clock.speed_png is not None:
+        if speed_input is None or clock.speed_position is None:
+            raise ClockFilterError("the clock has a speed image: pass its input index")
+        speed_x, speed_y = clock.speed_position
+        from_mark = quoted_option(clock.speed_shown_expression())
+        speed = f"[with_result][{speed_input}:v]overlay=x={speed_x}:y={speed_y}:enable={from_mark}"
+        steps = f"{steps}[with_result];{speed}"
+    return steps

@@ -12,9 +12,10 @@ from pathlib import Path
 
 from PIL import Image, ImageChops
 
-from shared.models import RenderClock
+from shared.models import RenderClock, RenderSpeed
 from worker.overlay import OverlayText, lay_out_overlay, render_overlay_png
 from worker.overlay_clock import compose_clock
+from worker.overlay_speed import draw_speed_pill
 
 GOLDEN_PATH = Path(__file__).parent / "golden" / "overlay-car1-1080p.png"
 # Exactly what the orchestrator sends for car 1 of the fake results API
@@ -139,6 +140,58 @@ CLOCK_GOLDEN_CASES: dict[str, tuple[OverlayText, int, Path]] = {
 }
 
 
+# The top speed under the clock (LIVESTACK-67, "Aceleração e Velocidade").
+# The numbers are car 1's first run in the real 2026 snapshots the AVF
+# fixtures come from (tests/fixtures/results_api/26BR_ACE.display.json and
+# 26BR_VEL.display.json): 4.354 s → "4,35" with 2 decimals (rounded down,
+# as the clock does), 37.18 km/h → "37,2" with 1 decimal (half up). The
+# team and school are invented. "running": the clock mid-run, before the
+# speed mark, so no speed yet; "frozen-with-speed": the clock stopped on
+# 4,35 and the speed under it; "speed-missing": the same moment for a run
+# with no official speed (or no speed mark), so the clock is alone.
+AVF_CLOCK = RenderClock(largada_s=1.0, official_units=435, decimals=2, unit="s")
+AVF_SPEED = RenderSpeed(speed_mark_s=6.0, text="37,2", unit="km/h")
+AVF_TEXT = OverlayText(
+    prova="Aceleração e Velocidade",
+    car_number=1,
+    team_name="Baja Serra Azul",
+    passagem=1,
+    show_pass=True,
+    school_short="UFSA",
+    clock=AVF_CLOCK,
+    speed=AVF_SPEED,
+)
+SPEED_GOLDEN_CASES: dict[str, tuple[OverlayText, int, bool, Path]] = {
+    "running": (AVF_TEXT, 217, False, GOLDEN_PATH.with_name("overlay-speed-running-1080p.png")),
+    "frozen-with-speed": (
+        AVF_TEXT,
+        435,
+        True,
+        GOLDEN_PATH.with_name("overlay-speed-frozen-with-speed-1080p.png"),
+    ),
+    "speed-missing": (
+        replace(AVF_TEXT, speed=None),
+        435,
+        False,
+        GOLDEN_PATH.with_name("overlay-speed-missing-1080p.png"),
+    ),
+}
+
+
+def render_speed_frame(text: OverlayText, units: int, speed_shown: bool) -> Image.Image:
+    """A clip frame with the clock at `units` and, when `speed_shown`, the speed under it.
+
+    Drawn with Pillow alone, like render_clock_frame (the render lays the
+    same speed picture on with ffmpeg, from the speed mark).
+    """
+    canvas = render_clock_frame(text, units)
+    layout = lay_out_overlay(text, frame_width=1920, frame_height=1080)
+    if speed_shown and layout.speed is not None:
+        speed = draw_speed_pill(layout.speed)
+        canvas.alpha_composite(speed.image, dest=speed.position)
+    return canvas
+
+
 def render_clock_frame(text: OverlayText, units: int) -> Image.Image:
     """The still overlay with the clock at `units`, as one transparent 1920x1080 frame.
 
@@ -186,6 +239,9 @@ if __name__ == "__main__":
         print(f"wrote {path}")
     for text, units, path in CLOCK_GOLDEN_CASES.values():
         render_clock_frame(text, units).save(path, format="PNG")
+        print(f"wrote {path}")
+    for text, units, speed_shown, path in SPEED_GOLDEN_CASES.values():
+        render_speed_frame(text, units, speed_shown).save(path, format="PNG")
         print(f"wrote {path}")
     # A vertical video framed into the clip (LIVESTACK-53): needs ffmpeg.
     # Run as a script, so the repository root is put on the import path.

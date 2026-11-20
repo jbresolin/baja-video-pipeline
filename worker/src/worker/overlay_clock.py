@@ -217,6 +217,15 @@ def ffmpeg_colour(rgba: tuple[int, int, int, int]) -> str:
     return "0x" + "".join(f"{channel:02x}" for channel in rgba)
 
 
+@dataclass(frozen=True)
+class SpeedPill:
+    """The top speed's pill saved for ffmpeg (LIVESTACK-67), and the mark it shows from."""
+
+    png: Path
+    position: tuple[int, int]
+    speed_mark_s: float
+
+
 def write_clock_pill(
     layout: ClockLayout,
     clock: RenderClock,
@@ -224,9 +233,10 @@ def write_clock_pill(
     directory: Path,
     stem: str,
     result: PlacedImage | None = None,
+    speed: SpeedPill | None = None,
 ) -> ClockOverlay:
     """Save the pill (and the result pill, shown from the freeze) as PNGs, and say
-    how ffmpeg draws them."""
+    how ffmpeg draws them, with the speed pill (already saved) when the clip has one."""
     directory.mkdir(parents=True, exist_ok=True)
     pill_path = directory / f"{stem}.clock.png"
     draw_clock_pill(layout).save(pill_path, format="PNG")
@@ -248,6 +258,9 @@ def write_clock_pill(
         decimals=clock.decimals,
         result_png=result_path,
         result_position=None if result is None else result.position,
+        speed_png=None if speed is None else speed.png,
+        speed_position=None if speed is None else speed.position,
+        speed_mark_s=None if speed is None else speed.speed_mark_s,
     )
 
 

@@ -218,7 +218,8 @@ def build_final_render_command(
     rotation, is the render used before LIVESTACK-50, unchanged.
     `clock` (LIVESTACK-48, shared.ffmpeg_clock) adds the running clock on
     top of the overlay, and its result pill from the freeze on when it has
-    one (LIVESTACK-53); it needs `overlay_image`. None = the command is
+    one (LIVESTACK-53), and the top speed from its mark when it has one
+    (LIVESTACK-67); it needs `overlay_image`. None = the command is
     exactly the one before LIVESTACK-48.
     """
     if cut_out_s <= cut_in_s:
@@ -253,7 +254,19 @@ def build_final_render_command(
         if clock.result_png is not None:
             inputs += ["-i", str(clock.result_png)]
             result_input = 3
-        clocked = clock_filter(clock, source="lower_third", pill_input=2, result_input=result_input)
+        # The top speed under the clock, shown from its mark (LIVESTACK-67):
+        # the next input after the ones above.
+        speed_input = None
+        if clock.speed_png is not None:
+            speed_input = 4 if result_input is not None else 3
+            inputs += ["-i", str(clock.speed_png)]
+        clocked = clock_filter(
+            clock,
+            source="lower_third",
+            pill_input=2,
+            result_input=result_input,
+            speed_input=speed_input,
+        )
         filters = [
             *picture[:-1],
             f"{picture[-1]}[base]",
