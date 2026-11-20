@@ -1740,3 +1740,123 @@ migration 0020; orchestrator and review UI only, no worker change.
   and the studio's clip folder): the orchestrator never tells a PC to
   delete raws of a job it does not know, so leftovers are harmless, only
   space.
+
+## 40. Aceleração e Velocidade: stopwatch plus top speed (LIVESTACK-67, 2026-11-20)
+
+One video, two tables: "Aceleração e Velocidade" (results API prova AVF)
+publishes the acceleration time in table ACE (column "Aceleração", s)
+and the top speed through the speed trap in table VEL (column
+"Velocidade", km/h); run n of one pairs with run n of the other. The clip
+shows the stopwatch top right as every clock (§36), frozen on the
+official ACE time, and under it the run's top speed, "37,2 km/h", from
+the frame where the reviewer marked the car crossing the trap. Contract
+2.13.0, installer 0.8.0, migration 0021.
+
+* **Configuration.** A prova's entry may have a `speed` block:
+  `"AVF": {"resultado": "ACE", "clock": {"column": "Aceleração",
+  "decimals": 2, "unit": "s"}, "speed": {"resultado": "VEL", "column":
+  "Velocidade", "unit": "km/h", "decimals": 1}}`. `resultado` and `column`
+  are required (a speed is a second table, so there is no default table),
+  `unit` defaults to `""` and `decimals` to 0 (0–3), like the result line;
+  unknown keys are refused. **A `speed` block needs a `clock` block**
+  (`problem: speed_needs_clock`, "o bloco speed precisa de um bloco clock"):
+  the speed is drawn under the clock. The rule "a prova needs a result or
+  a clock" stays and answers first. Run n is read with the prova's
+  `runs` mode, as for the clock (`pass_text.run_value`).
+* **Fetching.** The speed table ("26BR_VEL") is fetched like the prova's
+  own: same schedule, stale handling and "finished event" stop, each table
+  on its own row of `pass_result_tables`; the pass preview fetches it once
+  when never fetched, as it does the clock's; "Testar" fetches both and
+  says "Velocidade: 37,2 km/h." (or why not). The Settings status lists it
+  as a row of its own, "(velocidade)".
+* **The text.** The official speed rounded **half up** to the configured
+  decimals with a decimal comma (37.18 → "37,2"), as the result line writes
+  numbers: it is a value read on screen, not a count like the clock (which
+  rounds down so it never shows a time not reached). A negative value is
+  "not a number"; `"-"` and the other "no result" values give no speed.
+* **The mark.** "Velocidade" next to "Largada" in the "Cronômetro" block,
+  only for a prova with a `speed` block: "Marcar", the `v` key (it was
+  free), `-`/`=` nudge it, a second line on the cut bar in green (the
+  largada's is orange), "Limpar". Stored as `jobs.speed_mark_s` in
+  raw-video seconds, written by the page rounded **down** to the
+  millisecond like the largada, so the marked frame shows the speed.
+  `ReviewUpdate.speed_mark_s` / `clear_speed_mark`; 422 past the end of the
+  video. A mark **before the largada is accepted**; the page warns while
+  it is (`js/speed_order.js`, compared in whole microseconds, so two marks
+  on one frame never warn) and never blocks. The live blocks
+  (`pass-preview` → `PassPreview.pass_speed`) bring the mark with the
+  clock block, so choosing AVF shows both marks before a save.
+* **Only under a clock.** `Job.pass_speed.render` (what a render draws) is
+  set only when the mark is set, the speed is known **and the clip has a
+  clock** (`pass_clock.render`). There is no "Mostrar velocidade": the mark
+  is the speed's switch, and "Mostrar cronômetro" switches the whole
+  corner off (the mark is kept). The page says which is missing ("Sem
+  marca de velocidade…", "A velocidade só entra no clipe junto com o
+  cronômetro…", "Sem velocidade oficial ainda: …"). Why: one corner with
+  one layout; a speed pill alone at the top would need its own place and
+  its own golden images for a case the event does not have (both tables
+  come from the same run).
+* **On the clip.** A second pill under the clock, right edges aligned, one
+  `--row-gap` (3 px) below. **Proposed size: 48 px digits** (0.6 of the
+  clock's 80 px, 1.6 × the result pill's 30 px), in the theme's on-air
+  clock pill grown by 48/56 like the clock's own: 62 px tall, padded 17,
+  corners 7; the unit a capital at 65 % (31 px) in `--text-muted` after a
+  1/6 em gap, like the clock's "s" (Bebas Neue has no lowercase, so
+  "KM/H"). The number has no tracking, like the clock's digits (drawn by
+  drawtext). Golden images: clock running before the mark, clock frozen
+  with the speed, speed missing (`tests/worker/golden/overlay-speed-*.png`;
+  40/48/56 px side by side in `docs/img/avf-speed/speed-sizes-compared.png`).
+  Changing it is `SPEED_SIZE` in `worker/overlay_speed.py` and
+  `--speed-size` in the preview's CSS.
+* **Burning it in.** The speed never changes, so the whole pill (number
+  and unit) is one small PNG (Pillow), laid on by one more `overlay` after
+  the clock's (and the result's) steps, so it is on top, with
+  `enable='gte(round(t·10⁶) + µs(cut-in) − µs(mark), 0)'`: the largada's
+  rule, frame-exact (`shared.pass_clock.speed_shown_at`). The vectors file
+  gains `speed_cases`, read by the Python and the JavaScript tests; a
+  real-ffmpeg test checks the frame before and at the mark. The overlay
+  preview draws it from the same rule, from the form's mark, only while
+  the preview draws a clock.
+* **Render feature `speed`** (§29 mechanism): a task needs it when it
+  carries `ProcessTask.pass_speed`. A 0.7.x worker is not offered it; the
+  job says "Esperando um PC … Baja Worker 0.8.0" (`NEWER_FEATURE_REASONS`
+  names it first, as the newest). A clip with a clock and no speed needs
+  nothing new.
+* **Render inputs** (§25): `RenderInputs.pass_speed` (`RenderSpeed`: mark,
+  the text as drawn, unit; `ReportedSpeed` in the worker's report).
+  Compared as the **text** drawn, the unit, and the mark within 0.5 ms: a
+  correction that rounds to the same "37,2" changes nothing on screen, so
+  it does not flag. Published, corrected, mark moved or removed, or the
+  clock gone: `speed` in `changed`, "A velocidade agora entraria no
+  clipe: 37,2 km/h a partir de 0:04,000." and the like. A sidecar from a
+  worker before 0.8.0 (no `pass_speed` key) is rendered again, not reused.
+* **The result hold** (§38) also waits for the speed when it would be
+  drawn: the clock is waited for and the speed mark is set. Then a held
+  render is released only when the ACE time and the VEL speed are both
+  in (or at the deadline, or "Renderizar agora"); `result_hold_started`
+  lists `"speed"` in `waits_for`.
+* **Fixtures.** The API's answers for ACE and VEL were never captured, so
+  `tests/fixtures/results_api/26BR_ACE.display.json` and
+  `26BR_VEL.display.json` are **derived** from the old results-page
+  snapshots of the scoring repository (cars 1, 2, 4, 7, real values,
+  invented names; the folder's README says how).
+* **On the way.** The `l` key could set the largada on a form waiting for
+  "Revisar mesmo assim" (§34): `l` and `v` are now among the keys an
+  inert form ignores. Two files the speed made too long were split, with
+  no change of behaviour: "Testar" moved from
+  `pass_results_settings_view.py` to `pass_results_trial_view.py`, and the
+  configuration's value checks (with `ConfigError`) from
+  `pass_results_config.py` to `pass_results_config_values.py`.
+* **Deployment order: the VPS first, then the workers** (as §29). An
+  orchestrator before 2.13.0 refuses a 0.8.0 worker's render-inputs report
+  (it always carries `pass_speed`); the worker logs it and delivers, and
+  the version keeps the claim snapshot. The review UI goes with the
+  orchestrator (it sends `speed_mark_s`).
+* **Out of scope**: other two-table provas, the speed in the lower third.
+* **Not checked**: the frame-exact tests ran on ffmpeg 6.1 here, not on
+  the workers' 9.0 (the pinned BtbN build's URL answers 404: BtbN deleted
+  that autobuild, so CI's download fails too unless its cache has it;
+  installer/MAINTAINERS.md says to bump the pin); the mark, the warning
+  and the preview in a real browser (the scripts are tested in Node on
+  stand-ins); real AVF footage (where the trap is in the picture) and the
+  real API's ACE/VEL answers.
