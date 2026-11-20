@@ -59,7 +59,7 @@ def test_the_speed_sits_under_the_clock_right_aligned_with_it():
 
 
 def test_the_speed_is_smaller_than_the_clock_but_bigger_than_the_result_text():
-    # Arrange: the proposed size (48 px digits) and the clock's (80 px).
+    # Arrange: the chosen size (56 px digits) and the clock's (80 px).
     speed_font, clock_font = SPEED_SIZE.font_px, CLOCK_SIZE.font_px
 
     # Act: nothing to do, these are the sizes the worker draws with.
@@ -67,7 +67,7 @@ def test_the_speed_is_smaller_than_the_clock_but_bigger_than_the_result_text():
     # Assert: between the result pill's 30 px and the clock's 80 px.
     assert speed_font < clock_font, "the speed must be smaller than the clock's digits"
     assert speed_font > theme.RESULT_FONT_PX, "and bigger than the result pill's text"
-    assert speed_font == 48, "the proposed size is 48 px digits"
+    assert speed_font == 56, "João chose 56 px digits"
 
 
 def test_the_unit_follows_the_number_in_capitals_small_on_the_same_baseline():

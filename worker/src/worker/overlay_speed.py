@@ -33,11 +33,11 @@ from worker.overlay_clock import THIN_SPACE_EM, ClockLayout, ClockSize, clock_si
 from worker.overlay_draw import PlacedImage, baseline_for_centre, even_region, paste_rounded_box
 from worker.overlay_text import font
 
-# The proposed size (LIVESTACK-67, for João to confirm on the golden
-# images): 48 px digits, 0.6 of the clock's 80 px and 1.6 × the result
-# pill's 30 px, in a 62 px pill; the unit 31 px. Changing it is this line
-# and --speed-size in review_ui/static/css/overlay_preview.css.
-SPEED_SIZE = clock_size(48)
+# João's choice on the golden images (2026-11-20, PR #29): 56 px digits,
+# 0.7 of the clock's 80 px and the theme's own on-air clock size, in its
+# 72 px pill; the unit 36 px. Changing it is this line and --speed-size in
+# review_ui/static/css/overlay_preview.css.
+SPEED_SIZE = clock_size(56)
 
 
 @dataclass(frozen=True)

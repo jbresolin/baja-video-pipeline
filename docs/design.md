@@ -1797,10 +1797,10 @@ the frame where the reviewer marked the car crossing the trap. Contract
   its own golden images for a case the event does not have (both tables
   come from the same run).
 * **On the clip.** A second pill under the clock, right edges aligned, one
-  `--row-gap` (3 px) below. **Proposed size: 48 px digits** (0.6 of the
-  clock's 80 px, 1.6 × the result pill's 30 px), in the theme's on-air
-  clock pill grown by 48/56 like the clock's own: 62 px tall, padded 17,
-  corners 7; the unit a capital at 65 % (31 px) in `--text-muted` after a
+  `--row-gap` (3 px) below. **Size: 56 px digits** (João's choice of 40/48/56
+  on 2026-11-20; 0.7 of the clock's 80 px, the theme's own on-air clock
+  size), in the theme's on-air clock pill as it is: 72 px tall; the unit a
+  capital at 65 % (36 px) in `--text-muted` after a
   1/6 em gap, like the clock's "s" (Bebas Neue has no lowercase, so
   "KM/H"). The number has no tracking, like the clock's digits (drawn by
   drawtext). Golden images: clock running before the mark, clock frozen

@@ -88,8 +88,8 @@
    worker draws it (worker/overlay_speed.py SPEED_SIZE; change both). The
    number has no tracking, like the clock's digits; the unit as the clock's. */
 .overlay-preview .ovl-speed-pill {
-  --speed-size: 48px;
-  --speed-growth: calc(48 / 56);
+  --speed-size: 56px;
+  --speed-growth: calc(56 / 56);
   position: absolute; right: var(--bug-left);
   top: calc(var(--stage-safe-top) + var(--strip-height) * 80 / 56 + var(--row-gap));
   height: calc(var(--strip-height) * var(--speed-growth));
