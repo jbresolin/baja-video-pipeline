@@ -130,6 +130,24 @@ para.", or what is missing (`pass_clock_view.py`). `js/review_form.js`
 sends `largada_s` (an empty field as `clear_largada`) and `show_clock`
 only when the block is on the page.
 
+**Top speed under the clock** (LIVESTACK-67, "Aceleração e Velocidade").
+For a prova whose configuration has a `speed` block (`Job.pass_speed.configured`),
+the "Cronômetro" block also has the **Velocidade** mark: where the car
+crosses the speed trap, set like the largada ("Marcar" or the <kbd>v</kbd>
+key, rounded down to the millisecond; <kbd>-</kbd>/<kbd>=</kbd>; a green
+line on the cut bar; "Limpar"), and a line: "Velocidade na tarja: 37,2
+km/h, da marca até o fim do clipe, sob o cronômetro.", or what is missing
+(the mark, the clock, the official speed; `pass_speed_view.py`,
+`catalog/pass_speed.py`). `js/review_form.js` sends `speed_mark_s` (an
+empty field as `clear_speed_mark`); `js/speed_order.js` warns while the
+speed mark is before the largada (never blocks). The block comes with the
+live blocks (`GET …/pass-blocks`), so choosing the prova shows both marks
+before a save. The overlay preview draws the speed under the clock from
+its mark (`speedShownAt` in `js/pass_clock.js`, checked against the
+vectors' `speed_cases`). "Testar" says "Velocidade: 37,2 km/h." and the
+status list has a row for the speed's table (`pass_results_trial_view.py`,
+`pass_results_settings_view.py`).
+
 **The blocks follow the form** (LIVESTACK-53). The result and clock
 blocks sit in two slots (`#pass-result-slot`, `#pass-clock-slot`);
 `js/pass_blocks.js` asks `GET /review/api/jobs/{id}/pass-blocks` (which
@@ -291,7 +309,8 @@ base Caddy as `bvp-review-ui:8001` on `baja-edge`.
 | `passagem_help_view.py` | The job page's passagem panel: the car's videos in filming order, the suggestion and the warnings (LIVESTACK-45) |
 | `sender_messages_view.py` | The job page's "Mensagens de <remetente>": title, open/folded lines (LIVESTACK-49) |
 | `clip_inputs_view.py` | A clip that no longer matches its review, in sentences (job page banner, clips page detail) |
-| `pass_result_view.py`, `pass_results_settings_view.py` | The official result of the passagem: the job page's line, the Settings block (status, refusals, "Testar") (LIVESTACK-47) |
+| `pass_result_view.py`, `pass_results_settings_view.py`, `pass_results_trial_view.py` | The official result of the passagem: the job page's line, the Settings block (status, refusals) and "Testar" (LIVESTACK-47) |
+| `pass_speed_view.py` | The top speed under the clock: the speed mark's row of the "Cronômetro" block and the preview's speed (LIVESTACK-67) |
 | `pass_clock_view.py`, `overlay_preview.py` | The running clock's block and the overlay preview's data; the scoped overlay theme (LIVESTACK-48); `GET …/pass-blocks` for unsaved values is in `routes_api.py` (LIVESTACK-53) |
 | `render_options_view.py` | The job page's "Imagem e som" box: orientation sentence, whether "Enquadramento" applies, the choices (LIVESTACK-50) |
 | `result_hold_view.py` | "Esperar o resultado oficial" next to "Pronto", and the banner with "Renderizar agora" while a render waits (LIVESTACK-62) |

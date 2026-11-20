@@ -16,9 +16,12 @@
 //   * the clock follows the same rule as the clip (js/pass_clock.js),
 //     from the video's currentTime, frame by frame (requestAnimationFrame);
 //     with a clock, the result pill appears when it stops (LIVESTACK-53);
-//   * outside the cut there is no clip, so nothing is drawn.
+//   * outside the cut there is no clip, so nothing is drawn;
+//   * for "Aceleração e Velocidade" the top speed sits under the clock,
+//     right-aligned with it, from the speed mark to the end of the clip,
+//     and only when the clip has a clock (LIVESTACK-67, speedShownAt).
 // Laid out on a 1920×1080 stage like the clip, scaled to the player.
-import { clockText, clockTextAt, resultShownAt } from "./pass_clock.js";
+import { clockText, clockTextAt, resultShownAt, speedShownAt } from "./pass_clock.js";
 
 const STAGE_WIDTH = 1920;
 const STAGE_HEIGHT = 1080;
@@ -150,7 +153,12 @@ export function setupOverlayPreview({ video, form, player }) {
   // Prova, car or passagem changed (js/pass_blocks.js, LIVESTACK-53): the
   // result line and the official time for what the form says now.
   form.addEventListener("pass-blocks-changed", (event) => {
-    data = { ...data, result_text: event.detail.result_text, clock: event.detail.clock };
+    data = {
+      ...data,
+      result_text: event.detail.result_text,
+      clock: event.detail.clock,
+      speed: event.detail.speed,
+    };
     clockWidthSet = false;
     clockDigits.style.width = "";
     fillNameAndResult();
@@ -163,8 +171,13 @@ export function setupOverlayPreview({ video, form, player }) {
   const clockUnit = element("span", "ovl-clock-unit");
   clockLine.append(clockDigits, clockUnit);
   clockPill.append(clockLine);
+  // The top speed under the clock (LIVESTACK-67): "37,2", then its small unit.
+  const speedPill = element("div", "ovl-pill ovl-speed-pill");
+  const speedNumber = element("span", "ovl-speed-number");
+  const speedUnit = element("span", "ovl-speed-unit");
+  speedPill.append(speedNumber, speedUnit);
   resultRow.append(resultPill);
-  stage.append(lowerThird, resultRow, clockPill);
+  stage.append(lowerThird, resultRow, clockPill, speedPill);
   box.append(stage);
 
   // The clock pill keeps the official time's width while it runs, like the clip's.
@@ -237,6 +250,16 @@ export function setupOverlayPreview({ video, form, player }) {
     resultPill.hidden = !(data.result_text && checked("show_pass_result", false) && resultNow);
     clockPill.hidden = clock === null;
     if (clock !== null) clockDigits.textContent = clock;
+    // The speed, only in a clip with a clock, from its own mark on (as the
+    // render lays it on: it may show before the clock's largada).
+    const speedMark = fieldNumber("speed_mark_s");
+    const speedOn = clockOn && data.speed && speedMark !== null && speedShownAt(now, speedMark);
+    speedPill.hidden = !speedOn;
+    if (speedOn) {
+      speedNumber.textContent = data.speed.text;
+      speedUnit.textContent = clockUnitText(data.speed.unit);
+      speedUnit.hidden = speedUnit.textContent === "";
+    }
   }
 
   let frameRequest = null;

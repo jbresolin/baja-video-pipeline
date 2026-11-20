@@ -324,6 +324,11 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
   of the raw that can draw the new result and clock look (a worker
   updated to 0.7.0 or later)". When several features are missing, the sentence names the
   newest one left out (the version a holder needs).
+  Contract 2.13.0 (LIVESTACK-67, installer 0.8.0) adds `speed`: a task
+  needs it when it carries `pass_speed` (the top speed under the clock,
+  "Top speed under the clock" in §7.1). Without it, `waiting_reason` is
+  "waiting for a holder of the raw that can draw the top speed (a worker
+  updated to 0.8.0 or later)".
   Contract 2.11.0 (LIVESTACK-52, installer 0.7.0) adds two names that are
   abilities rather than render options, declared the same way and never
   in `required_render_features`: `clip_preview` (the worker sends a
@@ -336,7 +341,7 @@ when free:   POST /workers/{id}/next        {accept_kinds: [...]}
 | --- | --- | --- | --- |
 | `download_raw` | master (always, see backfill below), one more worker; never studio | GET `download_url` with your bearer (Caddy inbox), or the `fallback_download_urls` (peers, port 8710, no token), with `shared.http_transfer.download_file`; ffprobe it | `POST /jobs/{id}/holder-confirm` |
 | `make_proxy` | a confirmed holder | Probe (`shared.media_probe`), render thumbnail and proxy with `tone_map_hdr=info.is_hdr`; `PUT …/media-info` (when the task has `media_info_upload_url`), `PUT …/thumbnail`, then chunked `POST …/proxy` | completing chunk of `…/proxy` |
-| `process` | a confirmed holder that declared the task's `required_render_features` | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`; `rotation`, `framing`, `crop_position` and `no_audio` through `shared.framing.plan_frame`, below; `pass_result_text`, when set, as a third pill under the other two; `pass_clock`, when set, as the running clock beside it: its pill from the largada on, the digits by `drawtext` from the frame time, `shared.ffmpeg_clock`). Report what it was rendered from (`PUT …/render-inputs`, below). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
+| `process` | a confirmed holder that declared the task's `required_render_features` | Render the clip (`build_final_render_command`, overlay PNG by the worker, `tone_map_hdr`; `rotation`, `framing`, `crop_position` and `no_audio` through `shared.framing.plan_frame`, below; `pass_result_text`, when set, as a third pill under the other two; `pass_clock`, when set, as the running clock top right: its pill from the largada on, the digits by `drawtext` from the frame time, `shared.ffmpeg_clock`; `pass_speed`, when set, as the top speed's pill under the clock from the speed mark on). Report what it was rendered from (`PUT …/render-inputs`, below). Deliver as the offer's `delivery` says: `direct` → push to `delivery.studio_url` (§7.2), and on failure fall back to the outbox; `outbox` → chunked `POST …/clip` | studio ACK (direct) or completing chunk of `…/clip` (outbox) |
 | `deliver` | studio only | GET `download_url` (Caddy outbox) with your bearer, verify SHA-256, store at `clip_relative_path`, rewrite `latest.m3u` | `POST /outbox/{id}/ack` |
 | `upload_original` | a confirmed holder that is online, the master first (LIVESTACK-41 item 15) | A reviewer asked for the original: chunked upload of the held raw to `upload_url` (`POST /jobs/{id}/original-upload`, `Lease-Id`, `Upload-SHA256` = the job's sha256). Offered right after proxies. A failure report never fails the job; that holder is just not asked again for it | completing chunk of `…/original-upload` |
 | `upload_clip` | a PC that has the requested clip and declared `upload_clip` (LIVESTACK-52): the master when it archived (or keeps) that version, else the worker that rendered it (or another keeping it), else the studio, only when it holds no deliver lease and no job is `uploaded` | A reviewer asked for the clip ("Baixar clipe"): find it by `sha256` (kept clips, the archive at `archive_relative_path`, the studio folder under `studio_relative_path` or another version name of that passagem) and upload it, chunked, to `upload_url` (`POST /jobs/{id}/clip-download-upload`, `Lease-Id`, `Upload-SHA256` = `sha256`). Offered right after originals. Not found → `failed` with scope `worker`: the next PC is asked; the job never fails | completing chunk of `…/clip-download-upload` |
@@ -438,6 +443,14 @@ Since 2.10.0 the clock also has its `unit` (`ReportedClock.unit` in the
 worker's report); a clock recorded without one (null: rendered before
 2.10.0) is not compared on it, so the new look alone never flags a clip,
 while a unit changed in the configuration after delivery does.
+
+Top speed (contract 2.13.0, LIVESTACK-67): the inputs also hold
+`pass_speed` (`RenderSpeed`: `speed_mark_s`, `text` as drawn, "37,2",
+`unit`; null = no speed pill, also what inputs recorded before 2.13.0
+mean; `ReportedSpeed` in the worker's report). The speed published or
+corrected (compared as the text drawn, so a correction that rounds to the
+same text changes nothing), the mark moved (0.5 ms tolerance) or removed,
+or the clock above it gone lists `speed` in `changed`.
 
 `Job.clip_inputs` (`ClipInputsComparison`) puts the **newest** version's
 inputs (`clip`) next to what a render would use now (`now`: the review as
@@ -752,6 +765,35 @@ would draw now (for the job page's overlay preview).
 `PassResultTestResponse` ("Testar") adds `clock_configured`, `clock_text`
 and `clock_problem`.
 
+**Top speed under the clock** (LIVESTACK-67, contract 2.13.0; design §40).
+"Aceleração e Velocidade" has two results tables for one run: the clock's
+(the prova's `resultado`, ACE) and the speed's. A prova's configuration
+may have a `speed` block, `{"resultado": "VEL", "column": "Velocidade",
+"unit": "km/h", "decimals": 1}` (`resultado` and `column` required, `unit`
+default `""`, `decimals` 0–3, default 0; unknown keys refused), only with
+a `clock` block (`problem: speed_needs_clock` otherwise). The speed's
+table ("26BR_VEL") is fetched like the prova's own (same schedule, stale
+handling, "Testar", the pass preview's first fetch); run n of the speed
+column pairs with run n of the clock column. `Job.speed_mark_s` is the
+reviewer's mark, where the car crosses the speed trap, in raw-video
+seconds (`ReviewUpdate.speed_mark_s`; left out = keep,
+`clear_speed_mark: true` removes it; 422 past the end of the video; a
+mark before the largada is accepted). `Job.pass_speed` (`PassSpeed`):
+`configured`, `speed_mark_s`, `decimals`, `unit`, `official_text`
+("37,2": half up, decimal comma) or `problem`, `fetch` (the speed
+table's), and `render`, the `RenderSpeed` a render would draw now: only
+when the mark is set, the speed known **and the clip has a clock**
+(`pass_clock.render` set). `ProcessTask.pass_speed` carries it, only to
+workers that declared `speed`. The pill is shown from the frame at the
+mark (µs(t) ≥ µs(mark), each rounded half up) to the end of the clip.
+`PassPreview.pass_speed` answers it for unsaved values.
+`PassResultTestResponse` adds `speed_configured`, `speed_resultado_id`,
+`speed_text`, `speed_unit`, `speed_problem`, `speed_problem_detail`,
+`speed_fetch`; `PassResultsProvaStatus` adds `speed_resultado_id`,
+`speed_polling`, `speed_fetch`. With "Esperar o resultado oficial", a
+render whose clip would show a speed also waits for it
+(`result_hold_started.details.waits_for` then lists `"speed"`).
+
 **Waiting for the official result** (contract 2.12.0, LIVESTACK-62;
 design §38). `ReviewUpdate.wait_for_result: true` with `ready` or
 `reprocess` makes the job `ready` as usual and *holds* its render for at
@@ -789,7 +831,8 @@ without a clock, the whole clip as before.
 
 **Before a save** (contract 2.10.0, LIVESTACK-53). `GET
 /jobs/{id}/pass-preview?prova=…&car_number=…&passagem=…` (reviewer
-session) answers `PassPreview {pass_result, pass_clock}`: exactly what
+session) answers `PassPreview {pass_result, pass_clock, pass_speed}` (the
+speed since 2.13.0): exactly what
 `Job.pass_result` and `Job.pass_clock` would be after saving those values
 (the same functions, run on the saved job with the asked values put in).
 Nothing is stored. A value left out is the saved one, as in `PATCH

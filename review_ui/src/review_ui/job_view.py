@@ -72,6 +72,11 @@ NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT_REASON = (
     "waiting for a holder of the raw that can draw the new result and clock look"
     " (a worker updated to 0.7.0 or later)"
 )
+# The same, when the job needs the top speed under the clock (LIVESTACK-67).
+NO_HOLDER_CAN_RENDER_SPEED_REASON = (
+    "waiting for a holder of the raw that can draw the top speed"
+    " (a worker updated to 0.8.0 or later)"
+)
 # The job's render waits for the official result (orchestrator
 # domain/result_hold.py, LIVESTACK-62); the status strip's banner says until when.
 WAITING_FOR_OFFICIAL_RESULT_REASON = (
@@ -114,6 +119,8 @@ def describe_waiting_reason(reason: str) -> WaitingReason:
         return WaitingReason(text("waiting.no_holder_can_render_clock"), None)
     if reason == NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT_REASON:
         return WaitingReason(text("waiting.no_holder_can_render_clock_top_right"), None)
+    if reason == NO_HOLDER_CAN_RENDER_SPEED_REASON:
+        return WaitingReason(text("waiting.no_holder_can_render_speed"), None)
     if reason == WAITING_FOR_OFFICIAL_RESULT_REASON:
         return WaitingReason(text("waiting.official_result"), None)
     match = _TASK_FAILED_ON.match(reason)

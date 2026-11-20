@@ -135,7 +135,7 @@ def get_sender_messages(job_id: str) -> SenderMessagesResponse:
 @router.get(
     "/jobs/{job_id}/pass-preview",
     tags=["review"],
-    summary="The result line and the clock for prova, car and passagem not saved yet",
+    summary="The result line, the clock and the speed for prova, car and passagem not saved yet",
     response_model=PassPreview,
     dependencies=_reviewer_only,
     responses=error_responses(400, 401, 404),
@@ -161,7 +161,9 @@ def get_pass_preview(
     the saved ones (the page reads its own fields for those). A prova whose
     results table was never fetched (its first video) gets it fetched now,
     as "Testar" does: at most 3 s, not again within 30 s of the table's
-    last try; on failure the answer says `not_fetched`."""
+    last try; on failure the answer says `not_fetched`. A prova with a top
+    speed under its clock (LIVESTACK-67) also answers `pass_speed`, and its
+    speed table is fetched the same way when it never was."""
     not_implemented()
 
 

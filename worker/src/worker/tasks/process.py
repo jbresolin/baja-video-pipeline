@@ -4,8 +4,9 @@ Render (docs/api.md §5, contract §30): trim to the reviewer's cuts, turn
 and fit the picture into 1920×1080 (LIVESTACK-50: "Girar", and the
 framing for a picture that is not 16:9, shared.framing), draw the overlay
 PNG bottom-left and the running clock over it (LIVESTACK-48, its pill
-and drawtext: shared.ffmpeg_clock), loudnorm (or no sound at all: "Sem áudio"), tone-map
-HDR. Delivery is in worker.tasks.clip_delivery (direct push to the
+and drawtext: shared.ffmpeg_clock) with the top speed under it from its
+mark (LIVESTACK-67, worker.overlay_speed), loudnorm (or no sound at all:
+"Sem áudio"), tone-map HDR. Delivery is in worker.tasks.clip_delivery (direct push to the
 studio, else the outbox).
 
 Before delivering, the worker tells the orchestrator what the clip was
@@ -35,13 +36,20 @@ from pathlib import Path, PurePosixPath
 from shared.framing import OUTPUT_HEIGHT, OUTPUT_WIDTH, FramePlan, plan_frame
 from shared.hashing import sha256_of_file
 from shared.media_probe import MediaInfo
-from shared.models import MeasurementKind, ProcessTask, RenderInputsReport, ReportedClock
+from shared.models import (
+    MeasurementKind,
+    ProcessTask,
+    RenderInputsReport,
+    ReportedClock,
+    ReportedSpeed,
+)
 from worker import overlay_tokens
 from worker.api_client import ApiError, OrchestratorUnreachableError
 from worker.failures import TaskFailedError, probe_input
 from worker.leases import ActiveLease, CancelToken, TaskCancelledError
 from worker.overlay import OverlayText, render_overlay
-from worker.overlay_clock import write_clock_pill
+from worker.overlay_clock import SpeedPill, write_clock_pill
+from worker.overlay_speed import write_speed_pill
 from worker.tasks.clip_delivery import deliver_clip
 from worker.tasks.clip_preview import send_clip_preview
 from worker.tasks.environment import TaskEnvironment
@@ -88,6 +96,8 @@ def render_inputs(task: ProcessTask) -> dict:
         "pass_result_text",
         # The running clock (LIVESTACK-48), likewise.
         "pass_clock",
+        # The top speed under it (LIVESTACK-67), likewise.
+        "pass_speed",
     )  # fmt: skip
     # As JSON values: the sidecar is a JSON file (the clock is an object).
     return task.model_dump(mode="json", include=set(fields))
@@ -122,6 +132,12 @@ def render_inputs_report(task: ProcessTask, clip_sha256: str) -> RenderInputsRep
         pass_clock=(
             None if task.pass_clock is None else ReportedClock(**task.pass_clock.model_dump())
         ),
+        # The speed as drawn: only under a clock (overlay.lay_out_lower_third).
+        pass_speed=(
+            None
+            if task.pass_speed is None or task.pass_clock is None
+            else ReportedSpeed(**task.pass_speed.model_dump())
+        ),
     )
 
 
@@ -152,6 +168,7 @@ def overlay_text_for(task: ProcessTask) -> OverlayText:
         school_short=task.school_short,
         pass_result=task.pass_result_text,
         clock=task.pass_clock,
+        speed=task.pass_speed,
     )
 
 
@@ -203,6 +220,13 @@ def _reuse_or_render(
         layout = render_overlay(overlay_path, overlay, OUTPUT_WIDTH)
         clock = None
         if layout.clock is not None and task.pass_clock is not None:
+            # The top speed under the clock, from its mark (LIVESTACK-67).
+            speed = None
+            if layout.speed is not None and task.pass_speed is not None:
+                speed_png, placed = write_speed_pill(
+                    layout.speed, overlay_path.parent, stem=task.job_id
+                )
+                speed = SpeedPill(speed_png, placed.position, task.pass_speed.speed_mark_s)
             # With a clock, the result pill appears when it stops (LIVESTACK-53).
             clock = write_clock_pill(
                 layout.clock,
@@ -211,6 +235,7 @@ def _reuse_or_render(
                 overlay_path.parent,
                 stem=task.job_id,
                 result=layout.result,
+                speed=speed,
             )
         env.media.render_final(
             raw_path,
@@ -234,6 +259,7 @@ def _reuse_or_render(
         overlay_path.unlink(missing_ok=True)
         env.storage.tmp_path(f"{task.job_id}.clock.png").unlink(missing_ok=True)
         env.storage.tmp_path(f"{task.job_id}.result.png").unlink(missing_ok=True)
+        env.storage.tmp_path(f"{task.job_id}.speed.png").unlink(missing_ok=True)
 
     env.measurements.record(MeasurementKind.PROCESS, raw_path.stat().st_size, started_at)
     logger.info("clip rendered: %d bytes", clip_path.stat().st_size)

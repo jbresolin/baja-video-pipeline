@@ -7,6 +7,7 @@ The models are split over several files only to keep each file short:
     render_inputs.py    what a clip was rendered from, compared with the review
     pass_results.py     official pass results in the overlay (job page, Settings)
     pass_clock.py       the running clock in the overlay
+    pass_speed.py       the top speed under the clock (Aceleração e Velocidade)
     worker.py           Worker, WorkerCapabilities, EnrollmentToken
     tasks.py            the four task kinds handed out by /next
     api_worker_loop.py  heartbeat, holder-confirm, uploads, ACKs, peers
@@ -161,6 +162,7 @@ from shared.models.pass_results import (
     PassResultTestResponse,
     UpdatePassResultsConfigRequest,
 )
+from shared.models.pass_speed import PassSpeed, RenderSpeed, ReportedSpeed
 from shared.models.render_inputs import (
     ClipInputsComparison,
     RenderInputField,
@@ -291,6 +293,9 @@ __all__ = [
     "PassPreview",
     "RenderClock",
     "ReportedClock",
+    "PassSpeed",
+    "RenderSpeed",
+    "ReportedSpeed",
     "PassResult",
     "PassResultCell",
     "PassResultFetch",

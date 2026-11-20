@@ -11,7 +11,11 @@
     "largada, and while it runs, it is not shown.",
     "late_cases: does the clip end (cut_out_s) before the clock stops? Then the result never",
     "appears and the job page says so. A freeze exactly at the cut-out is too late: the clip has",
-    "no frame at or after its cut-out."
+    "no frame at or after its cut-out.",
+    "LIVESTACK-67: speed_cases = is the top speed under the clock shown at time_s? It is shown from",
+    "the speed-trap mark (speed_mark_s, raw-video seconds) to the end of the clip, by the largada's",
+    "rule: whole microseconds, each time rounded half up on its own, shown when at or after the mark.",
+    "Read by tests/shared/test_speed_rule.py (Python and JavaScript) like the cases above."
   ],
   "cases": [
     {"why": "before the largada", "time_s": 0.5, "largada_s": 0.51, "official_units": 15, "decimals": 1, "text": null, "result_shown": false},
@@ -55,5 +59,21 @@
     {"why": "the largada is after the cut-out", "cut_out_s": 10.0, "largada_s": 12.345, "official_units": 660, "decimals": 1, "late": true},
     {"why": "float trap: 0.3 s official, cut at 0.3 s", "cut_out_s": 0.3, "largada_s": 0.0, "official_units": 3, "decimals": 1, "late": true},
     {"why": "float trap: 1.0 - 0.7 s, cut a microsecond after", "cut_out_s": 1.000001, "largada_s": 0.7, "official_units": 3, "decimals": 1, "late": false}
+  ],
+  "speed_cases": [
+    {"why": "long before the mark", "time_s": 0.5, "speed_mark_s": 4.0, "shown": false},
+    {"why": "a microsecond before the mark", "time_s": 3.999999, "speed_mark_s": 4.0, "shown": false},
+    {"why": "exactly at the mark", "time_s": 4.0, "speed_mark_s": 4.0, "shown": true},
+    {"why": "long after the mark, to the end of the clip", "time_s": 59.0, "speed_mark_s": 4.0, "shown": true},
+    {"why": "30 fps: the frame before a mark between frames", "time_s": 1.5, "speed_mark_s": 1.51, "shown": false},
+    {"why": "30 fps: the first frame after a mark between frames", "time_s": 1.5333333333333334, "speed_mark_s": 1.51, "shown": true},
+    {"why": "the page writes the marked frame's time rounded down to the ms", "time_s": 2.0333333333333332, "speed_mark_s": 2.033, "shown": true},
+    {"why": "and the frame before it stays without the speed", "time_s": 2.0, "speed_mark_s": 2.033, "shown": false},
+    {"why": "float trap: 0.1 + 0.2 is 0.30000000000000004", "time_s": 0.30000000000000004, "speed_mark_s": 0.3, "shown": true},
+    {"why": "float trap: 2.9999999999999996 is 3 s in whole microseconds", "time_s": 2.9999999999999996, "speed_mark_s": 3.0, "shown": true},
+    {"why": "half a microsecond before rounds up to the mark", "time_s": 4.9999995, "speed_mark_s": 5.0, "shown": true},
+    {"why": "a mark at the very start of the video", "time_s": 0.0, "speed_mark_s": 0.0, "shown": true},
+    {"why": "a 29.97 fps frame time just before the mark", "time_s": 60.026633333333336, "speed_mark_s": 60.06, "shown": false},
+    {"why": "a 29.97 fps frame time at the mark", "time_s": 60.06, "speed_mark_s": 60.06, "shown": true}
   ]
 }

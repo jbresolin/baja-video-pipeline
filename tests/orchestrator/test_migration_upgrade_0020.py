@@ -44,8 +44,11 @@ def test_0020_runs_and_leaves_ready_jobs_unheld(tmp_path):
     database = Database(tmp_path / "db" / "bvp.sqlite3")
     applied = database.apply_migrations()
 
-    # Assert: 0020 ran, and the ready job has no hold (it renders as before).
-    assert applied == ["0020_result_hold.sql"], "exactly the new migration must run"
+    # Assert: 0020 ran (and the later ones after it), and the ready job has
+    # no hold (it renders as before).
+    later = [name for number, name, _ in list_migrations() if number > SCHEMA_ON_MAIN]
+    assert applied == later, "0020 and every migration after it must run"
+    assert applied[0] == "0020_result_hold.sql", "0020 must run first"
     with database.transaction() as connection:
         row = connection.execute("SELECT result_hold_until FROM jobs WHERE id = 'job-1'").fetchone()
     assert row["result_hold_until"] is None, "an upgraded job must not be held"

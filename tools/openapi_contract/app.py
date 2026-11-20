@@ -98,7 +98,16 @@ from tools.openapi_contract import (
 # JobSummary.result_hold_until, POST /jobs/{id}/render-now ("Renderizar
 # agora"), AdminSettings.result_wait_minutes. Orchestrator and review UI
 # only: workers are never offered a held render and ignore the new fields.
-CONTRACT_VERSION = "2.12.0"
+# 2.13.0: the top speed under the clock (LIVESTACK-67, "Aceleração e
+# Velocidade"): ProcessTask.pass_speed (RenderSpeed), Job.speed_mark_s and
+# pass_speed (PassSpeed), PassPreview.pass_speed, ReviewUpdate.speed_mark_s
+# and clear_speed_mark, RenderInputs.pass_speed, RenderInputsReport.pass_speed
+# (ReportedSpeed), RenderInputField "speed", PassResultTestResponse.speed_*
+# and PassResultsProvaStatus.speed_*. Render feature "speed" (installer
+# 0.8.0). Deploy the VPS first: an older orchestrator refuses a 0.8.0
+# worker's render-inputs report (it always carries the pass_speed key); the
+# worker logs it and delivers anyway.
+CONTRACT_VERSION = "2.13.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

@@ -29,4 +29,7 @@ DECLARED_RENDER_FEATURES = [
     # (worker.tasks.upload_clip; the studio too).
     RenderFeature.CLIP_PREVIEW.value,
     RenderFeature.UPLOAD_CLIP.value,
+    # Installer 0.8.0, LIVESTACK-67: the top speed under the clock, from the
+    # speed-trap mark to the end of the clip (worker.overlay_speed).
+    RenderFeature.SPEED.value,
 ]

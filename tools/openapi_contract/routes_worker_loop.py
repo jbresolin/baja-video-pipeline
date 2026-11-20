@@ -78,8 +78,10 @@ def next_task(worker_id: str, body: NextTaskRequest) -> NextTaskResponse:
     `studio_url` when a studio heartbeated in the last 45 s, else `outbox`.
     A `process` task lists `required_render_features` (a turned picture or
     one that is not 16:9 needs `framing`; "Sem áudio" on a raw with sound
-    needs `no_audio`) and is offered only to a holder whose declared
-    render features include them all (LIVESTACK-50).
+    needs `no_audio`; a result line `pass_result` and `clock_top_right`, a
+    clock `clock` and `clock_top_right`, a speed under the clock `speed`)
+    and is offered only to a holder whose declared render features include
+    them all (LIVESTACK-50).
     The master is also offered `download_raw` for every non-discarded job
     it does not hold (including `done` and `failed`), after all live work.
     """

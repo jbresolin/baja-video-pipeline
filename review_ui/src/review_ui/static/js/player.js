@@ -1,4 +1,4 @@
-// The proxy player, the cut marks and the largada mark.
+// The proxy player, the cut marks, the largada mark and the speed mark.
 //
 // Times are seconds from the start of the video. The proxy is rendered at
 // a constant frame rate, so a time in the proxy is the same time in the raw
@@ -10,6 +10,11 @@
 // It is only on the page for a prova with a clock (_pass_clock.html), and
 // that block may come and go while the reviewer types (js/pass_blocks.js,
 // LIVESTACK-53), so its field and buttons are looked up when used.
+//
+// The speed mark (LIVESTACK-67, "Aceleração e Velocidade": where the car
+// crosses the speed trap, so the top speed appears under the clock) is in
+// the same block and works the same way: "Marcar" or the v key, -/= nudge
+// it, a second line on the cut bar in another colour, "Limpar".
 //
 // The page has its own control bar under the picture (play, frame step,
 // time, the cut bar as scrubber), outside the stage that "Girar" turns, so
@@ -38,13 +43,18 @@ export function largadaFieldValue(seconds) {
   return (Math.floor(seconds * 1000 + 1e-6) / 1000).toFixed(3);
 }
 
-// The form field of each mark; the largada's only while its block is on the page.
-const MARK_FIELDS = { in: "cut_in_s", out: "cut_out_s", largada: "largada_s" };
+// The form field of each mark; the largada's and the speed's only while
+// the clock block is on the page.
+const MARK_FIELDS = { in: "cut_in_s", out: "cut_out_s", largada: "largada_s", speed: "speed_mark_s" };
+// Marks written rounded down to the millisecond, so the marked frame is at
+// or after them (largadaFieldValue): what the overlay starts drawing from.
+const MARKS_ROUNDED_DOWN = new Set(["largada", "speed"]);
 
 export function setupPlayer({ video, form, jobElement }) {
   // The field of a mark, or undefined when it is not in the form now.
   const markInput = (name) => form.elements[MARK_FIELDS[name]];
   const largadaMark = document.getElementById("largada-mark");
+  const speedMark = document.getElementById("speed-mark");
   const timecode = document.getElementById("current-time");
   const cutBar = document.getElementById("cut-bar");
   const cutRange = document.getElementById("cut-range");
@@ -81,7 +91,7 @@ export function setupPlayer({ video, form, jobElement }) {
     if (!input) return;
     const limit = duration() || Number.POSITIVE_INFINITY;
     const value = clamp(seconds, 0, limit);
-    input.value = name === "largada" ? largadaFieldValue(value) : value.toFixed(3);
+    input.value = MARKS_ROUNDED_DOWN.has(name) ? largadaFieldValue(value) : value.toFixed(3);
     setActive(name);
     // Lets the form know it has unsaved changes.
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -104,6 +114,9 @@ export function setupPlayer({ video, form, jobElement }) {
       const largada = readMark("largada");
       largadaMark.hidden = largada === null;
       if (largada !== null) largadaMark.style.left = `${(100 * largada) / total}%`;
+      const speed = readMark("speed");
+      speedMark.hidden = speed === null;
+      if (speed !== null) speedMark.style.left = `${(100 * speed) / total}%`;
     }
     const bothSet = cutIn !== null && cutOut !== null;
     lengthText.textContent = bothSet ? formatTimecode(cutOut - cutIn) : "—";
@@ -192,6 +205,7 @@ export function setupPlayer({ video, form, jobElement }) {
     else if (key === "i") writeMark("in", video ? video.currentTime : 0);
     else if (key === "o") writeMark("out", video ? video.currentTime : 0);
     else if (key === "l" && markInput("largada")) writeMark("largada", video ? video.currentTime : 0);
+    else if (key === "v" && markInput("speed")) writeMark("speed", video ? video.currentTime : 0);
     else if (key === "I") seek(readMark("in") ?? 0);
     else if (key === "O") seek(readMark("out") ?? duration());
     else if (key === "ArrowLeft") event.shiftKey ? seekBy(-1) : stepFrames(-1);
@@ -208,13 +222,17 @@ export function setupPlayer({ video, form, jobElement }) {
   form.addEventListener("click", (event) => {
     const setMark = event.target.closest("[data-set-mark]");
     if (setMark) writeMark(setMark.dataset.setMark, video ? video.currentTime : 0);
-    // "Limpar": no largada, so no clock in the clip.
-    if (event.target.closest("[data-clear-largada]") && markInput("largada")) {
-      markInput("largada").value = "";
-      markInput("largada").dispatchEvent(new Event("input", { bubbles: true }));
-      if (activeMark === "largada") setActive("in");
-    }
+    // "Limpar": no largada, so no clock in the clip; no speed mark, no speed.
+    if (event.target.closest("[data-clear-largada]")) clearMark("largada");
+    if (event.target.closest("[data-clear-speed-mark]")) clearMark("speed");
   });
+  function clearMark(name) {
+    const input = markInput(name);
+    if (!input) return;
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    if (activeMark === name) setActive("in");
+  }
   form.addEventListener("focusin", (event) => {
     const name = Object.keys(MARK_FIELDS).find((mark) => MARK_FIELDS[mark] === event.target.name);
     if (name) setActive(name);

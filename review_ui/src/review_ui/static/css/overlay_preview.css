@@ -83,5 +83,23 @@
 .overlay-preview .ovl-muted { color: var(--text-muted); letter-spacing: 0; }
 .overlay-preview .ovl-separator,
 .overlay-preview .ovl-arrow { margin: 0 var(--space-3); }
+/* The top speed under the clock (LIVESTACK-67), right-aligned with it one
+   --row-gap below: the on-air clock pill grown to 48 px digits, as the
+   worker draws it (worker/overlay_speed.py SPEED_SIZE; change both). The
+   number has no tracking, like the clock's digits; the unit as the clock's. */
+.overlay-preview .ovl-speed-pill {
+  --speed-size: 56px;
+  --speed-growth: calc(56 / 56);
+  position: absolute; right: var(--bug-left);
+  top: calc(var(--stage-safe-top) + var(--strip-height) * 80 / 56 + var(--row-gap));
+  height: calc(var(--strip-height) * var(--speed-growth));
+  padding: 0 calc(var(--space-5) * var(--speed-growth));
+  border-radius: calc(var(--radius) * var(--speed-growth));
+  font-size: var(--speed-size); letter-spacing: 0;
+}
+.overlay-preview .ovl-speed-unit {
+  margin-left: calc(var(--speed-size) / 6);
+  font-size: calc(var(--speed-size) * 0.65); color: var(--text-muted);
+}
 /* Right-aligned at the official time's width: "9,9" then "10,0", like a stopwatch. */
 .overlay-preview .ovl-clock-digits { display: inline-block; text-align: right; }

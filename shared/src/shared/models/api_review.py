@@ -137,6 +137,11 @@ class ReviewUpdate(ReceivedByServer):
     largada_s: Seconds | None = None
     clear_largada: bool | None = None
     show_clock: bool | None = None
+    # The top speed under the clock (LIVESTACK-67): where the car crosses the
+    # speed trap, in raw-video seconds ("Velocidade" on the job page). Left
+    # out = keep; `clear_speed_mark: true` removes the mark (no speed pill).
+    speed_mark_s: Seconds | None = None
+    clear_speed_mark: bool | None = None
     # "Esperar o resultado oficial (até N min)" next to "Pronto" (LIVESTACK-62).
     # Read with `ready` and `reprocess` only. True: the job becomes ready as
     # usual but its render waits for the passagem's official result (and

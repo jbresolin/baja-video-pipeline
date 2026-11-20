@@ -28,6 +28,7 @@ from shared.models.enums import (
 )
 from shared.models.pass_clock import PassClock
 from shared.models.pass_results import PassResult
+from shared.models.pass_speed import PassSpeed
 from shared.models.render_inputs import ClipInputsComparison, RenderInputs
 
 
@@ -304,6 +305,9 @@ class Job(ReadByClients):
     # (None = never set: the prova's `show_by_default`).
     largada_s: Seconds | None = None
     show_clock: bool | None = None
+    # The top speed under the clock (LIVESTACK-67): where the car crosses
+    # the speed trap, in raw-video seconds (None = not marked, no speed pill).
+    speed_mark_s: Seconds | None = None
     # The team and school as a render would draw them now (the Settings'
     # name choices applied; ProcessTask.team_name and school_short), for the
     # job page's overlay preview (LIVESTACK-48). None = left out (unknown).
@@ -331,6 +335,9 @@ class Job(ReadByClients):
     # The running clock: the official time, the toggle in force and what a
     # render would draw now (LIVESTACK-48). None from an older orchestrator.
     pass_clock: PassClock | None = None
+    # The top speed under the clock: the official speed, the mark and what a
+    # render would draw now (LIVESTACK-67). None from an older orchestrator.
+    pass_speed: PassSpeed | None = None
     # Set when a worker reported a failure; shown to the reviewer, who then
     # chooses retry or discard. Cleared by "retry".
     failure: JobFailure | None = None

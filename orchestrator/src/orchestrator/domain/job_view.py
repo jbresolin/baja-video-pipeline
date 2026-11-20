@@ -11,6 +11,7 @@ from orchestrator.domain.clip_preview_status import preview_status
 from orchestrator.domain.duplicates import duplicates_of
 from orchestrator.domain.pass_clock import pass_clock_for_job
 from orchestrator.domain.pass_results import pass_result_for_job
+from orchestrator.domain.pass_speed import pass_speed_for_job
 from orchestrator.domain.render_inputs import compare_newest_clip
 from orchestrator.errors import not_found
 from orchestrator.repositories import app_settings as settings_repo
@@ -144,6 +145,8 @@ def job_from_row(
             failed_at=from_db_time(row["failure_at"]),
         )
     proxy_available = bool(row["proxy_available"])
+    # Worked out once: the speed under the clock needs it too (LIVESTACK-67).
+    clock = pass_clock_for_job(connection, row)
     return Job(
         id=row["id"],
         state=JobState(row["state"]),
@@ -198,6 +201,7 @@ def job_from_row(
         show_pass_result=_optional_bool(row["show_pass_result"]),
         largada_s=row["largada_s"],
         show_clock=_optional_bool(row["show_clock"]),
+        speed_mark_s=row["speed_mark_s"],
         clip_team_name=names.team,
         clip_school_name=names.school,
         reviewed_by=row["reviewed_by"],
@@ -211,7 +215,9 @@ def job_from_row(
         # The official result of the passagem, from the latest fetch (LIVESTACK-47).
         pass_result=pass_result_for_job(connection, row),
         # The running clock: official time, toggle, what a render draws (LIVESTACK-48).
-        pass_clock=pass_clock_for_job(connection, row),
+        pass_clock=clock,
+        # The top speed under that clock (LIVESTACK-67).
+        pass_speed=pass_speed_for_job(connection, row, clock),
         failure=failure,
         failed_from=JobState(row["failed_from"]) if row["failed_from"] else None,
         discarded_from=JobState(row["discarded_from"]) if row["discarded_from"] else None,

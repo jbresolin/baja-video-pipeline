@@ -73,6 +73,7 @@
       <div class="cut-bar" id="cut-bar" title="{{ t('job.cut_bar.title') }}">
         <span class="cut-range" id="cut-range"></span>
         <span class="largada-mark" id="largada-mark" hidden></span>
+        <span class="speed-mark" id="speed-mark" hidden></span>
         <span class="playhead" id="playhead"></span>
       </div>
       <span class="timecode total" id="total-time">{{ (job.duration_s or 0)|timecode }}</span>
@@ -95,6 +96,7 @@
         <dt><kbd>←</kbd> / <kbd>→</kbd></dt><dd>{{ t("shortcuts.frame_step", fps=frame_rate|number) }}</dd>
         <dt><kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd></dt><dd>{{ t("shortcuts.second_step") }}</dd>
         {% if clock_box %}<dt><kbd>l</kbd></dt><dd>{{ t("shortcuts.largada") }}</dd>{% endif %}
+        {% if clock_box and clock_box.speed %}<dt><kbd>v</kbd></dt><dd>{{ t("shortcuts.speed_mark") }}</dd>{% endif %}
         <dt><kbd>-</kbd> / <kbd>=</kbd></dt><dd>{{ t("shortcuts.nudge") }}</dd>
         <dt><kbd>p</kbd></dt><dd>{{ t("shortcuts.play_cut") }}</dd>
         <dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>{{ t("shortcuts.save") }}</dd>

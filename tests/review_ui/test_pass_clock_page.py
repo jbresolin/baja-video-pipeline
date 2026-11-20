@@ -39,7 +39,7 @@ from review_ui.overlay_preview import (
     scoped_tokens_css,
 )
 from review_ui.pass_clock_view import overlay_preview_data, pass_clock_box
-from review_ui.pass_results_settings_view import trial_outcome
+from review_ui.pass_results_trial_view import trial_outcome
 from review_ui.templating import STATIC_DIR
 from shared.models import (
     PassClock,
@@ -118,6 +118,8 @@ def test_the_preview_data_is_what_a_render_gets():
         "prova": "Manobrabilidade",
         "result_text": "66 s · 4 cones → 86 s",
         "clock": {"official_units": 660, "decimals": 1, "unit": "s"},
+        # No speed under this clock (LIVESTACK-67: only AVF has one).
+        "speed": None,
     }
     # A job without a clock or a result: just the names.
     plain = overlay_preview_data(make_job())

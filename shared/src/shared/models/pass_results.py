@@ -90,6 +90,12 @@ class PassResultsProvaStatus(ReadByClients):
     # finished (fetch.event_finished says when that stopped it).
     polling: bool = False
     fetch: PassResultFetch | None = None
+    # The prova's second table, for the top speed under the clock
+    # (LIVESTACK-67, `speed.resultado`: "26BR_VEL"), fetched like the first.
+    # None when the prova has no `speed` block or no event id is set.
+    speed_resultado_id: str | None = None
+    speed_polling: bool = False
+    speed_fetch: PassResultFetch | None = None
 
 
 class PassResultsSettings(ReadByClients):
@@ -170,3 +176,13 @@ class PassResultTestResponse(ReadByClients):
     clock_unit: str | None = None
     clock_problem: PassResultProblem | None = None
     clock_problem_detail: str | None = None
+    # The top speed under the clock (LIVESTACK-67), for a prova with a
+    # `speed` block: the run's official speed from the speed table, as the
+    # pill writes it ("37,2"), with its unit, or why it is not known.
+    speed_configured: bool = False
+    speed_resultado_id: str | None = None
+    speed_text: str | None = None
+    speed_unit: str | None = None
+    speed_problem: PassResultProblem | None = None
+    speed_problem_detail: str | None = None
+    speed_fetch: PassResultFetch | None = None

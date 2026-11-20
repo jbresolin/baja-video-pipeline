@@ -9,7 +9,8 @@ before. Without this, a 0.3.0 worker would take a vertical video and render
 the old narrow clip with its sound, ignoring task fields it does not know.
 
 To add a feature (LIVESTACK-47 did, for pass results in the overlay,
-LIVESTACK-48 for the running clock, LIVESTACK-53 for its new look):
+LIVESTACK-48 for the running clock, LIVESTACK-53 for its new look,
+LIVESTACK-67 for the top speed under the clock):
 
 1. add it to RenderFeature and to the list the worker declares
    (worker/render_features.py);
@@ -27,10 +28,11 @@ from datetime import datetime
 from orchestrator.domain.fleet_snapshot import FleetSnapshot
 from orchestrator.domain.pass_clock import clock_for_render
 from orchestrator.domain.pass_results import pass_text_for_render
+from orchestrator.domain.pass_speed import speed_for_render
 from orchestrator.domain.review_queue import NO_HOLDER_ONLINE
 from orchestrator.repositories import leases as leases_repo
 from shared.framing import needs_framing
-from shared.models import HolderStatus, RenderClock, RenderFeature
+from shared.models import HolderStatus, RenderClock, RenderFeature, RenderSpeed
 
 # Job.waiting_reason when holders are online but none runs a version that
 # can render the job's options. The review UI shows it in pt-BR.
@@ -55,9 +57,16 @@ NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT = (
     "waiting for a holder of the raw that can draw the new result and clock look"
     " (a worker updated to 0.7.0 or later)"
 )
+# The same when the job needs the top speed under the clock (LIVESTACK-67):
+# 0.8.0 draws it.
+NO_HOLDER_CAN_RENDER_SPEED = (
+    "waiting for a holder of the raw that can draw the top speed"
+    " (a worker updated to 0.8.0 or later)"
+)
 # The features newer than LIVESTACK-50's, newest first, with the sentence
 # that says a worker is missing exactly that one (process_waiting_reason).
 NEWER_FEATURE_REASONS = [
+    (RenderFeature.SPEED, NO_HOLDER_CAN_RENDER_SPEED),
     (RenderFeature.CLOCK_TOP_RIGHT, NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT),
     (RenderFeature.CLOCK, NO_HOLDER_CAN_RENDER_CLOCK),
     (RenderFeature.PASS_RESULT, NO_HOLDER_CAN_RENDER_PASS_RESULT),
@@ -65,7 +74,10 @@ NEWER_FEATURE_REASONS = [
 
 
 def required_render_features(
-    job_row, pass_result_text: str | None = None, pass_clock: RenderClock | None = None
+    job_row,
+    pass_result_text: str | None = None,
+    pass_clock: RenderClock | None = None,
+    pass_speed: RenderSpeed | None = None,
 ) -> list[str]:
     """The features a render of this job needs now, in a fixed order.
 
@@ -84,6 +96,9 @@ def required_render_features(
                  from the start, a full-size "S"). João's call: every
                  clip with a result gets the new look, not only those
                  with a clock. Renders with neither go to any worker.
+    speed:       the render carries the top speed under the clock
+                 (ProcessTask.pass_speed, LIVESTACK-67; pass it here). A
+                 worker before 0.8.0 would leave it out.
     """
     needed = []
     if needs_framing(job_row["display_width"], job_row["display_height"], job_row["rotation"]):
@@ -96,6 +111,8 @@ def required_render_features(
         needed.append(RenderFeature.CLOCK.value)
     if pass_result_text is not None or pass_clock is not None:
         needed.append(RenderFeature.CLOCK_TOP_RIGHT.value)
+    if pass_speed is not None:
+        needed.append(RenderFeature.SPEED.value)
     return needed
 
 
@@ -134,8 +151,9 @@ def process_waiting_reason(connection: sqlite3.Connection, job_row, now: datetim
     No confirmed holder online (and not paused) → NO_HOLDER_ONLINE; holders
     online but none declared the features the job needs → NO_HOLDER_CAN_RENDER,
     or the sentence of the newest feature a holder is missing when that is
-    all that stops it (NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT for the new
-    result and clock look, 0.7.0; NO_HOLDER_CAN_RENDER_CLOCK for the clock, 0.6.0;
+    all that stops it (NO_HOLDER_CAN_RENDER_SPEED for the top speed, 0.8.0;
+    NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT for the new result and clock look,
+    0.7.0; NO_HOLDER_CAN_RENDER_CLOCK for the clock, 0.6.0;
     NO_HOLDER_CAN_RENDER_PASS_RESULT for the result pill, 0.5.0).
     """
     snapshot = FleetSnapshot.take(connection, now)
@@ -148,7 +166,10 @@ def process_waiting_reason(connection: sqlite3.Connection, job_row, now: datetim
     if not available:
         return NO_HOLDER_ONLINE
     required = required_render_features(
-        job_row, pass_text_for_render(connection, job_row), clock_for_render(connection, job_row)
+        job_row,
+        pass_text_for_render(connection, job_row),
+        clock_for_render(connection, job_row),
+        speed_for_render(connection, job_row),
     )
     if any(can_render(worker_row, required) for worker_row in available):
         return None

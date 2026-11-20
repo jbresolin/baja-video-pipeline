@@ -47,6 +47,8 @@ def test_every_heartbeat_declares_the_render_features(harness):
         # Installer 0.7.0, LIVESTACK-52: worker abilities, declared the same way.
         "clip_preview",
         "upload_clip",
+        # Installer 0.8.0, LIVESTACK-67: the top speed under the clock.
+        "speed",
     ]
     assert sent.render_features == DECLARED_RENDER_FEATURES
 

@@ -42,6 +42,8 @@ EDITABLE_FIELDS = (
     "show_pass_result",
     # The running clock (LIVESTACK-48): the largada mark, "Mostrar cronômetro".
     "largada_s", "show_clock",
+    # The top speed under the clock (LIVESTACK-67): the speed-trap mark.
+    "speed_mark_s",
 )  # fmt: skip
 CLEARED_CLIP_COLUMNS = {
     "clip_sha256": None,
@@ -114,6 +116,8 @@ def _merged_fields(job_row: sqlite3.Row, update: ReviewUpdate) -> dict[str, Any]
     # "Left out = keep" cannot remove a mark, so removing it is its own flag.
     if update.clear_largada:
         merged["largada_s"] = None
+    if update.clear_speed_mark:
+        merged["speed_mark_s"] = None
     return merged
 
 
@@ -129,14 +133,17 @@ def _check_cuts(job_row: sqlite3.Row, merged: dict[str, Any]) -> None:
             f"cut_out_s is past the end of the video ({duration} s)",
             {"duration_s": duration},
         )
-    largada = merged["largada_s"]
-    if duration is not None and largada is not None and largada > duration:
-        raise ApiError(
-            422,
-            ErrorCode.VALIDATION_ERROR,
-            f"largada_s is past the end of the video ({duration} s)",
-            {"duration_s": duration},
-        )
+    # The marks of the clock and of the speed (LIVESTACK-48, -67). A speed
+    # mark before the largada is allowed: the job page warns, never blocks.
+    for mark in ("largada_s", "speed_mark_s"):
+        value = merged[mark]
+        if duration is not None and value is not None and value > duration:
+            raise ApiError(
+                422,
+                ErrorCode.VALIDATION_ERROR,
+                f"{mark} is past the end of the video ({duration} s)",
+                {"duration_s": duration},
+            )
 
 
 def _default_missing_cuts_to_whole_video(job_row: sqlite3.Row, merged: dict[str, Any]) -> None:

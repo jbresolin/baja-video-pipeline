@@ -59,6 +59,14 @@ export function collectReviewBody(form, version, action) {
   }
   const showClock = form.elements.show_clock;
   if (showClock) body.show_clock = showClock.checked;
+  // The speed mark (LIVESTACK-67): only in the clock block of a prova with a
+  // speed under its clock; like the largada, empty removes the mark.
+  const speedMark = form.elements.speed_mark_s;
+  if (speedMark) {
+    const seconds = numberOrNull(speedMark.value, parseFloat);
+    if (seconds === null) body.clear_speed_mark = true;
+    else body.speed_mark_s = seconds;
+  }
   // "Esperar o resultado oficial" (LIVESTACK-62): only with "Pronto" and
   // "Salvar e reprocessar", and only while the box is shown (js/result_wait.js
   // disables a hidden one). Left out, the clip is rendered at once.

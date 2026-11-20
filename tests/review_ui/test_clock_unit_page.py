@@ -23,7 +23,7 @@ from review_ui.clip_inputs_view import difference_sentence
 from review_ui.clips_and_fleet_view import render_features_text
 from review_ui.job_view import NO_HOLDER_CAN_RENDER_CLOCK_TOP_RIGHT_REASON, describe_waiting_reason
 from review_ui.pass_clock_view import pass_clock_box
-from review_ui.pass_results_settings_view import trial_clock
+from review_ui.pass_results_trial_view import trial_clock
 from review_ui.templating import STATIC_DIR
 from shared.models import PassResultTestResponse, RenderClock, RenderInputField, RenderInputs
 from shared.pass_clock import with_unit

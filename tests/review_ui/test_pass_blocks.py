@@ -90,6 +90,8 @@ def test_a_prova_with_a_clock_answers_both_blocks_and_the_preview_texts(ui, fake
     assert answer["preview"] == {
         "result_text": "66 s · 4 cones → 86 s",
         "clock": {"official_units": 660, "decimals": 1, "unit": "s"},
+        # Manobrabilidade has no speed under its clock (LIVESTACK-67).
+        "speed": None,
     }
 
 
@@ -99,7 +101,7 @@ def test_a_prova_without_a_clock_answers_no_blocks(ui):
 
     assert answer["result_html"] is None
     assert answer["clock_html"] is None
-    assert answer["preview"] == {"result_text": None, "clock": None}
+    assert answer["preview"] == {"result_text": None, "clock": None, "speed": None}
 
 
 def test_a_clock_without_a_result_line_says_the_fetch_status_itself(ui, fake_orchestrator):

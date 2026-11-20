@@ -5,6 +5,9 @@ clock, "Mostrar cronômetro" in force, the largada, the official time and
 what a render would draw now. This module turns that into the job page's
 "Cronômetro" block, and gathers what js/overlay_preview.js draws over the
 player. Plain functions over the API models, tested without a server.
+
+For "Aceleração e Velocidade" the block also holds the speed mark and its
+status (LIVESTACK-67, pass_speed_view.py), and the preview's data the speed.
 """
 
 from dataclasses import dataclass
@@ -12,7 +15,8 @@ from datetime import datetime
 
 from review_ui.catalog import text
 from review_ui.pass_result_view import fetch_warning, problem_sentence
-from shared.models import Job, PassClock, PassResult
+from review_ui.pass_speed_view import PassSpeedBox, overlay_preview_speed_data, pass_speed_box
+from shared.models import Job, PassClock, PassResult, PassSpeed
 from shared.pass_clock import with_unit
 
 
@@ -36,6 +40,9 @@ class PassClockBox:
     # that the cut ends before it (LIVESTACK-53); None while unknown.
     official_units: int | None = None
     decimals: int = 0
+    # The speed mark and its status, for a prova with a speed under the
+    # clock (LIVESTACK-67); None otherwise.
+    speed: PassSpeedBox | None = None
 
 
 def clock_status(clock: PassClock) -> tuple[str, str | None]:
@@ -52,9 +59,16 @@ def clock_status(clock: PassClock) -> tuple[str, str | None]:
 
 
 def pass_clock_box(
-    clock: PassClock | None, now: datetime, *, result_box_shown: bool
+    clock: PassClock | None,
+    now: datetime,
+    *,
+    result_box_shown: bool,
+    speed: PassSpeed | None = None,
 ) -> PassClockBox | None:
-    """The block, or None when the prova has no clock (or the orchestrator is too old)."""
+    """The block, or None when the prova has no clock (or the orchestrator is too old).
+
+    `speed` (Job.pass_speed) adds the speed mark for a prova that has one.
+    """
     if clock is None or not clock.configured:
         return None
     status, detail = clock_status(clock)
@@ -68,6 +82,7 @@ def pass_clock_box(
         fetch_error=clock.fetch.last_error if warning and clock.fetch is not None else None,
         official_units=clock.official_units,
         decimals=clock.decimals,
+        speed=pass_speed_box(speed, now),
     )
 
 
@@ -84,14 +99,18 @@ def overlay_preview_data(job: Job) -> dict:
         "team_name": job.clip_team_name,
         "school_name": job.clip_school_name,
         "prova": job.prova,
-        **overlay_preview_pass_data(job.pass_result, job.pass_clock),
+        **overlay_preview_pass_data(job.pass_result, job.pass_clock, job.pass_speed),
     }
 
 
-def overlay_preview_pass_data(result: PassResult | None, clock: PassClock | None) -> dict:
-    """The preview's result line and official time; also sent while the reviewer
-    types prova, car or passagem (LIVESTACK-53, GET …/pass-blocks)."""
+def overlay_preview_pass_data(
+    result: PassResult | None, clock: PassClock | None, speed: PassSpeed | None = None
+) -> dict:
+    """The preview's result line, official time and speed; also sent while the
+    reviewer types prova, car or passagem (LIVESTACK-53, GET …/pass-blocks)."""
     return {
+        # The top speed under the clock (LIVESTACK-67): {text, unit} or None.
+        "speed": overlay_preview_speed_data(speed),
         "result_text": result.text if result is not None and result.configured else None,
         "clock": (
             {
