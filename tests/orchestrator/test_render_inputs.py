@@ -167,6 +167,8 @@ def test_the_workers_report_becomes_the_versions_inputs(harness, fleet):
         "pass_result_text": None,
         # No clock in this clip (LIVESTACK-48).
         "pass_clock": None,
+        # No speed under a clock either (LIVESTACK-67).
+        "pass_speed": None,
         "reported_by_worker": True,
     }
 

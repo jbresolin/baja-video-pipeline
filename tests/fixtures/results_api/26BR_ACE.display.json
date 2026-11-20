@@ -1,0 +1,182 @@
+{
+ "event_id": "26BR",
+ "resultado_id": "26BR_ACE",
+ "name": "Aceleração",
+ "provas": [
+  "AVF"
+ ],
+ "spoilers_active": false,
+ "ranking": {
+  "by": "Pontos",
+  "order": "desc"
+ },
+ "columns": [
+  {
+   "header": "Pos",
+   "kind": "position",
+   "ranking": false
+  },
+  {
+   "header": "#",
+   "kind": "team_number",
+   "ranking": false
+  },
+  {
+   "header": "Equipe",
+   "kind": "team",
+   "ranking": false
+  },
+  {
+   "header": "Aceleração",
+   "kind": "list",
+   "ranking": false
+  },
+  {
+   "header": "Pontos",
+   "kind": "formula",
+   "ranking": true
+  }
+ ],
+ "rows": [
+  {
+   "position": 3,
+   "team": {
+    "number": 2,
+    "name": "Equipe Vento Sul Baja",
+    "school": "Faculdade de Engenharia Vento Sul - FEVS",
+    "state": "SP",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 3,
+     "display": 3
+    },
+    {
+     "raw": 2,
+     "display": 2
+    },
+    {
+     "raw": "Equipe Vento Sul Baja",
+     "display": "Equipe Vento Sul Baja"
+    },
+    {
+     "raw": [
+      4.225,
+      "-"
+     ],
+     "display": "<b>4.225</b><br /> -"
+    },
+    {
+     "raw": 27.28,
+     "display": 27.28
+    }
+   ]
+  },
+  {
+   "position": 4,
+   "team": {
+    "number": 7,
+    "name": "Coxilha Baja",
+    "school": "Faculdade Coxilha - FACOX",
+    "state": "RS",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 4,
+     "display": 4
+    },
+    {
+     "raw": 7,
+     "display": 7
+    },
+    {
+     "raw": "Coxilha Baja",
+     "display": "Coxilha Baja"
+    },
+    {
+     "raw": [
+      4.321,
+      4.402
+     ],
+     "display": "<b>4.321</b><br /> 4.402"
+    },
+    {
+     "raw": 25.86,
+     "display": 25.86
+    }
+   ]
+  },
+  {
+   "position": 5,
+   "team": {
+    "number": 1,
+    "name": "Baja Serra Azul",
+    "school": "Universidade Federal da Serra Azul - UFSA",
+    "state": "MG",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 5,
+     "display": 5
+    },
+    {
+     "raw": 1,
+     "display": 1
+    },
+    {
+     "raw": "Baja Serra Azul",
+     "display": "Baja Serra Azul"
+    },
+    {
+     "raw": [
+      4.354,
+      4.328
+     ],
+     "display": "4.354<br /> <b>4.328</b>"
+    },
+    {
+     "raw": 25.75,
+     "display": 25.75
+    }
+   ]
+  },
+  {
+   "position": 24,
+   "team": {
+    "number": 4,
+    "name": "Pinhão Baja",
+    "school": "Universidade Tecnológica do Planalto - UTP",
+    "state": "PR",
+    "disqualified": false
+   },
+   "cells": [
+    {
+     "raw": 24,
+     "display": 24
+    },
+    {
+     "raw": 4,
+     "display": 4
+    },
+    {
+     "raw": "Pinhão Baja",
+     "display": "Pinhão Baja"
+    },
+    {
+     "raw": [
+      4.764,
+      4.697
+     ],
+     "display": "4.764<br /> <b>4.697</b>"
+    },
+    {
+     "raw": 20.28,
+     "display": 20.28
+    }
+   ]
+  }
+ ]
+}

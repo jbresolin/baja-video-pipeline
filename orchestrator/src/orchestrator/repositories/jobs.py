@@ -30,7 +30,7 @@ UPDATABLE_JOB_COLUMNS = frozenset(
         "claimed_render_inputs_json", "reported_render_inputs_json",
         "display_width", "display_height", "rotation", "framing", "crop_position", "no_audio",
         "show_pass_result", "largada_s", "show_clock", "duplicate_of",
-        "result_hold_until",
+        "result_hold_until", "speed_mark_s",
     }
 )  # fmt: skip
 

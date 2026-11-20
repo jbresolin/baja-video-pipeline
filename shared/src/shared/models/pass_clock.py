@@ -14,6 +14,7 @@ from pydantic import Field
 from shared.models.common import ReadByClients, ReceivedByServer, Seconds
 from shared.models.enums import PassResultProblem
 from shared.models.pass_results import PassResult, PassResultFetch
+from shared.models.pass_speed import PassSpeed
 
 # 0 to 3 decimals, as the configuration allows.
 ClockDecimals = Annotated[int, Field(ge=0, le=3)]
@@ -100,3 +101,6 @@ class PassPreview(ReadByClients):
 
     pass_result: PassResult
     pass_clock: PassClock
+    # The speed under the clock (LIVESTACK-67), so choosing "Aceleração e
+    # Velocidade" shows its mark too. None from an orchestrator before 2.13.0.
+    pass_speed: PassSpeed | None = None

@@ -37,6 +37,7 @@ from shared.models.common import (
 )
 from shared.models.enums import Framing, NameStyle
 from shared.models.pass_clock import RenderClock, ReportedClock
+from shared.models.pass_speed import RenderSpeed, ReportedSpeed
 
 
 class RenderInputField(StrEnum):
@@ -68,6 +69,10 @@ class RenderInputField(StrEnum):
     # The running clock (LIVESTACK-48): the largada moved, the official time
     # published or corrected, or the clock turned on or off.
     CLOCK = "clock"
+    # The top speed under the clock (LIVESTACK-67): the speed-trap mark
+    # moved, the official speed published or corrected, or the speed pill
+    # added or gone (no mark, no clock).
+    SPEED = "speed"
 
 
 class RenderInputs(ReadByClients):
@@ -114,6 +119,10 @@ class RenderInputs(ReadByClients):
     # The running clock (ProcessTask.pass_clock, LIVESTACK-48). None = no
     # clock, which is also what inputs recorded before LIVESTACK-48 mean.
     pass_clock: RenderClock | None = None
+    # The top speed under the clock (ProcessTask.pass_speed, LIVESTACK-67).
+    # None = no speed pill, which is also what inputs recorded before
+    # LIVESTACK-67 mean.
+    pass_speed: RenderSpeed | None = None
     # True when the rendering worker reported these itself; False for the
     # orchestrator's snapshot of the task it handed out (older workers).
     reported_by_worker: bool = False
@@ -157,6 +166,9 @@ class RenderInputsReport(ReceivedByServer):
     # The clock as drawn (ProcessTask.pass_clock; LIVESTACK-48). Left out by
     # workers before 0.6.0, which never get a task carrying one.
     pass_clock: ReportedClock | None = None
+    # The speed as drawn (ProcessTask.pass_speed; LIVESTACK-67). Left out by
+    # workers before 0.8.0, which never get a task carrying one.
+    pass_speed: ReportedSpeed | None = None
 
 
 class ClipInputsComparison(ReadByClients):

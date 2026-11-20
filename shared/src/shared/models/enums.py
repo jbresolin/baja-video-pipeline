@@ -360,6 +360,10 @@ class RenderFeature(StrEnum):
     # it has for "Baixar clipe" (TaskKind.UPLOAD_CLIP). That task is offered
     # only to a worker that declared it. Installer 0.7.0.
     UPLOAD_CLIP = "upload_clip"
+    # The top speed under the clock (LIVESTACK-67): a second pill, from the
+    # speed-trap mark to the end of the clip (ProcessTask.pass_speed). A
+    # worker before 0.8.0 would ignore it and leave it out. Installer 0.8.0.
+    SPEED = "speed"
 
 
 class PassResultProblem(StrEnum):

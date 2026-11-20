@@ -6,7 +6,10 @@
 
 A configuration that does not pass parse_config is refused with 422 and
 the path of the bad key; the one in force stays. "Testar" fetches the
-prova's table now and may try a configuration that is not saved yet.
+prova's table now and may try a configuration that is not saved yet. A
+prova with a top speed under its clock (LIVESTACK-67) has a second table,
+the speed's: the status lists it, and "Testar" fetches it too and says
+the speed ("Velocidade: 37,2 km/h").
 """
 
 from orchestrator.context import OrchestratorContext
@@ -21,7 +24,8 @@ from orchestrator.domain.pass_results import (
     resultado_id_for,
     stored_table,
 )
-from orchestrator.domain.pass_results_config import ConfigError, parse_config
+from orchestrator.domain.pass_results_config import ConfigError, ProvaPassConfig, parse_config
+from orchestrator.domain.pass_speed import official_speed, speed_resultado_id_for
 from orchestrator.domain.pass_text import PassText, build_pass_text
 from orchestrator.domain.results_table import ResultsTable
 from orchestrator.errors import ApiError
@@ -55,6 +59,9 @@ def pass_results_settings(context: OrchestratorContext) -> PassResultsSettings:
             synced = catalog_repo.find_synced_prova_row(connection, prova_id)
             resultado_id = resultado_id_for(event, prova_config) if event else None
             row = pass_results_repo.get_table_row(connection, resultado_id) if event else None
+            # The speed's own table (LIVESTACK-67), when the prova has one.
+            speed_id = speed_resultado_id_for(event, prova_config) if event else None
+            speed_row = pass_results_repo.get_table_row(connection, speed_id) if speed_id else None
             provas.append(
                 PassResultsProvaStatus(
                     prova_id=prova_id,
@@ -62,6 +69,9 @@ def pass_results_settings(context: OrchestratorContext) -> PassResultsSettings:
                     resultado_id=resultado_id,
                     polling=resultado_id in polled,
                     fetch=fetch_status(row, resultado_id) if resultado_id else None,
+                    speed_resultado_id=speed_id,
+                    speed_polling=speed_id in polled,
+                    speed_fetch=fetch_status(speed_row, speed_id) if speed_id else None,
                 )
             )
     return PassResultsSettings(config_text=text, provas=provas)
@@ -119,7 +129,9 @@ def test_pass_result(
         row = pass_results_repo.get_table_row(connection, resultado_id)
     table = stored_table(row)
     answer = PassResultTestResponse(
-        resultado_id=resultado_id, fetch=fetch_status(row, resultado_id)
+        resultado_id=resultado_id,
+        fetch=fetch_status(row, resultado_id),
+        **_test_speed(context, prova_config, event, request),
     )
     if table is None:
         return answer.model_copy(update={"problem": PassResultProblem.NOT_FETCHED})
@@ -145,6 +157,40 @@ def test_pass_result(
             "clock_problem_detail": None if prova_config.clock is None else clock.detail,
         }
     )
+
+
+def _test_speed(
+    context: OrchestratorContext,
+    prova_config: ProvaPassConfig,
+    event: str,
+    request: PassResultTestRequest,
+) -> dict:
+    """ "Testar" for the top speed (LIVESTACK-67): fetch the speed table, read the run.
+
+    The PassResultTestResponse fields of the speed; none for a prova without one.
+    """
+    speed_id = speed_resultado_id_for(event, prova_config)
+    if speed_id is None or prova_config.speed is None:
+        return {}
+    pass_results_fetch.fetch_if_older_than(context, speed_id, pass_results_fetch.TEST_REUSE)
+    with context.database.transaction() as connection:
+        row = pass_results_repo.get_table_row(connection, speed_id)
+    fields = {
+        "speed_configured": True,
+        "speed_resultado_id": speed_id,
+        "speed_unit": prova_config.speed.unit,
+        "speed_fetch": fetch_status(row, speed_id),
+    }
+    table = stored_table(row)
+    if table is None:
+        return {**fields, "speed_problem": PassResultProblem.NOT_FETCHED}
+    speed = official_speed(table, prova_config, request.car_number, request.passagem)
+    return {
+        **fields,
+        "speed_text": speed.text,
+        "speed_problem": speed.problem,
+        "speed_problem_detail": speed.detail,
+    }
 
 
 def _car_cells(table: ResultsTable, car_number: int) -> list[list[PassResultCell]]:

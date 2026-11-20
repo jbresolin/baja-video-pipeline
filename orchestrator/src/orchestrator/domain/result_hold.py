@@ -8,7 +8,9 @@ no worker. The hold ends, and the render is offered at once, on the first
 of these:
 
     the result is in    the result line (when it is shown) and, when a
-                        clock is drawn, its official time are fetched;
+                        clock is drawn, its official time are fetched, and,
+                        when a speed would be drawn under it (LIVESTACK-67),
+                        the official speed too;
     the deadline        result_hold_until passes: the clip is rendered with
                         whatever there is, and §32 flags it when the result
                         arrives later;
@@ -33,6 +35,7 @@ from orchestrator.db.database import from_db_time, to_db_time
 from orchestrator.domain.job_view import load_job, require_job_row
 from orchestrator.domain.pass_clock import pass_clock_for_job
 from orchestrator.domain.pass_results import pass_result_for_job
+from orchestrator.domain.pass_speed import pass_speed_for_job
 from orchestrator.domain.render_features import process_waiting_reason
 from orchestrator.repositories import events as events_repo
 from orchestrator.repositories import jobs as jobs_repo
@@ -57,6 +60,11 @@ class WaitStatus:
     result_is_in: bool
     # The clock's official time is known.
     clock_is_in: bool
+    # A speed would be drawn under that clock (LIVESTACK-67): the prova has a
+    # speed block and the speed mark is set. False without a clock.
+    waits_for_speed: bool = False
+    # The run's official speed is known (from the speed table).
+    speed_is_in: bool = False
 
     @property
     def nothing_to_wait_for(self) -> bool:
@@ -68,15 +76,18 @@ class WaitStatus:
         """All that would be drawn is fetched (vacuously true with nothing to wait for)."""
         result_done = self.result_is_in or not self.waits_for_result
         clock_done = self.clock_is_in or not self.waits_for_clock
-        return result_done and clock_done
+        speed_done = self.speed_is_in or not self.waits_for_speed
+        return result_done and clock_done and speed_done
 
     def waited_for_names(self) -> list[str]:
-        """For the event's details: ["result"], ["clock"] or both."""
+        """For the event's details: ["result"], ["clock"], both, and "speed" (LIVESTACK-67)."""
         names = []
         if self.waits_for_result:
             names.append("result")
         if self.waits_for_clock:
             names.append("clock")
+        if self.waits_for_speed:
+            names.append("speed")
         return names
 
 
@@ -84,11 +95,17 @@ def wait_status(connection: sqlite3.Connection, job_row) -> WaitStatus:
     """The job's WaitStatus now, from the same functions the render task uses."""
     result = pass_result_for_job(connection, job_row)
     clock = pass_clock_for_job(connection, job_row)
+    speed = pass_speed_for_job(connection, job_row, clock)
+    waits_for_clock = clock.configured and clock.show and clock.largada_s is not None
     return WaitStatus(
         waits_for_result=result.configured and result.show,
-        waits_for_clock=clock.configured and clock.show and clock.largada_s is not None,
+        waits_for_clock=waits_for_clock,
         result_is_in=result.text is not None,
         clock_is_in=clock.official_units is not None,
+        # The speed is drawn only under the clock (design §40), so it is
+        # waited for only when the clock is.
+        waits_for_speed=waits_for_clock and speed.configured and speed.speed_mark_s is not None,
+        speed_is_in=speed.official_text is not None,
     )
 
 

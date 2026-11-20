@@ -29,6 +29,7 @@ from orchestrator.domain.fleet_snapshot import (
 from orchestrator.domain.originals import evaluate_upload_original
 from orchestrator.domain.pass_clock import clock_for_render
 from orchestrator.domain.pass_results import pass_text_for_render
+from orchestrator.domain.pass_speed import speed_for_render
 from orchestrator.domain.render_features import can_render, required_render_features
 from orchestrator.domain.task_decision import TaskDecision, refuse
 from orchestrator.repositories import app_settings as settings_repo
@@ -183,10 +184,13 @@ def _evaluate_process(
     # The running clock (LIVESTACK-48); None without a largada, an official
     # time, or with the toggle off.
     pass_clock = clock_for_render(connection, job_row)
+    # The top speed under that clock (LIVESTACK-67); None without a speed
+    # mark, an official speed, or a clock.
+    pass_speed = speed_for_render(connection, job_row)
     # Render features (LIVESTACK-50): a worker version that cannot render
-    # the job's options (or draw the result pill, or the clock) would
-    # ignore them and make the old clip.
-    required = required_render_features(job_row, pass_result_text, pass_clock)
+    # the job's options (or draw the result pill, the clock or the speed)
+    # would ignore them and make the old clip.
+    required = required_render_features(job_row, pass_result_text, pass_clock, pass_speed)
     if not can_render(worker_row, required):
         return refuse(
             ErrorCode.NOT_CLAIMABLE,
@@ -221,6 +225,7 @@ def _evaluate_process(
             no_audio=bool(job_row["no_audio"]),
             pass_result_text=pass_result_text,
             pass_clock=pass_clock,
+            pass_speed=pass_speed,
             required_render_features=required,
             # "Ver clipe" (LIVESTACK-52): only while the Settings switch is on.
             preview_upload_url=(

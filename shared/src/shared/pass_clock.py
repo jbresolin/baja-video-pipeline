@@ -26,6 +26,12 @@ clock freezes, never while it runs, and stays to the end of the clip. The
 freeze is a whole number of microseconds after the largada (66,0 is
 66 000 000 µs), so "is the result shown" is one comparison of whole
 numbers, true exactly from the frame whose clock shows the official time.
+
+The speed (LIVESTACK-67): "Aceleração e Velocidade" adds a second pill
+under the clock, the run's top speed, from the frame where the reviewer
+marked the car crossing the speed trap to the end of the clip. Its rule is
+the largada's: shown when the raw time, in whole microseconds, is at or
+after the mark's (speed_shown_at; the vectors' `speed_cases`).
 """
 
 import math
@@ -107,6 +113,17 @@ def result_shown(elapsed_us: int, official: int, decimals: int) -> bool:
 def result_shown_at(raw_time_s: float, largada_s: float, official: int, decimals: int) -> bool:
     """Whether the result pill is shown at a moment of the raw video, when the clip has a clock."""
     return result_shown(elapsed_microseconds(raw_time_s, largada_s), official, decimals)
+
+
+def speed_shown_at(raw_time_s: float, speed_mark_s: float) -> bool:
+    """Whether the speed pill is shown at a moment of the raw video (LIVESTACK-67).
+
+    From the speed-trap mark on, to the end of the clip; the same whole
+    microsecond comparison as the largada's, so the frame the reviewer
+    marked (the page writes the mark rounded down to the millisecond)
+    shows the speed and the frame before it does not.
+    """
+    return elapsed_microseconds(raw_time_s, speed_mark_s) >= 0
 
 
 def clip_ends_before_freeze(

@@ -26,6 +26,7 @@ from shared.models.common import (
 from shared.models.enums import DeliveryRoute, Framing, TaskKind
 from shared.models.job import Lease
 from shared.models.pass_clock import RenderClock
+from shared.models.pass_speed import RenderSpeed
 
 
 class DownloadRawTask(ReadByClients):
@@ -136,6 +137,11 @@ class ProcessTask(ReadByClients):
     # official time yet, or turned off). Only sent to workers that declared
     # RenderFeature.CLOCK.
     pass_clock: RenderClock | None = None
+    # The top speed under the clock (LIVESTACK-67, "Aceleração e
+    # Velocidade"): a second pill from the speed-trap mark to the end of the
+    # clip. Only with a clock (pass_clock is then set too). None = no speed
+    # pill. Only sent to workers that declared RenderFeature.SPEED.
+    pass_speed: RenderSpeed | None = None
     # The render features (RenderFeature) this task needs. The orchestrator
     # offers it only to a worker that declared every one of them; empty =
     # any worker. For the record: a worker does not need to check it.

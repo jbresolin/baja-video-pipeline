@@ -30,6 +30,10 @@ minute. Each table records when it was last fetched and whether it worked.
 Every good answer is followed by a check of the renders held for their
 official result (LIVESTACK-62, domain/result_hold.py): held jobs are
 `ready`, so their tables are fetched like any other job's.
+
+A prova with a top speed under its clock (LIVESTACK-67, "Aceleração e
+Velocidade") has two tables, its own and its speed's (`speed.resultado`);
+both are fetched, each on its own schedule and with its own status.
 """
 
 import json
@@ -47,6 +51,7 @@ from orchestrator.domain.pass_results import (
     resultado_id_for,
     stored_table,
 )
+from orchestrator.domain.pass_speed import speed_resultado_id_for
 from orchestrator.domain.result_hold import release_held_jobs
 from orchestrator.domain.results_table import BadTableError, parse_table
 from orchestrator.repositories import pass_results as pass_results_repo
@@ -80,6 +85,10 @@ def tables_needing_results(context: OrchestratorContext, now: datetime) -> list[
             prova_config = config.for_prova(api_prova_id(connection, name))
             if prova_config is not None:
                 wanted.add(resultado_id_for(event, prova_config))
+                # The speed's own table (LIVESTACK-67), when the prova has one.
+                speed_table = speed_resultado_id_for(event, prova_config)
+                if speed_table is not None:
+                    wanted.add(speed_table)
         wanted = {
             resultado_id
             for resultado_id in wanted
