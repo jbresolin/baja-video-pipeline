@@ -79,7 +79,8 @@
       <span class="timecode total" id="total-time">{{ (job.duration_s or 0)|timecode }}</span>
     </div>
     {% if job.proxy_available and preview %}
-    <label class="check preview-toggle"><input type="checkbox" id="overlay-preview-toggle">
+    {# On by default (João, 2026-11-20): reviewers should see what goes on air. #}
+    <label class="check preview-toggle"><input type="checkbox" id="overlay-preview-toggle" checked>
       {{ t("preview.toggle") }}</label>
     <p class="hint">{{ t("preview.hint") }}</p>
     <script type="application/json" id="overlay-preview-data">{{ preview|tojson }}</script>

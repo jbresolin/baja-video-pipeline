@@ -160,6 +160,8 @@ def test_the_preview_toggle_and_its_data_are_on_the_page(ui, fake_orchestrator):
 
     assert 'id="overlay-preview-toggle"' in html
     assert "Pré-visualizar overlay" in html
+    # It starts ticked: the reviewer sees the overlay without asking for it.
+    assert 'id="overlay-preview-toggle" checked' in html, "the preview is on by default"
     # The data the script draws, as JSON in the page.
     start = html.index('<script type="application/json" id="overlay-preview-data">')
     end = html.index("</script>", start)
