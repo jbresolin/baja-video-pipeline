@@ -1,0 +1,93 @@
+# One-off, started by hand (Actions → "Re-host pinned ffmpeg" → Run workflow).
+#
+# BtbN deleted the autobuild-2026-10-27-18-38 release that installer/vendor.lock
+# and .github/actions/pinned-ffmpeg pin, so a fresh download of our ffmpeg
+# n9.0.2 now gets 404. The Actions caches of the installer and CI jobs still
+# hold both files. This workflow takes them from those caches, checks them
+# against the pinned SHA-256s, and publishes them as the prerelease
+# "vendor-ffmpeg-n9.0.2" of this repo, so builds download them from here and
+# never depend on BtbN keeping old builds again (design §41).
+#
+# It changes nothing else; the URLs are switched to the new release in a
+# separate commit once it exists. Running it again when the release already
+# exists stops with an error and changes nothing.
+
+name: Re-host pinned ffmpeg
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  WIN64_NAME: ffmpeg-n9.0.2-36-g6882969ce9-win64-gpl-shared-9.0.zip
+  WIN64_SHA256: dbfef481021a393424c9bd4e588c8d568f0ebba780c01c63dfcb87c87be901c7
+  LINUX64_NAME: ffmpeg-n9.0.2-36-g6882969ce9-linux64-gpl-9.0.tar.xz
+  LINUX64_SHA256: 8ce0fd17fb808adf48d66c3e72d7f0acfc28d2b95a0f6bf98483be8c652083ed
+
+jobs:
+  # The win64 zip lives in the installer's Windows cache (installer/vendor/downloads).
+  windows-copy:
+    runs-on: windows-latest
+    steps:
+      - name: Restore the installer's vendor cache
+        uses: actions/cache/restore@v4
+        with:
+          path: installer/vendor/downloads
+          key: vendor-none
+          restore-keys: vendor-
+          fail-on-cache-miss: true
+      - name: Check the zip against its pinned SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$WIN64_SHA256  installer/vendor/downloads/$WIN64_NAME" | sha256sum --check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win64
+          path: installer/vendor/downloads/${{ env.WIN64_NAME }}
+          retention-days: 1
+
+  # The linux64 tarball lives in CI's cache (~/ffmpeg-download).
+  linux-copy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore CI's ffmpeg cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/ffmpeg-download
+          key: linux-ffmpeg-${{ env.LINUX64_SHA256 }}
+          fail-on-cache-miss: true
+      - name: Check the tarball against its pinned SHA-256
+        run: |
+          set -euo pipefail
+          mv ~/ffmpeg-download/ffmpeg-linux64.tar.xz "$LINUX64_NAME"
+          echo "$LINUX64_SHA256  $LINUX64_NAME" | sha256sum --check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux64
+          path: ${{ env.LINUX64_NAME }}
+          retention-days: 1
+
+  publish:
+    needs: [windows-copy, linux-copy]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+      - name: Check both once more and publish the prerelease
+        run: |
+          set -euo pipefail
+          cd files
+          echo "$WIN64_SHA256  $WIN64_NAME" | sha256sum --check
+          echo "$LINUX64_SHA256  $LINUX64_NAME" | sha256sum --check
+          gh release create vendor-ffmpeg-n9.0.2 --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "Vendored ffmpeg n9.0.2 (build input, not an installer)" \
+            --notes "Copies of BtbN/FFmpeg-Builds autobuild-2026-10-27-18-38 (GPL builds), the ffmpeg the Baja Worker ships. BtbN deletes old autobuilds, so the installer build and CI download these instead. SHA-256: win64 $WIN64_SHA256, linux64 $LINUX64_SHA256. Source: https://github.com/FFmpeg/FFmpeg (n9.0.2) and https://github.com/BtbN/FFmpeg-Builds. Volunteers: the installer is in the vX.Y.Z releases, not here." \
+            "$WIN64_NAME" "$LINUX64_NAME"

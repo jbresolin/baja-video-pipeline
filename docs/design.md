@@ -1740,3 +1740,16 @@ migration 0020; orchestrator and review UI only, no worker change.
   and the studio's clip folder): the orchestrator never tells a PC to
   delete raws of a job it does not know, so leftovers are harmless, only
   space.
+
+## 41. Our ffmpeg is hosted in this repo (2026-11-20)
+
+* BtbN deleted the `autobuild-2026-10-27-18-38` release that
+  `installer/vendor.lock` and `.github/actions/pinned-ffmpeg` pinned (it
+  prunes old autobuilds), so a fresh download got 404; only the Actions
+  caches still held the files. They are re-published, byte for byte (same
+  SHA-256), as the prerelease `vendor-ffmpeg-n9.0.2` of this repo by the
+  hand-started workflow `rehost-ffmpeg.yml`, and both pins point there.
+  A prerelease is never "latest", so volunteers are not offered it.
+* Bumping ffmpeg later: download the new build, check it, publish it the
+  same way under a new `vendor-ffmpeg-<version>` tag, then change the URL
+  and SHA-256 in both places (installer/MAINTAINERS.md).
