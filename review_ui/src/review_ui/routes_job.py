@@ -109,7 +109,10 @@ def job_page(request: Request, job_id: str) -> HTMLResponse:
         pass_box=pass_box,
         # "Cronômetro": the largada mark and "Mostrar cronômetro" (LIVESTACK-48),
         # or None when the job's prova has no clock.
-        clock_box=pass_clock_box(job.pass_clock, now, result_box_shown=pass_box is not None),
+        # With the speed mark for a prova that has one (LIVESTACK-67).
+        clock_box=pass_clock_box(
+            job.pass_clock, now, result_box_shown=pass_box is not None, speed=job.pass_speed
+        ),
         # What "Pré-visualizar overlay" draws over the player (LIVESTACK-48).
         preview=overlay_preview_data(job),
         actions=action_buttons(job.state),

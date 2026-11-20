@@ -201,17 +201,20 @@ def pass_blocks(
     car_number: int | None = Query(None, ge=0, le=9999),
     passagem: int | None = Query(None, ge=1, le=999),
 ) -> JSONResponse:
-    """The blocks "Resultado da passagem" and "Cronômetro" for what the form says now,
-    saved or not (LIVESTACK-53). `result_html` / `clock_html` are the blocks
-    as the page draws them, or null when the prova has none; `preview` is
-    the overlay preview's result line and official time. The page keeps
+    """The blocks "Resultado da passagem" and "Cronômetro" (with the speed mark for
+    AVF, LIVESTACK-67) for what the form says now, saved or not (LIVESTACK-53).
+    `result_html` / `clock_html` are the blocks as the page draws them, or
+    null when the prova has none; `preview` is the overlay preview's result
+    line, official time and speed. The page keeps
     the fields the reviewer already set (js/pass_blocks.js)."""
     answer = orchestrator_for(request).pass_preview(
         job_id, prova.strip() or None, car_number, passagem
     )
     now = utc_now()
     result_box = pass_result_box(answer.pass_result, now)
-    clock_box = pass_clock_box(answer.pass_clock, now, result_box_shown=result_box is not None)
+    clock_box = pass_clock_box(
+        answer.pass_clock, now, result_box_shown=result_box is not None, speed=answer.pass_speed
+    )
     return JSONResponse(
         {
             "result_html": (
@@ -224,7 +227,9 @@ def pass_blocks(
                 if clock_box
                 else None
             ),
-            "preview": overlay_preview_pass_data(answer.pass_result, answer.pass_clock),
+            "preview": overlay_preview_pass_data(
+                answer.pass_result, answer.pass_clock, answer.pass_speed
+            ),
         }
     )
 

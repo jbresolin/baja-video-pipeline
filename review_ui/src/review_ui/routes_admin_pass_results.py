@@ -23,8 +23,8 @@ from review_ui.pass_results_settings_view import (
     PassResultsForm,
     config_refusal,
     too_long_refusal,
-    trial_outcome,
 )
+from review_ui.pass_results_trial_view import trial_outcome
 from review_ui.request_context import admin_client_for
 from review_ui.routes_admin_operations import (
     SETTINGS_PATH,

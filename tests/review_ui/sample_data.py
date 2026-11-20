@@ -28,12 +28,14 @@ from shared.models import (
     PassClock,
     PassResult,
     PassResultFetch,
+    PassSpeed,
     Prova,
     ReceivedAs,
     RecordedAtSource,
     RenderClock,
     RenderInputField,
     RenderInputs,
+    RenderSpeed,
     SenderMessage,
     SenderMessageKind,
     SenderMessageRole,
@@ -481,3 +483,71 @@ def pass_clock_job(job_id: str = "job-clock-1", **changes) -> Job:
     }
     fields.update(changes)
     return pass_result_job(job_id, **fields)
+
+
+def avf_pass_speed(**changes) -> PassSpeed:
+    """Job.pass_speed for car 1's first "Aceleração e Velocidade" run (LIVESTACK-67).
+
+    The official speed is 37.18 km/h, shown with one decimal ("37,2"); the
+    speed mark is at 4.0 s and the clock above it is drawn, so a render
+    would draw the speed. Keyword arguments override any field.
+    """
+    fields = {
+        "configured": True,
+        "speed_mark_s": 4.0,
+        "decimals": 1,
+        "unit": "km/h",
+        "official_text": "37,2",
+        "fetch": PassResultFetch(
+            resultado_id="26BR_VEL",
+            last_attempt_at=T0,
+            last_attempt_ok=True,
+            last_success_at=T0,
+        ),
+        "render": RenderSpeed(speed_mark_s=4.0, text="37,2", unit="km/h"),
+    }
+    fields.update(changes)
+    return PassSpeed(**fields)
+
+
+def avf_pass_clock(**changes) -> PassClock:
+    """Job.pass_clock for the same run: 4.354 s, shown with 2 decimals ("4,35"), largada 1.0 s."""
+    fields = {
+        "configured": True,
+        "show": True,
+        "largada_s": 1.0,
+        "decimals": 2,
+        "unit": "s",
+        "official_units": 435,
+        "official_text": "4,35",
+        "fetch": PassResultFetch(
+            resultado_id="26BR_ACE",
+            last_attempt_at=T0,
+            last_attempt_ok=True,
+            last_success_at=T0,
+        ),
+        "render": RenderClock(largada_s=1.0, official_units=435, decimals=2, unit="s"),
+    }
+    fields.update(changes)
+    return PassClock(**fields)
+
+
+def avf_job(job_id: str = "job-avf-1", **changes) -> Job:
+    """Car 1's first AVF run: the clock (4,35 s) and the speed under it (37,2 km/h).
+
+    The team is invented, like every name in this repository.
+    """
+    fields = {
+        "prova": "Aceleração e Velocidade",
+        "car_number": 1,
+        "passagem": 1,
+        "largada_s": 1.0,
+        "speed_mark_s": 4.0,
+        "pass_result": PassResult(),
+        "pass_clock": avf_pass_clock(),
+        "pass_speed": avf_pass_speed(),
+        "clip_team_name": "Baja Serra Azul",
+        "clip_school_name": "UFSA",
+    }
+    fields.update(changes)
+    return make_job(job_id, **fields)

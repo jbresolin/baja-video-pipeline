@@ -1,30 +1,25 @@
 """The Settings page's "Resultados das passagens" block, in words (LIVESTACK-47).
 
 The configuration is a JSON text the admin edits; next to it, each
-configured prova's table and how fetching it goes, and the "Testar"
-answer. This module turns the orchestrator's answers into what the block
-shows: plain functions over the API models, tested without a server.
+configured prova's table (and its speed table, LIVESTACK-67) and how
+fetching it goes, and the "Testar" answer (pass_results_trial_view.py).
+This module turns the orchestrator's answers into what the block shows:
+plain functions over the API models, tested without a server.
 Text from the results API (a cell's display HTML) is only ever passed on
 as plain strings, so the templates escape it like any other text.
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from markupsafe import Markup
 
 from review_ui.catalog import has_text, markup, text
-from review_ui.formatting import recorded_time_text, relative_time_text
+from review_ui.formatting import recorded_time_text
 from review_ui.orchestrator_client import OrchestratorError
-from review_ui.pass_result_view import fetch_warning, problem_sentence
-from shared.models import (
-    PassResultsProvaStatus,
-    PassResultsSettings,
-    PassResultTestRequest,
-    PassResultTestResponse,
-)
-from shared.pass_clock import with_unit
+from review_ui.pass_results_trial_view import TrialOutcome
+from shared.models import PassResultsProvaStatus, PassResultsSettings
 
 
 @dataclass(frozen=True)
@@ -46,6 +41,9 @@ class ProvaStatusRow:
     error: str | None
     # "inacessível desde 14:02", or None while it works.
     failing: str | None
+    # What the table is for when it is not the prova's own: "velocidade"
+    # for the speed's table (LIVESTACK-67); None for the prova's own.
+    table_role: str | None = None
 
 
 def _schedule_key(prova: PassResultsProvaStatus) -> str:
@@ -80,6 +78,33 @@ def prova_status_row(prova: PassResultsProvaStatus, now: datetime) -> ProvaStatu
         error=fetch.last_error if failed and fetch is not None else None,
         failing=failing,
     )
+
+
+def speed_status_row(prova: PassResultsProvaStatus, now: datetime) -> ProvaStatusRow | None:
+    """The prova's speed table as a row of its own (LIVESTACK-67); None without one."""
+    if prova.speed_resultado_id is None:
+        return None
+    # The same row, built from the speed table's own id, schedule and status.
+    as_speed_table = prova.model_copy(
+        update={
+            "resultado_id": prova.speed_resultado_id,
+            "polling": prova.speed_polling,
+            "fetch": prova.speed_fetch,
+        }
+    )
+    row = prova_status_row(as_speed_table, now)
+    return replace(row, table_role=text("pass_results.speed_table"))
+
+
+def status_rows(saved: PassResultsSettings, now: datetime) -> list[ProvaStatusRow]:
+    """Every configured prova's row, each followed by its speed table's when it has one."""
+    rows = []
+    for prova in saved.provas:
+        rows.append(prova_status_row(prova, now))
+        speed_row = speed_status_row(prova, now)
+        if speed_row is not None:
+            rows.append(speed_row)
+    return rows
 
 
 def prova_ids_in(config_text: str) -> list[str] | None:
@@ -152,97 +177,6 @@ def too_long_refusal(max_length: int) -> Markup:
     return markup("pass_results.refused.save", reason=problem)
 
 
-# --- "Testar" ---
-
-
-def cell_text(value: object) -> str:
-    """A cell's raw value or display as plain text (a list of runs joined by " | ")."""
-    if value is None:
-        return "—"
-    if isinstance(value, list):
-        return " | ".join(cell_text(item) for item in value)
-    return str(value)
-
-
-@dataclass(frozen=True)
-class TrialOutcome:
-    """What the block shows after "Testar", without saving anything."""
-
-    title: str
-    # The line, or why there is none (+ the orchestrator's English details).
-    text: str | None
-    problem: str | None
-    detail: str | None
-    # "Tabela 26BR_MAN baixada há 5 s (14:02)." when it was fetched.
-    fetched: Markup | None
-    fetch_warning: str | None
-    fetch_error: str | None
-    unknown_penalties: str | None
-    # "Cronômetro para em 66,0 s." or why not, for a prova with a clock
-    # (LIVESTACK-48); None otherwise.
-    clock: Markup | str | None = None
-    # The car's rows: (column, raw, display) as plain strings, escaped by the template.
-    rows: list[list[tuple[str, str, str]]] = field(default_factory=list)
-    # True when the text tested is not the one saved.
-    unsaved: bool = False
-
-
-def trial_outcome(
-    request: PassResultTestRequest,
-    answer: PassResultTestResponse,
-    now: datetime,
-    *,
-    unsaved: bool,
-) -> TrialOutcome:
-    fetch = answer.fetch
-    fetched = None
-    if fetch is not None and fetch.last_success_at is not None:
-        fetched = markup(
-            "pass_results.test.fetched",
-            table=fetch.resultado_id,
-            time=relative_time_text(fetch.last_success_at, now),
-        )
-    warning = fetch_warning(fetch, now)
-    # A prova with only a clock has no line and nothing to say about one.
-    clock_only = answer.clock_configured and answer.text is None and answer.problem is None
-    return TrialOutcome(
-        title=text(
-            "pass_results.test.title",
-            prova=request.prova_id,
-            car=request.car_number,
-            passagem=request.passagem,
-        ),
-        text=answer.text,
-        problem=None if answer.text or clock_only else problem_sentence(answer.problem),
-        detail=None if answer.text else answer.problem_detail,
-        fetched=fetched,
-        fetch_warning=warning,
-        fetch_error=fetch.last_error if warning and fetch is not None else None,
-        unknown_penalties=(
-            text("pass_results.test.unknown_penalties", names=", ".join(answer.unknown_penalties))
-            if answer.unknown_penalties
-            else None
-        ),
-        clock=trial_clock(answer),
-        rows=[
-            [(cell_text(cell.column), cell_text(cell.raw), cell_text(cell.display)) for cell in row]
-            for row in answer.cells
-        ],
-        unsaved=unsaved,
-    )
-
-
-def trial_clock(answer: PassResultTestResponse) -> Markup | str | None:
-    """Where the running clock would stop (LIVESTACK-48), or why it would not run."""
-    if not answer.clock_configured:
-        return None
-    if answer.clock_text is not None:
-        return markup(
-            "pass_results.test.clock", text=with_unit(answer.clock_text, answer.clock_unit)
-        )
-    return text("pass_results.test.clock_problem", reason=problem_sentence(answer.clock_problem))
-
-
 # --- The whole block ---
 
 
@@ -284,7 +218,7 @@ def pass_results_block(
     return PassResultsBlock(
         available=saved is not None,
         config_text=shown_text,
-        rows=[prova_status_row(prova, now) for prova in saved.provas] if saved else [],
+        rows=status_rows(saved, now) if saved else [],
         prova_choices=trial_prova_choices(shown_text, saved),
         form=form,
     )

@@ -22,8 +22,9 @@
 import { sendJson } from "./common.js";
 
 const REFRESH_DELAY_MILLISECONDS = 300;
-// The fields of the two blocks the review form sends.
-export const BLOCK_FIELDS = ["show_pass_result", "largada_s", "show_clock"];
+// The fields of the two blocks the review form sends (the speed mark is in
+// the clock block of "Aceleração e Velocidade", LIVESTACK-67).
+export const BLOCK_FIELDS = ["show_pass_result", "largada_s", "show_clock", "speed_mark_s"];
 
 // The query for what the form says now; only values that are complete
 // (an empty field is left out: the saved value, as when saving).
@@ -118,7 +119,7 @@ export function setupPassBlocks({ form }) {
     form.elements[name].addEventListener("input", refreshSoon);
     form.elements[name].addEventListener("change", refreshSoon);
   }
-  // Marking the largada (button, l key) and "Limpar" send "input" too.
+  // Marking the largada or the speed (buttons, l and v keys) and "Limpar" send "input" too.
   for (const type of ["input", "change"]) {
     form.addEventListener(type, (event) => {
       if (BLOCK_FIELDS.includes(event.target.name)) touched.add(event.target.name);

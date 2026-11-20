@@ -220,6 +220,8 @@ video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: var(
 .playhead { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); }
 /* The largada (LIVESTACK-48): where the overlay's clock starts. */
 .largada-mark { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1px; background: var(--warn-ink); border-radius: 1px; }
+/* The speed mark (LIVESTACK-67): where the top speed appears, under the clock. */
+.speed-mark { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1px; background: var(--ok-ink); border-radius: 1px; }
 .preview-toggle { margin-top: 0.5rem; }
 .pass-clock { margin: 0.75rem 0; }
 /* Where js/pass_blocks.js puts the result and clock blocks: no box of its own. */

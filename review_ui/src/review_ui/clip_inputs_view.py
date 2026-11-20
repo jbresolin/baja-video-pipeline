@@ -23,6 +23,7 @@ from shared.models import (
     RenderClock,
     RenderInputField,
     RenderInputs,
+    RenderSpeed,
 )
 from shared.pass_clock import clock_text, with_unit
 
@@ -115,6 +116,29 @@ def _clock_sentence(clip: RenderClock | None, now: RenderClock | None) -> str:
     return text("outdated.clock.changed", clip=_clock_text(clip), now=_clock_text(now))
 
 
+def _speed_text(speed: RenderSpeed) -> str:
+    """ "37,2 km/h a partir de 0:04,000" """
+    return text(
+        "outdated.speed.describe",
+        # A speed's unit is "" when it has none (never None, unlike an old clock's).
+        speed=with_unit(speed.text, speed.unit),
+        mark=format_timecode(speed.speed_mark_s),
+    )
+
+
+def _speed_sentence(clip: RenderSpeed | None, now: RenderSpeed | None) -> str:
+    """The top speed under the clock changed (LIVESTACK-67): it would appear, change, or go.
+
+    "Appear" covers the speed published after the render and the mark set
+    since; "go away" the mark removed, or the clock (and so the speed) gone.
+    """
+    if clip is None:
+        return text("outdated.speed.published", now=_speed_text(now))
+    if now is None:
+        return text("outdated.speed.removed", clip=_speed_text(clip))
+    return text("outdated.speed.changed", clip=_speed_text(clip), now=_speed_text(now))
+
+
 def difference_sentence(field: RenderInputField, clip: RenderInputs, now: RenderInputs) -> str:
     """One sentence for one differing input."""
     if field == RenderInputField.CUT:
@@ -144,6 +168,8 @@ def difference_sentence(field: RenderInputField, clip: RenderInputs, now: Render
         return _pass_result_sentence(clip.pass_result_text, now.pass_result_text)
     if field == RenderInputField.CLOCK:
         return _clock_sentence(clip.pass_clock, now.pass_clock)
+    if field == RenderInputField.SPEED:
+        return _speed_sentence(clip.pass_speed, now.pass_speed)
     if field in (RenderInputField.TEAM_NAME, RenderInputField.SCHOOL_NAME):
         attribute = (
             "overlay_team_name" if field == RenderInputField.TEAM_NAME else "overlay_school_name"

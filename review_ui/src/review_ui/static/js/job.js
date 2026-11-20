@@ -12,10 +12,12 @@ import { setupPresence } from "./presence.js";
 import { setupRenderOptions } from "./render_options.js";
 import { setupResultWait } from "./result_wait.js";
 import { setupReviewForm } from "./review_form.js";
+import { setupSpeedOrder } from "./speed_order.js";
 import { t } from "./text.js";
 
-// Player keys that change the form (cut marks and their nudges).
-const MARK_KEYS = new Set(["i", "o", "-", "_", "=", "+"]);
+// Player keys that change the form (cut marks, the largada and the speed
+// mark, and their nudges).
+const MARK_KEYS = new Set(["i", "o", "l", "v", "-", "_", "=", "+"]);
 
 const jobElement = document.getElementById("job");
 const form = document.getElementById("review-form");
@@ -27,6 +29,8 @@ setupRenderOptions({ form, video });
 setupPassBlocks({ form });
 // With a clock the result appears when it stops: warn when the cut ends first (LIVESTACK-53).
 setupClockLate({ form });
+// The speed mark before the largada is probably a slip: say so, never block (LIVESTACK-67).
+setupSpeedOrder({ form });
 // "Esperar o resultado oficial" next to "Pronto", while the result or the clock is on (LIVESTACK-62).
 setupResultWait({ form });
 // "Pré-visualizar overlay" (LIVESTACK-48): the overlay and its clock over the proxy.

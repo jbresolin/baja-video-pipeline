@@ -14,6 +14,10 @@
 //
 // With a clock, the result pill appears when the clock freezes, never
 // while it runs (LIVESTACK-53): resultShownAt, also from the vectors.
+//
+// The top speed under the clock (LIVESTACK-67, "Aceleração e Velocidade")
+// is shown from the speed-trap mark to the end of the clip, by the
+// largada's rule: speedShownAt, checked against the vectors' speed_cases.
 
 const MICROSECONDS_PER_SECOND = 1_000_000;
 
@@ -72,4 +76,11 @@ export function resultShownAt(rawTimeSeconds, largadaSeconds, officialUnits, dec
 export function clipEndsBeforeFreeze(cutOutSeconds, largadaSeconds, officialUnits, decimals) {
   const lastElapsed = elapsedMicroseconds(cutOutSeconds, largadaSeconds) - 1;
   return lastElapsed < freezeElapsedMicroseconds(officialUnits, decimals);
+}
+
+// The top speed under the clock is shown from its mark on (LIVESTACK-67):
+// the same whole-microsecond comparison as the largada's, so the frame the
+// reviewer marked shows it and the frame before it does not.
+export function speedShownAt(rawTimeSeconds, speedMarkSeconds) {
+  return elapsedMicroseconds(rawTimeSeconds, speedMarkSeconds) >= 0;
 }

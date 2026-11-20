@@ -13,9 +13,9 @@ from review_ui.orchestrator_client import OrchestratorError
 from review_ui.pass_results_settings_view import (
     config_refusal,
     prova_status_row,
-    trial_outcome,
     trial_prova_choices,
 )
+from review_ui.pass_results_trial_view import trial_outcome
 from shared.models import (
     PassResultCell,
     PassResultFetch,
