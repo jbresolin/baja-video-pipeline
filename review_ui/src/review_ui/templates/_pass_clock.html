@@ -11,10 +11,18 @@
    speed mark, set the same way ("Marcar", the v key, -/=, a second line on
    the cut bar, "Limpar"); js/review_form.js sends speed_mark_s (or
    clear_speed_mark) and js/speed_order.js shows #pass-speed-early while
-   the speed mark is before the largada (a warning, never a block). #}
+   the speed mark is before the largada (a warning, never a block).
+   A prova that shows the speed N s before the clip's end (LIVESTACK-68,
+   `clock_box.speed.before_end_line`) has no speed mark: one line says so,
+   and the fieldset carries N (data-speed-seconds-before-end) so
+   js/player.js draws the green line at the cut-out minus N and the
+   overlay preview the speed from there. No speed_mark_s field, so the
+   v key marks nothing and the stored mark is not sent (it stays). #}
 {% import "macros.html" as m with context %}
+{% set speed_before_end = clock_box.speed and clock_box.speed.before_end_line %}
 <fieldset class="pass-clock" id="pass-clock"
-          {%- if clock_box.official_units is not none %} data-official-units="{{ clock_box.official_units }}" data-decimals="{{ clock_box.decimals }}"{% endif %}>
+          {%- if clock_box.official_units is not none %} data-official-units="{{ clock_box.official_units }}" data-decimals="{{ clock_box.decimals }}"{% endif %}
+          {%- if speed_before_end %} data-speed-seconds-before-end="{{ clock_box.speed.seconds_before_end }}"{% endif %}>
   <legend>{{ t("pass_clock.legend") }}</legend>
   <p class="hint">{{ t("pass_clock.hint") }}</p>
   <div class="cut" data-mark-box="largada">
@@ -24,7 +32,9 @@
     <button type="button" data-set-mark="largada" title="{{ t('pass_clock.set_largada.title') }}">{{ t("job.set_mark") }} <kbd>l</kbd></button>
     <button type="button" class="subtle" data-clear-largada title="{{ t('pass_clock.clear_largada.title') }}">{{ t("pass_clock.clear_largada") }}</button>
   </div>
-  {% if clock_box.speed %}
+  {% if speed_before_end %}
+  <p class="speed-before-end" id="pass-speed-before-end">{{ clock_box.speed.before_end_line }}</p>
+  {% elif clock_box.speed %}
   <div class="cut" data-mark-box="speed">
     <label for="speed_mark_s">{{ t("pass_speed.mark") }} <span class="unit">{{ t("job.seconds_unit") }}</span></label>
     <input id="speed_mark_s" name="speed_mark_s" type="number" step="0.001" min="0" inputmode="decimal"
@@ -44,7 +54,9 @@
   {% endif %}
   {% if clock_box.speed %}
   {% set speed = clock_box.speed %}
+  {% if not speed_before_end %}
   <p class="hint warning-text" id="pass-speed-early" hidden>{{ t("pass_speed.before_largada") }}</p>
+  {% endif %}
   <p class="hint" id="pass-speed-status">{{ speed.status }}
     {%- if speed.detail %} {{ m.english(speed.detail) }}{% endif %}</p>
   {% if speed.fetch_warning %}

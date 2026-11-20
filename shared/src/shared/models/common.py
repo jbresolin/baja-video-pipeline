@@ -15,6 +15,11 @@ ByteCount = Annotated[int, Field(ge=0)]
 # Positions inside a video, in seconds from the start of the raw.
 Seconds = Annotated[float, Field(ge=0)]
 
+# How long before the clip's end the top speed under the clock appears, for
+# a prova that shows it that way (LIVESTACK-68, the configuration's
+# `speed.seconds_before_end`): more than 0, at most 30, decimals allowed.
+SecondsBeforeEnd = Annotated[float, Field(gt=0, le=30)]
+
 # Baja car numbers are small positive integers painted on the car.
 CarNumber = Annotated[int, Field(ge=0, le=9999)]
 

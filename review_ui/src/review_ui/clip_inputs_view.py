@@ -130,12 +130,23 @@ def _speed_sentence(clip: RenderSpeed | None, now: RenderSpeed | None) -> str:
     """The top speed under the clock changed (LIVESTACK-67): it would appear, change, or go.
 
     "Appear" covers the speed published after the render and the mark set
-    since; "go away" the mark removed, or the clock (and so the speed) gone.
+    since; "go away" the mark removed, or the clock (and so the speed) gone;
+    "moved" the same value from another moment (the mark, or the cut-out
+    of a prova that shows it N s before the end).
     """
     if clip is None:
         return text("outdated.speed.published", now=_speed_text(now))
     if now is None:
         return text("outdated.speed.removed", clip=_speed_text(clip))
+    if (clip.text, clip.unit) == (now.text, now.unit):
+        # Same value, another moment: the mark moved, or, for a prova that
+        # shows it N s before the end (LIVESTACK-68), the cut-out did.
+        return text(
+            "outdated.speed.moved",
+            speed=with_unit(now.text, now.unit),
+            clip=format_timecode(clip.speed_mark_s),
+            now=format_timecode(now.speed_mark_s),
+        )
     return text("outdated.speed.changed", clip=_speed_text(clip), now=_speed_text(now))
 
 

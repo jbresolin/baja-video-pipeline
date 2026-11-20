@@ -450,7 +450,11 @@ Top speed (contract 2.13.0, LIVESTACK-67): the inputs also hold
 mean; `ReportedSpeed` in the worker's report). The speed published or
 corrected (compared as the text drawn, so a correction that rounds to the
 same text changes nothing), the mark moved (0.5 ms tolerance) or removed,
-or the clock above it gone lists `speed` in `changed`.
+or the clock above it gone lists `speed` in `changed`. For a prova that
+shows the speed N seconds before the clip's end (contract 2.14.0,
+LIVESTACK-68) `speed_mark_s` is the computed start, so moving the cut-out
+lists `cut` and `speed`, and switching the prova between the two ways
+lists `speed` only when the start moves.
 
 `Job.clip_inputs` (`ClipInputsComparison`) puts the **newest** version's
 inputs (`clip`) next to what a render would use now (`now`: the review as
@@ -793,6 +797,23 @@ mark (µs(t) ≥ µs(mark), each rounded half up) to the end of the clip.
 `speed_polling`, `speed_fetch`. With "Esperar o resultado oficial", a
 render whose clip would show a speed also waits for it
 (`result_hold_started.details.waits_for` then lists `"speed"`).
+
+**The speed N seconds before the clip's end** (LIVESTACK-68, contract
+2.14.0; design §42). The `speed` block may have `seconds_before_end`, a
+number of seconds, more than 0 and at most 30, decimals allowed (else
+422 with `problem: more_than_and_at_most`, `more_than: 0`, `maximum: 30`,
+or `wrong_type` with `expected: number`). Then the speed is shown for the
+last N seconds of the clip and `Job.speed_mark_s` is kept but not used.
+The start, in raw-video seconds, is `max(cut_in_s, ⌊end − N⌋ms)` with
+`end` = `cut_out_s`, or `duration_s` without one (whole microseconds,
+rounded down to the millisecond; a missing cut-in is 0); no end, no
+start, no speed. It goes into `RenderSpeed.speed_mark_s` (so
+`ProcessTask.pass_speed`, the render inputs and the worker are as above).
+`PassSpeed` adds `seconds_before_end` (null = from the mark) and
+`speed_start_s`, the start used (the mark in the mark mode; null for
+none). With a clock, the result hold waits for the speed whenever it
+waits for the clock. `PassResultTestResponse` adds
+`speed_seconds_before_end`.
 
 **Waiting for the official result** (contract 2.12.0, LIVESTACK-62;
 design §38). `ReviewUpdate.wait_for_result: true` with `ready` or

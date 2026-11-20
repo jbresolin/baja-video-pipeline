@@ -12,7 +12,13 @@ from typing import Any
 
 from pydantic import Field
 
-from shared.models.common import CarNumber, PassNumber, ReadByClients, ReceivedByServer
+from shared.models.common import (
+    CarNumber,
+    PassNumber,
+    ReadByClients,
+    ReceivedByServer,
+    SecondsBeforeEnd,
+)
 from shared.models.enums import PassResultProblem
 
 # The configuration is a small JSON document typed by hand; this is far
@@ -186,3 +192,7 @@ class PassResultTestResponse(ReadByClients):
     speed_problem: PassResultProblem | None = None
     speed_problem_detail: str | None = None
     speed_fetch: PassResultFetch | None = None
+    # LIVESTACK-68: the prova shows the speed for the last N seconds of the
+    # clip (`speed.seconds_before_end`), so "Testar" says "(entra 3 s antes
+    # do fim do clipe)"; None = from the reviewer's mark.
+    speed_seconds_before_end: SecondsBeforeEnd | None = None

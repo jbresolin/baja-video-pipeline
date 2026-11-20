@@ -28,14 +28,19 @@ one stays in force. Shape (docs/design.md §32 has a commented example):
           "speed": {"resultado": "VEL",   # another table of the same prova (required)
                     "column": "Velocidade",
                     "unit": "km/h",       # default "" (no unit)
-                    "decimals": 1}        # 0–3, default 0
+                    "decimals": 1,        # 0–3, default 0
+                    "seconds_before_end": 3}  # LIVESTACK-68, optional, below
         }
       }
     }
 
 A `speed` block needs a `clock` block: the speed is drawn under the clock
 (docs/design.md §40). Run n of the speed column pairs with run n of the
-clock column, read the prova's `runs` way.
+clock column, read the prova's `runs` way. Without `seconds_before_end`
+the speed appears from the frame the reviewer marks ("Velocidade" on the
+job page); with it (a number of seconds, more than 0 and at most 30,
+decimals allowed) it is shown for the last N seconds of the cut clip and
+no mark is used (LIVESTACK-68, docs/design.md §42).
 
 Keys starting with "_" are ignored anywhere, so a "_comment" can say why
 something is set (JSON has no comments). Any other unknown key is an
@@ -53,6 +58,7 @@ from orchestrator.domain.pass_results_config_values import (
     checked_bool,
     checked_decimals,
     checked_object,
+    checked_seconds_before_end,
     checked_text,
     map_entries,
 )
@@ -118,13 +124,16 @@ class SpeedSpec:
     """The top speed under the clock (LIVESTACK-67), from a second table of the prova.
 
     `resultado` names that table ("VEL" → "26BR_VEL"); run n of `column`
-    there pairs with run n of the clock's column.
+    there pairs with run n of the clock's column. `seconds_before_end`
+    (LIVESTACK-68): None = from the reviewer's speed mark; N = for the last
+    N seconds of the clip, with no mark.
     """
 
     resultado: str
     column: str
     unit: str = ""
     decimals: int = 0
+    seconds_before_end: float | None = None
 
 
 @dataclass(frozen=True)
@@ -287,7 +296,7 @@ def _speed(value: Any, path: list[str]) -> SpeedSpec:
     entry = checked_object(
         value,
         path,
-        allowed={"resultado", "column", "unit", "decimals"},
+        allowed={"resultado", "column", "unit", "decimals", "seconds_before_end"},
         required={"resultado", "column"},
     )
     resultado = checked_text(entry["resultado"], [*path, "resultado"], 3)
@@ -300,4 +309,9 @@ def _speed(value: Any, path: list[str]) -> SpeedSpec:
             entry.get("unit", ""), [*path, "unit"], MAX_UNIT_LENGTH, allow_empty=True
         ),
         decimals=checked_decimals(entry.get("decimals", 0), [*path, "decimals"]),
+        seconds_before_end=(
+            checked_seconds_before_end(entry["seconds_before_end"], [*path, "seconds_before_end"])
+            if "seconds_before_end" in entry
+            else None
+        ),
     )

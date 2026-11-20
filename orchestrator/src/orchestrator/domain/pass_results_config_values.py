@@ -7,9 +7,14 @@ a code the review UI writes in pt-BR, with its `params`). Moved out of
 pass_results_config.py when the speed block (LIVESTACK-67) made it too long.
 """
 
+import math
 from typing import Any
 
 MAX_DECIMALS = 3
+# The speed shown at most this long before the clip's end (LIVESTACK-68):
+# a clip of a run is rarely longer, and a bigger N would just mean "the
+# whole clip", which a typo is more likely to cause than a wish.
+MAX_SECONDS_BEFORE_END = 30
 
 
 class ConfigError(ValueError):
@@ -79,3 +84,24 @@ def checked_decimals(value: Any, path: list[str]) -> int:
             path, "out_of_range", f"must be 0 to {MAX_DECIMALS}", minimum=0, maximum=MAX_DECIMALS
         )
     return value
+
+
+def checked_seconds_before_end(value: Any, path: list[str]) -> float:
+    """A number of seconds, more than 0 and at most MAX_SECONDS_BEFORE_END; decimals allowed.
+
+    NaN and Infinity are refused as "not a number": Python's json reads
+    them, but no clip has a moment there.
+    """
+    # bool is an int in Python; `true` is not a number of seconds.
+    is_number = isinstance(value, int | float) and not isinstance(value, bool)
+    if not is_number or not math.isfinite(value):
+        raise ConfigError(path, "wrong_type", "must be a number", expected="number")
+    if not 0 < value <= MAX_SECONDS_BEFORE_END:
+        raise ConfigError(
+            path,
+            "more_than_and_at_most",
+            f"must be more than 0 and at most {MAX_SECONDS_BEFORE_END}",
+            more_than=0,
+            maximum=MAX_SECONDS_BEFORE_END,
+        )
+    return float(value)
