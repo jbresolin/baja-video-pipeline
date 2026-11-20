@@ -1110,7 +1110,9 @@ missing `cut_in_s` is stored as 0 and a missing `cut_out_s` as the probed
 `duration_s` (the whole video); only when no duration is known yet is a
 missing `cut_out_s` still reported in `missing`. `save` never fills them.
 `team_name` is resolved from `car_number`. Cuts must satisfy
-`0 ≤ in < out ≤ duration`.
+`0 ≤ in < out ≤ duration`. A `cut_out_s`, `largada_s` or `speed_mark_s` at most
+0.1 s past the end is stored as `duration_s` (the page rounds to the
+millisecond and its player may use the proxy's duration); further is 422.
 
 **Metrics.** `GET /metrics` (`adminBearer`, contract 1.1.0) answers in the
 Prometheus text format for an external scraper on the tailnet

@@ -121,6 +121,38 @@ def _merged_fields(job_row: sqlite3.Row, update: ReviewUpdate) -> dict[str, Any]
     return merged
 
 
+# How far past the end of the raw a cut-out or a mark may land and still
+# mean "the end". The page writes seconds with 3 decimals, rounded to the
+# nearest millisecond, and the raw's duration is not a whole number of
+# milliseconds: a cut-out left at the end of an 11.5717 s video comes back
+# as 11.572 and was refused as past the end (2026-11-20). The page's player
+# also clamps to the proxy's duration, which can differ from the raw's by
+# a frame. A tenth of a second covers both; further than that is a mistake
+# worth refusing.
+END_OF_VIDEO_TOLERANCE_S = 0.1
+
+# The fields that are a time in the video and must not be past its end.
+TIMES_IN_THE_VIDEO = ("cut_out_s", "largada_s", "speed_mark_s")
+
+
+def _snap_times_just_past_the_end(job_row: sqlite3.Row, merged: dict[str, Any]) -> None:
+    """A cut-out or mark at most END_OF_VIDEO_TOLERANCE_S past the end becomes the end.
+
+    Stored as the duration itself, so the render, the page and the "clip no
+    longer matches" check all see a time inside the video.
+    """
+    duration = job_row["duration_s"]
+    if duration is None:
+        return
+    for name in TIMES_IN_THE_VIDEO:
+        value = merged[name]
+        is_just_past_the_end = (
+            value is not None and duration < value <= duration + END_OF_VIDEO_TOLERANCE_S
+        )
+        if is_just_past_the_end:
+            merged[name] = duration
+
+
 def _check_cuts(job_row: sqlite3.Row, merged: dict[str, Any]) -> None:
     cut_in, cut_out = merged["cut_in_s"], merged["cut_out_s"]
     if cut_in is not None and cut_out is not None and cut_out <= cut_in:
@@ -196,6 +228,7 @@ def update_review(
         state = JobState(job_row["state"])
         _check_action_allowed(state, update.action)
         merged = _merged_fields(job_row, update)
+        _snap_times_just_past_the_end(job_row, merged)
         _check_cuts(job_row, merged)
         if update.action in (ReviewAction.READY, ReviewAction.REPROCESS):
             _default_missing_cuts_to_whole_video(job_row, merged)
