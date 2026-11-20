@@ -96,9 +96,13 @@ file name without `.zip`). Bump the Linux twin in the same commit:
 Linux smoke build) downloads the same release's
 `ffmpeg-n<X.Y.Z>-…-linux64-gpl-<X.Y>.tar.xz` (`LINUX_FFMPEG_URL`,
 `LINUX_FFMPEG_SHA256` = the asset's SHA-256, and the cache key). **BtbN deletes old autobuild releases after a
-while**, so an old pin eventually 404s. If that happens, bump; or, to keep
-a known-good build, upload the zip to a release of this repo and point
-`url` there (same hash).
+while**, so pins point at a copy in this repo instead: the prerelease
+`vendor-ffmpeg-<version>` holds both files (design §41). When bumping,
+check the new files' SHA-256 against BtbN's digests, publish them as a new
+`vendor-ffmpeg-<version>` prerelease (the hand-started workflow
+`.github/workflows/rehost-ffmpeg.yml` shows how; adapt its names and
+hashes), then point both pins at it. The 2026-10-27 build was re-hosted
+from the Actions caches on 2026-11-20 after BtbN deleted it.
 
 **NSSM.** 2.24 (2014) is the last release; there is nothing to bump.
 `nssm.cc` often answers 503 to CI runners, so the lock lists an

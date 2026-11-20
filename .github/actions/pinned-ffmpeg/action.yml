@@ -1,5 +1,6 @@
 # Puts the workers' ffmpeg build on the PATH of a Linux runner: the static
-# linux64 twin of installer/vendor.lock's [ffmpeg] (same BtbN release),
+# linux64 twin of installer/vendor.lock's [ffmpeg] (same BtbN build, served
+# from this repo's prerelease vendor-ffmpeg-n9.0.2, design §41),
 # checked against its SHA-256 and kept in the Actions cache. Used by CI, so
 # the real-ffmpeg tests (frame-exact clock, framings, HDR) run on the
 # version the workers ship, and by the installer's Linux smoke build.
@@ -20,7 +21,7 @@ runs:
     - name: Install the pinned ffmpeg
       shell: bash
       env:
-        LINUX_FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-27-18-38/ffmpeg-n9.0.2-36-g6882969ce9-linux64-gpl-9.0.tar.xz
+        LINUX_FFMPEG_URL: https://github.com/jbresolin/baja-video-pipeline/releases/download/vendor-ffmpeg-n9.0.2/ffmpeg-n9.0.2-36-g6882969ce9-linux64-gpl-9.0.tar.xz
         LINUX_FFMPEG_SHA256: 8ce0fd17fb808adf48d66c3e72d7f0acfc28d2b95a0f6bf98483be8c652083ed
       run: |
         set -euo pipefail

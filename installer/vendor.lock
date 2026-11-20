@@ -9,10 +9,12 @@
 # unpacked zip); payloads without it are used as downloaded.
 
 [ffmpeg]
-# BtbN FFmpeg-Builds, release tag autobuild-2026-10-27-18-38, release
-# branch 9.0 (n9.0.2), win64, GPL, shared libraries. Includes h264_nvenc.
-# The hash equals the digest GitHub publishes for the asset.
-url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-27-18-38/ffmpeg-n9.0.2-36-g6882969ce9-win64-gpl-shared-9.0.zip"
+# BtbN FFmpeg-Builds autobuild-2026-10-27-18-38, release branch 9.0
+# (n9.0.2), win64, GPL, shared libraries. Includes h264_nvenc. BtbN deleted
+# that release, so the identical file is served from this repo's prerelease
+# vendor-ffmpeg-n9.0.2 (design §41). The hash equals the digest GitHub
+# publishes for the asset there.
+url = "https://github.com/jbresolin/baja-video-pipeline/releases/download/vendor-ffmpeg-n9.0.2/ffmpeg-n9.0.2-36-g6882969ce9-win64-gpl-shared-9.0.zip"
 sha256 = "dbfef481021a393424c9bd4e588c8d568f0ebba780c01c63dfcb87c87be901c7"
 path_in_archive = "ffmpeg-n9.0.2-36-g6882969ce9-win64-gpl-shared-9.0"
 
