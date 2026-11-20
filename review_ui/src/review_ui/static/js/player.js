@@ -16,10 +16,18 @@
 // the same block and works the same way: "Marcar" or the v key, -/= nudge
 // it, a second line on the cut bar in another colour, "Limpar".
 //
+// A prova may instead show the speed for the last N seconds of the clip
+// (LIVESTACK-68): its clock block then has no speed mark and carries N in
+// data-speed-seconds-before-end. The green line is drawn at the computed
+// start (the form's cut-out minus N, js/pass_clock.js speedStartBeforeEnd)
+// and follows the cut-out; the v key has nothing to mark. speedStart() is
+// where the speed starts in either mode, for the overlay preview.
+//
 // The page has its own control bar under the picture (play, frame step,
 // time, the cut bar as scrubber), outside the stage that "Girar" turns, so
 // it works at every rotation (LIVESTACK-51 item 4).
 import { formatTimecode } from "./format.js";
+import { speedStartBeforeEnd } from "./pass_clock.js";
 import { t } from "./text.js";
 
 // Used when the page carries no frame rate; phone footage is ~30 fps.
@@ -79,6 +87,37 @@ export function setupPlayer({ video, form, jobElement }) {
     return Number.isFinite(value) ? value : null;
   }
 
+  // N when the prova shows the speed N s before the clip's end (LIVESTACK-68),
+  // read from the clock block each time (the block may come and go); null
+  // when the speed comes from its mark.
+  function secondsBeforeEnd() {
+    const block = form.querySelector("[data-speed-seconds-before-end]");
+    if (!block) return null;
+    const value = parseFloat(block.dataset.speedSecondsBeforeEnd);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  // The raw video's length as the orchestrator knows it (Job.duration_s),
+  // the clip's end when no cut-out is set; null when unknown.
+  function rawDuration() {
+    const value = parseFloat(jobElement.dataset.duration);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  // Where the speed starts, in raw-video seconds: the speed mark, or N s
+  // before the clip's end from the form's cuts (as the orchestrator will
+  // work it out after a save). null = no speed.
+  function speedStart() {
+    const seconds = secondsBeforeEnd();
+    if (seconds === null) return readMark("speed");
+    return speedStartBeforeEnd({
+      cutIn: readMark("in"),
+      cutOut: readMark("out"),
+      duration: rawDuration(),
+      secondsBeforeEnd: seconds,
+    });
+  }
+
   function setActive(name) {
     activeMark = name;
     for (const box of form.querySelectorAll("[data-mark-box]")) {
@@ -114,7 +153,8 @@ export function setupPlayer({ video, form, jobElement }) {
       const largada = readMark("largada");
       largadaMark.hidden = largada === null;
       if (largada !== null) largadaMark.style.left = `${(100 * largada) / total}%`;
-      const speed = readMark("speed");
+      // The speed mark, or the computed start: it follows the cut-out.
+      const speed = speedStart();
       speedMark.hidden = speed === null;
       if (speed !== null) speedMark.style.left = `${(100 * speed) / total}%`;
     }
@@ -262,5 +302,5 @@ export function setupPlayer({ video, form, jobElement }) {
   }
   setActive("in");
   render();
-  return { handleKey, readMark };
+  return { handleKey, readMark, speedStart };
 }

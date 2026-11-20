@@ -18,6 +18,9 @@
 // The top speed under the clock (LIVESTACK-67, "Aceleração e Velocidade")
 // is shown from the speed-trap mark to the end of the clip, by the
 // largada's rule: speedShownAt, checked against the vectors' speed_cases.
+// A prova may instead show it for the last N seconds of the clip
+// (LIVESTACK-68): speedStartBeforeEnd says where that starts, checked
+// against the vectors' speed_before_end_cases.
 
 const MICROSECONDS_PER_SECOND = 1_000_000;
 
@@ -83,4 +86,24 @@ export function clipEndsBeforeFreeze(cutOutSeconds, largadaSeconds, officialUnit
 // reviewer marked shows it and the frame before it does not.
 export function speedShownAt(rawTimeSeconds, speedMarkSeconds) {
   return elapsedMicroseconds(rawTimeSeconds, speedMarkSeconds) >= 0;
+}
+
+const MICROSECONDS_PER_MILLISECOND = 1_000;
+
+// Where the speed starts when the prova shows it N s before the clip's end
+// (LIVESTACK-68), the same rule as shared/pass_clock.py's
+// speed_start_before_end: the clip ends at the cut-out, or at the end of the
+// video without one; the start is that end minus N, rounded down to the
+// millisecond, never before the cut-in. Whole microseconds, so 5.1 − 3 is
+// 2.1, not 2.099 (the vectors' speed_before_end_cases). null when no end is
+// known: then there is no speed. The values are seconds, or null.
+export function speedStartBeforeEnd({ cutIn, cutOut, duration, secondsBeforeEnd }) {
+  const clipEnd = cutOut ?? duration;
+  if (clipEnd === null || clipEnd === undefined) return null;
+  const startUs = microseconds(clipEnd) - microseconds(secondsBeforeEnd);
+  // Math.floor rounds towards minus infinity, like Python's //.
+  const startRoundedDownUs =
+    Math.floor(startUs / MICROSECONDS_PER_MILLISECOND) * MICROSECONDS_PER_MILLISECOND;
+  const cutInUs = microseconds(cutIn ?? 0);
+  return Math.max(startRoundedDownUs, cutInUs) / MICROSECONDS_PER_SECOND;
 }

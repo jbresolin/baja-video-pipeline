@@ -179,6 +179,8 @@ def _test_speed(
         "speed_configured": True,
         "speed_resultado_id": speed_id,
         "speed_unit": prova_config.speed.unit,
+        # LIVESTACK-68: "(entra 3 s antes do fim do clipe)"; None = from the mark.
+        "speed_seconds_before_end": prova_config.speed.seconds_before_end,
         "speed_fetch": fetch_status(row, speed_id),
     }
     table = stored_table(row)

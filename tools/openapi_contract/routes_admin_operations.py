@@ -184,10 +184,12 @@ def update_pass_results_config(body: UpdatePassResultsConfigRequest) -> PassResu
     """A configuration that is not valid answers 422 `validation_error` with
     `details` = {`path` (e.g. "provas.MAN.result.decimals"), `problem` (one of
     not_json, wrong_type, unknown_key, missing_key, empty_text, too_long,
-    out_of_range, not_one_of, bad_id, bad_name, nothing_to_show), and the
-    problem's own values (`line`/`column` for not_json, `expected`,
-    `minimum`/`maximum`, `choices`, `allowed`, `max_length`)}; the one in force
-    stays. Audited as `pass_results_config_updated`. Shape: docs/design.md §32."""
+    out_of_range, not_one_of, bad_id, bad_name, nothing_to_show,
+    speed_needs_clock, more_than_and_at_most), and the problem's own values
+    (`line`/`column` for not_json, `expected`, `minimum`/`maximum`,
+    `more_than`/`maximum`, `choices`, `allowed`, `max_length`)}; the one in
+    force stays. Audited as `pass_results_config_updated`. Shape:
+    docs/design.md §32 (the `speed` block: §40, `seconds_before_end`: §42)."""
     not_implemented()
 
 

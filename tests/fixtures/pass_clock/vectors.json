@@ -15,7 +15,12 @@
     "LIVESTACK-67: speed_cases = is the top speed under the clock shown at time_s? It is shown from",
     "the speed-trap mark (speed_mark_s, raw-video seconds) to the end of the clip, by the largada's",
     "rule: whole microseconds, each time rounded half up on its own, shown when at or after the mark.",
-    "Read by tests/shared/test_speed_rule.py (Python and JavaScript) like the cases above."
+    "Read by tests/shared/test_speed_rule.py (Python and JavaScript) like the cases above.",
+    "LIVESTACK-68: speed_before_end_cases = where the speed starts when the prova shows it for the",
+    "last N seconds of the clip (speed.seconds_before_end). The clip ends at cut_out_s, or at the",
+    "video's end (duration_s) without a cut-out; start_s = that end minus N, in whole microseconds",
+    "rounded down to the millisecond, never before the cut-in (a null cut-in is 0). A null start_s",
+    "means no end is known, so no speed. Read by tests/shared/test_speed_before_end_rule.py."
   ],
   "cases": [
     {"why": "before the largada", "time_s": 0.5, "largada_s": 0.51, "official_units": 15, "decimals": 1, "text": null, "result_shown": false},
@@ -75,5 +80,19 @@
     {"why": "a mark at the very start of the video", "time_s": 0.0, "speed_mark_s": 0.0, "shown": true},
     {"why": "a 29.97 fps frame time just before the mark", "time_s": 60.026633333333336, "speed_mark_s": 60.06, "shown": false},
     {"why": "a 29.97 fps frame time at the mark", "time_s": 60.06, "speed_mark_s": 60.06, "shown": true}
+  ],
+  "speed_before_end_cases": [
+    {"why": "3 s before a cut-out at 5 s", "cut_in_s": 0.5, "cut_out_s": 5.0, "duration_s": 12.0, "seconds_before_end": 3, "start_s": 2.0},
+    {"why": "no cut-out: 3 s before the end of the 12 s video", "cut_in_s": 0.0, "cut_out_s": null, "duration_s": 12.0, "seconds_before_end": 3, "start_s": 9.0},
+    {"why": "a clip shorter than N: the whole clip, from the cut-in", "cut_in_s": 3.5, "cut_out_s": 5.0, "duration_s": 12.0, "seconds_before_end": 3, "start_s": 3.5},
+    {"why": "a clip exactly N long: from the cut-in", "cut_in_s": 2.0, "cut_out_s": 5.0, "duration_s": 12.0, "seconds_before_end": 3, "start_s": 2.0},
+    {"why": "neither a cut-out nor a duration: no end, so no start", "cut_in_s": 0.0, "cut_out_s": null, "duration_s": null, "seconds_before_end": 3, "start_s": null},
+    {"why": "5.1 - 3 is 2.0999999999999996 in floating point: still 2.1", "cut_in_s": 0.0, "cut_out_s": 5.1, "duration_s": 12.0, "seconds_before_end": 3, "start_s": 2.1},
+    {"why": "a decimal N: 2.5 s before 7.3 s", "cut_in_s": 0.0, "cut_out_s": 7.3, "duration_s": 12.0, "seconds_before_end": 2.5, "start_s": 4.8},
+    {"why": "a cut-out between milliseconds: rounded down to the millisecond", "cut_in_s": 0.0, "cut_out_s": 5.0337, "duration_s": 12.0, "seconds_before_end": 3, "start_s": 2.033},
+    {"why": "no cut-in counts as the start of the video", "cut_in_s": null, "cut_out_s": 2.0, "duration_s": 12.0, "seconds_before_end": 3, "start_s": 0.0},
+    {"why": "the largest N, 30 s", "cut_in_s": 0.0, "cut_out_s": 45.5, "duration_s": 60.0, "seconds_before_end": 30, "start_s": 15.5},
+    {"why": "a cut-in between milliseconds is kept as it is: never before the first frame", "cut_in_s": 3.5004, "cut_out_s": 5.0, "duration_s": 12.0, "seconds_before_end": 3, "start_s": 3.5004},
+    {"why": "a 29.97 fps cut-out (frame 300): its time minus N, rounded down", "cut_in_s": 0.0, "cut_out_s": 10.01001001001001, "duration_s": 12.0, "seconds_before_end": 3, "start_s": 7.01}
   ]
 }

@@ -107,7 +107,13 @@ from tools.openapi_contract import (
 # 0.8.0). Deploy the VPS first: an older orchestrator refuses a 0.8.0
 # worker's render-inputs report (it always carries the pass_speed key); the
 # worker logs it and delivers anyway.
-CONTRACT_VERSION = "2.13.0"
+# 2.14.0: the top speed shown N seconds before the clip's end (LIVESTACK-68):
+# PassSpeed.seconds_before_end and speed_start_s, PassResultTestResponse.
+# speed_seconds_before_end; the configuration's speed.seconds_before_end
+# (problem `more_than_and_at_most`, `wrong_type` expected `number`). The
+# start goes into RenderSpeed.speed_mark_s, so the render task, the render
+# feature and the worker are unchanged: VPS only, 0.8.0 workers draw it.
+CONTRACT_VERSION = "2.14.0"
 
 DESCRIPTION = """\
 Orchestrator API of the Baja video pipeline v2. Generated from

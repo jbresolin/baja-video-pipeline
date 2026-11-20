@@ -1,7 +1,7 @@
 """A job's top speed under the clock, from the speed mark and the speed table (LIVESTACK-67).
 
     the prova's `speed` block (Settings) ─┐
-    the job's speed mark                  ─┼─► pass_speed_for_job ─► Job.pass_speed
+    the job's speed mark, or its cuts     ─┼─► pass_speed_for_job ─► Job.pass_speed
     the run's official speed              ─┤          │
       (the `speed.column` value, from the  │          └─► .render: what a process task draws
        last good answer of the SPEED table)│              (ProcessTask.pass_speed)
@@ -20,6 +20,18 @@ The speed is drawn only in a clip that has a clock (design §40): it sits
 under the clock, and one corner has one layout. Without a clock (no
 largada, "Mostrar cronômetro" off, no official time) there is no speed
 pill either, and the job page says so.
+
+Where the speed starts (LIVESTACK-68, design §42): from the reviewer's
+speed mark, or, when the prova's speed block has `seconds_before_end`
+(N), for the last N seconds of the cut clip, with no mark:
+
+    start = (cut-out, or the video's duration without one) − N,
+            rounded down to the millisecond, never before the cut-in
+
+(shared.pass_clock.speed_start_before_end). That start goes into
+RenderSpeed.speed_mark_s, exactly where a mark would, so a 0.8.0 worker
+draws it with the rule it already has. The job's stored speed mark is
+then kept but not used: switching the configuration back restores it.
 """
 
 import sqlite3
@@ -34,11 +46,12 @@ from orchestrator.domain.pass_results import (
     fetch_status,
     stored_table,
 )
-from orchestrator.domain.pass_results_config import ProvaPassConfig
+from orchestrator.domain.pass_results_config import ProvaPassConfig, SpeedSpec
 from orchestrator.domain.pass_text import format_number, run_value
 from orchestrator.domain.results_table import ResultsTable
 from orchestrator.repositories import pass_results as pass_results_repo
 from shared.models import PassClock, PassResultProblem, PassSpeed, RenderSpeed
+from shared.pass_clock import speed_start_before_end
 
 
 @dataclass(frozen=True)
@@ -78,6 +91,23 @@ def official_speed(
     return OfficialSpeed(text=format_number(speed.value, spec.decimals))
 
 
+def speed_start_for_job(job_row: Any, spec: SpeedSpec) -> float | None:
+    """Where the speed would start, in raw-video seconds; None when it has no start.
+
+    From the mark (§40), or N seconds before the clip's end when the
+    prova's speed block has `seconds_before_end` (§42). Without a mark, or
+    without a cut-out and a duration, there is no start and so no speed.
+    """
+    if spec.seconds_before_end is None:
+        return job_row["speed_mark_s"]
+    return speed_start_before_end(
+        cut_in_s=job_row["cut_in_s"],
+        cut_out_s=job_row["cut_out_s"],
+        duration_s=job_row["duration_s"],
+        seconds_before_end=spec.seconds_before_end,
+    )
+
+
 def pass_speed_for_job(
     connection: sqlite3.Connection, job_row: Any, clock: PassClock | None = None
 ) -> PassSpeed:
@@ -92,8 +122,15 @@ def pass_speed_for_job(
     if prova_config is None or prova_config.speed is None:
         return PassSpeed(problem=PassResultProblem.NOT_CONFIGURED)
     spec = prova_config.speed
-    mark = job_row["speed_mark_s"]
-    base = PassSpeed(configured=True, speed_mark_s=mark, decimals=spec.decimals, unit=spec.unit)
+    start = speed_start_for_job(job_row, spec)
+    base = PassSpeed(
+        configured=True,
+        speed_mark_s=job_row["speed_mark_s"],
+        decimals=spec.decimals,
+        unit=spec.unit,
+        seconds_before_end=spec.seconds_before_end,
+        speed_start_s=start,
+    )
 
     event = event_id(connection)
     if not event:
@@ -114,9 +151,10 @@ def pass_speed_for_job(
     if clock is None:
         clock = pass_clock_for_job(connection, job_row)
     render = None
-    # Drawn only under a clock (design §40), and only once marked.
-    if clock.render is not None and mark is not None:
-        render = RenderSpeed(speed_mark_s=mark, text=official.text, unit=spec.unit)
+    # Drawn only under a clock (design §40), and only with a start: the
+    # mark, or N s before the clip's end (§42).
+    if clock.render is not None and start is not None:
+        render = RenderSpeed(speed_mark_s=start, text=official.text, unit=spec.unit)
     return base.model_copy(update={"official_text": official.text, "render": render})
 
 

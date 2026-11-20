@@ -3,7 +3,9 @@
 The speed mark in the job page's "Cronômetro" block and its status line,
 the warnings, the sentences for a clip whose speed changed, the waiting
 reason for workers too old to draw it, and the speed line of "Testar" and
-the speed table's status on the Settings page.
+the speed table's status on the Settings page. And, for a prova that
+shows the speed N seconds before the clip's end (LIVESTACK-68), the line
+that replaces the mark and its sentences.
 """
 
 TEXT: dict[str, str] = {
@@ -28,6 +30,13 @@ TEXT: dict[str, str] = {
     ),
     # Why there is no official speed: the result line's sentences after this.
     "pass_speed.no_official": "Sem velocidade oficial ainda:",
+    # --- N seconds before the clip's end (LIVESTACK-68): no mark ---
+    "pass_speed.before_end": "Velocidade: entra {seconds} s antes do fim do clipe.",
+    "pass_speed.on_air.before_end": "Velocidade na tarja: {speed}, sob o cronômetro.",
+    "pass_speed.no_clip_end": (
+        "Sem o fim do clipe (corte final ou duração do vídeo), não há onde pôr a "
+        "velocidade ({speed}): marque o corte final."
+    ),
     # Both marks set, the speed's before the largada (js/speed_order.js; never blocks).
     "pass_speed.before_largada": (
         "A marca de velocidade está antes da largada. Confira se marcou o quadro certo."
@@ -41,6 +50,12 @@ TEXT: dict[str, str] = {
         "O clipe no ar tem velocidade ({clip}); a revisão agora diz para não mostrar."
     ),
     "outdated.speed.describe": "{speed} a partir de {mark}",
+    # The same value from another moment: the mark moved, or the cut-out
+    # of a prova that shows it N s before the end (LIVESTACK-68).
+    "outdated.speed.moved": (
+        "A velocidade ({speed}) entra em outro momento: no clipe no ar a partir de {clip}; "
+        "agora seria a partir de {now}."
+    ),
     # --- Waiting reason, Frota ---
     "waiting.no_holder_can_render_speed": (
         "Esperando um PC com o original que saiba desenhar a velocidade sob o cronômetro "
@@ -50,9 +65,18 @@ TEXT: dict[str, str] = {
     # --- Configurações, "Testar" and the tables' status ---
     "pass_results.test.speed": "Velocidade: <strong>{text}</strong>.",
     "pass_results.test.speed_problem": "Velocidade: {reason}",
+    "pass_results.test.speed_before_end": (
+        "Velocidade: <strong>{text}</strong> (entra {seconds} s antes do fim do clipe)."
+    ),
     "pass_results.speed_table": "velocidade",
     "pass_results.config_problem.speed_needs_clock": (
         "o bloco <code>speed</code> precisa de um bloco <code>clock</code> na mesma prova "
         "(a velocidade aparece sob o cronômetro)"
     ),
+    # `seconds_before_end` out of range (LIVESTACK-68).
+    "pass_results.config_problem.more_than_and_at_most": (
+        "o valor deve ser maior que {more_than} e no máximo {maximum}"
+    ),
+    # `seconds_before_end` not a number: text in quotes, true/false, NaN.
+    "pass_results.expected.number": "um número (com ponto nas casas decimais, como 2.5)",
 }

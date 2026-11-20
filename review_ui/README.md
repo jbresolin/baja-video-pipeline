@@ -146,7 +146,15 @@ before a save. The overlay preview draws the speed under the clock from
 its mark (`speedShownAt` in `js/pass_clock.js`, checked against the
 vectors' `speed_cases`). "Testar" says "Velocidade: 37,2 km/h." and the
 status list has a row for the speed's table (`pass_results_trial_view.py`,
-`pass_results_settings_view.py`).
+`pass_results_settings_view.py`). For a prova whose `speed` block has
+`seconds_before_end` (LIVESTACK-68, `Job.pass_speed.seconds_before_end`)
+the mark's row is one line instead, "Velocidade: entra 3 s antes do fim
+do clipe.", the block carries N (`data-speed-seconds-before-end`), the
+<kbd>v</kbd> key marks nothing, and `js/player.js` draws the green line
+at the form's cut-out minus N (`speedStartBeforeEnd` in `js/pass_clock.js`,
+checked against the vectors' `speed_before_end_cases`); the overlay
+preview draws the speed from there (`player.speedStart()`). "Testar" adds
+"(entra 3 s antes do fim do clipe)".
 
 **The blocks follow the form** (LIVESTACK-53). The result and clock
 blocks sit in two slots (`#pass-result-slot`, `#pass-clock-slot`);

@@ -32,6 +32,12 @@ under the clock, the run's top speed, from the frame where the reviewer
 marked the car crossing the speed trap to the end of the clip. Its rule is
 the largada's: shown when the raw time, in whole microseconds, is at or
 after the mark's (speed_shown_at; the vectors' `speed_cases`).
+
+The speed N seconds before the end (LIVESTACK-68): a prova may show the
+speed for the last N seconds of the clip instead of from a mark. Where
+that starts is worked out once (speed_start_before_end; the vectors'
+`speed_before_end_cases`) and then used exactly like a mark, so the
+worker needs no new rule.
 """
 
 import math
@@ -124,6 +130,37 @@ def speed_shown_at(raw_time_s: float, speed_mark_s: float) -> bool:
     shows the speed and the frame before it does not.
     """
     return elapsed_microseconds(raw_time_s, speed_mark_s) >= 0
+
+
+MICROSECONDS_PER_MILLISECOND = 1_000
+
+
+def speed_start_before_end(
+    *,
+    cut_in_s: float | None,
+    cut_out_s: float | None,
+    duration_s: float | None,
+    seconds_before_end: float,
+) -> float | None:
+    """Where the speed pill starts when it is shown N s before the clip's end (LIVESTACK-68).
+
+    The clip ends at the cut-out, or at the end of the video without one;
+    the start is that end minus N, rounded down to the millisecond like a
+    mark, and never before the cut-in (a clip shorter than N shows the
+    speed throughout). Counted in whole microseconds, so 5.1 − 3 is 2.1 and
+    not 2.099 (the vectors' `speed_before_end_cases`; js/pass_clock.js has
+    the same rule). None when no end is known: then there is no speed.
+    """
+    clip_end_s = cut_out_s if cut_out_s is not None else duration_s
+    if clip_end_s is None:
+        return None
+    start_us = microseconds(clip_end_s) - microseconds(seconds_before_end)
+    # Python's // rounds towards minus infinity, so this is "rounded down"
+    # even for a start before 0 (a clip shorter than N), which the cut-in
+    # then replaces anyway.
+    start_us = (start_us // MICROSECONDS_PER_MILLISECOND) * MICROSECONDS_PER_MILLISECOND
+    cut_in_us = microseconds(cut_in_s or 0.0)
+    return max(start_us, cut_in_us) / MICROSECONDS_PER_SECOND
 
 
 def clip_ends_before_freeze(

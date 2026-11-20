@@ -61,7 +61,9 @@ class WaitStatus:
     # The clock's official time is known.
     clock_is_in: bool
     # A speed would be drawn under that clock (LIVESTACK-67): the prova has a
-    # speed block and the speed mark is set. False without a clock.
+    # speed block and the speed has a start (the mark, or, for a prova that
+    # shows it N s before the clip's end, always: LIVESTACK-68). False
+    # without a clock.
     waits_for_speed: bool = False
     # The run's official speed is known (from the speed table).
     speed_is_in: bool = False
@@ -103,8 +105,9 @@ def wait_status(connection: sqlite3.Connection, job_row) -> WaitStatus:
         result_is_in=result.text is not None,
         clock_is_in=clock.official_units is not None,
         # The speed is drawn only under the clock (design §40), so it is
-        # waited for only when the clock is.
-        waits_for_speed=waits_for_clock and speed.configured and speed.speed_mark_s is not None,
+        # waited for only when the clock is, and only when it has a start:
+        # the mark, or N s before the clip's end with no mark (§42).
+        waits_for_speed=waits_for_clock and speed.configured and speed.speed_start_s is not None,
         speed_is_in=speed.official_text is not None,
     )
 

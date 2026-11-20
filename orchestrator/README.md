@@ -173,7 +173,11 @@ Every state change goes through `domain/transitions.move_job`, which asks
   gives `Job.pass_speed` and `ProcessTask.pass_speed`, only when the clip
   has a clock and only to workers that declare `speed` (installer 0.8.0).
   The mark and the speed as drawn are render inputs; the result hold waits
-  for the speed too when it would be drawn.
+  for the speed too when it would be drawn. With `speed.seconds_before_end`
+  (LIVESTACK-68, design §42) the speed starts N s before the clip's end
+  (the cut-out, else the duration; `shared.pass_clock.speed_start_before_end`)
+  instead of at the mark, which is kept but not used; the start goes where
+  the mark would (`RenderSpeed.speed_mark_s`), so workers are unchanged.
 * **Waiting for the official result** (LIVESTACK-62, design §38):
   `PATCH …/review` with `wait_for_result: true` on `ready`/`reprocess`
   sets `jobs.result_hold_until` (now + the Settings' `result_wait_minutes`,

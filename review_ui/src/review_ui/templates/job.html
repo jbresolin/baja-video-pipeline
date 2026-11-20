@@ -96,7 +96,8 @@
         <dt><kbd>←</kbd> / <kbd>→</kbd></dt><dd>{{ t("shortcuts.frame_step", fps=frame_rate|number) }}</dd>
         <dt><kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd></dt><dd>{{ t("shortcuts.second_step") }}</dd>
         {% if clock_box %}<dt><kbd>l</kbd></dt><dd>{{ t("shortcuts.largada") }}</dd>{% endif %}
-        {% if clock_box and clock_box.speed %}<dt><kbd>v</kbd></dt><dd>{{ t("shortcuts.speed_mark") }}</dd>{% endif %}
+        {# No v for a prova that shows the speed N s before the clip's end (LIVESTACK-68). #}
+        {% if clock_box and clock_box.speed and not clock_box.speed.before_end_line %}<dt><kbd>v</kbd></dt><dd>{{ t("shortcuts.speed_mark") }}</dd>{% endif %}
         <dt><kbd>-</kbd> / <kbd>=</kbd></dt><dd>{{ t("shortcuts.nudge") }}</dd>
         <dt><kbd>p</kbd></dt><dd>{{ t("shortcuts.play_cut") }}</dd>
         <dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>{{ t("shortcuts.save") }}</dd>

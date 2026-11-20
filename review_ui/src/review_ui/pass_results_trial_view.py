@@ -16,7 +16,7 @@ from datetime import datetime
 from markupsafe import Markup
 
 from review_ui.catalog import markup, text
-from review_ui.formatting import relative_time_text
+from review_ui.formatting import relative_time_text, short_number
 from review_ui.pass_result_view import fetch_warning, problem_sentence
 from shared.models import PassResultTestRequest, PassResultTestResponse
 from shared.pass_clock import with_unit
@@ -115,11 +115,18 @@ def trial_clock(answer: PassResultTestResponse) -> Markup | str | None:
 
 
 def trial_speed(answer: PassResultTestResponse) -> Markup | str | None:
-    """The top speed under the clock (LIVESTACK-67): "Velocidade: 37,2 km/h.", or why none."""
+    """The top speed under the clock (LIVESTACK-67): "Velocidade: 37,2 km/h.", or why none.
+
+    For a prova that shows it N s before the clip's end (LIVESTACK-68):
+    "Velocidade: 37,2 km/h (entra 3 s antes do fim do clipe)."
+    """
     if not answer.speed_configured:
         return None
     if answer.speed_text is not None:
         # "" when the speed has no unit (None would read as the clock's "s").
         shown = with_unit(answer.speed_text, answer.speed_unit or "")
+        if answer.speed_seconds_before_end is not None:
+            seconds = short_number(answer.speed_seconds_before_end)
+            return markup("pass_results.test.speed_before_end", text=shown, seconds=seconds)
         return markup("pass_results.test.speed", text=shown)
     return text("pass_results.test.speed_problem", reason=problem_sentence(answer.speed_problem))

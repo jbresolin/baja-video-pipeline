@@ -1853,6 +1853,10 @@ the frame where the reviewer marked the car crossing the trap. Contract
   the version keeps the claim snapshot. The review UI goes with the
   orchestrator (it sends `speed_mark_s`).
 * **Out of scope**: other two-table provas, the speed in the lower third.
+* **The other way: N seconds before the clip's end** (LIVESTACK-68): a
+  prova's `speed` block may say `seconds_before_end`; the speed is then
+  shown for the last N seconds of the clip and the mark above is not
+  used. §42.
 * **Not checked**: the frame-exact tests ran on ffmpeg 6.1 here, not on
   the workers' 9.0 (the pinned BtbN build's URL answers 404: BtbN deleted
   that autobuild, so CI's download fails too unless its cache has it;
@@ -1873,3 +1877,84 @@ the frame where the reviewer marked the car crossing the trap. Contract
 * Bumping ffmpeg later: download the new build, check it, publish it the
   same way under a new `vendor-ffmpeg-<version>` tag, then change the URL
   and SHA-256 in both places (installer/MAINTAINERS.md).
+
+## 42. The speed N seconds before the clip's end (LIVESTACK-68, 2026-11-20)
+
+After talking to the team, João wanted a second way to show the AVF top
+speed (§40): always N seconds before the end of the cut clip, with no mark
+to set. The marked frame stays as the other way, per prova. Contract
+2.14.0; orchestrator and review UI only, **no worker change, no installer
+bump, no migration**.
+
+* **Configuration.** The prova's `speed` block may have
+  `"seconds_before_end": 3`: a number of seconds, more than 0 and at most
+  30, decimals allowed (2.5). Present: the speed is shown for the last N
+  seconds of the clip and the mark is not used; absent: the mark, as in
+  §40. Refused with `problem: more_than_and_at_most` (`more_than: 0`,
+  `maximum: 30`; "o valor deve ser maior que 0 e no máximo 30") or
+  `wrong_type` with `expected: number` (text in quotes, `true`, `null`,
+  and NaN/Infinity, which Python's json reads but no clip can use). Leaving
+  the key out, not `null`, is "from the mark". The mode is per prova, not
+  per job (the brief's scope).
+* **Where it starts.** `start = max(cut-in, ⌊end − N⌋ms)`, where the end is
+  the job's `cut_out_s`, or its `duration_s` without one, counted in whole
+  microseconds (each value rounded half up, as every mark) and rounded
+  down to the millisecond like the marks; a missing cut-in is 0. The clamp
+  comes after the rounding, so a cut-in between milliseconds is kept as it
+  is and the start is never before the clip's first frame; a clip shorter
+  than N shows the speed throughout. No cut-out and no duration: no start,
+  no speed, and the page says "Sem o fim do clipe…". An empty cut-out is
+  the duration until "Pronto" stores the duration as the cut-out (§26), so
+  both give the same start; only a raw no holder has probed yet has
+  neither.
+  `shared.pass_clock.speed_start_before_end` and
+  `js/pass_clock.js` `speedStartBeforeEnd`, held together by the vectors'
+  `speed_before_end_cases` (float traps such as 5.1 − 3 included).
+* **The worker does not change.** `domain/pass_speed.py` puts the start
+  into `RenderSpeed.speed_mark_s`, where a mark would go, so the task, the
+  render feature (`speed`, 0.8.0) and the frame-exact rule are §40's. A
+  0.7.x worker is not offered it, as for any speed.
+* **The stored mark is ignored, not cleared.** `jobs.speed_mark_s` stays
+  as it is (and `Job.speed_mark_s`, `PassSpeed.speed_mark_s` still report
+  it); the page has no mark field in this mode, so it sends nothing about
+  it. Switching the configuration back brings the mark back. A
+  `speed_mark_s` sent anyway is still stored (and still unused).
+* **`PassSpeed`** gains `seconds_before_end` (N, or null for the mark) and
+  `speed_start_s`, the start actually used: the mark in the mark mode, the
+  computed start here, null for none. The hold and the page read that one
+  field in both modes. `PassResultTestResponse.speed_seconds_before_end`
+  lets "Testar" say "Velocidade: 37,2 km/h (entra 3 s antes do fim do
+  clipe)."
+* **The result hold** (§38) waits for the speed when the clock is waited
+  for and the speed has a start: in this mode, whenever the clock is.
+* **Render inputs** (§25) are compared as in §40 (the start within
+  0.5 ms). Moving the cut-out moves the start, so a delivered clip lists
+  `cut` and `speed`. Switching a prova between the two ways flags a clip
+  only when what would be drawn changes: a mark 3 s before the cut-out
+  lands on the same start and flags nothing. When only the start moved
+  (same text and unit), the sentence is "A velocidade (37,2 km/h) entra em
+  outro momento: no clipe no ar a partir de 0:02,000; agora seria a partir
+  de 0:03,000." instead of "A velocidade mudou…", which read wrong with the
+  value unchanged; a moved mark in the mark mode gets it too.
+* **Job page.** The "Velocidade" row (Marcar, `v`, the nudges, Limpar),
+  the before-largada warning and "Sem marca de velocidade…" are replaced
+  by one line, "Velocidade: entra 3 s antes do fim do clipe." (N with a
+  decimal comma); the status reads "Velocidade na tarja: 37,2 km/h, sob o
+  cronômetro." The fieldset carries `data-speed-seconds-before-end`;
+  without a speed mark field the `v` key is not a shortcut (and the
+  shortcuts box leaves it out). `js/player.js` draws the green line at the
+  start from the form's cut-in and cut-out (the raw's duration,
+  `data-duration`, without a cut-out), redrawn whenever a cut changes; it
+  is not a mark, so it cannot be dragged or nudged. `player.speedStart()`
+  is that start (the speed mark in the mark mode), and the overlay preview
+  draws the speed from it, before a save. The live blocks bring the mode
+  with the clock block, so choosing AVF shows the line at once.
+* **Deployment: VPS only** (orchestrator and review UI together). Workers
+  0.8.0 render it as they are. A review UI before this one with a 2.14.0
+  orchestrator would show the mark controls for a prova in this mode, and
+  the mark would be ignored; an older orchestrator refuses the key in the
+  configuration (`unknown_key`), so set it only after the update.
+* **Not checked**: the line, the green line and the preview in a real
+  browser (the scripts are tested in Node on stand-ins, the pages against
+  the real orchestrator); real AVF footage with the speed 3 s before the
+  end.

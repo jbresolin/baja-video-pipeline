@@ -19,7 +19,9 @@
 //   * outside the cut there is no clip, so nothing is drawn;
 //   * for "Aceleração e Velocidade" the top speed sits under the clock,
 //     right-aligned with it, from the speed mark to the end of the clip,
-//     and only when the clip has a clock (LIVESTACK-67, speedShownAt).
+//     and only when the clip has a clock (LIVESTACK-67, speedShownAt);
+//     for a prova that shows it N s before the clip's end (LIVESTACK-68)
+//     from the form's cut-out minus N (player.speedStart()).
 // Laid out on a 1920×1080 stage like the clip, scaled to the player.
 import { clockText, clockTextAt, resultShownAt, speedShownAt } from "./pass_clock.js";
 
@@ -250,10 +252,11 @@ export function setupOverlayPreview({ video, form, player }) {
     resultPill.hidden = !(data.result_text && checked("show_pass_result", false) && resultNow);
     clockPill.hidden = clock === null;
     if (clock !== null) clockDigits.textContent = clock;
-    // The speed, only in a clip with a clock, from its own mark on (as the
-    // render lays it on: it may show before the clock's largada).
-    const speedMark = fieldNumber("speed_mark_s");
-    const speedOn = clockOn && data.speed && speedMark !== null && speedShownAt(now, speedMark);
+    // The speed, only in a clip with a clock, from its start on (as the
+    // render lays it on: it may show before the clock's largada). The start
+    // is the speed mark, or N s before the form's cut-out (LIVESTACK-68).
+    const speedStart = player.speedStart();
+    const speedOn = clockOn && data.speed && speedStart !== null && speedShownAt(now, speedStart);
     speedPill.hidden = !speedOn;
     if (speedOn) {
       speedNumber.textContent = data.speed.text;
