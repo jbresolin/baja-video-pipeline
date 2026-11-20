@@ -40,10 +40,12 @@ def test_every_url_is_https():
 def test_ffmpeg_is_a_pinned_btbn_win64_gpl_shared_build():
     ffmpeg = fetch_vendor.read_lock()["ffmpeg"]
 
-    # BtbN publishes builds under release tags; "latest" moves every day,
-    # so a pinned URL must name a fixed autobuild tag instead.
-    assert ffmpeg.url.startswith("https://github.com/BtbN/FFmpeg-Builds/releases/download/")
-    assert "/download/autobuild-" in ffmpeg.url
+    # A BtbN build, served from this repo's own vendor-ffmpeg-<version>
+    # prerelease: BtbN deletes old autobuilds, so pins never point at BtbN
+    # itself (design §41). "latest" moves, so it is never used either.
+    assert ffmpeg.url.startswith(
+        "https://github.com/jbresolin/baja-video-pipeline/releases/download/vendor-ffmpeg-"
+    ), "the ffmpeg pin must point at our own copy, which cannot disappear"
     assert "/latest/" not in ffmpeg.url
     # Windows 64-bit, GPL (has libx264), shared DLLs: what design §9 asks for.
     assert "win64-gpl-shared" in ffmpeg.file_name
